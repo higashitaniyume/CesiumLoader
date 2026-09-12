@@ -1,0 +1,33 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CesiumLoader", "src\CesiumLoader\CesiumLoader.vcxproj", "{A7B3E5D1-9C2F-4E8B-8D4A-1F3C9B7E5A22}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CesiumLoader.SDK", "src\CesiumLoader.SDK\CesiumLoader.SDK.csproj", "{B8C4F6E2-0D3A-5F9C-9E5B-2A4D0C8F6B33}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ActivityLogMod", "src\ActivityLogMod\ActivityLogMod.csproj", "{C9D5A7F3-1E4B-6A0D-0F6C-3B5E1D9A7C44}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A7B3E5D1-9C2F-4E8B-8D4A-1F3C9B7E5A22}.Debug|x64.ActiveCfg = Debug|x64
+		{A7B3E5D1-9C2F-4E8B-8D4A-1F3C9B7E5A22}.Debug|x64.Build.0 = Debug|x64
+		{A7B3E5D1-9C2F-4E8B-8D4A-1F3C9B7E5A22}.Release|x64.ActiveCfg = Release|x64
+		{A7B3E5D1-9C2F-4E8B-8D4A-1F3C9B7E5A22}.Release|x64.Build.0 = Release|x64
+		{B8C4F6E2-0D3A-5F9C-9E5B-2A4D0C8F6B33}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{B8C4F6E2-0D3A-5F9C-9E5B-2A4D0C8F6B33}.Debug|x64.Build.0 = Debug|Any CPU
+		{B8C4F6E2-0D3A-5F9C-9E5B-2A4D0C8F6B33}.Release|x64.ActiveCfg = Release|Any CPU
+		{B8C4F6E2-0D3A-5F9C-9E5B-2A4D0C8F6B33}.Release|x64.Build.0 = Release|Any CPU
+		{C9D5A7F3-1E4B-6A0D-0F6C-3B5E1D9A7C44}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{C9D5A7F3-1E4B-6A0D-0F6C-3B5E1D9A7C44}.Debug|x64.Build.0 = Debug|Any CPU
+		{C9D5A7F3-1E4B-6A0D-0F6C-3B5E1D9A7C44}.Release|x64.ActiveCfg = Release|Any CPU
+		{C9D5A7F3-1E4B-6A0D-0F6C-3B5E1D9A7C44}.Release|x64.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

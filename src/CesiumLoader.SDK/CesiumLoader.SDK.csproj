@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>CesiumLoader.SDK</AssemblyName>
+    <RootNamespace>CesiumLoader.SDK</RootNamespace>
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- 不生成 XML 文档, 减少构建噪音 -->
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 游戏热更程序集:所有游戏类型(UIManager / GameLogicManager / RoomInfo / 各RPC / party.protocol / party.model) -->
+    <Reference Include="AstralParty.Runtime">
+      <HintPath>..\..\..\..\extracted_dlls\AstralParty.Runtime.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- UnityEngine.CoreModule: MonoBehaviour / GameObject / Time -->
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>..\..\..\..\extracted_dlls\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- UniTask: 后台轮询 + RPC 回调 -->
+    <Reference Include="UniTask">
+      <HintPath>..\..\..\..\extracted_dlls\UniTask.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- Google.Protobuf: RepeatedField / MapField / ByteString -->
+    <Reference Include="Google.Protobuf.Runtime">
+      <HintPath>..\..\..\..\extracted_dlls\Google.Protobuf.Runtime.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>
