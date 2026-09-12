@@ -51,6 +51,9 @@ namespace CesiumLoader.SDK
         /// <summary>手牌变化: (playerId, 原始CardInfo列表)。队友的 CardId 可能是负数(服务器掩码)。</summary>
         public static event Action<long, IReadOnlyList<CardInfo>> HandChanged;
 
+        /// <summary>已定义的事件数量(静态常量)。</summary>
+        public static int EventCount => 15;
+
         // ---------- hook 状态 ----------
 
         private static bool _hookedThisSession;

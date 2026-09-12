@@ -6,6 +6,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CesiumLoader", "src\CesiumL
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CesiumLoader.SDK", "src\CesiumLoader.SDK\CesiumLoader.SDK.csproj", "{B8C4F6E2-0D3A-5F9C-9E5B-2A4D0C8F6B33}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CesiumLoader.Bootstrap", "src\CesiumLoader.Bootstrap\CesiumLoader.Bootstrap.csproj", "{D1A6B4C2-3E5F-7A8B-9C0D-1E2F3A4B5C6D}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ActivityLogMod", "src\ActivityLogMod\ActivityLogMod.csproj", "{C9D5A7F3-1E4B-6A0D-0F6C-3B5E1D9A7C44}"
 EndProject
 Global
@@ -22,6 +24,10 @@ Global
 		{B8C4F6E2-0D3A-5F9C-9E5B-2A4D0C8F6B33}.Debug|x64.Build.0 = Debug|Any CPU
 		{B8C4F6E2-0D3A-5F9C-9E5B-2A4D0C8F6B33}.Release|x64.ActiveCfg = Release|Any CPU
 		{B8C4F6E2-0D3A-5F9C-9E5B-2A4D0C8F6B33}.Release|x64.Build.0 = Release|Any CPU
+		{D1A6B4C2-3E5F-7A8B-9C0D-1E2F3A4B5C6D}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{D1A6B4C2-3E5F-7A8B-9C0D-1E2F3A4B5C6D}.Debug|x64.Build.0 = Debug|Any CPU
+		{D1A6B4C2-3E5F-7A8B-9C0D-1E2F3A4B5C6D}.Release|x64.ActiveCfg = Release|Any CPU
+		{D1A6B4C2-3E5F-7A8B-9C0D-1E2F3A4B5C6D}.Release|x64.Build.0 = Release|Any CPU
 		{C9D5A7F3-1E4B-6A0D-0F6C-3B5E1D9A7C44}.Debug|x64.ActiveCfg = Debug|Any CPU
 		{C9D5A7F3-1E4B-6A0D-0F6C-3B5E1D9A7C44}.Debug|x64.Build.0 = Debug|Any CPU
 		{C9D5A7F3-1E4B-6A0D-0F6C-3B5E1D9A7C44}.Release|x64.ActiveCfg = Release|Any CPU

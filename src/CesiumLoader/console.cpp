@@ -28,6 +28,14 @@ std::wstring loader_root()
     return game_dir + L"\\AstralParty_ModLoader";
 }
 
+std::wstring bootstrap_dir()
+{
+    wchar_t buf[1024];
+    DWORD n = GetEnvironmentVariableW(L"CESIUM_BOOTSTRAP_DIR", buf, 1024);
+    if (n > 0 && n < 1024) return std::wstring(buf, n);
+    return loader_root() + L"\\bootstrap";
+}
+
 std::wstring mods_dir()
 {
     wchar_t buf[1024];
@@ -50,6 +58,11 @@ std::wstring logs_dir()
     DWORD n = GetEnvironmentVariableW(L"CESIUM_LOG_DIR", buf, 1024);
     if (n > 0 && n < 1024) return std::wstring(buf, n);
     return loader_root() + L"\\logs";
+}
+
+std::wstring config_path()
+{
+    return loader_root() + L"\\doorstop_config.json";
 }
 
 // ---------- 日志 ----------
@@ -102,7 +115,7 @@ static HWND get_console_hwnd()
     return GetConsoleWindow();
 }
 
-void console_init()
+void console_init(bool topmost)
 {
     BOOL ok = AllocConsole();
     if (!ok)
@@ -114,13 +127,20 @@ void console_init()
     g_console_handle = GetStdHandle(STD_OUTPUT_HANDLE);
     log_line("[hijack] 控制台句柄: (AllocConsole=...)");
 
-    // 把控制台窗口置顶,避免被游戏窗口完全遮挡
+    // 把控制台窗口置顶,避免被游戏窗口完全遮挡(可配置)
     HWND hwnd = get_console_hwnd();
     if (hwnd)
     {
-        SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
-                     SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
-        log_line("[hijack] 控制台窗口置顶完成");
+        if (topmost)
+        {
+            SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                         SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+            log_line("[hijack] 控制台窗口置顶完成");
+        }
+        else
+        {
+            ShowWindow(hwnd, SW_SHOW);
+        }
     }
     else
     {

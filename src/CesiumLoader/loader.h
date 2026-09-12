@@ -1,12 +1,19 @@
-// loader.h - Astral Party Mod Loader (winmm.dll 劫持) 公共头
+// loader.h - Astral Party Mod Loader (version.dll 劫持, Doorstop 式) 公共头
 //
-// 原理:UnityPlayer.dll 在进程启动时依赖 winmm.dll(导入 22 个函数)。
-// 把本 DLL 命名为 winmm.dll 放在游戏 exe 同目录,Windows 加载器会优先加载它
-// (winmm.dll 不在 KnownDLLs 列表)。首个 winmm 导出被调用时启动后台引导线程,
-// 等待 GameAssembly.dll + IL2CPP + HybridCLR 热更就绪后,通过
-// System.Reflection.Assembly.Load(byte[]) 加载托管 mod。
+// 原理:UnityPlayer.dll 在进程启动时依赖 version.dll(导入 GetFileVersionInfoSizeA /
+// GetFileVersionInfoA / VerQueryValueA, 经 dumpbin 确认), 而 version.dll 不在
+// KnownDLLs 列表——把本 DLL 命名为 version.dll 放在游戏 exe 同目录,
+// Windows 加载器会优先加载它(BepInEx/Doorstop 生态的事实标准代理名)。
 //
-// 所有 winmm 导出函数转发到系统 C:\Windows\System32\winmm.dll。
+// 首个 version 导出被调用时(loader lock 已释放)启动后台引导线程:
+//   1. 读取 doorstop_config.json(enabled 开关/超时/控制台)
+//   2. 等待 GameAssembly.dll + IL2CPP + HybridCLR 热更就绪
+//   3. 通过 System.Reflection.Assembly.Load(byte[]) 加载托管引导程序
+//      (CesiumLoader.Bootstrap.dll) 并调用其入口 —— 之后 SDK 加载 / mod 枚举 /
+//      入口调用全部在托管层完成(native 保持薄引导, 便于维护与测试)。
+//
+// 所有 version.dll 导出函数转发到系统 C:\Windows\System32\version.dll,
+// 保证 UnityPlayer 读取 exe 版本信息等行为正常。
 
 #pragma once
 
@@ -23,22 +30,24 @@ void log_line(const std::string& msg);
 void log_line(const std::wstring& msg);
 
 // ---------- 控制台 ----------
-void console_init();
+void console_init(bool topmost);
 void console_write(const char* utf8_msg);
 void console_write_w(const wchar_t* msg, size_t len);
 
 // ---------- 路径 ----------
 std::wstring loader_root();
+std::wstring bootstrap_dir();
 std::wstring mods_dir();
 std::wstring sdk_dir();
 std::wstring logs_dir();
+std::wstring config_path();
 
-// ---------- 转发基础设施(供 generated_forwards.cpp 使用) ----------
+// ---------- 转发基础设施(供 exports.cpp 使用) ----------
 void maybe_start_boot();                    // 首次调用时启动引导线程
-void* real_winmm_handle();                  // 系统 winmm.dll 模块句柄
-void* real_winmm_fn(const char* name);      // 解析系统 winmm 导出函数地址
+void* real_version_handle();                // 系统 version.dll 模块句柄
+void* real_version_fn(const char* name);    // 解析系统 version 导出函数地址
 
-// ---------- 导出(供 C# mod 调用) ----------
+// ---------- 导出(保留, 兼容) ----------
 extern "C" __declspec(dllexport) void WINAPI ap_console_write(const char* msg);
 extern "C" __declspec(dllexport) void WINAPI ap_console_write_w(const wchar_t* msg, size_t len);
 

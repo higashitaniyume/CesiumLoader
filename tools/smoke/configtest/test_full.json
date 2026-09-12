@@ -1,0 +1,12 @@
+{
+  "enabled": true,
+  "bootstrapAssembly": "CesiumLoader.Bootstrap.dll",
+  "bootstrapType": "CesiumLoader.Bootstrap.Bootstrap",
+  "bootstrapMethod": "Main",
+  "gameAssemblyTimeoutSec": 60,
+  "domainTimeoutSec": 30,
+  "hybridclrTimeoutSec": 60,
+  "consoleEnabled": true,
+  "consoleTopmost": true,
+  "forwardActivityLog": true
+}
