@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using CesiumLoader.SDK;
 using GameLogic;
 using party.model;
@@ -9,25 +10,76 @@ using UI;
 namespace ActivityLogMod
 {
     /// <summary>
-    /// 行为日志 mod: 基于 CesiumLoader.SDK, 订阅游戏事件 + 每秒轮询,
-    /// 把玩家在游戏里的主要行为输出到加载器控制台。
+    /// 实时行为日志 mod —— CesiumLoader SDK 规范示例。
     ///
-    /// 观测内容:
-    ///   - 界面切换 / 房间状态 / 队友信息 / 自己选角(轮询)
-    ///   - 星币 / 自己摸牌 / 手牌(轮询)
-    ///   - 用牌 / 效果牌 / 技能 / 跟牌 / 骰子 / 移动 / 战斗 / 商店 / 筹码 / 遗物 / 选卡(事件)
+    /// 作用: 订阅游戏事件 + 每秒轮询, 把对局内的行为实时输出到加载器控制台。
+    ///
+    /// 本文件演示的 SDK 规范:
+    ///   1. 入口: ModEntry.Main() —— 导出 manifest sidecar → 加载配置 → ModBase.Run
+    ///   2. 元数据: [ModManifest] 特性(名称/版本/作者/描述)
+    ///   3. 配置: SdkConfig.Load/Save 读写 configs/ActivityLogMod.json(公开字段, 支持热重载)
+    ///   4. 日志分级: SdkLog.Info/Warn/Error/Debug(环境变量 CESIUM_LOG_LEVEL=Debug 可看调试日志)
+    ///   5. 事件: GameEvents.* 订阅, 处理函数带空保护绝不抛异常
+    ///   6. 轮询: ModBase.Run 每秒 tick, 各块独立 try/catch
+    ///   7. 操作查询: GameActions.CanThrowDice 检测"我的回合"(展示操作层 API)
+    ///
+    /// 配置(configs/ActivityLogMod.json, 全部可选):
+    ///   Enabled            = true  总开关(false 时 mod 直接不启动)
+    ///   LogUi              = true  界面切换 / 房间状态 / 队友 / 选角(轮询)
+    ///   LogBattle          = true  星币 / 摸牌 / 手牌(轮询)
+    ///   LogEvents          = true  用牌 / 骰子 / 移动 / 战斗 / 商店 / 遗物(事件)
+    ///   LogTurn            = true  轮到我的回合提示(基于 GameActions.CanThrowDice)
+    ///   ReloadConfigOnTick = false 每次 tick 重读配置(改配置即时生效, 不用重启游戏)
     /// </summary>
+    [ModManifest("实时行为日志", "2.0.0", "CesiumLoader", "把对局内的行为(用牌/骰子/移动/战斗等)实时输出到加载器控制台")]
     public static class ModEntry
     {
+        private static ActivityLogConfig _cfg = new ActivityLogConfig();
+
+        // ============================== 入口 ==============================
+
         public static void Main()
         {
-            SdkLog.Write("ActivityLog", "=== ActivityLogMod.Main 被调用 ===");
+            try
+            {
+                MainSafe();
+            }
+            catch (Exception ex)
+            {
+                // 顶层兜底: 任何未预期异常都完整写到日志文件(不依赖 SDK 日志转发), 便于排查
+                try
+                {
+                    var logPath = Path.Combine(
+                        Environment.GetEnvironmentVariable("CESIUM_LOG_DIR") ?? ".",
+                        "activity-mod.log");
+                    Directory.CreateDirectory(Path.GetDirectoryName(logPath) ?? ".");
+                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss.fff}] [ERR] [ActivityLog] 入口异常: {ex}\r\n");
+                }
+                catch { }
+                throw; // 重新抛出, 让加载器也能看到
+            }
+        }
+
+        private static void MainSafe()
+        {
+            SdkLog.Info("ActivityLog", "=== 实时行为日志 v2.0.0 启动 ===");
+            SdkManifest.ExportSidecar(); // [ModManifest] → 同名 .json, 供 apt 模组列表读取
+
+            _cfg = SdkConfig.Load<ActivityLogConfig>("ActivityLogMod");
+            if (!_cfg.Enabled)
+            {
+                SdkLog.Warn("ActivityLog", "配置 Enabled=false, mod 已停用(改 configs/ActivityLogMod.json 后重进游戏生效)");
+                return;
+            }
+            SdkLog.Info("ActivityLog",
+                $"配置已加载: LogUi={_cfg.LogUi}, LogBattle={_cfg.LogBattle}, LogEvents={_cfg.LogEvents}, LogTurn={_cfg.LogTurn}, 热重载={_cfg.ReloadConfigOnTick}");
+
             ModBase.Run(init: OnInit, tick: OnTick, tag: "ActivityLog");
         }
 
         private static void OnInit()
         {
-            SdkLog.Write("ActivityLog", "初始化: 订阅游戏事件");
+            SdkLog.Info("ActivityLog", "初始化: 订阅游戏事件");
             GameEvents.CardUsed += OnCardUsed;
             GameEvents.NoCard += OnNoCard;
             GameEvents.EffectCardUsed += OnEffectCardUsed;
@@ -43,153 +95,157 @@ namespace ActivityLogMod
             GameEvents.RelicSelected += OnRelicSelected;
             GameEvents.RelicsSynced += OnRelicsSynced;
             GameEvents.HandChanged += OnHandChanged;
-            SdkLog.Write("ActivityLog", "事件订阅完成");
+            SdkLog.Info("ActivityLog", $"事件订阅完成({GameEvents.EventCount} 个事件)");
         }
 
-        // ---------- 事件处理 ----------
+        // ============================== 事件处理 ==============================
 
         private static void OnCardUsed(long playerId, int cardId, int remain)
         {
-            string who = Nick(playerId);
-            string self = Players.IsSelf(playerId) ? " (我)" : "";
-            SdkLog.Write("ActivityLog", $"[用牌] {who}{self} 使用了: {Names.Card(cardId)} (剩余{remain}张)");
+            if (!_cfg.LogEvents) return;
+            SdkLog.Info("ActivityLog", $"[用牌] {Nick(playerId)}{Self(playerId)} 使用了 {Names.Card(cardId)} (剩{remain}张)");
         }
 
         private static void OnNoCard(long playerId)
         {
-            string who = Nick(playerId);
-            SdkLog.Write("ActivityLog", $"[用牌] {who} 无牌可出, 跳过出牌");
+            if (!_cfg.LogEvents) return;
+            SdkLog.Info("ActivityLog", $"[用牌] {Nick(playerId)} 无牌可出, 跳过");
         }
 
         private static void OnEffectCardUsed(long playerId, int cardId, int remain)
         {
-            string who = Nick(playerId);
-            string self = Players.IsSelf(playerId) ? " (我)" : "";
-            SdkLog.Write("ActivityLog", $"[效果牌] {who}{self} 使用了: {Names.Card(cardId)} (剩余{remain}张)");
+            if (!_cfg.LogEvents) return;
+            SdkLog.Info("ActivityLog", $"[效果牌] {Nick(playerId)}{Self(playerId)} 使用了 {Names.Card(cardId)} (剩{remain}张)");
         }
 
         private static void OnSkillUsed(long playerId, int skillId)
         {
-            string who = Nick(playerId);
-            string self = Players.IsSelf(playerId) ? " (我)" : "";
-            SdkLog.Write("ActivityLog", $"[技能] {who}{self} 释放了技能: {Names.Skill(skillId)}");
+            if (!_cfg.LogEvents) return;
+            SdkLog.Info("ActivityLog", $"[技能] {Nick(playerId)}{Self(playerId)} 释放了 {Names.Skill(skillId)}");
         }
 
         private static void OnQuickCardUsed(long playerId, int cardId, int originalCardId)
         {
-            string who = Nick(playerId);
-            string self = Players.IsSelf(playerId) ? " (我)" : "";
-            string orig = (originalCardId != 0) ? $" (跟{Names.Card(originalCardId)})" : "";
-            SdkLog.Write("ActivityLog", $"[跟牌] {who}{self} 使用了: {Names.Card(cardId)}{orig}");
+            if (!_cfg.LogEvents) return;
+            string orig = originalCardId != 0 ? $" (跟{Names.Card(originalCardId)})" : "";
+            SdkLog.Info("ActivityLog", $"[跟牌] {Nick(playerId)}{Self(playerId)} 使用了 {Names.Card(cardId)}{orig}");
         }
 
         private static void OnDiceResult(long playerId, int point, int maxPoint)
         {
-            string who = Nick(playerId);
-            string self = Players.IsSelf(playerId) ? " (我)" : "";
-            string bonus = (maxPoint != point && maxPoint > 0) ? $" (上限{maxPoint})" : "";
-            SdkLog.Write("ActivityLog", $"[骰子] {who}{self} 掷出了: {point}点{bonus}");
+            if (!_cfg.LogEvents) return;
+            string bonus = maxPoint > 0 && maxPoint != point ? $" (上限{maxPoint})" : "";
+            SdkLog.Info("ActivityLog", $"[骰子] {Nick(playerId)}{Self(playerId)} 掷出 {point} 点{bonus}");
         }
 
         private static void OnMove(long playerId, int stepCount, bool end)
         {
-            string who = Nick(playerId);
-            string self = Players.IsSelf(playerId) ? " (我)" : "";
-            SdkLog.Write("ActivityLog", $"[移动] {who}{self} 移动了 {stepCount} 格{(end ? " (到达)" : "")}");
+            if (!_cfg.LogEvents) return;
+            SdkLog.Info("ActivityLog", $"[移动] {Nick(playerId)}{Self(playerId)} 移动 {stepCount} 格{(end ? " (到达)" : "")}");
         }
 
         private static void OnBattleUpdate(Battle b)
         {
+            if (!_cfg.LogEvents) return;
             if (b.Attacker == null || b.Defender == null) return;
-            string atk = Names.BattleRole(b.Attacker);
-            string def = Names.BattleRole(b.Defender);
             string end = b.IsEnd ? " [已结束]" : "";
-            string self = Players.IsSelf(b.Attacker.PlayerId) ? " (我)" : "";
-            SdkLog.Write("ActivityLog", $"[战斗] {atk}{self} vs {def} 攻{b.Attacker.Point}(ATK{b.Attacker.Atk}) vs 防{b.Defender.Point}(DEF{b.Defender.Def}){end}");
+            SdkLog.Info("ActivityLog",
+                $"[战斗] {Names.BattleRole(b.Attacker)}{Self(b.Attacker.PlayerId)} vs {Names.BattleRole(b.Defender)} " +
+                $"攻{b.Attacker.Point}(ATK{b.Attacker.Atk}) vs 防{b.Defender.Point}(DEF{b.Defender.Def}){end}");
         }
 
         private static void OnBattleDice(long playerId, int val)
         {
-            string who = Nick(playerId);
-            string self = Players.IsSelf(playerId) ? " (我)" : "";
-            SdkLog.Write("ActivityLog", $"[战斗骰] {who}{self} 掷出攻击: {val}点");
+            if (!_cfg.LogEvents) return;
+            SdkLog.Info("ActivityLog", $"[战斗骰] {Nick(playerId)}{Self(playerId)} 掷出攻击 {val} 点");
         }
 
         private static void OnRewardCardSelected(long playerId, int cardId)
         {
-            string who = Nick(playerId);
-            string self = Players.IsSelf(playerId) ? " (我)" : "";
-            SdkLog.Write("ActivityLog", $"[选卡] {who}{self} 选择了奖励卡: {Names.Card(cardId)}");
+            if (!_cfg.LogEvents) return;
+            SdkLog.Info("ActivityLog", $"[选卡] {Nick(playerId)}{Self(playerId)} 选择了奖励卡 {Names.Card(cardId)}");
         }
 
         private static void OnShopCandidates(long playerId, IReadOnlyList<int> cardIds)
         {
-            var names = new List<string>();
-            foreach (int cid in cardIds) if (cid > 0) names.Add(Names.Card(cid));
+            if (!_cfg.LogEvents) return;
+            var names = CollectNames(cardIds, Names.Card);
             if (names.Count == 0) return;
-            string who = Nick(playerId);
-            string self = Players.IsSelf(playerId) ? " (我)" : "";
-            SdkLog.Write("ActivityLog", $"[商店] {who}{self} 的待选卡: " + string.Join(" | ", names));
+            SdkLog.Info("ActivityLog", $"[商店] {Nick(playerId)}{Self(playerId)} 待选卡: {string.Join(" | ", names)}");
         }
 
         private static void OnRelicCandidates(long playerId, IReadOnlyList<int> relicIds)
         {
-            var names = new List<string>();
-            foreach (int rid in relicIds) if (rid > 0) names.Add(Names.Relic(rid));
+            if (!_cfg.LogEvents) return;
+            var names = CollectNames(relicIds, Names.Relic);
             if (names.Count == 0) return;
-            string who = Nick(playerId);
-            string self = Players.IsSelf(playerId) ? " (我)" : "";
-            SdkLog.Write("ActivityLog", $"[筹码] {who}{self} 的候选遗物: " + string.Join(" | ", names));
+            SdkLog.Info("ActivityLog", $"[筹码] {Nick(playerId)}{Self(playerId)} 候选遗物: {string.Join(" | ", names)}");
         }
 
         private static void OnRelicSelected(long playerId, int relicId)
         {
-            string who = Nick(playerId);
-            string self = Players.IsSelf(playerId) ? " (我)" : "";
-            SdkLog.Write("ActivityLog", $"[筹码] {who}{self} 选择了: {Names.Relic(relicId)}");
+            if (!_cfg.LogEvents) return;
+            SdkLog.Info("ActivityLog", $"[筹码] {Nick(playerId)}{Self(playerId)} 选择了 {Names.Relic(relicId)}");
         }
 
         private static void OnRelicsSynced(long playerId, IReadOnlyList<int> relicIds)
         {
-            var names = new List<string>();
-            foreach (int rid in relicIds) if (rid > 0) names.Add(Names.Relic(rid));
+            if (!_cfg.LogEvents) return;
+            var names = CollectNames(relicIds, Names.Relic);
             if (names.Count == 0) return;
-            string who = Nick(playerId);
-            string self = Players.IsSelf(playerId) ? " (我)" : "";
-            SdkLog.Write("ActivityLog", $"[遗物] {who}{self} 持有: " + string.Join(" | ", names));
+            SdkLog.Info("ActivityLog", $"[遗物] {Nick(playerId)}{Self(playerId)} 持有: {string.Join(" | ", names)}");
         }
 
         private static void OnHandChanged(long playerId, IReadOnlyList<CardInfo> cards)
         {
+            if (!_cfg.LogEvents) return;
             bool self = Players.IsSelf(playerId);
             if (self)
             {
-                var names = new List<string>();
-                foreach (var c in cards)
-                    if (c != null && c.CardId > 0) names.Add(Names.Card(c.CardId));
-                SdkLog.Write("ActivityLog", $"[手牌] 我的手牌: " + (names.Count > 0 ? string.Join(" | ", names) : "(空)"));
+                var names = CollectNames(cards, c => Names.Card(c.CardId));
+                SdkLog.Info("ActivityLog", $"[手牌] 我的手牌: {(names.Count > 0 ? string.Join(" | ", names) : "(空)")}");
+                return;
             }
-            else
-            {
-                // 队友手牌被服务器掩码(负数), 只报数量
-                bool allNegative = true;
-                foreach (var c in cards)
-                    if (c != null && c.CardId > 0) { allNegative = false; break; }
-                if (!allNegative)
-                {
-                    var names = new List<string>();
-                    foreach (var c in cards)
-                        if (c != null && c.CardId > 0) names.Add(Names.Card(c.CardId));
-                    SdkLog.Write("ActivityLog", $"[手牌] {Nick(playerId)} 的手牌: " + string.Join(" | ", names));
-                }
-                else
-                {
-                    SdkLog.Write("ActivityLog", $"[手牌] {Nick(playerId)} 手牌变化: {cards.Count}张 [服务器掩码]");
-                }
-            }
+            // 队友手牌被服务器掩码(负数): 有真实卡才列名字, 否则只报数量
+            var visible = CollectNames(cards, c => Names.Card(c.CardId));
+            SdkLog.Info("ActivityLog",
+                visible.Count > 0
+                    ? $"[手牌] {Nick(playerId)} 的手牌: {string.Join(" | ", visible)}"
+                    : $"[手牌] {Nick(playerId)} 手牌变化: {cards.Count} 张 [服务器掩码]");
         }
 
-        // ---------- 轮询(tick) ----------
+        // ============================== 轮询(tick) ==============================
+
+        private static bool _wasMyTurn;
+
+        private static void OnTick()
+        {
+            if (_cfg.ReloadConfigOnTick)
+            {
+                var fresh = SdkConfig.Load<ActivityLogConfig>("ActivityLogMod");
+                if (fresh != null) _cfg = fresh;
+            }
+
+            GameEvents.EnsureHooked(); // 游戏每场战斗重置回调, 每秒重新挂钩
+            if (_cfg.LogTurn) PollTurn();
+            if (_cfg.LogUi) PollUiAndRoom();
+            if (_cfg.LogBattle) PollBattle();
+        }
+
+        /// <summary>轮到我的回合提示(基于 GameActions.CanThrowDice, 展示操作层查询 API)。</summary>
+        private static void PollTurn()
+        {
+            try
+            {
+                bool myTurn = GameActions.CanThrowDice;
+                if (myTurn && !_wasMyTurn)
+                    SdkLog.Info("ActivityLog", "[回合] ★ 轮到我了, 可以行动");
+                else if (!myTurn && _wasMyTurn)
+                    SdkLog.Info("ActivityLog", "[回合] 我的行动结束");
+                _wasMyTurn = myTurn;
+            }
+            catch { }
+        }
 
         private static string _lastPanelName;
         private static string _lastRoomState;
@@ -198,18 +254,10 @@ namespace ActivityLogMod
         private static string _lastChips;
         private static readonly List<int> _lastMyCards = new List<int>();
 
-        private static void OnTick()
-        {
-            GameEvents.EnsureHooked(); // 游戏每场战斗重置回调, 每秒重新挂钩
-            PollUiAndRoom();
-            PollBattle();
-        }
-
         private static void PollUiAndRoom()
         {
             try
             {
-                // 界面
                 var ui = SimpleSingletonProvider<UIManager>.inst;
                 if (ui != null)
                 {
@@ -218,7 +266,7 @@ namespace ActivityLogMod
                     if (pn != null && pn != _lastPanelName)
                     {
                         _lastPanelName = pn;
-                        SdkLog.Write("ActivityLog", $"[界面] 打开: {pn}");
+                        SdkLog.Info("ActivityLog", $"[界面] 打开: {pn}");
                     }
                 }
                 else if (_lastPanelName != null)
@@ -234,28 +282,27 @@ namespace ActivityLogMod
                 var room = gm?.room?.curRoomInfo;
                 if (room != null)
                 {
-                    // 房间状态
                     string state = StateChinese(room.State);
                     string map = MapChinese(room.MapId);
                     string rs = $"{state} 地图: {map} 玩家数: {room.Players?.Count ?? 0}";
                     if (rs != _lastRoomState)
                     {
                         _lastRoomState = rs;
-                        SdkLog.Write("ActivityLog", $"[房间] 状态: {rs}");
+                        SdkLog.Info("ActivityLog", $"[房间] {rs}");
                     }
-                    // 队友
+
                     string players = DumpPlayers(room);
                     if (players != null && players != _lastPlayers)
                     {
                         _lastPlayers = players;
-                        SdkLog.Write("ActivityLog", $"[队友] {players}");
+                        SdkLog.Info("ActivityLog", $"[队友] {players}");
                     }
-                    // 自己选角
+
                     string hero = SelfHeroName();
                     if (hero != null && hero != _lastSelfHero)
                     {
                         _lastSelfHero = hero;
-                        SdkLog.Write("ActivityLog", $"[角色] 我选择了: {hero}");
+                        SdkLog.Info("ActivityLog", $"[角色] 我选择了: {hero}");
                     }
                 }
                 else if (_lastRoomState != null)
@@ -291,28 +338,33 @@ namespace ActivityLogMod
                 if (chipKey != _lastChips)
                 {
                     _lastChips = chipKey;
-                    SdkLog.Write("ActivityLog", "[星币] " + chipKey);
+                    SdkLog.Info("ActivityLog", $"[星币] {chipKey}");
                 }
 
-                // 自己摸牌(手牌内容变化)
+                // 自己摸牌 / 手牌内容变化
                 var myCards = new List<int>();
                 foreach (var hc in Players.MyHandCards())
                     if (hc != null && hc.CardId > 0) myCards.Add(hc.CardId);
+
                 if (myCards.Count != _lastMyCards.Count)
                 {
                     if (myCards.Count > _lastMyCards.Count && _lastMyCards.Count > 0)
                     {
-                        // 摸到新牌: 找出新增的
                         foreach (int cid in myCards)
                             if (!_lastMyCards.Contains(cid))
-                                SdkLog.Write("ActivityLog", $"[摸牌] 我摸到了: {Names.Card(cid)}");
+                                SdkLog.Info("ActivityLog", $"[摸牌] 我摸到了 {Names.Card(cid)}");
+                    }
+                    else if (myCards.Count < _lastMyCards.Count && _lastMyCards.Count > 0)
+                    {
+                        foreach (int cid in _lastMyCards)
+                            if (!myCards.Contains(cid))
+                                SdkLog.Info("ActivityLog", $"[手牌] 我打出了 {Names.Card(cid)}");
                     }
                     _lastMyCards.Clear();
                     _lastMyCards.AddRange(myCards);
                 }
                 else
                 {
-                    // 数量没变但内容变了(替换)
                     bool changed = false;
                     for (int i = 0; i < myCards.Count; i++)
                         if (myCards[i] != _lastMyCards[i]) { changed = true; break; }
@@ -326,12 +378,30 @@ namespace ActivityLogMod
             catch { }
         }
 
-        // ---------- 辅助 ----------
+        // ============================== 辅助 ==============================
+
+        private static string Self(long playerId) => Players.IsSelf(playerId) ? " (我)" : "";
 
         private static string Nick(long playerId)
         {
             string n = Players.Nick(playerId);
             return string.IsNullOrEmpty(n) ? "P" + playerId : n;
+        }
+
+        private static List<string> CollectNames(IReadOnlyList<int> ids, Func<int, string> resolve)
+        {
+            var names = new List<string>();
+            foreach (int id in ids)
+                if (id > 0) names.Add(resolve(id));
+            return names;
+        }
+
+        private static List<string> CollectNames(IReadOnlyList<CardInfo> cards, Func<CardInfo, string> resolve)
+        {
+            var names = new List<string>();
+            foreach (var c in cards)
+                if (c != null && c.CardId > 0) names.Add(resolve(c));
+            return names;
         }
 
         private static string SelfHeroName()
@@ -360,8 +430,7 @@ namespace ActivityLogMod
                     if (p == null) continue;
                     string nick;
                     try { nick = p.GetNick(); } catch { nick = "?"; }
-                    string hero = HeroName(p);
-                    parts.Add($"槽{p.NodeId}:{nick}{(p.IsBot ? "[AI]" : "")}={hero}");
+                    parts.Add($"槽{p.NodeId}:{nick}{(p.IsBot ? "[AI]" : "")}={HeroName(p)}");
                 }
                 return string.Join(" | ", parts);
             }
@@ -433,5 +502,16 @@ namespace ActivityLogMod
                 default: return "地图" + mapId;
             }
         }
+    }
+
+    /// <summary>实时行为日志 mod 配置(公开字段, SdkConfig 读写; 热重载开启后改配置即时生效)。</summary>
+    public class ActivityLogConfig
+    {
+        public bool Enabled = true;
+        public bool LogUi = true;
+        public bool LogBattle = true;
+        public bool LogEvents = true;
+        public bool LogTurn = true;
+        public bool ReloadConfigOnTick = false;
     }
 }

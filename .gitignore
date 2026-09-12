@@ -361,3 +361,20 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# ---------- CesiumLoader 特有 ----------
+
+# 冒烟测试本地编译/运行产物 (configtest 的 cl.exe 产物)
+tools/smoke/configtest/*.exe
+tools/smoke/configtest/*.exp
+tools/smoke/configtest/*.lib
+tools/smoke/configtest/*.obj
+
+# 冒烟测试运行时环境 (host 测试写出的假 mod 与日志, 由测试自行生成)
+tools/smoke/env/
+tools/smoke/env2/
+
+# dist 里由 CI 现场构建覆盖的产物 (version.dll / bootstrap dll 不入库,
+# 只入库 SDK/mod 预编译产物与配置文件)
+dist/modloader/version.dll
+dist/modloader/AstralParty_ModLoader/bootstrap/

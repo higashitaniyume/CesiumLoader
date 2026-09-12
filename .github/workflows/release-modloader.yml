@@ -1,0 +1,171 @@
+name: Release ModLoader
+
+# 每次打 modloader-* tag 时: 构建 C++ 加载器(version.dll) + C# 托管引导程序,
+# 打包「解压即部署」的 zip 作为 GitHub release 资产。
+# AstralParty.Toys 的 Mod 管理功能从这里下载安装: 
+#   https://github.com/higashitaniyume/CesiumLoader/releases/latest/download/cesium-loader.zip
+#
+# 说明: C# SDK 与示例 mod 引用游戏热更程序集(extracted_dlls, 游戏私有 DLL 不入库),
+# 因此它们用 dist/ 里的预编译产物; C++ 加载器无游戏依赖, 在 CI 现场构建;
+# CesiumLoader.Bootstrap 自包含(零引用), 也在 CI 现场构建。
+
+on:
+  push:
+    tags:
+      - "modloader-*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  SOLUTION: CesiumLoader.sln
+  APP_NAME: cesium-loader
+
+jobs:
+  build:
+    name: Build and package
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          $version = if ("${{ github.ref_type }}" -eq "tag") {
+            "${{ github.ref_name }}" -replace '^modloader-', ''
+          } else {
+            "manual-${{ github.run_number }}"
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Build C++ loader (version.dll)
+        shell: pwsh
+        run: |
+          & msbuild $env:SOLUTION /p:Configuration=Release /p:Platform=x64 /m /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path "bin/Release/version.dll")) { throw "version.dll 未生成" }
+
+      - name: Build managed bootstrap
+        shell: pwsh
+        run: |
+          dotnet build src\CesiumLoader.Bootstrap\CesiumLoader.Bootstrap.csproj -c Release --nologo
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $bootstrap = "src/CesiumLoader.Bootstrap/bin/Release/netstandard2.0/CesiumLoader.Bootstrap.dll"
+          if (-not (Test-Path $bootstrap)) { throw "CesiumLoader.Bootstrap.dll 未生成" }
+          Copy-Item $bootstrap "dist/modloader/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll" -Force
+
+      - name: Verify dist prerequisites
+        shell: pwsh
+        run: |
+          # version.dll 由上面的 msbuild 现场构建; bootstrap 已复制; dist 只需 SDK + 示例 mod
+          $required = @(
+            "dist/modloader/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll",
+            "dist/modloader/AstralParty_ModLoader/doorstop_config.json",
+            "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll",
+            "dist/modloader/AstralParty_ModLoader/mods/ActivityLogMod.dll"
+          )
+          foreach ($f in $required) { if (-not (Test-Path $f)) { throw "缺少预编译产物: $f" } }
+          Write-Host "dist 预编译产物齐全"
+
+      - name: Stage deployment layout
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "staging/AstralParty_ModLoader/sdk", "staging/AstralParty_ModLoader/mods", "staging/AstralParty_ModLoader/logs", "staging/AstralParty_ModLoader/bootstrap" -Force | Out-Null
+          Copy-Item "bin/Release/version.dll" "staging/version.dll" -Force
+          Copy-Item "dist/modloader/AstralParty_ModLoader/doorstop_config.json" "staging/AstralParty_ModLoader/doorstop_config.json" -Force
+          Copy-Item "dist/modloader/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll" "staging/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll" -Force
+          Copy-Item "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll" "staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll" -Force
+          Copy-Item "dist/modloader/AstralParty_ModLoader/mods/ActivityLogMod.dll" "staging/AstralParty_ModLoader/mods/ActivityLogMod.dll" -Force
+          # 部署说明(可选, apt 端可忽略)
+          $readme = @(
+            "cesium-loader-${{ steps.version.outputs.version }}",
+            "- version.dll                          → 复制到游戏 exe 目录 (Doorstop 式代理加载器)",
+            "- AstralParty_ModLoader\doorstop_config.json → 加载器配置 (enabled=false 可完全禁用)",
+            "- AstralParty_ModLoader\bootstrap\     → 托管引导程序 (先于 SDK/mods 加载)",
+            "- AstralParty_ModLoader\sdk\           → SDK 依赖",
+            "- AstralParty_ModLoader\mods\          → 用户 mod (启动时逐个 Assembly.Load + 入口)",
+            "- AstralParty_ModLoader\logs\          → 日志目录",
+            "解压到游戏 exe 目录即完成安装。",
+            "从旧版升级: 请删除游戏目录下的 winmm.dll (旧代理), 换成 version.dll。"
+          ) -join [Environment]::NewLine
+          Set-Content -Path "staging/README.txt" -Value $readme -Encoding UTF8
+
+      - name: Build manifest
+        id: manifest
+        shell: pwsh
+        run: |
+          $files = @(
+            "staging/version.dll",
+            "staging/AstralParty_ModLoader/doorstop_config.json",
+            "staging/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll",
+            "staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll",
+            "staging/AstralParty_ModLoader/mods/ActivityLogMod.dll"
+          )
+          $fileMap = @{}
+          foreach ($f in $files) {
+            $rel = $f.Substring("staging/".Length) -replace '\\', '/'
+            $hash = (Get-FileHash $f -Algorithm SHA256).Hash.ToLowerInvariant()
+            $fileMap[$rel] = $hash
+          }
+          $manifest = [ordered]@{
+            name      = "CesiumLoader"
+            version   = "${{ steps.version.outputs.version }}"
+            tag       = "${{ github.ref_name }}"
+            repo      = "higashitaniyume/CesiumLoader"
+            layout    = "game-dir"   # 解压到游戏 exe 目录即部署
+            built_at  = (Get-Date).ToUniversalTime().ToString("o")
+            files     = $fileMap
+          }
+          $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path "staging/cesium-loader.json" -Encoding UTF8
+          Write-Host "manifest:"
+          Get-Content "staging/cesium-loader.json"
+
+      - name: Package zip
+        shell: pwsh
+        run: |
+          $zipName = "cesium-loader-${{ steps.version.outputs.version }}.zip"
+          Compress-Archive -Path "staging/*" -DestinationPath $zipName -CompressionLevel Optimal
+          # 同时生成固定名(latest/download 用), 内容一致
+          Copy-Item $zipName "cesium-loader.zip" -Force
+          Get-ChildItem *.zip | Select-Object Name, Length
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cesium-loader-package
+          path: |
+            cesium-loader-*.zip
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    name: Create release
+    if: github.ref_type == 'tag'   # 手动 dispatch 只构建打包, 不创建 release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download package
+        uses: actions/download-artifact@v4
+        with:
+          name: cesium-loader-package
+          path: artifacts
+
+      - name: List artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          ls -la artifacts/
+          test "$(find artifacts -maxdepth 1 -type f -name '*.zip' | wc -l)" -ge 1
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: artifacts/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true

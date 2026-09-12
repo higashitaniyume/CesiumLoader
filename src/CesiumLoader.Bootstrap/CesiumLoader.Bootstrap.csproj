@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>CesiumLoader.Bootstrap</AssemblyName>
+    <RootNamespace>CesiumLoader.Bootstrap</RootNamespace>
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+    <!-- 引导程序是自包含的: 不引用 SDK / 不引用游戏程序集,
+         通过反射加载 SDK 与 mod, 避免编译期依赖与加载顺序鸡生蛋问题 -->
+  </PropertyGroup>
+
+</Project>

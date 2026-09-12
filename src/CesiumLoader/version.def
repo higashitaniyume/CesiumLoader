@@ -1,0 +1,27 @@
+; version.def - Doorstop 式代理 DLL 导出表
+;
+; 与系统 C:\Windows\System32\version.dll 的导出集一致(15 个, 经 dumpbin 确认)。
+; 注意: VerLanguageNameA/W 在 Win10/11 由 kernel32 导出, 系统 version.dll 不含,
+; 因此这里也不导出。
+;
+; 用 .def 导出(而非 __declspec(dllexport)): 函数定义与 winver.h 头文件声明
+; 保持完全一致, 避免链接规格冲突, 也是转发 DLL 的行业惯例做法。
+
+LIBRARY "version"
+
+EXPORTS
+    GetFileVersionInfoA
+    GetFileVersionInfoByHandle
+    GetFileVersionInfoExA
+    GetFileVersionInfoExW
+    GetFileVersionInfoSizeA
+    GetFileVersionInfoSizeExA
+    GetFileVersionInfoSizeExW
+    GetFileVersionInfoSizeW
+    GetFileVersionInfoW
+    VerFindFileA
+    VerFindFileW
+    VerInstallFileA
+    VerInstallFileW
+    VerQueryValueA
+    VerQueryValueW

@@ -1,15 +1,21 @@
-// loader.cpp - IL2CPP 桥 + 引导线程 + Assembly.Load(byte[]) + mod 加载
+// loader.cpp - IL2CPP 桥 + 引导线程 (Doorstop 式薄引导)
 //
-// 对应 Rust 版 lib.rs 的 IL2CPP 桥与 boot_thread:
-//   1. 等待 GameAssembly.dll 加载(60s 超时)
-//   2. 解析 il2cpp_* 导出函数
-//   3. 等待 il2cpp domain 就绪(30s) + thread_attach
-//   4. 等待 HybridCLR 热更(AstralParty.Runtime 出现,60s)
-//   5. 设置环境变量 CESIUM_MODS_DIR / CESIUM_LOG_DIR / CESIUM_SDK_DIR
-//   6. 先 Assembly.Load sdk\*.dll(不调入口), 再加载 mods\*.dll 并调 {Name}.ModEntry.Main
-//   7. 启动 activity-mod.log -> 控制台 转发线程
+// 原生层只负责:
+//   1. 读取 doorstop_config.json(enabled 开关 / 超时 / 控制台)
+//   2. 等待 GameAssembly.dll 加载(超时)
+//   3. 解析 il2cpp_* 导出函数
+//   4. 等待 il2cpp domain 就绪 + thread_attach
+//   5. 等待 HybridCLR 热更(AstralParty.Runtime 出现)
+//   6. 设置环境变量 CESIUM_* 目录
+//   7. 通过 Assembly.Load(byte[]) 加载托管引导程序 (CesiumLoader.Bootstrap.dll)
+//      并调用其入口 —— SDK 加载 / mod 枚举 / 入口调用 全部在托管层完成
+//   8. 启动 activity-mod.log -> 控制台 转发线程
+//
+// 这样 native 保持薄引导, mod 编排逻辑在 C# 里(可脱离游戏单元测试)。
 
 #include "loader.h"
+
+#include "config.h"
 
 #include <tlhelp32.h>
 #include <vector>
@@ -28,6 +34,7 @@ using Il2CppMethod = void;
 using Il2CppObject = void;
 using Il2CppException = void;
 using Il2CppThread = void;
+using Il2CppString = void;
 
 struct Il2Cpp
 {
@@ -49,6 +56,8 @@ struct Il2Cpp
     Il2CppClass* (*array_class_get)(Il2CppClass*, uint32_t) = nullptr;
     Il2CppObject* (*array_new)(Il2CppClass*, size_t) = nullptr;
     size_t (*array_object_header_size)() = nullptr;
+    Il2CppString* (*exception_get_message)(Il2CppException*) = nullptr;
+    const wchar_t* (*string_chars)(Il2CppString*) = nullptr;
 };
 
 // ---------- 工具 ----------
@@ -56,6 +65,17 @@ struct Il2Cpp
 static void* load_symbol(HMODULE module, const char* name)
 {
     return reinterpret_cast<void*>(GetProcAddress(module, name));
+}
+
+// 宽字符 → UTF-8
+static std::string utf8_from_wide(const wchar_t* w)
+{
+    if (!w) return "";
+    int len = WideCharToMultiByte(CP_UTF8, 0, w, -1, nullptr, 0, nullptr, nullptr);
+    if (len <= 1) return "";
+    std::string s(len - 1, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, w, -1, s.data(), len, nullptr, nullptr);
+    return s;
 }
 
 static Il2Cpp g_il2cpp;
@@ -81,6 +101,8 @@ static bool get_il2cpp(HMODULE game_assembly)
     g_il2cpp.array_class_get = reinterpret_cast<Il2CppClass* (*)(Il2CppClass*, uint32_t)>(load_symbol(game_assembly, "il2cpp_array_class_get"));
     g_il2cpp.array_new = reinterpret_cast<Il2CppObject* (*)(Il2CppClass*, size_t)>(load_symbol(game_assembly, "il2cpp_array_new"));
     g_il2cpp.array_object_header_size = reinterpret_cast<size_t (*)()>(load_symbol(game_assembly, "il2cpp_array_object_header_size"));
+    g_il2cpp.exception_get_message = reinterpret_cast<Il2CppString* (*)(Il2CppException*)>(load_symbol(game_assembly, "il2cpp_exception_get_message"));
+    g_il2cpp.string_chars = reinterpret_cast<const wchar_t* (*)(Il2CppString*)>(load_symbol(game_assembly, "il2cpp_string_chars"));
     // 关键导出缺失即视为失败
     return g_il2cpp.domain_get && g_il2cpp.assembly_get_image && g_il2cpp.image_get_assembly &&
            g_il2cpp.class_from_name && g_il2cpp.class_get_method_from_name && g_il2cpp.class_get_methods &&
@@ -271,13 +293,27 @@ static bool run_entry(Il2CppAssembly* asm_, const char* entry_type, const char* 
 
     Il2CppException* exc = nullptr;
     g_il2cpp.runtime_invoke(method, nullptr, nullptr, &exc);
-    if (exc) { err_msg = "entry threw exception"; return false; }
+    if (exc)
+    {
+        // 取异常消息(ClassName: Message)，方便定位 mod 入口失败原因
+        if (g_il2cpp.exception_get_message && g_il2cpp.string_chars)
+        {
+            Il2CppString* msg = g_il2cpp.exception_get_message(exc);
+            if (msg)
+            {
+                const wchar_t* w = g_il2cpp.string_chars(msg);
+                if (w) { err_msg = "entry threw exception: " + utf8_from_wide(w); return false; }
+            }
+        }
+        err_msg = "entry threw exception (no message)";
+        return false;
+    }
     return true;
 }
 
 // ---------- 日志转发线程(activity-mod.log -> 控制台) ----------
 
-// mod 无法直接 P/Invoke 到自定义导出(IL2CPP 限制), 改为写文件,
+// mod / bootstrap 无法直接 P/Invoke 到自定义导出(IL2CPP 限制), 改为写文件,
 // 本线程监控 activity-mod.log, 把新增行写到控制台窗口。
 static DWORD WINAPI forward_activity_log(LPVOID param)
 {
@@ -350,13 +386,33 @@ static void set_env_w(const wchar_t* name, const std::wstring& value)
 
 static DWORD WINAPI boot_thread(LPVOID)
 {
-    ULONGLONG started = GetTickCount64();
-    // 控制台在引导线程(非 loader lock)里初始化,避免在 DllMain 环境分配窗口。
-    console_init();
-    log_line("[hijack] DllMain 引导线程启动");
+    // 若由 DllMain(DLL_PROCESS_ATTACH) 启动, 先等 loader lock 释放:
+    // 进程初始化期间所有 DLL 的 DllMain 通常在几百 ms 内完成, 睡 1500ms 足够避开。
+    // 若由首次转发调用触发(进程早已初始化), 这一觉无副作用。
+    Sleep(1500);
 
-    HMODULE ga = wait_module(L"GameAssembly.dll", 60);
-    if (!ga) { log_line("[hijack] GameAssembly.dll 超时(60s)"); return 0; }
+    ULONGLONG started = GetTickCount64();
+
+    // 1. 读取 Doorstop 式配置(缺失/损坏时全默认)
+    LoaderConfig cfg = load_config(config_path());
+
+    // 2. 控制台在引导线程(非 loader lock)里初始化,避免在 DllMain 环境分配窗口
+    if (cfg.consoleEnabled)
+    {
+        console_init(cfg.consoleTopmost);
+    }
+    log_line("[hijack] version.dll Doorstop 引导线程启动 (enabled=" + std::string(cfg.enabled ? "true" : "false") + ")");
+
+    // 3. 总开关: disabled 时静默退出, 游戏原样运行
+    if (!cfg.enabled)
+    {
+        log_line("[hijack] doorstop_config.json enabled=false, 跳过引导");
+        return 0;
+    }
+
+    // 4. 等待 GameAssembly.dll
+    HMODULE ga = wait_module(L"GameAssembly.dll", cfg.gameAssemblyTimeoutSec);
+    if (!ga) { log_line("[hijack] GameAssembly.dll 超时"); return 0; }
     log_line("[hijack] GameAssembly.dll 已加载");
 
     if (!get_il2cpp(ga)) { log_line("[hijack] il2cpp 导出解析失败"); return 0; }
@@ -366,27 +422,70 @@ static DWORD WINAPI boot_thread(LPVOID)
     {
         domain = g_il2cpp.domain_get();
         if (domain) break;
-        if (GetTickCount64() - started > 30000) { log_line("[hijack] il2cpp domain 超时(30s)"); return 0; }
+        if (GetTickCount64() - started > (ULONGLONG)cfg.domainTimeoutSec * 1000) { log_line("[hijack] il2cpp domain 超时"); return 0; }
         Sleep(200);
     }
     g_il2cpp.thread_attach(domain);
     log_line("[hijack] il2cpp 运行时就绪, 等待 HybridCLR 热更...");
 
-    if (!wait_hybridclr(domain, 60)) { log_line("[hijack] AstralParty.Runtime 未在 60s 内出现"); return 0; }
+    if (!wait_hybridclr(domain, cfg.hybridclrTimeoutSec)) { log_line("[hijack] AstralParty.Runtime 超时"); return 0; }
     log_line("[hijack] HybridCLR 热更就绪");
 
-    // 读取 mod DLL:扫描 mods 目录下所有 .dll,逐个尝试 Assembly.Load + 入口调用。
-    // 设置环境变量供 mod 读取(日志目录等)。
+    // 5. 设置环境变量, 供托管引导程序与 mod 读取
     std::wstring mods = mods_dir();
     std::wstring logs = logs_dir();
     std::wstring sdk = sdk_dir();
+    std::wstring boot = bootstrap_dir();
     set_env_w(L"CESIUM_MODS_DIR", mods);
     set_env_w(L"CESIUM_LOG_DIR", logs);
     set_env_w(L"CESIUM_SDK_DIR", sdk);
+    set_env_w(L"CESIUM_BOOTSTRAP_DIR", boot);
     log_line(L"[hijack] 加载器根目录: " + loader_root());
+    log_line(L"[hijack] bootstrap 目录: " + boot);
     log_line(L"[hijack] SDK 目录: " + sdk);
     log_line(L"[hijack] mods 目录: " + mods);
     log_line(L"[hijack] 日志目录: " + logs);
+
+    // 6a. 实验特性: useManagedBootstrap=true 时, 加载 bootstrap DLL 并调用入口,
+    //     由托管代码负责 sdk/mods 加载与入口调用(注意 HybridCLR 反射裁剪风险)。
+    //     默认 false: 走下面 6b 的原生编排(可靠路径)。
+    if (cfg.useManagedBootstrap)
+    {
+        fs::path bootstrap_path = fs::path(boot) / fs::path(cfg.bootstrapAssembly);
+        if (!fs::exists(bootstrap_path))
+        {
+            log_line("[hijack] bootstrap 程序集不存在: " + cfg.bootstrapAssembly);
+            return 0;
+        }
+        std::ifstream in(bootstrap_path, std::ios::binary);
+        if (!in) { log_line("[hijack] bootstrap 读取失败: " + cfg.bootstrapAssembly); return 0; }
+        std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        log_line("[hijack] 尝试加载 bootstrap: " + cfg.bootstrapAssembly + " (" + std::to_string(bytes.size()) + " bytes)");
+
+        std::string err;
+        Il2CppAssembly* asm_ = load_assembly_bytes(domain, bytes, err);
+        if (!asm_) { log_line("[hijack] bootstrap Assembly.Load 失败: " + err); return 0; }
+        log_line("[hijack] bootstrap Assembly.Load(byte[]) 成功");
+
+        if (!run_entry(asm_, cfg.bootstrapType.c_str(), cfg.bootstrapMethod.c_str(), err))
+        {
+            log_line("[hijack] bootstrap 入口失败: " + err);
+            return 0;
+        }
+        log_line("[hijack] bootstrap 入口执行成功, 引导线程结束");
+
+        // 启动"mod 日志 -> 控制台"转发线程(持续运行直到进程退出)
+        if (cfg.forwardActivityLog)
+        {
+            auto* log_dir_ptr = new std::wstring(logs);
+            HANDLE h = CreateThread(nullptr, 0, forward_activity_log, log_dir_ptr, 0, nullptr);
+            if (h) CloseHandle(h);
+        }
+        return 0;
+    }
+
+    // 6b. 原生编排(默认): 加载 sdk 依赖, 枚举 mods, 逐个 Assembly.Load + 调用入口。
+    //     全部走 il2cpp 原生 API, 不受 HybridCLR AOT 反射裁剪影响 —— 已验证可靠。
 
     // 先加载 SDK 依赖(不调入口): 供 mods 引用。顺序: 按文件名排序, 保证确定性。
     if (fs::exists(sdk))
@@ -447,10 +546,13 @@ static DWORD WINAPI boot_thread(LPVOID)
     }
     log_line("[hijack] 引导线程结束");
 
-    // 启动"mod 日志 -> 控制台"转发线程(持续运行直到进程退出)
-    auto* log_dir_ptr = new std::wstring(logs);
-    HANDLE h = CreateThread(nullptr, 0, forward_activity_log, log_dir_ptr, 0, nullptr);
-    if (h) CloseHandle(h);
+    // 7. 启动"mod 日志 -> 控制台"转发线程(持续运行直到进程退出)
+    if (cfg.forwardActivityLog)
+    {
+        auto* log_dir_ptr = new std::wstring(logs);
+        HANDLE h = CreateThread(nullptr, 0, forward_activity_log, log_dir_ptr, 0, nullptr);
+        if (h) CloseHandle(h);
+    }
     return 0;
 }
 

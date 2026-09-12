@@ -1,0 +1,17 @@
+{
+  // Doorstop 式配置 —— 加载器(version.dll)启动时读取
+  // 所有字段可选, 缺失/损坏时使用默认值, 不会阻止游戏启动
+  "enabled": true,
+  // 编排层: false=原生加载 sdk/mods(默认,可靠); true=托管 Bootstrap 编排(实验,
+  // HybridCLR 会裁剪部分反射 API 如 Assembly.GetType, 托管编排可能不可用)
+  "useManagedBootstrap": false,
+  "bootstrapAssembly": "CesiumLoader.Bootstrap.dll",
+  "bootstrapType": "CesiumLoader.Bootstrap.Bootstrap",
+  "bootstrapMethod": "Main",
+  "gameAssemblyTimeoutSec": 60,
+  "domainTimeoutSec": 30,
+  "hybridclrTimeoutSec": 60,
+  "consoleEnabled": true,
+  "consoleTopmost": true,
+  "forwardActivityLog": true
+}

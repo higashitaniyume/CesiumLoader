@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <AssemblyName>VersionSmokeTest</AssemblyName>
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- 排除同级子项目(host/testmod/configtest/boottest 各自独立) -->
+    <Compile Remove="host/**/*.cs" />
+    <Compile Remove="testmod/**/*.cs" />
+    <Compile Remove="configtest/**/*" />
+    <Compile Remove="boottest/**/*" />
+  </ItemGroup>
+</Project>
