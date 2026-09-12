@@ -4,6 +4,8 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CesiumLoader", "src\CesiumLoader\CesiumLoader.vcxproj", "{A7B3E5D1-9C2F-4E8B-8D4A-1F3C9B7E5A22}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpeedHackMod", "src\SpeedHackMod\SpeedHackMod.csproj", "{0F7F2AA0-3208-4EF3-A8CA-BA59AC84CE4B}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CesiumLoader.SDK", "src\CesiumLoader.SDK\CesiumLoader.SDK.csproj", "{B8C4F6E2-0D3A-5F9C-9E5B-2A4D0C8F6B33}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CesiumLoader.Bootstrap", "src\CesiumLoader.Bootstrap\CesiumLoader.Bootstrap.csproj", "{D1A6B4C2-3E5F-7A8B-9C0D-1E2F3A4B5C6D}"

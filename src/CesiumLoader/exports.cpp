@@ -11,6 +11,7 @@
 // 签名对照 Windows SDK versionapi.h / winver.h。
 
 #include "loader.h"
+#include "speedhack.h"
 
 #include <windows.h>
 
@@ -155,6 +156,23 @@ extern "C" BOOL WINAPI VerQueryValueW(LPCVOID pBlock, LPCWSTR lpSubBlock, LPVOID
     return fn(pBlock, lpSubBlock, lplpBuffer, puLen);
 }
 
+// ---------- 自定义导出: 变速引擎 (SDK 通过 P/Invoke 调用, 经 version.def 导出) ----------
+
+extern "C" BOOL WINAPI ap_speed_set(double speed)
+{
+    return speedhack_set_speed(speed) ? TRUE : FALSE;
+}
+
+extern "C" double WINAPI ap_speed_get()
+{
+    return speedhack_get_speed();
+}
+
+extern "C" BOOL WINAPI ap_speed_active()
+{
+    return speedhack_active() ? TRUE : FALSE;
+}
+
 // ---------- DllMain ----------
 
 BOOL WINAPI DllMain(HINSTANCE, DWORD reason, LPVOID)
@@ -162,12 +180,19 @@ BOOL WINAPI DllMain(HINSTANCE, DWORD reason, LPVOID)
     if (reason == DLL_PROCESS_ATTACH)
     {
         log_line("[hijack] version.dll 被加载 (DLL_PROCESS_ATTACH)");
+        // 注意: 不在 DllMain 里安装变速 hook —— loader lock 下改写 kernel32 代码
+        // 有竞态风险(ERROR_DLL_INIT_FAILED 实测), 改由引导线程在 loader lock
+        // 释放后安装(见 loader.cpp boot_thread 开头)。
         // 直接启动引导线程(而非等首次转发调用):
         // 某些游戏(如 Astral Party)加载了 version.dll 但从不调用其导出,
         // 惰性触发会永远不启动。boot_thread 开头会 Sleep 避开 loader lock,
         // 且引导过程中不 LoadLibrary 任何 DLL, 因此在 DllMain 创建线程是安全的。
         // maybe_start_boot 的 InterlockedCompareExchange 保证只启动一次(双保险)。
         maybe_start_boot();
+    }
+    else if (reason == DLL_PROCESS_DETACH)
+    {
+        speedhack_shutdown();
     }
     return TRUE;
 }

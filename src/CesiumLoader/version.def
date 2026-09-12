@@ -25,3 +25,9 @@ EXPORTS
     VerInstallFileW
     VerQueryValueA
     VerQueryValueW
+
+    ; 自定义导出(加载器附加能力, 前缀 ap_ = AstralParty)
+    ; ap_console_write / ap_console_write_w 已由 __declspec(dllexport) 导出, 不在 .def 重复
+    ap_speed_set
+    ap_speed_get
+    ap_speed_active
