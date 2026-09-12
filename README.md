@@ -9,10 +9,12 @@ GitHub: https://github.com/higashitaniyume/CesiumLoader
 ```
 CesiumLoader.sln
 ├── src\
-│   ├── CesiumLoader\              C++ DLL 加载器 (产出 version.dll, Doorstop 式代理)
+│   ├── CesiumLoader\              C++ DLL 加载器 (产出 version.dll, Doorstop 式代理 + 变速引擎)
 │   ├── CesiumLoader.Bootstrap\    C# 托管引导程序 (netstandard2.0, 零引用, 编排 SDK/mods)
 │   ├── CesiumLoader.SDK\          C# SDK (netstandard2.0, 供 mod 引用)
-│   └── ActivityLogMod\            C# 示例 mod (行为日志)
+│   ├── ActivityLogMod\            C# 示例 mod (行为日志)
+│   └── SpeedHackMod\              C# 示例 mod (游戏变速, SpeedHack SDK 接口)
+├── third_party\minhook\            MinHook (inline hook 库, 变速引擎使用, MIT)
 └── tools\
     └── smoke\                     转发/引导冒烟测试 (普通 .NET 可跑, 不依赖游戏)
 ```
@@ -59,6 +61,21 @@ version.dll (C++ 薄代理, 15 个导出转发到系统 version.dll)
   保留了所需反射 API, 当前已知 `Assembly.GetType` 不可用, 托管编排可能失败。
 - **DllMain 直接引导**: 不在 loader lock 下做危险操作, 线程开头 Sleep 1.5s
   避开进程初始化敏感期; 即使游戏从不调用代理导出也能可靠引导。
+
+## 变速引擎 (SpeedHack)
+
+加载器内置 CheatEngine 式变速能力（借鉴 [speedhack-rs](https://github.com/Hirtol/speedhack-rs)）：
+- 引导线程启动后用 **MinHook** inline hook 4 个系统时间函数（`GetTickCount` /
+  `GetTickCount64` / `timeGetTime` / `QueryPerformanceCounter`），按倍率缩放返回值。
+- 通过 `ap_speed_set` / `ap_speed_get` / `ap_speed_active` 导出暴露给 SDK
+  （`CesiumLoader.SDK.SpeedHack` 类封装，mod 可直接调用）。
+- 缩放算法与 speedhack-rs 的 `TimeState` 等价：切换倍率时重设时间基准，
+  保证虚拟时间连续不跳变。
+- 附带示例 mod `SpeedHackMod`：热键控制倍率（F1=2x / F2=0.5x / F3=恢复），
+  配置在 `configs/SpeedHackMod.json`。
+
+> ⚠️ 变速影响游戏感知的所有时间（动画/回合/网络超时）。联机对局慎用：
+> 服务器权威时钟会检测到本地时间戳异常，有断线/封号风险。
 
 ## 目录布局
 
@@ -111,9 +128,10 @@ dotnet run --project tools\smoke\host\BootstrapHostTest.csproj -c Release
 ```
 
 产物:
-- `bin\Release\version.dll` — C++ 加载器 (Doorstop 代理)
+- `bin\Release\version.dll` — C++ 加载器 (Doorstop 代理 + 变速引擎)
 - `src\CesiumLoader.Bootstrap\bin\Release\netstandard2.0\CesiumLoader.Bootstrap.dll`
 - `src\CesiumLoader.SDK\bin\Release\netstandard2.0\CesiumLoader.SDK.dll`
+- `src\SpeedHackMod\bin\Release\netstandard2.0\SpeedHackMod.dll` — 变速示例 mod
 - `src\ActivityLogMod\bin\Release\netstandard2.0\ActivityLogMod.dll`
 
 ## 开发一个 mod

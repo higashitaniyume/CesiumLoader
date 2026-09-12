@@ -5,15 +5,18 @@
 // KnownDLLs 列表——把本 DLL 命名为 version.dll 放在游戏 exe 同目录,
 // Windows 加载器会优先加载它(BepInEx/Doorstop 生态的事实标准代理名)。
 //
-// 首个 version 导出被调用时(loader lock 已释放)启动后台引导线程:
+// 引导:DllMain(DLL_PROCESS_ATTACH) 直接启动后台引导线程(开头 Sleep 避开
+// loader lock), 流程:
 //   1. 读取 doorstop_config.json(enabled 开关/超时/控制台)
 //   2. 等待 GameAssembly.dll + IL2CPP + HybridCLR 热更就绪
-//   3. 通过 System.Reflection.Assembly.Load(byte[]) 加载托管引导程序
-//      (CesiumLoader.Bootstrap.dll) 并调用其入口 —— 之后 SDK 加载 / mod 枚举 /
-//      入口调用全部在托管层完成(native 保持薄引导, 便于维护与测试)。
+//   3. 原生加载 sdk\*.dll → mods\*.dll → 调用 {文件名}.ModEntry.Main()
+//      (useManagedBootstrap=true 时改走托管 Bootstrap 编排, 实验特性)
+//   4. 启动 activity-mod.log → 控制台 转发线程
 //
 // 所有 version.dll 导出函数转发到系统 C:\Windows\System32\version.dll,
 // 保证 UnityPlayer 读取 exe 版本信息等行为正常。
+// 附加能力: 变速引擎(speedhack) inline hook 系统时间函数, SDK 可经
+// ap_speed_* 导出控制倍率。
 
 #pragma once
 
@@ -47,9 +50,15 @@ void maybe_start_boot();                    // 首次调用时启动引导线程
 void* real_version_handle();                // 系统 version.dll 模块句柄
 void* real_version_fn(const char* name);    // 解析系统 version 导出函数地址
 
-// ---------- 导出(保留, 兼容) ----------
+// ---------- 导出(保留, 兼容; 经 __declspec(dllexport)) ----------
 extern "C" __declspec(dllexport) void WINAPI ap_console_write(const char* msg);
 extern "C" __declspec(dllexport) void WINAPI ap_console_write_w(const wchar_t* msg, size_t len);
+
+// ---------- 导出(变速引擎; 经 version.def) ----------
+// SDK 通过 P/Invoke 调用这些导出设置/查询游戏变速倍率。
+extern "C" BOOL WINAPI ap_speed_set(double speed);
+extern "C" double WINAPI ap_speed_get();
+extern "C" BOOL WINAPI ap_speed_active();
 
 // ---------- IL2CPP 桥(boot 线程使用) ----------
 struct Il2Cpp;

@@ -65,12 +65,14 @@
       <LanguageStandard>stdcpp17</LanguageStandard>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalIncludeDirectories>..\..\third_party\minhook\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ControlFlowGuard>Guard</ControlFlowGuard>
       <ModuleDefinitionFile>version.def</ModuleDefinitionFile>
+      <AdditionalDependencies>winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -86,6 +88,7 @@
       <Optimization>MaxSpeed</Optimization>
       <SpectreMitigation>Spectre</SpectreMitigation>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalIncludeDirectories>..\..\third_party\minhook\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -94,6 +97,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ControlFlowGuard>Guard</ControlFlowGuard>
       <ModuleDefinitionFile>version.def</ModuleDefinitionFile>
+      <AdditionalDependencies>winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -101,10 +105,17 @@
     <ClCompile Include="console.cpp" />
     <ClCompile Include="exports.cpp" />
     <ClCompile Include="loader.cpp" />
+    <ClCompile Include="speedhack.cpp" />
+    <ClCompile Include="..\..\third_party\minhook\src\buffer.c" />
+    <ClCompile Include="..\..\third_party\minhook\src\hook.c" />
+    <ClCompile Include="..\..\third_party\minhook\src\trampoline.c" />
+    <ClCompile Include="..\..\third_party\minhook\src\hde\hde32.c" />
+    <ClCompile Include="..\..\third_party\minhook\src\hde\hde64.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="config.h" />
     <ClInclude Include="loader.h" />
+    <ClInclude Include="speedhack.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="version.def" />

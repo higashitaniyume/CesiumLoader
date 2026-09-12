@@ -16,6 +16,7 @@
 #include "loader.h"
 
 #include "config.h"
+#include "speedhack.h"
 
 #include <tlhelp32.h>
 #include <vector>
@@ -390,6 +391,11 @@ static DWORD WINAPI boot_thread(LPVOID)
     // 进程初始化期间所有 DLL 的 DllMain 通常在几百 ms 内完成, 睡 1500ms 足够避开。
     // 若由首次转发调用触发(进程早已初始化), 这一觉无副作用。
     Sleep(1500);
+
+    // 变速引擎: 在 loader lock 释放后安装 hook(不在 DllMain 里做, 避免
+    // ERROR_DLL_INIT_FAILED / 内存竞态)。游戏进程已初始化, hook 生效后
+    // 游戏感知的时间从此刻开始缩放。
+    speedhack_init();
 
     ULONGLONG started = GetTickCount64();
 

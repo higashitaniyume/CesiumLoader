@@ -9,6 +9,7 @@
 游戏进程
 ├── version.dll (原生加载器, Doorstop 代理)
 │   ├── 等 GameAssembly → il2cpp 运行时 → HybridCLR 热更 (AstralParty.Runtime)
+│   ├── 变速引擎 speedhack: MinHook inline hook 4 个系统时间函数
 │   └── 原生加载 sdk\*.dll → mods\*.dll → 调用 {文件名}.ModEntry.Main()
 └── CesiumLoader.SDK.dll (netstandard2.0, 供 mod 编译期引用)
     ├── ModBase      mod 生命周期基座
@@ -16,6 +17,7 @@
     ├── Players      玩家数据访问
     ├── Names        名字解析 (卡牌/遗物/技能/角色)
     ├── GameActions  向服务器发送操作 (投骰/移动/用牌等)
+    ├── SpeedHack    游戏变速 (P/Invoke 调加载器 ap_speed_* 导出)
     ├── SdkConfig    mod 配置 (JSON)
     ├── SdkLog       日志
     ├── ModManifest  mod 元数据声明
@@ -91,4 +93,5 @@ public static class ModEntry
 | [SDK-事件.md](SDK-事件.md) | GameEvents 15 个事件 + EnsureHooked |
 | [SDK-玩家与名字.md](SDK-玩家与名字.md) | Players 玩家数据 / Names 名字解析 |
 | [SDK-操作.md](SDK-操作.md) | GameActions 投骰/移动/用牌/选择 (⚠ 影响对局) |
+| [SDK-变速.md](SDK-变速.md) | SpeedHack 游戏变速 (⚠ 联机慎用) |
 | [SDK-配置与元数据.md](SDK-配置与元数据.md) | SdkConfig JSON 配置 / ModManifest 元数据 / SdkManifest sidecar |
