@@ -77,6 +77,26 @@ void jdeps(const std::string& json, const char* key, std::vector<ModDep>& out)
     }
 }
 
+// 读布尔值; 缺失/非 true 返回 false(注意: enabled 缺失按 true 处理, 用 jbool_opt 区分)
+bool jbool_opt(const std::string& json, const char* key, bool& present)
+{
+    present = false;
+    size_t pos = jval(json, key);
+    if (pos == std::string::npos || pos >= json.size()) return false;
+    present = true;
+    // 读取 true/false token
+    size_t end = pos;
+    while (end < json.size() && json[end] != ',' && json[end] != '}' && json[end] != ']')
+        end++;
+    std::string token = json.substr(pos, end - pos);
+    // 去空白
+    while (!token.empty() && (token.front() == ' ' || token.front() == '\t' || token.front() == '\r' || token.front() == '\n'))
+        token.erase(token.begin());
+    while (!token.empty() && (token.back() == ' ' || token.back() == '\t' || token.back() == '\r' || token.back() == '\n'))
+        token.pop_back();
+    return token == "true";
+}
+
 } // namespace
 
 std::string read_sidecar_text(const std::string& path)
@@ -96,6 +116,9 @@ ModMeta parse_sidecar(const std::string& json)
     m.name = jstr(json, "name");
     m.version = jstr(json, "version");
     m.sdkVersion = jstr(json, "sdkVersion");
+    bool present = false;
+    bool en = jbool_opt(json, "enabled", present);
+    if (present) m.enabled = en;   // 缺失 → 保持默认 true
     jdeps(json, "dependencies", m.deps);
     return m;
 }
@@ -203,6 +226,16 @@ std::vector<std::string> sort_mods_by_deps(
     std::set<std::string> rejected_set(rejected.begin(), rejected.end());
     if (rejected_out) *rejected_out = rejected;
 
+    // 已禁用的 mod(sidecar enabled=false): 照常参与依赖图(保证依赖它的 mod
+    // 不被误判缺失), 但最终输出时排除 —— 即"不加载但仍在安装集合里"。
+    std::set<std::string> disabled_set;
+    for (auto& n : dll_stems)
+    {
+        auto it = metas.find(n);
+        if (it != metas.end() && it->second.hasSidecar && !it->second.enabled)
+            disabled_set.insert(n);
+    }
+
     // Kahn 拓扑排序, 同级按名字保证确定性
     std::deque<std::string> queue;
     for (auto& kv : indeg)
@@ -236,6 +269,7 @@ std::vector<std::string> sort_mods_by_deps(
     for (auto& name : order)
     {
         if (rejected_set.count(name)) continue;
+        if (disabled_set.count(name)) continue;   // 已禁用: 不加载
         result.push_back(name);
     }
     return result;

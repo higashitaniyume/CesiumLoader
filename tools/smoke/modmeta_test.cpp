@@ -123,6 +123,41 @@ int main()
         check(join(order) == "Legacy", "无声明 mod 照常加载");
     }
 
+    printf("=== enabled 开关 ===\n");
+    {
+        // enabled=false → 不加载; 其余照常
+        std::vector<std::string> stems = {"A", "Off"};
+        std::map<std::string, cesium::ModMeta> metas;
+        metas["Off"] = cesium::parse_sidecar(
+            "{\"id\":\"Off\",\"version\":\"1.0.0\",\"enabled\":false}");
+        std::vector<std::string> rejected;
+        auto order = cesium::sort_mods_by_deps(stems, metas, "2.0.0", &rejected);
+        check(join(order) == "A", ("禁用 Off 后只剩 A (实际 " + join(order) + ")").c_str());
+        check(rejected.empty(), "禁用不算拒绝");
+    }
+    {
+        // 缺省 enabled → 默认 true 加载
+        auto m = cesium::parse_sidecar("{\"id\":\"X\",\"version\":\"1.0.0\"}");
+        check(m.enabled, "缺省 enabled = true");
+    }
+    {
+        // enabled=true 显式 → 加载
+        auto m = cesium::parse_sidecar("{\"id\":\"Y\",\"version\":\"1.0.0\",\"enabled\":true}");
+        check(m.enabled, "enabled=true 解析");
+    }
+    {
+        // 禁用不破坏依赖: B 依赖 Off, Off 禁用 → B 仍加载(Off 只是不运行)
+        std::vector<std::string> stems = {"B", "Off"};
+        std::map<std::string, cesium::ModMeta> metas;
+        metas["Off"] = cesium::parse_sidecar(
+            "{\"id\":\"Off\",\"version\":\"1.0.0\",\"enabled\":false}");
+        metas["B"] = cesium::parse_sidecar(
+            "{\"id\":\"B\",\"version\":\"1.0.0\",\"dependencies\":[{\"id\":\"Off\"}]}");
+        std::vector<std::string> rejected;
+        auto order = cesium::sort_mods_by_deps(stems, metas, "2.0.0", &rejected);
+        check(join(order) == "B", ("禁用 Off 后 B 仍加载 (实际 " + join(order) + ")").c_str());
+    }
+
     printf("\n%s (%d 失败)\n", g_fail == 0 ? "全部通过" : "有失败", g_fail);
     return g_fail == 0 ? 0 : 1;
 }
