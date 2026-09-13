@@ -629,6 +629,15 @@ static DWORD WINAPI boot_thread(LPVOID)
     }
     log_line("[hijack] 发现 " + std::to_string(dlls.size()) + " 个 DLL (依赖解析后)");
 
+    // 警告: 声明了"操作游戏"能力(GameActions=2)的 mod —— 仅提示, 不阻止。
+    // 权限机制已取消: 任何 mod 都能调用 SDK 的模拟操作 API, 此处仅告知用户。
+    for (auto& kv : metas)
+    {
+        const auto& m = kv.second;
+        if (m.hasSidecar && (m.permissions & 2) != 0 && m.enabled)
+            log_line("[hijack] ⚠ 警告: mod '" + m.name + "' (" + kv.first + ") 声明了可操作游戏(模拟操作)的能力, 请确认来源可信");
+    }
+
     for (auto& dll : dlls)
     {
         std::string name = dll.stem().string();

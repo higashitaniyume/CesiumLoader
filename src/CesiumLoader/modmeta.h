@@ -38,6 +38,7 @@ struct ModMeta
     std::string version;
     std::string sdkVersion;    // 可空
     std::vector<ModDep> deps;
+    int permissions = 0;       // 声明的能力位掩码(1=读对局 2=操作游戏 4=变速 8=写文件); 仅用于展示/警告
     bool enabled = true;       // mod 开关(默认 true; false = 加载器跳过)
     bool hasSidecar = false;
 };

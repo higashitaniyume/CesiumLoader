@@ -97,6 +97,25 @@ bool jbool_opt(const std::string& json, const char* key, bool& present)
     return token == "true";
 }
 
+// 读整数; 缺失/损坏返回 fallback, 并置 present
+int jint_opt(const std::string& json, const char* key, int fallback, bool& present)
+{
+    present = false;
+    size_t pos = jval(json, key);
+    if (pos == std::string::npos || pos >= json.size()) return fallback;
+    present = true;
+    size_t end = pos;
+    while (end < json.size() && json[end] != ',' && json[end] != '}' && json[end] != ']')
+        end++;
+    std::string token = json.substr(pos, end - pos);
+    while (!token.empty() && (token.front() == ' ' || token.front() == '\t' || token.front() == '\r' || token.front() == '\n'))
+        token.erase(token.begin());
+    while (!token.empty() && (token.back() == ' ' || token.back() == '\t' || token.back() == '\r' || token.back() == '\n'))
+        token.pop_back();
+    if (token.empty()) return fallback;
+    return atoi(token.c_str());
+}
+
 } // namespace
 
 std::string read_sidecar_text(const std::string& path)
@@ -119,6 +138,8 @@ ModMeta parse_sidecar(const std::string& json)
     bool present = false;
     bool en = jbool_opt(json, "enabled", present);
     if (present) m.enabled = en;   // 缺失 → 保持默认 true
+    bool permPresent = false;
+    m.permissions = jint_opt(json, "permissions", 0, permPresent);   // 缺失 → 0(无声明)
     jdeps(json, "dependencies", m.deps);
     return m;
 }
