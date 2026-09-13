@@ -1,49 +1,39 @@
-# SDK-权限与元数据
+# SDK-能力声明与元数据
 
-> Mod 权限模型 + 模组元数据标准 + 依赖解析 + API 版本协商。
+> Mod 能力声明 (仅展示/警告) + 模组元数据标准 + 依赖解析 + API 版本协商。
 
-## 权限模型 (敏感 API 默认关闭)
+## 能力声明 (已取消权限门控)
 
-敏感能力默认**拒绝**, mod 必须显式声明请求, 且用户可通过配置文件强制覆盖。
+**已取消权限机制**: 任何 mod 都能调用 SDK 全部 API (读对局 / 模拟操作 / 变速 / 写文件),
+不再有默认拒绝、声明请求或覆盖配置。
 
-| 权限 | 影响 | 默认 |
+`Permissions` 只用于**声明 mod 会用到的能力**, 供工具和加载器展示警告:
+
+| 能力位 | 含义 | 用途 |
 |---|---|---|
-| `ReadGameState` | 读对局状态/订阅事件 (只读, 无副作用) | ✅ 授予 |
-| `FileWrite` | 写 mods 目录内文件 | ✅ 授予 |
-| `GameActions` | 向服务器发送操作 (投骰/移动/用牌) — 真实影响对局 | ❌ 拒绝 |
-| `SpeedHack` | 变速 — 联机有检测风险 | ❌ 拒绝 |
+| `ReadGameState` | 读对局状态/订阅事件 (只读) | 仅展示 |
+| `GameActions` | 向服务器发送操作 (投骰/移动/用牌) — 真实影响对局 | ⚠️ 声明后加载时/工具列表显示警告 |
+| `SpeedHack` | 变速 | 仅展示 (变速本身是加载器内置功能) |
+| `FileWrite` | 写文件 | 仅展示 |
 
 ### 声明 (程序集级, AssemblyInfo.cs)
 
 ```csharp
 [assembly: ModManifest("我的Mod", "1.0.0", "作者", "描述",
-    Permissions = ModPermission.GameActions,   // 请求敏感权限
+    Permissions = ModPermission.GameActions,   // 声明会用到的能力
     SdkVersion = "2.0.0")]
 ```
 
-### 判定顺序 (从高到低)
+### 警告 (仅提示, 不阻止)
 
-1. `mods\{name}.permissions.json` 显式覆盖 (用户/管理员最高权限)
-2. `[ModManifest]` 声明
-3. 默认策略 (上表)
+声明了 `GameActions` (操作游戏) 的 mod:
+- 加载器启动时控制台输出: `⚠ 警告: mod 'X' 声明了可操作游戏(模拟操作)的能力, 请确认来源可信`
+- AstralParty.Toys 模组列表显示 `⚠️ 可操作游戏` 徽标
 
-### 权限覆盖配置 (mods\{name}.permissions.json)
+### 运行时 API
 
-```json
-{
-  "MyMod": { "GameActions": true, "SpeedHack": false }
-}
-```
-
-### SDK 运行时门控
-
-```csharp
-if (!Permissions.Require(ModPermission.GameActions, "GameActions.ThrowDice"))
-    return false;   // 未授权: 静默失败 + 告警
-```
-
-敏感 API (GameActions / SpeedHack.SetSpeed) 内部已自动调用 Require,
-mod 无需手动检查 —— 未授权时调用返回 false。
+`Permissions.Has(perm)` / `Permissions.Require(perm, api)` 恒返回 `true`
+(为兼容旧 mod 保留签名, 不再执行任何检查)。
 
 ## 模组元数据标准 (sidecar)
 

@@ -20,10 +20,9 @@ cesium new <Name> [-o <dir>] [--author <名>] [--desc <描述>]
 
 生成:
 - `{Name}.csproj` — netstandard2.0, 引用 SDK (HintPath 指向仓库 SDK 产物)
-- `AssemblyInfo.cs` — 程序集级 `[ModManifest]` (权威位置, 含权限声明)
+- `AssemblyInfo.cs` — 程序集级 `[ModManifest]` (权威位置, 含能力声明)
 - `ModEntry.cs` — 事件驱动入口 (订阅 GameEvents + StartAutoHook, 无轮询)
 - `{Name}.json` — sidecar (加载前就存在, 依赖解析用)
-- `{Name}.permissions.example.json` — 权限覆盖配置示例
 - `README.md`
 
 ### build — 构建 mod
@@ -42,7 +41,6 @@ cesium package <dir> [-o <out.zip>]
 ```
 MyMod.dll
 MyMod.json          (sidecar)
-MyMod.permissions.json  (可选, 若存在)
 ```
 
 ### list — 列出 mods 目录元数据
