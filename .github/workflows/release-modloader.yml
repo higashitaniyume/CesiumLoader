@@ -51,7 +51,10 @@ jobs:
           # 只构建 C++ 加载器(vcxproj), 不构建 sln —— sln 里还有 C# 项目(需 restore)
           & msbuild src\CesiumLoader\CesiumLoader.vcxproj /p:Configuration=Release /p:Platform=x64 /m /nologo /v:minimal
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if (-not (Test-Path "bin/Release/version.dll")) { throw "version.dll 未生成" }
+          $vdbin = "src/CesiumLoader/bin/Release/version.dll"
+          if (-not (Test-Path $vdbin)) { throw "version.dll 未生成" }
+          Copy-Item $vdbin "bin/Release/version.dll" -Force   # 统一到仓库根, 供后续步骤引用
+          Write-Host "version.dll 已复制到 bin/Release/"
 
       - name: Build managed bootstrap
         shell: pwsh
