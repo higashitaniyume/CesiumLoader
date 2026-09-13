@@ -92,8 +92,8 @@ public static class ModEntry
 | [SDK-生命周期与日志.md](SDK-生命周期与日志.md) | ModBase.Run / SdkLog 日志分级 |
 | [SDK-事件.md](SDK-事件.md) | GameEvents 15 个事件 + StartAutoHook (事件驱动) |
 | [SDK-玩家与名字.md](SDK-玩家与名字.md) | Players 玩家数据 / Names 名字解析 |
-| [SDK-操作.md](SDK-操作.md) | GameActions 投骰/移动/用牌/选择 (⚠ 敏感, 需权限) |
-| [SDK-变速.md](SDK-变速.md) | SpeedHack 游戏变速 (⚠ 敏感, 需权限) |
-| [SDK-权限与元数据.md](SDK-权限与元数据.md) | 权限模型 / sidecar 元数据 / 依赖解析 / 版本协商 |
+| [SDK-操作.md](SDK-操作.md) | GameActions 投骰/移动/用牌/选择 (⚠ 声明后可操作, 工具/加载器会警告) |
+| [SDK-变速.md](SDK-变速.md) | SpeedHack 游戏变速 (加载器内置功能, 也可 mod 编程控制) |
+| [SDK-能力声明与元数据.md](SDK-能力声明与元数据.md) | 能力声明(仅警告) / sidecar 元数据 / 依赖解析 / 版本协商 |
 | [SDK-配置与元数据.md](SDK-配置与元数据.md) | SdkConfig JSON 配置 / ModManifest 元数据 / SdkManifest sidecar |
 | [工具-cesium-CLI.md](工具-cesium-CLI.md) | 脚手架与包分发 CLI (new/build/package/list/verify) |

@@ -49,23 +49,22 @@ SpeedHack.Reset();
 
 `SetSpeed` 返回 `false` 的情况：引擎不可用、倍率 ≤ 0 或 > 100。
 
-## 示例 mod (SpeedHackMod)
+## 变速是加载器内置功能
 
-随加载器附带的 `SpeedHackMod` 演示了完整用法：配置 + 热键轮询 + 倍率切换。
+变速不依赖任何 mod：`doorstop_config.json` 的 `speedhackBaseSpeed` 控制基础倍率
+（`1.0`=正常，`2.0`=全程 2 倍速），游戏启动即应用并全程保持。
+AstralParty.Toys 的模组页面提供可视化开关（写入该字段）。
+
+mod 也可用 SDK API 编程控制（配合热键轮询实现 CheatEngine 式变速）：
 
 ```csharp
-[ModManifest("游戏变速", "1.0.0", "CesiumLoader", "热键控制游戏时间流速")]
+[ModManifest("我的变速mod", "1.0.0", "作者", "描述")]
 public static class ModEntry
 {
     public static void Main()
     {
-        var cfg = SdkConfig.Load<SpeedHackConfig>("SpeedHackMod");
-        if (!cfg.Enabled || !SpeedHack.IsAvailable) return;
-
-        // 基础倍率: 全程保持
-        if (cfg.BaseSpeed != 1.0) SpeedHack.SetSpeed(cfg.BaseSpeed);
-
-        ModBase.Run(OnInit, OnTick, tag: "SpeedHack");
+        if (!SpeedHack.IsAvailable) return;
+        ModBase.Run(OnInit, OnTick, tag: "MySpeed");
     }
 
     static void OnTick()
@@ -78,16 +77,16 @@ public static class ModEntry
 
     [DllImport("user32.dll")]
     static extern short GetAsyncKeyState(int vKey);
-    static bool IsKeyDown(string key) { /* 见 SpeedHackMod/ModEntry.cs */ }
+    static bool IsKeyDown(string key) { /* 用 GetAsyncKeyState 映射 */ }
 }
 ```
 
-### 配置 (configs/SpeedHackMod.json)
+### mod 配置示例 (configs/MySpeedMod.json)
 
 ```json5
 {
   "Enabled": true,          // 总开关
-  "BaseSpeed": 1.0,         // 基础倍率 (全程保持)
+  "BaseSpeed": 2.0,         // 启用即应用的基础倍率 (全程保持)
   "SpeedUpKey": "F1",       // 加速热键
   "SpeedUpValue": 2.0,      // 加速倍率
   "SlowDownKey": "F2",      // 减速热键

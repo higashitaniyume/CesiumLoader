@@ -2,11 +2,11 @@
 //
 // 命令:
 //   cesium new <Name> [-o <dir>] [--author <名>] [--desc <描述>]
-//      生成 mod 项目模板(含 csproj + ModEntry.cs + 自带 sidecar json + 权限配置示例)
+//      生成 mod 项目模板(含 csproj + ModEntry.cs + 自带 sidecar json)
 //   cesium build <dir> [-c Release]
 //      构建 mod (dotnet build)
 //   cesium package <dir> [-o <out.zip>]
-//      打包 mod 为可分发的 zip(DLL + sidecar + permissions 覆盖示例)
+//      打包 mod 为可分发的 zip(DLL + sidecar)
 //   cesium list <mods_dir>
 //      列出 mods 目录下所有 mod 的元数据(读 sidecar)
 //   cesium verify <mods_dir>
@@ -155,8 +155,8 @@ namespace CesiumCli
                     /// {{name}} —— 由 cesium CLI 生成的 mod 模板。
                     ///
                     /// 元数据在 AssemblyInfo.cs(程序集级声明, 权威位置)。
-                    /// 敏感能力(GameActions/SpeedHack)默认关闭, 需要时在
-                    /// AssemblyInfo.cs 的 Permissions 中声明, 并在文档中说明用途。
+                    /// Permissions 只是声明会用到的能力(读对局/操作游戏/写文件),
+                    /// 供工具/加载器展示警告 —— 已取消权限门控, 无需申请。
                     /// </summary>
                     public static class ModEntry
                     {
@@ -185,35 +185,21 @@ namespace CesiumCli
                 using CesiumLoader.SDK;
 
                 // mod 元数据: 程序集级声明(权威位置, 读取时不触发类型加载, 兼容 HybridCLR)。
-                // 敏感权限(GameActions/SpeedHack)默认关闭, 需要时在此声明,
-                // 并可用 mods\{程序集名}.permissions.json 逐项覆盖。
+                // Permissions 声明会用到的能力(仅展示/警告, 已取消权限门控):
+                // 声明 GameActions(操作游戏)的 mod 在加载时/工具列表会显示 ⚠️ 警告。
                 [assembly: ModManifest("{{name}}", "1.0.0", "{{author}}", "{{desc}}",
                     Permissions = ModPermission.ReadGameState,
                     SdkVersion = "{{SdkVersion}}")]
                 """;
             File.WriteAllText(Path.Combine(dir, "AssemblyInfo.cs"), asmInfo);
 
-            // 3. sidecar json(加载前就存在, 供依赖解析/版本协商; 也随包分发)
+            // 3. sidecar json(加载前就存在, 供依赖解析/版本协商/能力警告; 也随包分发)
             string sidecar = $$"""
                 {"id":"{{name}}","name":"{{name}}","version":"1.0.0","author":"{{author}}","description":"{{desc}}","permissions":1,"sdkVersion":"{{SdkVersion}}","dependencies":[]}
                 """;
             File.WriteAllText(Path.Combine(dir, name + ".json"), sidecar);
 
-            // 4. 权限覆盖示例(敏感能力开关)
-            string permExample = $$"""
-                {
-                  // 权限覆盖示例: 把 {{name}} 的敏感权限显式授予/拒绝。
-                  // 复制到 mods\{{name}}.permissions.json 生效(游戏重启后)。
-                  // 可用权限: GameActions / SpeedHack / ReadGameState / FileWrite
-                  "{{name}}": {
-                    "GameActions": false,
-                    "SpeedHack": false
-                  }
-                }
-                """;
-            File.WriteAllText(Path.Combine(dir, name + ".permissions.example.json"), permExample);
-
-            // 5. README 说明
+            // 4. README 说明
             File.WriteAllText(Path.Combine(dir, "README.md"),
                 $"# {name}\n\n{desc}\n\n由 cesium CLI 生成。`cesium build {name}` 构建, `cesium package {name}` 打包。\n");
 
@@ -281,12 +267,10 @@ namespace CesiumCli
             if (outZip == null) outZip = Path.Combine(dir, name + "-1.0.0.zip");
 
             using var zip = ZipFile.Open(outZip, ZipArchiveMode.Create);
-            // 包布局: {Name}.dll + {Name}.json(sidecar) + {Name}.permissions.json(可选)
+            // 包布局: {Name}.dll + {Name}.json(sidecar)
             zip.CreateEntryFromFile(dll, name + ".dll");
             string sidecar = Path.Combine(dir, name + ".json");
             if (File.Exists(sidecar)) zip.CreateEntryFromFile(sidecar, name + ".json");
-            string perm = Path.Combine(dir, name + ".permissions.json");
-            if (File.Exists(perm)) zip.CreateEntryFromFile(perm, name + ".permissions.json");
 
             Console.WriteLine($"已打包: {outZip}");
             Console.WriteLine("  解压到游戏目录 AstralParty_ModLoader\\mods\\ 即安装完成");

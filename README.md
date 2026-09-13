@@ -15,11 +15,10 @@ CesiumLoader.sln
 │   ├── CesiumLoader.Bootstrap\    C# 托管引导程序 (netstandard2.0, 零引用, 编排 SDK/mods)
 │   ├── CesiumLoader.SDK\          C# SDK (netstandard2.0, 供 mod 引用)
 │   ├── ActivityLogMod\            C# 示例 mod (行为日志)
-│   └── SpeedHackMod\              C# 示例 mod (游戏变速, SpeedHack SDK 接口)
 ├── third_party\minhook\            MinHook (inline hook 库, 变速引擎使用, MIT)
 └── tools\
     ├── cesium\                    模组脚手架与包分发 CLI (new/build/package/list/verify)
-    └── smoke\                     冒烟测试 (modmeta/权限/变速, 不依赖游戏)
+    └── smoke\                     冒烟测试 (modmeta/变速, 不依赖游戏)
 ```
 
 ## 原理 (Doorstop 式引导)
@@ -27,9 +26,9 @@ CesiumLoader.sln
 UnityPlayer.dll 在进程启动时依赖 version.dll (导入 GetFileVersionInfoSizeA /
 GetFileVersionInfoA / VerQueryValueA, 经 dumpbin 确认), 而 version.dll 不在
 KnownDLLs 列表——把本 DLL 命名为 `version.dll` 放在游戏 exe 同目录,
-Windows 加载器会优先加载它。这正是 BepInEx/Doorstop 生态的事实标准代理方式,
-与旧的 winmm.dll 劫持相比: 导出面从 180 个缩到 15 个、更接近行业惯例、
-杀软误报概率更低。
+Windows 加载器会优先加载它(BepInEx/Doorstop 生态通用的代理方式)。
+与旧的 winmm.dll 劫持相比: 导出面从 180 个缩到 15 个、更接近系统 DLL 的
+标准接口、杀软误报概率更低。
 
 分层:
 
@@ -74,25 +73,24 @@ version.dll (C++ 薄代理, 15 个导出转发到系统 version.dll)
   （`CesiumLoader.SDK.SpeedHack` 类封装，mod 可直接调用）。
 - 缩放算法与 speedhack-rs 的 `TimeState` 等价：切换倍率时重设时间基准，
   保证虚拟时间连续不跳变。
-- 附带示例 mod `SpeedHackMod`：热键控制倍率（F1=2x / F2=0.5x / F3=恢复），
-  配置在 `configs/SpeedHackMod.json`。
+- 变速是加载器内置功能（不是 mod）：`doorstop_config.json` 的
+  `speedhackBaseSpeed` 控制（1.0=正常，2.0=全程 2 倍速），游戏启动即应用；
+  AstralParty.Toys 的模组页面提供可视化开关。
 
 > ⚠️ 变速影响游戏感知的所有时间（动画/回合/网络超时）。联机对局慎用：
 > 服务器权威时钟会检测到本地时间戳异常，有断线/封号风险。
 
-## 行业化特性
-
-面向模组生态的工程化能力（对标 BepInEx 等成熟框架）：
+## 模组生态能力
 
 | 特性 | 说明 |
 |---|---|
-| **Mod 权限模型** | 敏感 API (GameActions 服务器操作 / SpeedHack 变速) **默认关闭**，mod 在 `[ModManifest]` 声明请求；可用 `mods\{name}.permissions.json` 逐项覆盖（强制开/关）。未授权调用静默降级并告警 |
-| **模组元数据标准 + 依赖解析** | `mods\{name}.json` sidecar（id/版本/权限/SDK 版本/依赖）；加载器按依赖**拓扑排序**加载，缺失依赖/版本不符/循环依赖的 mod 被跳过并报告（`modmeta.cpp` 纯标准库，可单测） |
+| **Mod 能力声明 + 警告** | mod 在 `[ModManifest(Permissions=...)]` 声明会用到的能力（读对局/操作游戏/写文件），sidecar 同步导出。已取消权限门控：任何 mod 都能调用 SDK 全部 API；声明「操作游戏」的 mod 在加载时与工具列表里显示 ⚠️ 警告（仅提示来源可信，不阻止） |
+| **模组元数据标准 + 依赖解析** | `mods\{name}.json` sidecar（id/版本/能力/SDK 版本/依赖）；加载器按依赖**拓扑排序**加载，缺失依赖/版本不符/循环依赖的 mod 被跳过并报告（`modmeta.cpp` 纯标准库，可单测） |
 | **API 版本协商** | SDK 声明版本 `2.0.0`；mod 声明 `SdkVersion`，要求高于当前的 mod 被拒绝加载。`doorstop_config.json` 的 `sdkVersion` 声明当前版本 |
 | **事件驱动化** | `GameEvents.StartAutoHook()` 内部每 1 秒维持 RPC 挂钩，mod 无需每秒轮询；`ModBase.Run` 不传 tick 则不空转 |
 | **IL2CPP 互操作安全封装** | `il2cpp_safe.h` 收敛全部互操作点：函数指针空检查、参数/返回值校验、托管异常转译成可读错误，防止原生崩溃拖垮游戏 |
 | **调试与故障体验** | mod 入口异常写 `logs\mod-errors.log`（SDK `SdkLog.ReportCrash` + 原生 `write_mod_error` 双写）；`cesium verify` 离线预检兼容性 |
-| **脚手架与包分发** | `tools\cesium` CLI：`new`（生成项目+程序集级元数据+权限示例）/ `build` / `package`（zip 分发）/ `list` / `verify`（模拟加载器判定） |
+| **脚手架与包分发** | `tools\cesium` CLI：`new`（生成项目+程序集级元数据）/ `build` / `package`（zip 分发）/ `list` / `verify`（模拟加载器判定） |
 
 ## 目录布局
 
@@ -125,7 +123,9 @@ version.dll (C++ 薄代理, 15 个导出转发到系统 version.dll)
   "hybridclrTimeoutSec": 60,          // HybridCLR 热更等待超时
   "consoleEnabled": true,             // 分配控制台窗口
   "consoleTopmost": true,             // 控制台窗口置顶
-  "forwardActivityLog": true          // mod 日志转发到控制台
+  "forwardActivityLog": true,         // mod 日志转发到控制台
+  "speedhackBaseSpeed": 1.0,          // 变速(加载器内置): 1.0=正常, 2.0=全程2倍速
+  "sdkVersion": "2.0.0"               // 当前 SDK 版本(校验 mod 的 SdkVersion)
 }
 ```
 
@@ -148,12 +148,11 @@ dotnet run --project tools\smoke\host\BootstrapHostTest.csproj -c Release
 - `bin\Release\version.dll` — C++ 加载器 (Doorstop 代理 + 变速引擎)
 - `src\CesiumLoader.Bootstrap\bin\Release\netstandard2.0\CesiumLoader.Bootstrap.dll`
 - `src\CesiumLoader.SDK\bin\Release\netstandard2.0\CesiumLoader.SDK.dll`
-- `src\SpeedHackMod\bin\Release\netstandard2.0\SpeedHackMod.dll` — 变速示例 mod
 - `src\ActivityLogMod\bin\Release\netstandard2.0\ActivityLogMod.dll`
 
 ## 开发一个 mod
 
-**推荐用脚手架 CLI** (生成项目 + 程序集级元数据 + 权限示例 + sidecar):
+**推荐用脚手架 CLI** (生成项目 + 程序集级元数据 + sidecar):
 
 ```
 dotnet run --project tools\cesium -c Release -- new MyMod --author 小明 --desc "我的第一个mod"
@@ -168,7 +167,7 @@ dotnet run --project tools\cesium -c Release -- package MyMod -o MyMod-1.0.0.zip
 
 ```csharp
 [assembly: CesiumLoader.SDK.ModManifest("我的Mod", "1.0.0", "小明", "描述",
-    Permissions = CesiumLoader.SDK.ModPermission.ReadGameState,  // 敏感权限默认关闭!
+    Permissions = CesiumLoader.SDK.ModPermission.ReadGameState,  // 声明会用到的能力(仅展示/警告)
     SdkVersion = "2.0.0")]                                        // API 版本协商
 ```
 
@@ -189,9 +188,9 @@ public static class ModEntry
 }
 ```
 
-**权限说明**: `ReadGameState` / `FileWrite` 默认授予; `GameActions` (向服务器发操作) /
-`SpeedHack` (变速) **默认拒绝**, mod 必须显式声明, 用户还可通过
-`mods\{name}.permissions.json` 强制开/关。未授权调用静默失败并告警。
+**能力声明**: `Permissions` 只是声明 mod 会用到的能力（读对局 / 操作游戏 / 写文件），
+供工具和加载器展示警告——已取消权限门控，任何 mod 都能调用 SDK 全部 API。
+声明「操作游戏」的 mod 在加载时与工具列表会显示 ⚠️ 警告，仅提示来源可信，不阻止。
 
 编译出的 DLL + sidecar (`{name}.json`) 放进 `AstralParty_ModLoader\mods\`，重启游戏生效。
 发布前用 `cesium verify <mods_dir>` 离线预检依赖与版本兼容性。
@@ -199,7 +198,7 @@ public static class ModEntry
 SDK API 一览:
 - `ModBase.Run(init, tick=null, delayMs=30000, tag)` — 生命周期 (不传 tick 不轮询)
 - `GameEvents.*` — 15 个事件 + `StartAutoHook()` (SDK 内部维持挂钩, 事件驱动)
-- `Permissions.Has/Require` — 权限门控 (敏感 API 内部自动检查)
+- `Permissions.Has/Require` — 恒返回 true (权限门控已取消, 仅保留 API 兼容)
 - `SdkVersion.Accepts/Current` — API 版本协商
 - `SdkLog.ReportCrash/CrashGuard` — 故障报告 (完整堆栈写 mod-errors.log)
 - `Players.*` — 全部玩家 / 星币 / 手牌数 / 名字 / 是否自己 / 手牌内容
@@ -217,11 +216,11 @@ SDK API 一览:
 
 ## 发布 (GitHub Action)
 
-打 tag `modloader-v*` 自动构建并发布「解压即部署」的压缩包到 GitHub Release：
+打 tag `modloader-<版本>` 自动构建并发布「解压即部署」的压缩包到 GitHub Release：
 
 ```
-git tag modloader-v1.0.0
-git push origin modloader-v1.0.0
+git tag modloader-0.2.0
+git push origin modloader-0.2.0
 ```
 
 `release-modloader.yml` 会:
