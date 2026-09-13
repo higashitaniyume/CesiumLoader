@@ -94,9 +94,12 @@ jobs:
             "- AstralParty_ModLoader\bootstrap\     → 托管引导程序 (先于 SDK/mods 加载)",
             "- AstralParty_ModLoader\sdk\           → SDK 依赖",
             "- AstralParty_ModLoader\mods\          → 用户 mod (启动时逐个 Assembly.Load + 入口)",
+            "- AstralParty_ModLoader\mods\*.json    → mod sidecar (id/版本/权限/enabled 开关/依赖)",
             "- AstralParty_ModLoader\logs\          → 日志目录",
             "解压到游戏 exe 目录即完成安装。",
-            "从旧版升级: 请删除游戏目录下的 winmm.dll (旧代理), 换成 version.dll。"
+            "从旧版升级: 请删除游戏目录下的 winmm.dll (旧代理), 换成 version.dll。",
+            "⚠ 与本加载器互斥: 旧版独立变速器也使用 version.dll(speedhack-rs) —— 不要同时安装!",
+            "  CesiumLoader 已内置变速引擎, 改 doorstop_config.json 的 speedhackBaseSpeed 即可变速。"
           ) -join [Environment]::NewLine
           Set-Content -Path "staging/README.txt" -Value $readme -Encoding UTF8
 

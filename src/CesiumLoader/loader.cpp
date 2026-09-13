@@ -613,6 +613,14 @@ static DWORD WINAPI boot_thread(LPVOID)
     std::vector<std::string> ordered = cesium::sort_mods_by_deps(stems, metas, cfg.sdkVersion, &rejected);
     for (auto& r : rejected)
         log_line("[hijack] " + r + " 被跳过 (缺失依赖/SDK 版本不符/循环依赖)");
+    // 报告已禁用(不加载)的 mod
+    for (auto& d : dlls)
+    {
+        std::string n = d.stem().string();
+        auto it = metas.find(n);
+        if (it != metas.end() && it->second.hasSidecar && !it->second.enabled)
+            log_line("[hijack] " + n + " 已禁用(sidecar enabled=false), 跳过加载");
+    }
     dlls.clear();
     for (auto& name : ordered)
     {

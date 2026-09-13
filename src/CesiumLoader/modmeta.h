@@ -3,9 +3,12 @@
 // sidecar 格式 (mods\{name}.json, 由 SDK 的 SdkManifest.ExportSidecar() 生成,
 // 或由脚手架在开发期生成并随 mod 分发):
 //   {"id":"X","name":"显示名","version":"1.0.0","sdkVersion":"2.0.0",
-//    "permissions":1,"dependencies":[{"id":"OtherMod","minVersion":"1.0.0"}]}
+//    "permissions":1,"enabled":true,"dependencies":[{"id":"OtherMod","minVersion":"1.0.0"}]}
 //
-// 原生层不读托管 attribute(需要反射), 因此依赖/版本信息全部来自 sidecar。
+// enabled 字段: mod 开关(默认 true)。false = 加载器跳过该 mod(由工具/用户
+// 通过 mods\{name}.json 的 "enabled" 控制)。缺失或非布尔按 true 处理。
+//
+// 原生层不读托管 attribute(需要反射), 因此依赖/版本/开关信息全部来自 sidecar。
 // 无 sidecar 的 mod 视为"无声明", 按文件名排序加载(兼容旧 mod)。
 // 本模块是纯标准库, 不依赖 il2cpp/游戏, 可脱离加载器单元测试。
 
@@ -35,6 +38,7 @@ struct ModMeta
     std::string version;
     std::string sdkVersion;    // 可空
     std::vector<ModDep> deps;
+    bool enabled = true;       // mod 开关(默认 true; false = 加载器跳过)
     bool hasSidecar = false;
 };
 
