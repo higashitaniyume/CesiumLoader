@@ -65,8 +65,11 @@ jobs:
           $required = @(
             "dist/modloader/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll",
             "dist/modloader/AstralParty_ModLoader/doorstop_config.json",
-            "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll",
-            "dist/modloader/AstralParty_ModLoader/mods/ActivityLogMod.dll"
+            "dist/modloader/sdk/CesiumLoader.SDK.dll",
+            "dist/modloader/mods/ActivityLogMod.dll",
+            "dist/modloader/mods/SpeedHackMod.dll",
+            "dist/modloader/mods/ActivityLogMod.json",
+            "dist/modloader/mods/SpeedHackMod.json"
           )
           foreach ($f in $required) { if (-not (Test-Path $f)) { throw "缺少预编译产物: $f" } }
           Write-Host "dist 预编译产物齐全"
@@ -78,8 +81,11 @@ jobs:
           Copy-Item "bin/Release/version.dll" "staging/version.dll" -Force
           Copy-Item "dist/modloader/AstralParty_ModLoader/doorstop_config.json" "staging/AstralParty_ModLoader/doorstop_config.json" -Force
           Copy-Item "dist/modloader/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll" "staging/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll" -Force
-          Copy-Item "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll" "staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll" -Force
-          Copy-Item "dist/modloader/AstralParty_ModLoader/mods/ActivityLogMod.dll" "staging/AstralParty_ModLoader/mods/ActivityLogMod.dll" -Force
+          Copy-Item "dist/modloader/sdk/CesiumLoader.SDK.dll" "staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll" -Force
+          Copy-Item "dist/modloader/mods/ActivityLogMod.dll" "staging/AstralParty_ModLoader/mods/ActivityLogMod.dll" -Force
+          Copy-Item "dist/modloader/mods/SpeedHackMod.dll" "staging/AstralParty_ModLoader/mods/SpeedHackMod.dll" -Force
+          Copy-Item "dist/modloader/mods/ActivityLogMod.json" "staging/AstralParty_ModLoader/mods/ActivityLogMod.json" -Force
+          Copy-Item "dist/modloader/mods/SpeedHackMod.json" "staging/AstralParty_ModLoader/mods/SpeedHackMod.json" -Force
           # 部署说明(可选, apt 端可忽略)
           $readme = @(
             "cesium-loader-${{ steps.version.outputs.version }}",
@@ -103,7 +109,10 @@ jobs:
             "staging/AstralParty_ModLoader/doorstop_config.json",
             "staging/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll",
             "staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll",
-            "staging/AstralParty_ModLoader/mods/ActivityLogMod.dll"
+            "staging/AstralParty_ModLoader/mods/ActivityLogMod.dll",
+            "staging/AstralParty_ModLoader/mods/SpeedHackMod.dll",
+            "staging/AstralParty_ModLoader/mods/ActivityLogMod.json",
+            "staging/AstralParty_ModLoader/mods/SpeedHackMod.json"
           )
           $fileMap = @{}
           foreach ($f in $files) {
