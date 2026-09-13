@@ -201,10 +201,17 @@ static bool hybridclr_ready(Il2CppDomain* domain)
 static bool wait_hybridclr(Il2CppDomain* domain, DWORD timeout_secs)
 {
     ULONGLONG end = GetTickCount64() + (ULONGLONG)timeout_secs * 1000;
+    ULONGLONG last_diag = 0;
     for (;;)
     {
         if (hybridclr_ready(domain)) return true;
         if (GetTickCount64() >= end) return false;
+        // 诊断: 若安全封装枚举报错, 每 5s 打印一次错误(正常枚举不刷屏)
+        if (!cesium_safe::g_last_error.empty() && GetTickCount64() - last_diag >= 5000)
+        {
+            last_diag = GetTickCount64();
+            log_line("[hybridclr] 枚举错误: " + cesium_safe::g_last_error);
+        }
         Sleep(300);
     }
 }
