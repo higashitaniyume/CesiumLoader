@@ -191,7 +191,8 @@ namespace CesiumCli
             {
                 string dir = parseResult.GetValue(packageDir) ?? ".";
                 string outZip = parseResult.GetValue(packageOut);
-                string name = Path.GetFileName(Path.GetFullPath(dir));
+                // 用 DirectoryInfo.Name 取目录名(对尾部分隔符路径安全, GetFileName 会返回空)
+                string name = new DirectoryInfo(dir).Name;
                 string dll = Path.Combine(dir, "bin", "Release", "netstandard2.0", name + ".dll");
                 if (!File.Exists(dll))
                 {
