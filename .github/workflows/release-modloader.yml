@@ -67,9 +67,7 @@ jobs:
             "dist/modloader/AstralParty_ModLoader/doorstop_config.json",
             "dist/modloader/sdk/CesiumLoader.SDK.dll",
             "dist/modloader/mods/ActivityLogMod.dll",
-            "dist/modloader/mods/SpeedHackMod.dll",
-            "dist/modloader/mods/ActivityLogMod.json",
-            "dist/modloader/mods/SpeedHackMod.json"
+            "dist/modloader/mods/ActivityLogMod.json"
           )
           foreach ($f in $required) { if (-not (Test-Path $f)) { throw "缺少预编译产物: $f" } }
           Write-Host "dist 预编译产物齐全"
@@ -83,9 +81,7 @@ jobs:
           Copy-Item "dist/modloader/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll" "staging/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll" -Force
           Copy-Item "dist/modloader/sdk/CesiumLoader.SDK.dll" "staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll" -Force
           Copy-Item "dist/modloader/mods/ActivityLogMod.dll" "staging/AstralParty_ModLoader/mods/ActivityLogMod.dll" -Force
-          Copy-Item "dist/modloader/mods/SpeedHackMod.dll" "staging/AstralParty_ModLoader/mods/SpeedHackMod.dll" -Force
           Copy-Item "dist/modloader/mods/ActivityLogMod.json" "staging/AstralParty_ModLoader/mods/ActivityLogMod.json" -Force
-          Copy-Item "dist/modloader/mods/SpeedHackMod.json" "staging/AstralParty_ModLoader/mods/SpeedHackMod.json" -Force
           # 部署说明(可选, apt 端可忽略)
           $readme = @(
             "cesium-loader-${{ steps.version.outputs.version }}",
@@ -99,7 +95,8 @@ jobs:
             "解压到游戏 exe 目录即完成安装。",
             "从旧版升级: 请删除游戏目录下的 winmm.dll (旧代理), 换成 version.dll。",
             "⚠ 与本加载器互斥: 旧版独立变速器也使用 version.dll(speedhack-rs) —— 不要同时安装!",
-            "  CesiumLoader 已内置变速引擎, 改 doorstop_config.json 的 speedhackBaseSpeed 即可变速。"
+            "  CesiumLoader 已内置变速引擎(加载器功能, 非 mod): 改 doorstop_config.json 的",
+            "  speedhackBaseSpeed 即可(2.0=全程2倍速, 1.0=正常), 或直接用 AstralParty.Toys 的模组页面开关。"
           ) -join [Environment]::NewLine
           Set-Content -Path "staging/README.txt" -Value $readme -Encoding UTF8
 
@@ -113,9 +110,7 @@ jobs:
             "staging/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll",
             "staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll",
             "staging/AstralParty_ModLoader/mods/ActivityLogMod.dll",
-            "staging/AstralParty_ModLoader/mods/SpeedHackMod.dll",
-            "staging/AstralParty_ModLoader/mods/ActivityLogMod.json",
-            "staging/AstralParty_ModLoader/mods/SpeedHackMod.json"
+            "staging/AstralParty_ModLoader/mods/ActivityLogMod.json"
           )
           $fileMap = @{}
           foreach ($f in $files) {
