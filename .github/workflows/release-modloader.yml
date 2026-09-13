@@ -155,6 +155,7 @@ jobs:
           name: cesium-loader-package
           path: |
             cesium-loader-*.zip
+            cesium-loader.zip
           if-no-files-found: error
           retention-days: 1
 
