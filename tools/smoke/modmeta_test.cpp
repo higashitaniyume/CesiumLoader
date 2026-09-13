@@ -158,6 +158,34 @@ int main()
         check(join(order) == "B", ("禁用 Off 后 B 仍加载 (实际 " + join(order) + ")").c_str());
     }
 
+    printf("=== permissions 声明(仅展示/警告, 不门控) ===\n");
+    {
+        auto m = cesium::parse_sidecar("{\"id\":\"Act\",\"version\":\"1.0.0\",\"permissions\":2}");
+        check(m.permissions == 2, "permissions=2 解析(操作游戏)");
+        check(m.enabled, "permissions 不影响 enabled");
+    }
+    {
+        // 声明读对局(1) | 操作游戏(2) = 3
+        auto m = cesium::parse_sidecar("{\"id\":\"Full\",\"version\":\"1.0.0\",\"permissions\":3}");
+        check(m.permissions == 3, "permissions=3 解析(读对局+操作游戏)");
+    }
+    {
+        // 缺省 permissions → 0
+        auto m = cesium::parse_sidecar("{\"id\":\"None\",\"version\":\"1.0.0\"}");
+        check(m.permissions == 0, "缺省 permissions = 0");
+    }
+    {
+        // 声明操作游戏的 mod 在排序结果里正常加载(不因权限被拒)
+        std::vector<std::string> stems = {"Act", "Safe"};
+        std::map<std::string, cesium::ModMeta> metas;
+        metas["Act"] = cesium::parse_sidecar(
+            "{\"id\":\"Act\",\"version\":\"1.0.0\",\"permissions\":2}");
+        std::vector<std::string> rejected;
+        auto order = cesium::sort_mods_by_deps(stems, metas, "2.0.0", &rejected);
+        check(join(order) == "Act,Safe", ("声明操作游戏的 mod 照常加载 (实际 " + join(order) + ")").c_str());
+        check(rejected.empty(), "权限声明不产生拒绝");
+    }
+
     printf("\n%s (%d 失败)\n", g_fail == 0 ? "全部通过" : "有失败", g_fail);
     return g_fail == 0 ? 0 : 1;
 }
