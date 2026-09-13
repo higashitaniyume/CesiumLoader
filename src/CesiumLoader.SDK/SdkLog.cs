@@ -16,10 +16,14 @@ namespace CesiumLoader.SDK
     /// 日志: 写到 CESIUM_LOG_DIR/activity-mod.log, 由加载器(winmm.dll)转发到控制台窗口。
     /// 所有 mod 共用同一文件(当前加载器只转发这一个文件)。
     /// 分级: Debug/Info/Warn/Error; 可通过环境变量 CESIUM_LOG_LEVEL 过滤(默认 Info, 只显示 Info 及以上)。
+    ///
+    /// 故障体验: ReportCrash 把异常完整堆栈写到独立 mod-errors.log(不经过日志级别过滤),
+    /// 方便定位 mod 崩溃; CrashGuard 包装回调, 异常不外泄到游戏。
     /// </summary>
     public static class SdkLog
     {
         private static string _logFile;
+        private static string _errorFile;
         private static readonly object _lock = new object();
         private static readonly SdkLogLevel _minLevel = ReadMinLevel();
 
@@ -50,8 +54,42 @@ namespace CesiumLoader.SDK
                 }
                 Directory.CreateDirectory(dir);
                 _logFile = Path.Combine(dir, "activity-mod.log");
+                _errorFile = Path.Combine(dir, "mod-errors.log");
             }
             catch { _logFile = "activity-mod.log"; }
+        }
+
+        /// <summary>
+        /// 报告 mod 异常: 完整堆栈写到 mod-errors.log(独立文件, 不受日志级别过滤),
+        /// 并同时输出一条 ERR 日志。调用方应捕获异常后调用。
+        /// </summary>
+        /// <param name="modId">mod 程序集名/标识。</param>
+        /// <param name="context">出错位置描述(如 "OnCardUsed 事件处理")。</param>
+        /// <param name="ex">异常。</param>
+        public static void ReportCrash(string modId, string context, Exception ex)
+        {
+            try
+            {
+                Init();
+                string head = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [{modId}] {context}: {ex}";
+                lock (_lock)
+                {
+                    if (_errorFile != null)
+                        File.AppendAllText(_errorFile, head + "\r\n" + new string('-', 60) + "\r\n");
+                }
+                Log(SdkLogLevel.Error, modId, context + ": " + ex?.Message);
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// 异常防护包装: 执行 action, 异常被捕获并 ReportCrash(不向外抛)。
+        /// 用于事件回调等不应让异常外泄到游戏的场景。
+        /// </summary>
+        public static void CrashGuard(string modId, string context, Action action)
+        {
+            try { action(); }
+            catch (Exception ex) { ReportCrash(modId, context, ex); }
         }
 
         /// <summary>写一行日志(默认 Info 级别, 带时间戳 + 来源前缀)。兼容旧 API。</summary>

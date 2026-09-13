@@ -19,8 +19,8 @@ namespace ActivityLogMod
     ///   2. 元数据: [ModManifest] 特性(名称/版本/作者/描述)
     ///   3. 配置: SdkConfig.Load/Save 读写 configs/ActivityLogMod.json(公开字段, 支持热重载)
     ///   4. 日志分级: SdkLog.Info/Warn/Error/Debug(环境变量 CESIUM_LOG_LEVEL=Debug 可看调试日志)
-    ///   5. 事件: GameEvents.* 订阅, 处理函数带空保护绝不抛异常
-    ///   6. 轮询: ModBase.Run 每秒 tick, 各块独立 try/catch
+    ///   5. 事件: GameEvents.* 订阅 + StartAutoHook()(SDK 内部维持挂钩, 事件驱动)
+    ///   6. 轮询: 仅 UI/房间/战斗状态用 ModBase.Run 的 tick(各块独立 try/catch)
     ///   7. 操作查询: GameActions.CanThrowDice 检测"我的回合"(展示操作层 API)
     ///
     /// 配置(configs/ActivityLogMod.json, 全部可选):
@@ -31,7 +31,7 @@ namespace ActivityLogMod
     ///   LogTurn            = true  轮到我的回合提示(基于 GameActions.CanThrowDice)
     ///   ReloadConfigOnTick = false 每次 tick 重读配置(改配置即时生效, 不用重启游戏)
     /// </summary>
-    [ModManifest("实时行为日志", "2.0.0", "CesiumLoader", "把对局内的行为(用牌/骰子/移动/战斗等)实时输出到加载器控制台")]
+    // 元数据已移到 AssemblyInfo.cs(程序集级声明, 权威位置)
     public static class ModEntry
     {
         private static ActivityLogConfig _cfg = new ActivityLogConfig();
@@ -46,17 +46,9 @@ namespace ActivityLogMod
             }
             catch (Exception ex)
             {
-                // 顶层兜底: 任何未预期异常都完整写到日志文件(不依赖 SDK 日志转发), 便于排查
-                try
-                {
-                    var logPath = Path.Combine(
-                        Environment.GetEnvironmentVariable("CESIUM_LOG_DIR") ?? ".",
-                        "activity-mod.log");
-                    Directory.CreateDirectory(Path.GetDirectoryName(logPath) ?? ".");
-                    File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss.fff}] [ERR] [ActivityLog] 入口异常: {ex}\r\n");
-                }
-                catch { }
-                throw; // 重新抛出, 让加载器也能看到
+                // 顶层兜底: 完整堆栈写 mod-errors.log(SDK 故障报告), 并重新抛出让加载器看到
+                SdkLog.ReportCrash("ActivityLogMod", "ModEntry.Main 顶层异常", ex);
+                throw;
             }
         }
 
@@ -95,7 +87,9 @@ namespace ActivityLogMod
             GameEvents.RelicSelected += OnRelicSelected;
             GameEvents.RelicsSynced += OnRelicsSynced;
             GameEvents.HandChanged += OnHandChanged;
-            SdkLog.Info("ActivityLog", $"事件订阅完成({GameEvents.EventCount} 个事件)");
+            // 事件驱动: SDK 内部自动维持 RPC 挂钩(每 1 秒检查战斗回调), mod 无需轮询
+            GameEvents.StartAutoHook();
+            SdkLog.Info("ActivityLog", $"事件订阅完成({GameEvents.EventCount} 个事件), 自动挂钩已启动");
         }
 
         // ============================== 事件处理 ==============================
@@ -226,7 +220,7 @@ namespace ActivityLogMod
                 if (fresh != null) _cfg = fresh;
             }
 
-            GameEvents.EnsureHooked(); // 游戏每场战斗重置回调, 每秒重新挂钩
+            // 事件挂钩由 GameEvents.StartAutoHook() 内部维持, 这里只做周期状态轮询
             if (_cfg.LogTurn) PollTurn();
             if (_cfg.LogUi) PollUiAndRoom();
             if (_cfg.LogBattle) PollBattle();

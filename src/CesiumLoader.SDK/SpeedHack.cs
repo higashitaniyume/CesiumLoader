@@ -63,10 +63,11 @@ namespace CesiumLoader.SDK
         /// 设置倍率。
         /// </summary>
         /// <param name="speed">倍率, 范围 (0, 100], 1.0 = 正常, 2.0 = 2 倍速, 0.5 = 半速。</param>
-        /// <returns>是否成功(引擎不可用或倍率非法时 false)。</returns>
+        /// <returns>是否成功(引擎不可用、倍率非法或 mod 无 SpeedHack 权限时 false)。</returns>
         public static bool SetSpeed(double speed)
         {
             if (speed <= 0.0 || speed > 100.0) return false;
+            if (!Permissions.Require(ModPermission.SpeedHack, "SpeedHack.SetSpeed")) return false;
             try { return IsAvailable && ap_speed_set(speed); }
             catch { return false; }
         }

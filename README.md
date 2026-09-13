@@ -10,13 +10,16 @@ GitHub: https://github.com/higashitaniyume/CesiumLoader
 CesiumLoader.sln
 ├── src\
 │   ├── CesiumLoader\              C++ DLL 加载器 (产出 version.dll, Doorstop 式代理 + 变速引擎)
+│   │   ├── modmeta.cpp/h          mod 元数据(sidecar)解析 + 依赖拓扑排序 (纯标准库, 可单测)
+│   │   └── il2cpp_safe.h          IL2CPP 互操作安全封装 (空检查/异常转译)
 │   ├── CesiumLoader.Bootstrap\    C# 托管引导程序 (netstandard2.0, 零引用, 编排 SDK/mods)
 │   ├── CesiumLoader.SDK\          C# SDK (netstandard2.0, 供 mod 引用)
 │   ├── ActivityLogMod\            C# 示例 mod (行为日志)
 │   └── SpeedHackMod\              C# 示例 mod (游戏变速, SpeedHack SDK 接口)
 ├── third_party\minhook\            MinHook (inline hook 库, 变速引擎使用, MIT)
 └── tools\
-    └── smoke\                     转发/引导冒烟测试 (普通 .NET 可跑, 不依赖游戏)
+    ├── cesium\                    模组脚手架与包分发 CLI (new/build/package/list/verify)
+    └── smoke\                     冒烟测试 (modmeta/权限/变速, 不依赖游戏)
 ```
 
 ## 原理 (Doorstop 式引导)
@@ -77,6 +80,20 @@ version.dll (C++ 薄代理, 15 个导出转发到系统 version.dll)
 > ⚠️ 变速影响游戏感知的所有时间（动画/回合/网络超时）。联机对局慎用：
 > 服务器权威时钟会检测到本地时间戳异常，有断线/封号风险。
 
+## 行业化特性
+
+面向模组生态的工程化能力（对标 BepInEx 等成熟框架）：
+
+| 特性 | 说明 |
+|---|---|
+| **Mod 权限模型** | 敏感 API (GameActions 服务器操作 / SpeedHack 变速) **默认关闭**，mod 在 `[ModManifest]` 声明请求；可用 `mods\{name}.permissions.json` 逐项覆盖（强制开/关）。未授权调用静默降级并告警 |
+| **模组元数据标准 + 依赖解析** | `mods\{name}.json` sidecar（id/版本/权限/SDK 版本/依赖）；加载器按依赖**拓扑排序**加载，缺失依赖/版本不符/循环依赖的 mod 被跳过并报告（`modmeta.cpp` 纯标准库，可单测） |
+| **API 版本协商** | SDK 声明版本 `2.0.0`；mod 声明 `SdkVersion`，要求高于当前的 mod 被拒绝加载。`doorstop_config.json` 的 `sdkVersion` 声明当前版本 |
+| **事件驱动化** | `GameEvents.StartAutoHook()` 内部每 1 秒维持 RPC 挂钩，mod 无需每秒轮询；`ModBase.Run` 不传 tick 则不空转 |
+| **IL2CPP 互操作安全封装** | `il2cpp_safe.h` 收敛全部互操作点：函数指针空检查、参数/返回值校验、托管异常转译成可读错误，防止原生崩溃拖垮游戏 |
+| **调试与故障体验** | mod 入口异常写 `logs\mod-errors.log`（SDK `SdkLog.ReportCrash` + 原生 `write_mod_error` 双写）；`cesium verify` 离线预检兼容性 |
+| **脚手架与包分发** | `tools\cesium` CLI：`new`（生成项目+程序集级元数据+权限示例）/ `build` / `package`（zip 分发）/ `list` / `verify`（模拟加载器判定） |
+
 ## 目录布局
 
 游戏 exe 所在目录 (部署后)：
@@ -136,30 +153,55 @@ dotnet run --project tools\smoke\host\BootstrapHostTest.csproj -c Release
 
 ## 开发一个 mod
 
-1. 新建 C# 类库 (netstandard2.0)，ProjectReference 到 `CesiumLoader.SDK`，
-   并引用游戏热更程序集 (见 `ActivityLogMod.csproj` 的 Reference 模式)。
-2. 实现静态入口:
+**推荐用脚手架 CLI** (生成项目 + 程序集级元数据 + 权限示例 + sidecar):
+
+```
+dotnet run --project tools\cesium -c Release -- new MyMod --author 小明 --desc "我的第一个mod"
+dotnet run --project tools\cesium -c Release -- build MyMod
+dotnet run --project tools\cesium -c Release -- package MyMod -o MyMod-1.0.0.zip
+```
+
+或手写: 新建 C# 类库 (netstandard2.0)，ProjectReference 到 `CesiumLoader.SDK`，
+并引用游戏热更程序集 (见 `ActivityLogMod.csproj` 的 Reference 模式)。
+
+**元数据 (程序集级声明, 权威位置 — AssemblyInfo.cs):**
+
+```csharp
+[assembly: CesiumLoader.SDK.ModManifest("我的Mod", "1.0.0", "小明", "描述",
+    Permissions = CesiumLoader.SDK.ModPermission.ReadGameState,  // 敏感权限默认关闭!
+    SdkVersion = "2.0.0")]                                        // API 版本协商
+```
+
+**入口 (纯事件驱动, 无轮询):**
 
 ```csharp
 public static class ModEntry
 {
     public static void Main()
     {
-        CesiumLoader.SDK.ModBase.Run(OnInit, OnTick, tag: "MyMod");
+        CesiumLoader.SDK.ModBase.Run(OnInit);   // 不传 tick = 不轮询
     }
-    static void OnInit() { /* 订阅 GameEvents.* / 读取 Players.* / Names.* */ }
-    static void OnTick() { /* 每 1s 轮询 */ }
+    static void OnInit()
+    {
+        CesiumLoader.SDK.GameEvents.CardUsed += (pid, card, remain) => /* ... */;
+        CesiumLoader.SDK.GameEvents.StartAutoHook();   // SDK 内部维持挂钩
+    }
 }
 ```
 
-3. 编译出的 DLL 放进游戏目录 `AstralParty_ModLoader\mods\`，重启游戏生效。
+**权限说明**: `ReadGameState` / `FileWrite` 默认授予; `GameActions` (向服务器发操作) /
+`SpeedHack` (变速) **默认拒绝**, mod 必须显式声明, 用户还可通过
+`mods\{name}.permissions.json` 强制开/关。未授权调用静默失败并告警。
+
+编译出的 DLL + sidecar (`{name}.json`) 放进 `AstralParty_ModLoader\mods\`，重启游戏生效。
+发布前用 `cesium verify <mods_dir>` 离线预检依赖与版本兼容性。
 
 SDK API 一览:
-- `ModBase.Run(init, tick, delayMs=30000, tag)` — 生命周期 (自动 30s 延迟防启动崩溃)
-- `GameEvents.*` — 15 个事件: CardUsed / NoCard / EffectCardUsed / SkillUsed /
-  QuickCardUsed / DiceResult / Move / BattleUpdate / BattleDice /
-  RewardCardSelected / ShopCandidates / RelicCandidates / RelicSelected /
-  RelicsSynced / HandChanged
+- `ModBase.Run(init, tick=null, delayMs=30000, tag)` — 生命周期 (不传 tick 不轮询)
+- `GameEvents.*` — 15 个事件 + `StartAutoHook()` (SDK 内部维持挂钩, 事件驱动)
+- `Permissions.Has/Require` — 权限门控 (敏感 API 内部自动检查)
+- `SdkVersion.Accepts/Current` — API 版本协商
+- `SdkLog.ReportCrash/CrashGuard` — 故障报告 (完整堆栈写 mod-errors.log)
 - `Players.*` — 全部玩家 / 星币 / 手牌数 / 名字 / 是否自己 / 手牌内容
 - `Names.*` — 卡牌 / 遗物 / 技能 / 角色 / 战斗角色 名字解析
 - `SdkLog.Write(tag, line)` — 写日志 (转发到 loader 控制台)

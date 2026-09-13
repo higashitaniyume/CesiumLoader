@@ -105,6 +105,7 @@
     <ClCompile Include="console.cpp" />
     <ClCompile Include="exports.cpp" />
     <ClCompile Include="loader.cpp" />
+    <ClCompile Include="modmeta.cpp" />
     <ClCompile Include="speedhack.cpp" />
     <ClCompile Include="..\..\third_party\minhook\src\buffer.c" />
     <ClCompile Include="..\..\third_party\minhook\src\hook.c" />
@@ -115,6 +116,7 @@
   <ItemGroup>
     <ClInclude Include="config.h" />
     <ClInclude Include="loader.h" />
+    <ClInclude Include="modmeta.h" />
     <ClInclude Include="speedhack.h" />
   </ItemGroup>
   <ItemGroup>

@@ -59,6 +59,12 @@ namespace CesiumLoader.SDK
             sn = 0;
             try
             {
+                // 权限门控: 向服务器发送操作是敏感能力, 默认关闭。
+                // mod 需在 [ModManifest(Permissions=ModPermission.GameActions)] 声明,
+                // 或用 mods\{name}.permissions.json 显式授予, 否则所有操作静默失败。
+                if (!Permissions.Require(ModPermission.GameActions, "GameActions"))
+                    return false;
+
                 var net = Net;
                 var logic = Logic;
                 if (net?.RPC == null || logic?.action == null) return false;
