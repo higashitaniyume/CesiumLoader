@@ -1,29 +1,9 @@
 // cesium - CesiumLoader 模组脚手架与包分发 CLI
-//
-// 命令:
-//   cesium new <Name> [-o <dir>] [--author <名>] [--desc <描述>]
-//      生成 mod 项目模板(含 csproj + ModEntry.cs + 自带 sidecar json)
-//   cesium build <dir> [-c Release]
-//      构建 mod (dotnet build)
-//   cesium package <dir> [-o <out.zip>]
-//      打包 mod 为可分发的 zip(DLL + sidecar)
-//   cesium list <mods_dir>
-//      列出 mods 目录下所有 mod 的元数据(读 sidecar)
-//   cesium verify <mods_dir>
-//      检查依赖完整性与 SDK 版本兼容性(模拟加载器判定)
-//
-// 用法示例:
-//   cesium new MyMod --author 小明 --desc "我的第一个mod"
-//   cesium build MyMod
-//   cesium package MyMod -o MyMod-1.0.0.zip
-//   cesium verify "C:\...\AstralParty_ModLoader\mods"
+// 命令解析由 System.CommandLine 驱动(自动生成帮助/版本/错误提示)。
 
-using System;
-using System.Collections.Generic;
-using System.IO;
+using System.CommandLine;
+using System.CommandLine.Parsing;
 using System.IO.Compression;
-using System.Linq;
-using System.Text;
 
 namespace CesiumCli
 {
@@ -34,300 +14,251 @@ namespace CesiumCli
 
         private static int Main(string[] args)
         {
-            if (args.Length == 0) { PrintUsage(); return 1; }
-            try
+            var root = new RootCommand("CesiumLoader 模组脚手架与包分发 CLI");
+
+            // ------------------------------ new ------------------------------
+            var newCmd = new Command("new", "生成 mod 项目模板(csproj + ModEntry.cs + AssemblyInfo.cs + sidecar json)");
+            var newName = new Argument<string>("name") { Description = "mod 名(合法 C# 标识符, 不含空格/点)" };
+            var newOut = new Option<string>("--output", "-o") { Description = "输出目录(默认当前目录)", HelpName = "dir" };
+            var newAuthor = new Option<string>("--author") { Description = "作者名" };
+            var newDesc = new Option<string>("--desc") { Description = "mod 描述" };
+            newCmd.Add(newName);
+            newCmd.Add(newOut);
+            newCmd.Add(newAuthor);
+            newCmd.Add(newDesc);
+            newCmd.SetAction((parseResult) =>
             {
-                switch (args[0].ToLowerInvariant())
+                string name = parseResult.GetValue(newName);
+                string outDir = parseResult.GetValue(newOut) ?? ".";
+                string author = parseResult.GetValue(newAuthor) ?? "";
+                string desc = parseResult.GetValue(newDesc) ?? "";
+
+                if (!IsValidName(name))
                 {
-                    case "new": return New(args.Skip(1).ToArray());
-                    case "build": return Build(args.Skip(1).ToArray());
-                    case "package": return Package(args.Skip(1).ToArray());
-                    case "list": return List(args.Skip(1).ToArray());
-                    case "verify": return Verify(args.Skip(1).ToArray());
-                    case "help": case "-h": case "--help": PrintUsage(); return 0;
-                    default:
-                        Console.Error.WriteLine($"未知命令: {args[0]}");
-                        PrintUsage();
-                        return 1;
+                    Console.Error.WriteLine($"非法 mod 名 '{name}': 须为字母/数字/下划线开头字母, 不含空格和点");
+                    return 1;
                 }
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"错误: {ex.Message}");
-                return 1;
-            }
-        }
 
-        private static void PrintUsage()
-        {
-            Console.WriteLine("""
-                cesium - CesiumLoader 模组脚手架与包分发 CLI v2.0.0
-
-                用法:
-                  cesium new <Name> [-o <dir>] [--author <名>] [--desc <描述>]
-                      生成 mod 项目模板
-                  cesium build <dir> [-c Release]
-                      构建 mod (dotnet build)
-                  cesium package <dir> [-o <out.zip>]
-                      打包 mod 为分发 zip
-                  cesium list <mods_dir>
-                      列出 mods 目录的 mod 元数据
-                  cesium verify <mods_dir>
-                      检查依赖/版本兼容性
-
-                示例:
-                  cesium new MyMod --author 小明
-                  cesium build MyMod
-                  cesium package MyMod -o MyMod-1.0.0.zip
-                """);
-        }
-
-        // ============================== new ==============================
-
-        private static int New(string[] args)
-        {
-            if (args.Length == 0 || args[0].StartsWith("-"))
-            {
-                Console.Error.WriteLine("用法: cesium new <Name> [-o <dir>] [--author <名>] [--desc <描述>]");
-                return 1;
-            }
-            string name = args[0];
-            string outDir = ".";
-            string author = "";
-            string desc = "";
-            for (int i = 1; i < args.Length; i++)
-            {
-                switch (args[i])
+                string dir = Path.Combine(outDir, name);
+                if (Directory.Exists(dir) && Directory.EnumerateFileSystemEntries(dir).Any())
                 {
-                    case "-o": if (i + 1 < args.Length) outDir = args[++i]; break;
-                    case "--author": if (i + 1 < args.Length) author = args[++i]; break;
-                    case "--desc": if (i + 1 < args.Length) desc = args[++i]; break;
-                    default: Console.Error.WriteLine($"忽略未知参数: {args[i]}"); break;
+                    Console.Error.WriteLine($"目录已存在且非空: {dir}");
+                    return 1;
                 }
-            }
+                Directory.CreateDirectory(dir);
 
-            // 名字校验: 合法 C# 标识符 + 程序集名
-            if (!IsValidName(name))
-            {
-                Console.Error.WriteLine($"非法 mod 名 '{name}': 须为字母/数字/下划线开头字母, 不含空格和点");
-                return 1;
-            }
+                // 1. csproj
+                string csproj = $$"""
+                    <Project Sdk="Microsoft.NET.Sdk">
+                      <PropertyGroup>
+                        <TargetFramework>netstandard2.0</TargetFramework>
+                        <AssemblyName>{{name}}</AssemblyName>
+                        <RootNamespace>{{name}}</RootNamespace>
+                        <LangVersion>9.0</LangVersion>
+                      </PropertyGroup>
+                      <ItemGroup>
+                        <!-- 引用 CesiumLoader.SDK: 改为你的 SDK 路径 -->
+                        <Reference Include="CesiumLoader.SDK">
+                          <HintPath>..\..\..\src\CesiumLoader.SDK\bin\Release\netstandard2.0\CesiumLoader.SDK.dll</HintPath>
+                        </Reference>
+                        <!-- 游戏热更程序集: 从游戏目录或本地副本引用 -->
+                        <Reference Include="AstralParty.Runtime">
+                          <HintPath>..\..\refs\AstralParty.Runtime.dll</HintPath>
+                        </Reference>
+                      </ItemGroup>
+                    </Project>
+                    """;
+                File.WriteAllText(Path.Combine(dir, name + ".csproj"), csproj);
 
-            string dir = Path.Combine(outDir, name);
-            if (Directory.Exists(dir) && Directory.EnumerateFileSystemEntries(dir).Any())
-            {
-                Console.Error.WriteLine($"目录已存在且非空: {dir}");
-                return 1;
-            }
-            Directory.CreateDirectory(dir);
+                // 2. ModEntry.cs
+                string entry = $$"""
+                    using System;
+                    using CesiumLoader.SDK;
 
-            // 1. csproj
-            string csproj = $$"""
-                <Project Sdk="Microsoft.NET.Sdk">
-                  <PropertyGroup>
-                    <TargetFramework>netstandard2.0</TargetFramework>
-                    <AssemblyName>{{name}}</AssemblyName>
-                    <RootNamespace>{{name}}</RootNamespace>
-                    <LangVersion>9.0</LangVersion>
-                  </PropertyGroup>
-                  <ItemGroup>
-                    <!-- 引用 CesiumLoader.SDK: 改为你的 SDK 路径 -->
-                    <Reference Include="CesiumLoader.SDK">
-                      <HintPath>..\..\..\src\CesiumLoader.SDK\bin\Release\netstandard2.0\CesiumLoader.SDK.dll</HintPath>
-                    </Reference>
-                    <!-- 游戏热更程序集: 从游戏目录或本地副本引用 -->
-                    <Reference Include="AstralParty.Runtime">
-                      <HintPath>..\..\refs\AstralParty.Runtime.dll</HintPath>
-                    </Reference>
-                  </ItemGroup>
-                </Project>
-                """;
-            File.WriteAllText(Path.Combine(dir, name + ".csproj"), csproj);
-
-            // 2. ModEntry.cs
-            string entry = $$"""
-                using System;
-                using CesiumLoader.SDK;
-
-                namespace {{name}}
-                {
-                    /// <summary>
-                    /// {{name}} —— 由 cesium CLI 生成的 mod 模板。
-                    ///
-                    /// 元数据在 AssemblyInfo.cs(程序集级声明, 权威位置)。
-                    /// Permissions 只是声明会用到的能力(读对局/操作游戏/写文件),
-                    /// 供工具/加载器展示警告 —— 已取消权限门控, 无需申请。
-                    /// </summary>
-                    public static class ModEntry
+                    namespace {{name}}
                     {
-                        public static void Main()
+                        /// <summary>
+                        /// {{name}} —— 由 cesium CLI 生成的 mod 模板。
+                        ///
+                        /// 元数据在 AssemblyInfo.cs(程序集级声明, 权威位置)。
+                        /// Permissions 只是声明会用到的能力(读对局/操作游戏/写文件),
+                        /// 供工具/加载器展示警告 —— 已取消权限门控, 无需申请。
+                        /// </summary>
+                        public static class ModEntry
                         {
-                            SdkManifest.ExportSidecar();  // 生成/刷新 sidecar(幂等)
-                            ModBase.Run(OnInit);          // 纯事件驱动: 无 tick 不轮询
-                        }
+                            public static void Main()
+                            {
+                                SdkManifest.ExportSidecar();  // 生成/刷新 sidecar(幂等)
+                                ModBase.Run(OnInit);          // 纯事件驱动: 无 tick 不轮询
+                            }
 
-                        private static void OnInit()
-                        {
-                            SdkLog.Info("{{name}}", "=== {{name}} 初始化 ===");
+                            private static void OnInit()
+                            {
+                                SdkLog.Info("{{name}}", "=== {{name}} 初始化 ===");
 
-                            // 事件驱动示例: 订阅事件 + 自动挂钩(无需每秒轮询)
-                            GameEvents.CardUsed += (pid, cardId, remain) =>
-                                SdkLog.Info("{{name}}", $"玩家 {pid} 出牌 {Names.Card(cardId)} (剩{remain}张)");
-                            GameEvents.StartAutoHook();
+                                // 事件驱动示例: 订阅事件 + 自动挂钩(无需每秒轮询)
+                                GameEvents.CardUsed += (pid, cardId, remain) =>
+                                    SdkLog.Info("{{name}}", $"玩家 {pid} 出牌 {Names.Card(cardId)} (剩{remain}张)");
+                                GameEvents.StartAutoHook();
+                            }
                         }
                     }
-                }
-                """;
-            File.WriteAllText(Path.Combine(dir, "ModEntry.cs"), entry);
+                    """;
+                File.WriteAllText(Path.Combine(dir, "ModEntry.cs"), entry);
 
-            // 2b. AssemblyInfo.cs(程序集级元数据声明, 权威位置)
-            string asmInfo = $$"""
-                using CesiumLoader.SDK;
+                // 2b. AssemblyInfo.cs(程序集级元数据声明, 权威位置)
+                string asmInfo = $$"""
+                    using CesiumLoader.SDK;
 
-                // mod 元数据: 程序集级声明(权威位置, 读取时不触发类型加载, 兼容 HybridCLR)。
-                // Permissions 声明会用到的能力(仅展示/警告, 已取消权限门控):
-                // 声明 GameActions(操作游戏)的 mod 在加载时/工具列表会显示 ⚠️ 警告。
-                [assembly: ModManifest("{{name}}", "1.0.0", "{{author}}", "{{desc}}",
-                    Permissions = ModPermission.ReadGameState,
-                    SdkVersion = "{{SdkVersion}}")]
-                """;
-            File.WriteAllText(Path.Combine(dir, "AssemblyInfo.cs"), asmInfo);
+                    // mod 元数据: 程序集级声明(权威位置, 读取时不触发类型加载, 兼容 HybridCLR)。
+                    // Permissions 声明会用到的能力(仅展示/警告, 已取消权限门控):
+                    // 声明 GameActions(操作游戏)的 mod 在加载时/工具列表会显示 ⚠️ 警告。
+                    [assembly: ModManifest("{{name}}", "1.0.0", "{{author}}", "{{desc}}",
+                        Permissions = ModPermission.ReadGameState,
+                        SdkVersion = "{{SdkVersion}}")]
+                    """;
+                File.WriteAllText(Path.Combine(dir, "AssemblyInfo.cs"), asmInfo);
 
-            // 3. sidecar json(加载前就存在, 供依赖解析/版本协商/能力警告; 也随包分发)
-            string sidecar = $$"""
-                {"id":"{{name}}","name":"{{name}}","version":"1.0.0","author":"{{author}}","description":"{{desc}}","permissions":1,"sdkVersion":"{{SdkVersion}}","dependencies":[]}
-                """;
-            File.WriteAllText(Path.Combine(dir, name + ".json"), sidecar);
+                // 3. sidecar json(加载前就存在, 供依赖解析/版本协商/能力警告; 也随包分发)
+                string sidecar = $$"""
+                    {"id":"{{name}}","name":"{{name}}","version":"1.0.0","author":"{{author}}","description":"{{desc}}","permissions":1,"sdkVersion":"{{SdkVersion}}","dependencies":[]}
+                    """;
+                File.WriteAllText(Path.Combine(dir, name + ".json"), sidecar);
 
-            // 4. README 说明
-            File.WriteAllText(Path.Combine(dir, "README.md"),
-                $"# {name}\n\n{desc}\n\n由 cesium CLI 生成。`cesium build {name}` 构建, `cesium package {name}` 打包。\n");
+                // 4. README 说明
+                File.WriteAllText(Path.Combine(dir, "README.md"),
+                    $"# {name}\n\n{desc}\n\n由 cesium CLI 生成。`cesium build {name}` 构建, `cesium package {name}` 打包。\n");
 
-            Console.WriteLine($"已生成 mod 项目: {dir}");
-            Console.WriteLine("  下一步: cesium build " + dir);
-            return 0;
-        }
+                Console.WriteLine($"已生成 mod 项目: {dir}");
+                Console.WriteLine("  下一步: cesium build " + dir);
+                return 0;
+            });
 
-        private static bool IsValidName(string name)
-        {
-            if (string.IsNullOrEmpty(name)) return false;
-            if (!char.IsLetter(name[0]) && name[0] != '_') return false;
-            return name.All(c => char.IsLetterOrDigit(c) || c == '_');
-        }
-
-        // ============================== build ==============================
-
-        private static int Build(string[] args)
-        {
-            string dir = args.Length > 0 ? args[0] : ".";
-            string config = "Release";
-            for (int i = 1; i < args.Length; i++)
+            // ------------------------------ build ------------------------------
+            var buildCmd = new Command("build", "构建 mod (dotnet build)");
+            var buildDir = new Argument<string>("dir") { Description = "mod 项目目录(默认当前目录)", Arity = ArgumentArity.ZeroOrOne };
+            var buildCfg = new Option<string>("--config", "-c") { Description = "构建配置(默认 Release)", HelpName = "config" };
+            buildCmd.Add(buildDir);
+            buildCmd.Add(buildCfg);
+            buildCmd.SetAction((parseResult) =>
             {
-                if (args[i] == "-c" && i + 1 < args.Length) config = args[++i];
-            }
-            string csproj = Directory.Exists(dir)
-                ? Directory.GetFiles(dir, "*.csproj").FirstOrDefault()
-                : null;
-            if (csproj == null)
-            {
-                Console.Error.WriteLine($"未找到 csproj: {dir}");
-                return 1;
-            }
-            Console.WriteLine($"构建 {csproj} ({config})...");
-            int code = RunProcess("dotnet", $"build \"{csproj}\" -c {config} --nologo");
-            if (code != 0)
-            {
-                Console.Error.WriteLine("构建失败");
-                return code;
-            }
-            // 输出产物位置
-            string dll = Path.Combine(Path.GetDirectoryName(csproj), "bin", config, "netstandard2.0",
-                Path.GetFileNameWithoutExtension(csproj) + ".dll");
-            Console.WriteLine($"构建成功: {dll}");
-            return 0;
-        }
-
-        // ============================== package ==============================
-
-        private static int Package(string[] args)
-        {
-            string dir = args.Length > 0 ? args[0] : ".";
-            string outZip = null;
-            for (int i = 1; i < args.Length; i++)
-            {
-                if (args[i] == "-o" && i + 1 < args.Length) outZip = args[++i];
-            }
-            string name = Path.GetFileName(Path.GetFullPath(dir));
-            string dll = Path.Combine(dir, "bin", "Release", "netstandard2.0", name + ".dll");
-            if (!File.Exists(dll))
-            {
-                Console.Error.WriteLine($"未找到构建产物: {dll} (先运行 cesium build)");
-                return 1;
-            }
-            if (outZip == null) outZip = Path.Combine(dir, name + "-1.0.0.zip");
-
-            using var zip = ZipFile.Open(outZip, ZipArchiveMode.Create);
-            // 包布局: {Name}.dll + {Name}.json(sidecar)
-            zip.CreateEntryFromFile(dll, name + ".dll");
-            string sidecar = Path.Combine(dir, name + ".json");
-            if (File.Exists(sidecar)) zip.CreateEntryFromFile(sidecar, name + ".json");
-
-            Console.WriteLine($"已打包: {outZip}");
-            Console.WriteLine("  解压到游戏目录 AstralParty_ModLoader\\mods\\ 即安装完成");
-            return 0;
-        }
-
-        // ============================== list ==============================
-
-        private static int List(string[] args)
-        {
-            string modsDir = args.Length > 0 ? args[0] : ".";
-            if (!Directory.Exists(modsDir))
-            {
-                Console.Error.WriteLine($"目录不存在: {modsDir}");
-                return 1;
-            }
-            var dlls = Directory.GetFiles(modsDir, "*.dll")
-                .Select(Path.GetFileNameWithoutExtension).OrderBy(x => x).ToList();
-            if (dlls.Count == 0) { Console.WriteLine("(无 mod)"); return 0; }
-
-            Console.WriteLine($"mods 目录: {modsDir}");
-            Console.WriteLine($"{"ID",-24} {"版本",-10} {"SDK",-10} 权限  依赖");
-            foreach (var dll in dlls)
-            {
-                string sidecar = Path.Combine(modsDir, dll + ".json");
-                if (!File.Exists(sidecar))
+                string dir = parseResult.GetValue(buildDir) ?? ".";
+                string config = parseResult.GetValue(buildCfg) ?? "Release";
+                string csproj = Directory.Exists(dir)
+                    ? Directory.GetFiles(dir, "*.csproj").FirstOrDefault()
+                    : null;
+                if (csproj == null)
                 {
-                    Console.WriteLine($"{dll,-24} (无 sidecar)");
-                    continue;
+                    Console.Error.WriteLine($"未找到 csproj: {dir}");
+                    return 1;
                 }
-                var meta = ParseSidecar(File.ReadAllText(sidecar));
-                string deps = meta.Deps.Count == 0 ? "-" : string.Join(",", meta.Deps.Select(d => $"{d.Id}{(d.MinVersion == null ? "" : ">=" + d.MinVersion)}"));
-                Console.WriteLine($"{meta.Id,-24} {meta.Version,-10} {(meta.SdkVersion ?? ""),-10} {meta.Permissions,6}  {deps}");
-            }
-            return 0;
-        }
+                Console.WriteLine($"构建 {csproj} ({config})...");
+                int code = RunProcess("dotnet", $"build \"{csproj}\" -c {config} --nologo");
+                if (code != 0)
+                {
+                    Console.Error.WriteLine("构建失败");
+                    return code;
+                }
+                string dll = Path.Combine(Path.GetDirectoryName(csproj), "bin", config, "netstandard2.0",
+                    Path.GetFileNameWithoutExtension(csproj) + ".dll");
+                Console.WriteLine($"构建成功: {dll}");
+                return 0;
+            });
 
-        // ============================== verify ==============================
+            // ------------------------------ package ------------------------------
+            var packageCmd = new Command("package", "打包 mod 为分发 zip(DLL + sidecar)");
+            var packageDir = new Argument<string>("dir") { Description = "mod 项目目录(默认当前目录)", Arity = ArgumentArity.ZeroOrOne };
+            var packageOut = new Option<string>("--output", "-o") { Description = "输出 zip 路径(默认 <dir>/<name>-1.0.0.zip)", HelpName = "out.zip" };
+            packageCmd.Add(packageDir);
+            packageCmd.Add(packageOut);
+            packageCmd.SetAction((parseResult) =>
+            {
+                string dir = parseResult.GetValue(packageDir) ?? ".";
+                string outZip = parseResult.GetValue(packageOut);
+                string name = Path.GetFileName(Path.GetFullPath(dir));
+                string dll = Path.Combine(dir, "bin", "Release", "netstandard2.0", name + ".dll");
+                if (!File.Exists(dll))
+                {
+                    Console.Error.WriteLine($"未找到构建产物: {dll} (先运行 cesium build)");
+                    return 1;
+                }
+                if (outZip == null) outZip = Path.Combine(dir, name + "-1.0.0.zip");
 
-        private static int Verify(string[] args)
-        {
-            string modsDir = args.Length > 0 ? args[0] : ".";
-            if (!Directory.Exists(modsDir))
+                using var zip = ZipFile.Open(outZip, ZipArchiveMode.Create);
+                // 包布局: {Name}.dll + {Name}.json(sidecar)
+                zip.CreateEntryFromFile(dll, name + ".dll");
+                string sidecar = Path.Combine(dir, name + ".json");
+                if (File.Exists(sidecar)) zip.CreateEntryFromFile(sidecar, name + ".json");
+
+                Console.WriteLine($"已打包: {outZip}");
+                Console.WriteLine("  解压到游戏目录 AstralParty_ModLoader\\mods\\ 即安装完成");
+                return 0;
+            });
+
+            // ------------------------------ list ------------------------------
+            var listCmd = new Command("list", "列出 mods 目录下所有 mod 的元数据(读 sidecar)");
+            var listDir = new Argument<string>("mods_dir") { Description = "mods 目录(默认当前目录)", Arity = ArgumentArity.ZeroOrOne };
+            listCmd.Add(listDir);
+            listCmd.SetAction((parseResult) =>
             {
-                Console.Error.WriteLine($"目录不存在: {modsDir}");
-                return 1;
-            }
-            var dlls = Directory.GetFiles(modsDir, "*.dll")
-                .Select(Path.GetFileNameWithoutExtension).ToList();
-            var metas = new Dictionary<string, ModMeta>();
-            foreach (var dll in dlls)
+                string modsDir = parseResult.GetValue(listDir) ?? ".";
+                if (!Directory.Exists(modsDir))
+                {
+                    Console.Error.WriteLine($"目录不存在: {modsDir}");
+                    return 1;
+                }
+                var dlls = Directory.GetFiles(modsDir, "*.dll")
+                    .Select(Path.GetFileNameWithoutExtension).OrderBy(x => x).ToList();
+                if (dlls.Count == 0) { Console.WriteLine("(无 mod)"); return 0; }
+
+                Console.WriteLine($"mods 目录: {modsDir}");
+                Console.WriteLine($"{"ID",-24} {"版本",-10} {"SDK",-10} 权限  依赖");
+                foreach (var dll in dlls)
+                {
+                    string sidecar = Path.Combine(modsDir, dll + ".json");
+                    if (!File.Exists(sidecar))
+                    {
+                        Console.WriteLine($"{dll,-24} (无 sidecar)");
+                        continue;
+                    }
+                    var meta = ParseSidecar(File.ReadAllText(sidecar));
+                    string deps = meta.Deps.Count == 0 ? "-" : string.Join(",", meta.Deps.Select(d => $"{d.Id}{(d.MinVersion == null ? "" : ">=" + d.MinVersion)}"));
+                    Console.WriteLine($"{meta.Id,-24} {meta.Version,-10} {(meta.SdkVersion ?? ""),-10} {meta.Permissions,6}  {deps}");
+                }
+                return 0;
+            });
+
+            // ------------------------------ verify ------------------------------
+            var verifyCmd = new Command("verify", "检查依赖完整性与 SDK 版本兼容性(模拟加载器判定)");
+            var verifyDir = new Argument<string>("mods_dir") { Description = "mods 目录(默认当前目录)", Arity = ArgumentArity.ZeroOrOne };
+            verifyCmd.Add(verifyDir);
+            verifyCmd.SetAction((parseResult) =>
             {
-                string sidecar = Path.Combine(modsDir, dll + ".json");
-                if (File.Exists(sidecar))
-                    metas[dll] = ParseSidecar(File.ReadAllText(sidecar));
-            }
-            return VerifySimple(modsDir, dlls, metas);
+                string modsDir = parseResult.GetValue(verifyDir) ?? ".";
+                if (!Directory.Exists(modsDir))
+                {
+                    Console.Error.WriteLine($"目录不存在: {modsDir}");
+                    return 1;
+                }
+                var dlls = Directory.GetFiles(modsDir, "*.dll")
+                    .Select(Path.GetFileNameWithoutExtension).ToList();
+                var metas = new Dictionary<string, ModMeta>(StringComparer.OrdinalIgnoreCase);
+                foreach (var dll in dlls)
+                {
+                    string sidecar = Path.Combine(modsDir, dll + ".json");
+                    if (File.Exists(sidecar))
+                        metas[dll] = ParseSidecar(File.ReadAllText(sidecar));
+                }
+                return VerifySimple(modsDir, dlls, metas);
+            });
+
+            root.Add(newCmd);
+            root.Add(buildCmd);
+            root.Add(packageCmd);
+            root.Add(listCmd);
+            root.Add(verifyCmd);
+
+            return root.Parse(args).Invoke();
         }
 
         // 简化版 verify: 清晰的逐项输出
@@ -381,6 +312,13 @@ namespace CesiumCli
             var p = System.Diagnostics.Process.Start(psi);
             p.WaitForExit();
             return p.ExitCode;
+        }
+
+        private static bool IsValidName(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return false;
+            if (!char.IsLetter(name[0]) && name[0] != '_') return false;
+            return name.All(c => char.IsLetterOrDigit(c) || c == '_');
         }
 
         private class ModMeta
