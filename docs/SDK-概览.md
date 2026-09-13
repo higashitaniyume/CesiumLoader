@@ -10,7 +10,7 @@
 ├── version.dll (原生加载器, Doorstop 代理)
 │   ├── 等 GameAssembly → il2cpp 运行时 → HybridCLR 热更 (AstralParty.Runtime)
 │   ├── 变速引擎 speedhack: MinHook inline hook 4 个系统时间函数
-│   └── 原生加载 sdk\*.dll → mods\*.dll → 调用 {文件名}.ModEntry.Main()
+│   └── 原生加载 sdk\*.dll → mods\{ModId}\{ModId}.dll → 调用 {文件名}.ModEntry.Main()
 └── CesiumLoader.SDK.dll (netstandard2.0, 供 mod 编译期引用)
     ├── ModBase      mod 生命周期基座
     ├── GameEvents   15 个游戏事件 (RPC 回调 hook)

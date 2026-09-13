@@ -12,11 +12,13 @@ namespace CesiumLoader.SDK
     ///
     /// 注意: 热更程序集由 Assembly.Load(byte[]) 加载, Assembly.Location 在 HybridCLR
     /// 解释器下会抛 MissingMethodException —— 因此不依赖 Location, 而是写到
-    /// CESIUM_MODS_DIR(加载器设置的 mods 目录), 文件名用程序集名。
+    /// CESIUM_MODS_DIR 下以程序集名命名的 mod 文件夹里
+    /// (mods\{modName}\{modName}.json, 与 DLL 同文件夹)。
     /// </summary>
     public static class SdkManifest
     {
-        /// <summary>把调用者程序集的 [ModManifest] 写成 mods 目录下的同名 .json。幂等, 失败静默。</summary>
+        /// <summary>把调用者程序集的 [ModManifest] 写成 mods 目录下该 mod 文件夹里的同名 .json
+        /// (mods\{modName}\{modName}.json)。幂等, 失败静默。</summary>
         public static void ExportSidecar()
         {
             try
@@ -34,7 +36,10 @@ namespace CesiumLoader.SDK
                 if (string.IsNullOrEmpty(modsDir)) return;
                 Directory.CreateDirectory(modsDir);
 
-                var sidecar = Path.Combine(modsDir, modName + ".json");
+                // 新布局: 每 mod 一个文件夹 mods\{modName}\{modName}.json (sidecar 与 DLL 同文件夹)
+                var modFolder = Path.Combine(modsDir, modName);
+                Directory.CreateDirectory(modFolder);
+                var sidecar = Path.Combine(modFolder, modName + ".json");
                 File.WriteAllText(sidecar, Serialize(manifest, modName));
             }
             catch { }

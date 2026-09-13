@@ -37,11 +37,12 @@ cesium build <dir> [-c Release]
 cesium package <dir> [-o <out.zip>]
 ```
 
-包布局 (解压到 `AstralParty_ModLoader\mods\` 即安装):
+包布局 (解压到 `AstralParty_ModLoader\mods\` 即安装, 与加载器扫描布局一致):
 ```
-MyMod.dll
-MyMod.json          (sidecar)
+MyMod\MyMod.dll
+MyMod\MyMod.json    (sidecar, 可选)
 ```
+解压后生成 `mods\MyMod\` 文件夹, 加载器扫描 `mods\` 下每个子目录加载。
 
 ### list — 列出 mods 目录元数据
 

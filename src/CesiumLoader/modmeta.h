@@ -1,12 +1,15 @@
 // modmeta.h - mod 元数据(sidecar)解析 + 依赖拓扑排序
 //
-// sidecar 格式 (mods\{name}.json, 由 SDK 的 SdkManifest.ExportSidecar() 生成,
+// sidecar 格式 (mods\{ModId}\{ModId}.json, 由 SDK 的 SdkManifest.ExportSidecar() 生成,
 // 或由脚手架在开发期生成并随 mod 分发):
 //   {"id":"X","name":"显示名","version":"1.0.0","sdkVersion":"2.0.0",
 //    "permissions":1,"enabled":true,"dependencies":[{"id":"OtherMod","minVersion":"1.0.0"}]}
 //
+// 目录布局(与加载器扫描一致): 每 mod 一个文件夹 mods\{ModId}\{ModId}.dll,
+// sidecar 在 mod 文件夹内 {ModId}.json; 兼容旧布局 mods\{ModId}.dll 平铺。
+//
 // enabled 字段: mod 开关(默认 true)。false = 加载器跳过该 mod(由工具/用户
-// 通过 mods\{name}.json 的 "enabled" 控制)。缺失或非布尔按 true 处理。
+// 通过 sidecar 的 "enabled" 控制)。缺失或非布尔按 true 处理。
 //
 // 原生层不读托管 attribute(需要反射), 因此依赖/版本/开关信息全部来自 sidecar。
 // 无 sidecar 的 mod 视为"无声明", 按文件名排序加载(兼容旧 mod)。
@@ -42,6 +45,20 @@ struct ModMeta
     bool enabled = true;       // mod 开关(默认 true; false = 加载器跳过)
     bool hasSidecar = false;
 };
+
+// 一个已定位的 mod: id(程序集名) + DLL 路径 + sidecar 路径(sidecar 缺失为空)
+struct ModLoc
+{
+    std::string id;
+    std::string dll;
+    std::string sidecar;
+};
+
+// 扫描 mods 目录, 返回所有 mod 的位置(与加载器/工具一致的布局规则):
+//   新布局: mods\{ModId}\{ModId}.dll (每 mod 一个文件夹, sidecar 在文件夹内 {ModId}.json)
+//   兼容旧布局: mods\{ModId}.dll 平铺(直接放 mods 根下的 dll 仍识别, sidecar 在同目录)
+// 返回列表按 id 排序。目录损坏/不存在返回空。
+std::vector<ModLoc> scan_mods_dir(const std::string& mods_dir);
 
 // 读取 sidecar 文件内容; 失败返回空串
 std::string read_sidecar_text(const std::string& path);
