@@ -6,13 +6,16 @@ using System.Reflection;
 namespace CesiumLoader.SDK
 {
     /// <summary>
-    /// mod 权限门控: 敏感 API (GameActions / SpeedHack) 默认关闭,
+    /// mod 权限门控: 敏感 API (GameActions) 默认关闭,
     /// mod 声明请求 + 运行时检查 + 配置可逐项覆盖。
     ///
     /// 判定顺序 (从宽到严):
     ///   1. mods\{name}.permissions.json 显式配置 (最高优先级, 管理员/用户可强制开/关)
     ///   2. [ModManifest(Permissions=...)] 声明 (mod 请求)
-    ///   3. 默认: ReadGameState / FileWrite 授予; GameActions / SpeedHack 拒绝
+    ///   3. 默认: ReadGameState / FileWrite / SpeedHack 授予; GameActions 拒绝
+    ///
+    /// 说明: SpeedHack(变速) 为非敏感权限, 默认授予 —— 变速是内置能力,
+    /// 启用 mod 即可用, 无需申请。GameActions(模拟操作) 保持敏感, 默认拒绝。
     ///
     /// 敏感 API 实现侧调用 Permission.Require(...) 检查; 未授权时静默降级
     /// (返回 false / 不执行), 并输出一条 SdkLog.Warn, 不抛异常。
@@ -58,6 +61,9 @@ namespace CesiumLoader.SDK
         {
             try
             {
+                // 首次检查时惰性加载覆盖配置(CESIUM_MODS_DIR 由加载器设置)
+                EnsureOverridesLoaded();
+
                 caller = caller ?? SdkInfo.CallingAssembly();
                 string modId = SafeName(caller);
                 if (string.IsNullOrEmpty(modId)) return false;
@@ -71,9 +77,8 @@ namespace CesiumLoader.SDK
                 var manifest = SdkInfo.ManifestOf(caller);
                 ModPermission declared = manifest.Permissions;
 
-                // 3. 默认策略: 敏感位默认拒绝, 只读/文件位默认授予
-                const ModPermission sensitive = ModPermission.GameActions | ModPermission.SpeedHack;
-                if ((perm & sensitive) != 0)
+                // 3. 默认策略: 只有 GameActions 敏感(默认拒绝); 其余(读对局/写文件/变速)默认授予
+                if ((perm & ModPermission.GameActions) != 0)
                 {
                     // 敏感权限: 必须显式声明才授予
                     return (declared & perm) == perm;
@@ -82,6 +87,18 @@ namespace CesiumLoader.SDK
                 return declared == ModPermission.None || (declared & perm) == perm;
             }
             catch { return false; }
+        }
+
+        /// <summary>首次权限检查时, 从 CESIUM_MODS_DIR 加载 mods\{name}.permissions.json 覆盖。</summary>
+        private static void EnsureOverridesLoaded()
+        {
+            if (_overridesLoaded) return;
+            try
+            {
+                string modsDir = Environment.GetEnvironmentVariable("CESIUM_MODS_DIR");
+                if (!string.IsNullOrEmpty(modsDir)) LoadOverrides(modsDir);
+            }
+            catch { }
         }
 
         /// <summary>
