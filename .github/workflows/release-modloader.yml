@@ -53,6 +53,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $vdbin = "src/CesiumLoader/bin/Release/version.dll"
           if (-not (Test-Path $vdbin)) { throw "version.dll 未生成" }
+          New-Item -ItemType Directory -Path "bin/Release" -Force | Out-Null
           Copy-Item $vdbin "bin/Release/version.dll" -Force   # 统一到仓库根, 供后续步骤引用
           Write-Host "version.dll 已复制到 bin/Release/"
 
