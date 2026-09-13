@@ -176,8 +176,9 @@ cesium verify <mods_dir>                            # 离线预检依赖/版本�
 cesium --help                                       # 全部命令与帮助
 ```
 
-> 提示: `cesium new` 生成的项目模板默认引用仓库内 SDK 相对路径, 请把
-> `CesiumLoader.SDK.dll` 拷到项目 `refs\` 目录并改 csproj 的 HintPath。
+> 提示: `cesium new` 生成的项目自动附带 `refs\CesiumLoader.SDK.dll`（从工具包同目录复制），
+> 开箱即构建。mod 若直接用游戏类型（如 `RoomInfo`/`Battle`），把游戏热更 DLL 放进
+> 项目 `refs\` 目录即可自动引用（csproj 已配 `Condition`）。
 
 ## 开发一个 mod
 

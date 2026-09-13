@@ -165,19 +165,19 @@ jobs:
             "",
             "包含:",
             "- cesium.exe            → mod 脚手架与包分发 CLI (win-x64 自包含, 无需本机 .NET)",
-            "- CesiumLoader.SDK.dll  → mod 开发引用 (编译期绑定, 需配合游戏热更程序集)",
+            "- CesiumLoader.SDK.dll  → mod 开发引用 (编译期绑定; cesium new 会自动附带进项目)",
             "- docs\                 → SDK 文档 (概览/事件/玩家/操作/变速/生命周期/配置/能力声明)",
             "- examples\ActivityLogMod\ → 示例 mod 源码 (行为日志, 最简单)",
             "",
             "快速开始:",
-            "  cesium new MyMod --author 你 --desc ""第一个mod""   # 生成项目模板",
+            "  cesium new MyMod --author 你 --desc ""第一个mod""   # 生成项目模板(SDK 自动附带)",
             "  cesium build MyMod                                  # 构建 (需本机 dotnet SDK)",
             "  cesium package MyMod -o MyMod-1.0.0.zip             # 打包分发",
             "  cesium verify <mods_dir>                            # 离线预检依赖/版本兼容",
             "  cesium --help                                       # 全部命令与帮助",
             "",
-            "提示: 生成的项目模板默认引用 ..\..\..\src\CesiumLoader.SDK\... 相对路径,",
-            "  请把 SDK DLL 拷到你的项目 refs 目录并改 csproj 的 HintPath。"
+            "提示: cesium new 生成的项目自带 refs\CesiumLoader.SDK.dll, 开箱即构建;",
+            "  mod 若直接用游戏类型(如 RoomInfo/Battle), 把游戏热更 DLL 放进 refs\ 即可自动引用。"
           ) -join [Environment]::NewLine
           Set-Content -Path "sdk-staging/README.txt" -Value $readme -Encoding UTF8
 
