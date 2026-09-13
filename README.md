@@ -149,6 +149,35 @@ dotnet run --project tools\smoke\host\BootstrapHostTest.csproj -c Release
 - `src\CesiumLoader.Bootstrap\bin\Release\netstandard2.0\CesiumLoader.Bootstrap.dll`
 - `src\CesiumLoader.SDK\bin\Release\netstandard2.0\CesiumLoader.SDK.dll`
 - `src\ActivityLogMod\bin\Release\netstandard2.0\ActivityLogMod.dll`
+- `tools\cesium\bin\Release\net8.0\cesium.exe` — mod 脚手架与包分发 CLI
+
+## SDK 工具包下载
+
+mod 开发者无需克隆仓库——直接从 Release 下载 **SDK 工具包**（`cesium-sdk-tools.zip`，
+win-x64 自包含，开箱即用）：
+
+```
+https://github.com/higashitaniyume/CesiumLoader/releases/latest/download/cesium-sdk-tools.zip
+```
+
+包含:
+- `cesium.exe` — mod 脚手架与包分发 CLI (自包含, 无需本机 .NET)
+- `CesiumLoader.SDK.dll` — mod 开发引用 (编译期绑定, 需配合游戏热更程序集)
+- `docs\` — SDK 文档 (概览/事件/玩家/操作/变速/生命周期/配置/能力声明)
+- `examples\ActivityLogMod\` — 示例 mod 源码 (行为日志)
+
+快速开始:
+
+```
+cesium new MyMod --author 你 --desc "第一个mod"    # 生成项目模板
+cesium build MyMod                                  # 构建 (需本机 dotnet SDK)
+cesium package MyMod -o MyMod-1.0.0.zip             # 打包分发
+cesium verify <mods_dir>                            # 离线预检依赖/版本兼容
+cesium --help                                       # 全部命令与帮助
+```
+
+> 提示: `cesium new` 生成的项目模板默认引用仓库内 SDK 相对路径, 请把
+> `CesiumLoader.SDK.dll` 拷到项目 `refs\` 目录并改 csproj 的 HintPath。
 
 ## 开发一个 mod
 
@@ -225,16 +254,22 @@ git push origin modloader-0.2.0
 
 `release-modloader.yml` 会:
 1. windows-latest 上 MSBuild 构建 C++ 加载器 (version.dll, 无游戏依赖)
-2. dotnet 现场构建 CesiumLoader.Bootstrap (自包含, 零引用)
+2. dotnet 现场构建 CesiumLoader.Bootstrap (自包含, 零引用) + cesium CLI (SDK 工具包)
 3. 用 `dist\modloader\` 里的预编译 SDK / 示例 mod (游戏热更 DLL 不入库, 故用 dist)
 4. 打包成部署布局 + 生成 `cesium-loader.json` 清单 (版本 / SHA256 / 布局)
+5. 组装 SDK 工具包 (cesium.exe + SDK DLL + 文档 + 示例源码)
 
 产物 (Release 资产):
-- `cesium-loader-v1.0.0.zip` — 带版本号
+- `cesium-loader-v1.0.0.zip` — 加载器部署包 (带版本号)
 - `cesium-loader.zip` — 固定名, 供 `releases/latest/download/cesium-loader.zip` 使用
+- `cesium-sdk-tools-v1.0.0.zip` — SDK 工具包 (带版本号)
+- `cesium-sdk-tools.zip` — 固定名, 供 `releases/latest/download/cesium-sdk-tools.zip` 使用
 
 AstralParty.Toys 的 Mod 管理功能从这个 URL 下载安装:
 `https://github.com/higashitaniyume/CesiumLoader/releases/latest/download/cesium-loader.zip`
+
+mod 开发者从这个 URL 下载 SDK 工具包:
+`https://github.com/higashitaniyume/CesiumLoader/releases/latest/download/cesium-sdk-tools.zip`
 
 更新 SDK / mod 后记得同步 dist (本地构建 → 覆盖 dist → 提交):
 ```

@@ -67,6 +67,17 @@ jobs:
           New-Item -ItemType Directory -Path "dist/modloader/AstralParty_ModLoader/bootstrap" -Force | Out-Null
           Copy-Item $bootstrap "dist/modloader/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll" -Force
 
+      - name: Build SDK tools (cesium CLI)
+        shell: pwsh
+        run: |
+          # cesium CLI: win-x64 自包含单文件(含 .NET 运行时, 开箱即用, 无需本机 dotnet)
+          dotnet publish tools\cesium\CesiumCli.csproj -c Release -r win-x64 `
+            --self-contained true -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true -o sdk-tools --nologo
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path "sdk-tools/cesium.exe")) { throw "cesium.exe 未生成" }
+          Write-Host "cesium.exe 已构建: $((Get-Item 'sdk-tools/cesium.exe').Length) bytes"
+
       - name: Verify dist prerequisites
         shell: pwsh
         run: |
@@ -140,6 +151,36 @@ jobs:
           Write-Host "manifest:"
           Get-Content "staging/cesium-loader.json"
 
+      - name: Stage SDK tools package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "sdk-staging/docs", "sdk-staging/examples/ActivityLogMod" -Force | Out-Null
+          Copy-Item "sdk-tools/cesium.exe" "sdk-staging/cesium.exe" -Force
+          Copy-Item "dist/modloader/sdk/CesiumLoader.SDK.dll" "sdk-staging/CesiumLoader.SDK.dll" -Force
+          Copy-Item "docs/*.md" "sdk-staging/docs/" -Force
+          Copy-Item "src/ActivityLogMod/ModEntry.cs", "src/ActivityLogMod/AssemblyInfo.cs", "src/ActivityLogMod/ActivityLogMod.csproj" "sdk-staging/examples/ActivityLogMod/" -Force
+          # SDK 工具包说明
+          $readme = @(
+            "cesium SDK 工具包 ${{ steps.version.outputs.version }}",
+            "",
+            "包含:",
+            "- cesium.exe            → mod 脚手架与包分发 CLI (win-x64 自包含, 无需本机 .NET)",
+            "- CesiumLoader.SDK.dll  → mod 开发引用 (编译期绑定, 需配合游戏热更程序集)",
+            "- docs\                 → SDK 文档 (概览/事件/玩家/操作/变速/生命周期/配置/能力声明)",
+            "- examples\ActivityLogMod\ → 示例 mod 源码 (行为日志, 最简单)",
+            "",
+            "快速开始:",
+            "  cesium new MyMod --author 你 --desc ""第一个mod""   # 生成项目模板",
+            "  cesium build MyMod                                  # 构建 (需本机 dotnet SDK)",
+            "  cesium package MyMod -o MyMod-1.0.0.zip             # 打包分发",
+            "  cesium verify <mods_dir>                            # 离线预检依赖/版本兼容",
+            "  cesium --help                                       # 全部命令与帮助",
+            "",
+            "提示: 生成的项目模板默认引用 ..\..\..\src\CesiumLoader.SDK\... 相对路径,",
+            "  请把 SDK DLL 拷到你的项目 refs 目录并改 csproj 的 HintPath。"
+          ) -join [Environment]::NewLine
+          Set-Content -Path "sdk-staging/README.txt" -Value $readme -Encoding UTF8
+
       - name: Package zip
         shell: pwsh
         run: |
@@ -147,6 +188,10 @@ jobs:
           Compress-Archive -Path "staging/*" -DestinationPath $zipName -CompressionLevel Optimal
           # 同时生成固定名(latest/download 用), 内容一致
           Copy-Item $zipName "cesium-loader.zip" -Force
+          # SDK 工具包
+          $sdkZip = "cesium-sdk-tools-${{ steps.version.outputs.version }}.zip"
+          Compress-Archive -Path "sdk-staging/*" -DestinationPath $sdkZip -CompressionLevel Optimal
+          Copy-Item $sdkZip "cesium-sdk-tools.zip" -Force
           Get-ChildItem *.zip | Select-Object Name, Length
 
       - name: Upload build artifact
@@ -156,6 +201,8 @@ jobs:
           path: |
             cesium-loader-*.zip
             cesium-loader.zip
+            cesium-sdk-tools-*.zip
+            cesium-sdk-tools.zip
           if-no-files-found: error
           retention-days: 1
 
