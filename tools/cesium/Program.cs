@@ -47,15 +47,10 @@ namespace CesiumCli
                 }
                 Directory.CreateDirectory(dir);
 
-                // 定位 SDK DLL: 优先 cesium.exe 同目录(工具包形态), 否则仓库内相对路径
-                string sdkDll = null;
-                string exeDir = Path.GetDirectoryName(Environment.ProcessPath ?? Environment.GetCommandLineArgs()[0]);
-                if (exeDir != null && File.Exists(Path.Combine(exeDir, "CesiumLoader.SDK.dll")))
-                    sdkDll = Path.Combine(exeDir, "CesiumLoader.SDK.dll");
-                else if (File.Exists(Path.Combine(AppContext.BaseDirectory, "CesiumLoader.SDK.dll")))
-                    sdkDll = Path.Combine(AppContext.BaseDirectory, "CesiumLoader.SDK.dll");
-
-                // 复制 SDK DLL 到项目 refs\ 目录(使项目自包含, 脱离仓库可构建)
+                // 定位 SDK DLL, 复制到项目 refs\(使项目自包含, 脱离仓库可构建):
+                //   1) cesium.exe 同目录(工具包形态)
+                //   2) 向上遍历目录树, 找仓库 src\CesiumLoader.SDK\bin\{Release|Debug}\ 构建产物(源码形态)
+                string sdkDll = FindSdkDll();
                 string refsDir = Path.Combine(dir, "refs");
                 if (sdkDll != null)
                 {
@@ -63,57 +58,28 @@ namespace CesiumCli
                     File.Copy(sdkDll, Path.Combine(refsDir, "CesiumLoader.SDK.dll"), true);
                 }
 
-                // 1. csproj
-                string csproj;
-                if (sdkDll != null)
-                {
-                    // 工具包形态: SDK 引用项目内 refs\; 游戏热更程序集可选(存在才引用)
-                    csproj = $$"""
-                        <Project Sdk="Microsoft.NET.Sdk">
-                          <PropertyGroup>
-                            <TargetFramework>netstandard2.0</TargetFramework>
-                            <AssemblyName>{{name}}</AssemblyName>
-                            <RootNamespace>{{name}}</RootNamespace>
-                            <LangVersion>9.0</LangVersion>
-                          </PropertyGroup>
-                          <ItemGroup>
-                            <!-- CesiumLoader.SDK: 已随项目附带在 refs\ (cesium new 自动复制) -->
-                            <Reference Include="CesiumLoader.SDK">
-                              <HintPath>refs\CesiumLoader.SDK.dll</HintPath>
-                            </Reference>
-                            <!-- 游戏热更程序集(可选): mod 直接用游戏类型时, 把 DLL 放到 refs\ 即可自动引用 -->
-                            <Reference Include="AstralParty.Runtime" Condition="Exists('refs\AstralParty.Runtime.dll')">
-                              <HintPath>refs\AstralParty.Runtime.dll</HintPath>
-                              <Private>false</Private>
-                            </Reference>
-                          </ItemGroup>
-                        </Project>
-                        """;
-                }
-                else
-                {
-                    // 源码形态(仓库内 dotnet run): 回退仓库相对路径, 并提示
-                    csproj = $$"""
-                        <Project Sdk="Microsoft.NET.Sdk">
-                          <PropertyGroup>
-                            <TargetFramework>netstandard2.0</TargetFramework>
-                            <AssemblyName>{{name}}</AssemblyName>
-                            <RootNamespace>{{name}}</RootNamespace>
-                            <LangVersion>9.0</LangVersion>
-                          </PropertyGroup>
-                          <ItemGroup>
-                            <!-- CesiumLoader.SDK: 源码形态, 引用仓库内 SDK 项目产物 -->
-                            <Reference Include="CesiumLoader.SDK">
-                              <HintPath>..\..\..\src\CesiumLoader.SDK\bin\Release\netstandard2.0\CesiumLoader.SDK.dll</HintPath>
-                            </Reference>
-                            <!-- 游戏热更程序集: 从游戏目录或本地副本引用 -->
-                            <Reference Include="AstralParty.Runtime">
-                              <HintPath>..\..\refs\AstralParty.Runtime.dll</HintPath>
-                            </Reference>
-                          </ItemGroup>
-                        </Project>
-                        """;
-                }
+                // 1. csproj (SDK 一律引用项目内 refs\; 游戏热更程序集可选, 存在才引用)
+                string csproj = $$"""
+                    <Project Sdk="Microsoft.NET.Sdk">
+                      <PropertyGroup>
+                        <TargetFramework>netstandard2.0</TargetFramework>
+                        <AssemblyName>{{name}}</AssemblyName>
+                        <RootNamespace>{{name}}</RootNamespace>
+                        <LangVersion>9.0</LangVersion>
+                      </PropertyGroup>
+                      <ItemGroup>
+                        <!-- CesiumLoader.SDK: cesium new 已附带在 refs\ -->
+                        <Reference Include="CesiumLoader.SDK">
+                          <HintPath>refs\CesiumLoader.SDK.dll</HintPath>
+                        </Reference>
+                        <!-- 游戏热更程序集(可选): mod 直接用游戏类型时, 把 DLL 放到 refs\ 即可自动引用 -->
+                        <Reference Include="AstralParty.Runtime" Condition="Exists('refs\AstralParty.Runtime.dll')">
+                          <HintPath>refs\AstralParty.Runtime.dll</HintPath>
+                          <Private>false</Private>
+                        </Reference>
+                      </ItemGroup>
+                    </Project>
+                    """;
                 File.WriteAllText(Path.Combine(dir, name + ".csproj"), csproj);
 
                 // 2. ModEntry.cs
@@ -179,7 +145,7 @@ namespace CesiumCli
                 if (sdkDll != null)
                     Console.WriteLine("  SDK 已附带在 refs\\CesiumLoader.SDK.dll (项目自包含)");
                 else
-                    Console.WriteLine("  ⚠ 未找到 CesiumLoader.SDK.dll, csproj 引用仓库相对路径(源码形态)");
+                    Console.WriteLine("  ⚠ 未找到 CesiumLoader.SDK.dll, 请手动放入项目 refs\\ 目录");
                 Console.WriteLine("  下一步: cesium build " + dir);
                 return 0;
             });
@@ -369,6 +335,42 @@ namespace CesiumCli
             if (string.IsNullOrEmpty(name)) return false;
             if (!char.IsLetter(name[0]) && name[0] != '_') return false;
             return name.All(c => char.IsLetterOrDigit(c) || c == '_');
+        }
+
+        // 定位 CesiumLoader.SDK.dll:
+        //   1) cesium.exe 同目录(工具包形态: cesium.exe 与 SDK DLL 打包在一起)
+        //   2) 从 exe/base 目录向上遍历目录树, 找仓库 src\CesiumLoader.SDK\bin\{Release|Debug}\netstandard2.0\ 构建产物
+        private static string FindSdkDll()
+        {
+            var starts = new List<string>();
+            string procPath = Environment.ProcessPath;
+            if (!string.IsNullOrEmpty(procPath))
+            {
+                string d = Path.GetDirectoryName(procPath);
+                if (!string.IsNullOrEmpty(d)) starts.Add(d);
+            }
+            starts.Add(AppContext.BaseDirectory);
+
+            foreach (var start in starts)
+            {
+                if (string.IsNullOrEmpty(start) || !Directory.Exists(start)) continue;
+                // 1) 同目录
+                string direct = Path.Combine(start, "CesiumLoader.SDK.dll");
+                if (File.Exists(direct)) return direct;
+                // 2) 向上遍历找仓库 SDK 构建产物
+                var dir = new DirectoryInfo(start);
+                while (dir != null)
+                {
+                    foreach (var cfg in new[] { "Release", "Debug" })
+                    {
+                        string cand = Path.Combine(dir.FullName, "src", "CesiumLoader.SDK", "bin", cfg,
+                            "netstandard2.0", "CesiumLoader.SDK.dll");
+                        if (File.Exists(cand)) return cand;
+                    }
+                    dir = dir.Parent;
+                }
+            }
+            return null;
         }
 
         private class ModMeta
