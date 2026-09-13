@@ -11,13 +11,48 @@ namespace CesiumLoader.SDK
 {
     /// <summary>
     /// 游戏事件中枢: 封装全部 RPC 回调 hook, 把原始协议转成简单事件。
-    /// 用法: 订阅事件后, 每秒调用一次 EnsureHooked()(游戏每场战斗会重置回调,
-    /// 检测到新回调就重新包装)。
+    ///
+    /// 事件驱动: 订阅事件后调用一次 EnsureHooked()(或直接订阅, 首次订阅自动启动
+    /// 内部挂钩循环), SDK 内部每 1 秒检查并重新包装回调 —— 游戏每场战斗会重置
+    /// 回调, 检测到新回调就重新包装。mod 无需自己每秒轮询。
+    ///
     /// 安全: 只在确认战斗中才挂钩(避免启动早期强制创建 NetManager 单例崩溃);
     /// 包装后的回调会转发给游戏原回调, 不干扰游戏逻辑。
     /// </summary>
     public static class GameEvents
     {
+        // ---------- 自动挂钩循环 ----------
+
+        private static bool _autoHookStarted;
+
+        /// <summary>
+        /// 启动内部挂钩循环(每 1 秒检查战斗状态并重新包装 RPC 回调)。
+        /// 幂等: 多次调用只启动一次。mod 不需要自己每秒轮询 —— 订阅事件后调一次即可。
+        /// 游戏启动早期(前 30 秒)不挂钩, 避免强制创建 NetManager 单例崩溃。
+        /// </summary>
+        public static void StartAutoHook()
+        {
+            if (_autoHookStarted) return;
+            _autoHookStarted = true;
+            try
+            {
+                AutoHookLoopAsync().Forget();
+            }
+            catch { }
+        }
+
+        private static async UniTaskVoid AutoHookLoopAsync()
+        {
+            // 避开游戏启动早期崩溃窗口(与 ModBase 的 30 秒延迟一致)
+            try { await UniTask.Delay(30000); } catch { return; }
+            while (true)
+            {
+                try { EnsureHooked(); }
+                catch { }
+                try { await UniTask.Delay(1000); } catch { return; }
+            }
+        }
+
         // ---------- 事件 ----------
 
         /// <summary>战斗用牌: (playerId, 真实cardId, 剩余手牌数)。CardId 已从 Guid 反查。</summary>

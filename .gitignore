@@ -385,6 +385,22 @@ tools/smoke/speedtest/*.obj
 tools/smoke/speedtest/bin/
 tools/smoke/speedtest/obj/
 
+# 依赖解析/权限 冒烟测试 (本地编译/运行产物)
+tools/smoke/modmeta_test.exe
+tools/smoke/modmeta_test.obj
+tools/smoke/permtest/bin/
+tools/smoke/permtest/obj/
+tools/smoke/cli_test/
+tools/smoke/cli_v2/
+tools/smoke/basespeed.exe
+tools/smoke/basespeed.obj
+tools/smoke/env3/
+tools/smoke/speedtest/env/
+
+# 脚手架 CLI 构建产物
+tools/cesium/bin/
+tools/cesium/obj/
+
 # 参考资料 (克隆的外部仓库, 不入库)
 tools/reference/
 

@@ -3,6 +3,8 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CesiumLoader", "src\CesiumLoader\CesiumLoader.vcxproj", "{A7B3E5D1-9C2F-4E8B-8D4A-1F3C9B7E5A22}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CesiumCli", "tools\cesium\CesiumCli.csproj", "{9C6A52C5-F6E4-4101-B104-90234509D448}"
+EndProject
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpeedHackMod", "src\SpeedHackMod\SpeedHackMod.csproj", "{0F7F2AA0-3208-4EF3-A8CA-BA59AC84CE4B}"
 EndProject

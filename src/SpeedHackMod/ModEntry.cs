@@ -7,24 +7,27 @@ namespace SpeedHackMod
     /// <summary>
     /// 变速 mod —— 演示 SDK 的 SpeedHack 接口。
     ///
-    /// 作用: 用热键控制游戏时间流速(2x 加速 / 0.5x 减速 / 恢复 1x),
-    ///       也可以设置"基础倍率"让游戏全程保持某个速度。
+    /// 作用: 热键临时控制游戏时间流速(2x 加速 / 0.5x 减速 / 恢复 1x)。
+    /// 基础倍率(游戏启动即变速、全程保持)由原生层 doorstop_config.json 的
+    /// speedhackBaseSpeed 负责, mod 不干预, 避免覆盖。
     ///
     /// ⚠️ 联机对局慎用: 变速影响本地感知的所有时间(动画/回合/网络超时),
     ///    服务器权威时间戳可能检测到异常节奏, 有断线/封号风险。
     ///
     /// 配置(configs/SpeedHackMod.json, 全部可选):
-    ///   Enabled            = true   总开关(false 时 mod 不启动, 变速不生效)
-    ///   BaseSpeed          = 1.0    基础倍率(0.1~10, 1.0=正常)。设为 2.0 则全程 2 倍速
-    ///   SpeedUpKey         = "F1"   加速热键(按住/切换, 见 IsToggle)
+    ///   Enabled            = true   总开关(false 时 mod 不启动, 热键不生效)
+    ///   SpeedUpKey         = "F1"   加速热键(按住生效, 松手恢复基础倍率)
     ///   SpeedUpValue       = 2.0    加速时倍率
     ///   SlowDownKey        = "F2"   减速热键
     ///   SlowDownValue      = 0.5    减速时倍率
     ///   ResetKey           = "F3"   恢复 1x 热键
-    ///   IsToggle           = false  true=按一下切换(再按恢复 BaseSpeed), false=按住生效松手恢复
+    ///   IsToggle           = false  true=按一下切换(再按恢复), false=按住生效松手恢复
     ///   ReloadConfigOnTick = false  每次 tick 重读配置(改配置即时生效)
+    ///
+    /// 全程保持倍率: 编辑 AstralParty_ModLoader\doorstop_config.json,
+    /// 设 "speedhackBaseSpeed": 2.0 (范围 (0,100], 1.0=正常)。
     /// </summary>
-    [ModManifest("游戏变速", "1.0.0", "CesiumLoader", "热键控制游戏时间流速(SpeedHack SDK 接口示例)")]
+    // 元数据已移到 AssemblyInfo.cs(程序集级声明, 权威位置)
     public static class ModEntry
     {
         private static SpeedHackConfig _cfg = new SpeedHackConfig();
@@ -48,14 +51,9 @@ namespace SpeedHackMod
                 return;
             }
 
-            SdkLog.Info("SpeedHack", $"变速引擎可用, 当前倍率 {SpeedHack.Speed:F1}");
-
-            // 基础倍率: 全程保持
-            if (cfg.BaseSpeed > 0.01 && Math.Abs(cfg.BaseSpeed - 1.0) > 0.01)
-            {
-                if (SpeedHack.SetSpeed(cfg.BaseSpeed))
-                    SdkLog.Info("SpeedHack", $"基础倍率已设置: {cfg.BaseSpeed:F1}x");
-            }
+            // 基础倍率由原生层 doorstop_config.json 的 speedhackBaseSpeed 负责
+            // (游戏启动即应用, 全程保持), mod 不干预, 避免覆盖原生倍率。
+            SdkLog.Info("SpeedHack", $"变速引擎可用, 当前倍率 {SpeedHack.Speed:F1} (基础倍率见 doorstop_config.json speedhackBaseSpeed)");
 
             ModBase.Run(OnInit, OnTick, delayMs: 5000, tag: "SpeedHack");
         }
@@ -64,6 +62,7 @@ namespace SpeedHackMod
         {
             SdkLog.Info("SpeedHack", "=== SpeedHack 就绪 ===");
             SdkLog.Info("SpeedHack", $"热键: {_cfg.SpeedUpKey}={_cfg.SpeedUpValue}x  {_cfg.SlowDownKey}={_cfg.SlowDownValue}x  {_cfg.ResetKey}=恢复1x  ({(_cfg.IsToggle ? "切换" : "按住")}模式)");
+            SdkLog.Info("SpeedHack", $"当前倍率 {SpeedHack.Speed:F1}x (按住热键临时变速, 松手恢复)");
         }
 
         private static void OnTick()
@@ -77,11 +76,12 @@ namespace SpeedHackMod
                 }
 
                 // 热键轮询(GetAsyncKeyState: 前台窗口按键即生效, 无需聚焦游戏)
+                // 只在热键按下时变速; 松手后不干预, 保持原生层基础倍率。
                 bool speedUp = IsKeyDown(_cfg.SpeedUpKey);
                 bool slowDown = IsKeyDown(_cfg.SlowDownKey);
                 bool reset = IsKeyDown(_cfg.ResetKey);
 
-                double target = _cfg.BaseSpeed > 0.01 ? _cfg.BaseSpeed : 1.0;
+                double target = 0.0;   // 0 = 不干预
 
                 if (reset)
                 {
@@ -95,14 +95,9 @@ namespace SpeedHackMod
                 {
                     target = _cfg.SlowDownValue;
                 }
-                else if (!_cfg.IsToggle)
-                {
-                    // 按住模式: 松手恢复基础倍率
-                    target = _cfg.BaseSpeed > 0.01 ? _cfg.BaseSpeed : 1.0;
-                }
 
                 // 只在倍率变化时调用(避免每 tick 写日志)
-                if (Math.Abs(target - SpeedHack.Speed) > 0.001)
+                if (target > 0.0 && Math.Abs(target - SpeedHack.Speed) > 0.001)
                 {
                     if (SpeedHack.SetSpeed(target))
                         SdkLog.Info("SpeedHack", $"倍率 -> {target:F1}x");

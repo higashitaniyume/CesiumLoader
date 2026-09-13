@@ -35,19 +35,37 @@ namespace CesiumLoader.SDK
                 Directory.CreateDirectory(modsDir);
 
                 var sidecar = Path.Combine(modsDir, modName + ".json");
-                File.WriteAllText(sidecar, Serialize(manifest));
+                File.WriteAllText(sidecar, Serialize(manifest, modName));
             }
             catch { }
         }
 
-        /// <summary>把 ModManifest 转成 JSON(与外部读取器同一格式)。</summary>
-        public static string Serialize(ModManifestAttribute m)
+        /// <summary>把 ModManifest 转成 JSON(与外部读取器同一格式)。
+        /// "id" 是程序集名(依赖解析用它), "name" 是显示名。</summary>
+        public static string Serialize(ModManifestAttribute m, string assemblyName = null)
         {
             var sb = new StringBuilder();
-            sb.Append("{\"name\":").Append(JsonString(m.Name));
+            sb.Append("{\"id\":").Append(JsonString(assemblyName ?? m.Name));
+            sb.Append(",\"name\":").Append(JsonString(m.Name));
             sb.Append(",\"version\":").Append(JsonString(m.Version));
             sb.Append(",\"author\":").Append(JsonString(m.Author));
             sb.Append(",\"description\":").Append(JsonString(m.Description));
+            sb.Append(",\"permissions\":").Append((int)m.Permissions);
+            sb.Append(",\"sdkVersion\":").Append(JsonString(m.SdkVersion));
+            // 依赖
+            sb.Append(",\"dependencies\":[");
+            if (m.Dependencies != null)
+            {
+                bool first = true;
+                foreach (var d in m.Dependencies)
+                {
+                    if (!first) sb.Append(',');
+                    first = false;
+                    sb.Append("{\"id\":").Append(JsonString(d.Id));
+                    sb.Append(",\"minVersion\":").Append(JsonString(d.MinVersion)).Append('}');
+                }
+            }
+            sb.Append(']');
             sb.Append('}');
             return sb.ToString();
         }

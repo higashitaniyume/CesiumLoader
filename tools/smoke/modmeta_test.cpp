@@ -1,0 +1,128 @@
+// modmeta_test.cpp - 依赖解析/版本协商单元测试 (纯 C++, 不依赖游戏/il2cpp)
+// 编译: cl /nologo /std:c++17 /EHsc modmeta_test.cpp ..\..\src\CesiumLoader\modmeta.cpp /Fe:modmeta_test.exe
+#include "../../src/CesiumLoader/modmeta.h"
+#include <cstdio>
+#include <string>
+#include <vector>
+#include <map>
+
+static int g_fail = 0;
+static void check(bool cond, const char* what)
+{
+    if (!cond) { printf("  [FAIL] %s\n", what); g_fail++; }
+    else { printf("  [PASS] %s\n", what); }
+}
+
+static std::string join(const std::vector<std::string>& v)
+{
+    std::string s;
+    for (size_t i = 0; i < v.size(); i++)
+    {
+        if (i) s += ",";
+        s += v[i];
+    }
+    return s;
+}
+
+int main()
+{
+    printf("=== sidecar 解析 ===\n");
+    {
+        auto m = cesium::parse_sidecar(
+            "{\"id\":\"ModB\",\"name\":\"B\",\"version\":\"1.2.0\",\"sdkVersion\":\"2.0.0\","
+            "\"dependencies\":[{\"id\":\"ModA\",\"minVersion\":\"1.0.0\"}]}");
+        check(m.hasSidecar, "解析成功");
+        check(m.id == "ModB", "id=ModB");
+        check(m.version == "1.2.0", "version=1.2.0");
+        check(m.sdkVersion == "2.0.0", "sdkVersion=2.0.0");
+        check(m.deps.size() == 1 && m.deps[0].id == "ModA" && m.deps[0].minVersion == "1.0.0",
+            "deps=[ModA>=1.0.0]");
+    }
+    {
+        auto m = cesium::parse_sidecar("");   // 空
+        check(!m.hasSidecar, "空 sidecar = 无声明");
+    }
+    {
+        // 旧格式(无 id)回退 name
+        auto m = cesium::parse_sidecar("{\"name\":\"LegacyMod\",\"version\":\"1.0.0\"}");
+        check(m.hasSidecar && m.id == "LegacyMod", "旧格式 id 回退 name");
+    }
+
+    printf("=== semver 比较 ===\n");
+    check(cesium::semver_compare("1.0.0", "1.0.0") == 0, "1.0.0 == 1.0.0");
+    check(cesium::semver_compare("2.0.0", "1.9.9") > 0, "2.0.0 > 1.9.9");
+    check(cesium::semver_compare("1.0.1", "1.0.0") > 0, "1.0.1 > 1.0.0");
+    check(cesium::semver_compare("1.1.0", "1.10.0") < 0, "1.1.0 < 1.10.0");
+    check(cesium::semver_compare("2.0.0", "2.0.0-beta") == 0, "忽略预发布后缀");
+
+    printf("=== 依赖拓扑排序 ===\n");
+    {
+        // A 无依赖, B 依赖 A, C 依赖 B → 顺序 A,B,C
+        std::vector<std::string> stems = {"C", "A", "B"};
+        std::map<std::string, cesium::ModMeta> metas;
+        metas["B"] = cesium::parse_sidecar(
+            "{\"id\":\"B\",\"version\":\"1.0.0\",\"dependencies\":[{\"id\":\"A\"}]}");
+        metas["C"] = cesium::parse_sidecar(
+            "{\"id\":\"C\",\"version\":\"1.0.0\",\"dependencies\":[{\"id\":\"B\"}]}");
+        std::vector<std::string> rejected;
+        auto order = cesium::sort_mods_by_deps(stems, metas, "2.0.0", &rejected);
+        check(join(order) == "A,B,C", ("顺序 A,B,C (实际 " + join(order) + ")").c_str());
+        check(rejected.empty(), "无拒绝");
+    }
+    {
+        // 缺失依赖: B 依赖 Missing → B 被拒, A 保留
+        std::vector<std::string> stems = {"A", "B"};
+        std::map<std::string, cesium::ModMeta> metas;
+        metas["B"] = cesium::parse_sidecar(
+            "{\"id\":\"B\",\"version\":\"1.0.0\",\"dependencies\":[{\"id\":\"Missing\"}]}");
+        std::vector<std::string> rejected;
+        auto order = cesium::sort_mods_by_deps(stems, metas, "2.0.0", &rejected);
+        check(join(order) == "A", ("A 保留 (实际 " + join(order) + ")").c_str());
+        check(rejected.size() == 1 && rejected[0] == "B", "B 被拒");
+    }
+    {
+        // 循环依赖: A↔B → 两者都被拒
+        std::vector<std::string> stems = {"A", "B"};
+        std::map<std::string, cesium::ModMeta> metas;
+        metas["A"] = cesium::parse_sidecar(
+            "{\"id\":\"A\",\"version\":\"1.0.0\",\"dependencies\":[{\"id\":\"B\"}]}");
+        metas["B"] = cesium::parse_sidecar(
+            "{\"id\":\"B\",\"version\":\"1.0.0\",\"dependencies\":[{\"id\":\"A\"}]}");
+        std::vector<std::string> rejected;
+        auto order = cesium::sort_mods_by_deps(stems, metas, "2.0.0", &rejected);
+        check(order.empty(), "循环依赖全部拒绝");
+    }
+    {
+        // SDK 版本协商: mod 要求 3.0.0 > 当前 2.0.0 → 拒绝
+        std::vector<std::string> stems = {"NewMod"};
+        std::map<std::string, cesium::ModMeta> metas;
+        metas["NewMod"] = cesium::parse_sidecar(
+            "{\"id\":\"NewMod\",\"version\":\"1.0.0\",\"sdkVersion\":\"3.0.0\"}");
+        std::vector<std::string> rejected;
+        auto order = cesium::sort_mods_by_deps(stems, metas, "2.0.0", &rejected);
+        check(order.empty(), "SDK 版本不符拒绝");
+        check(rejected.size() == 1 && rejected[0] == "NewMod", "NewMod 被拒");
+    }
+    {
+        // 依赖版本过低: B 要求 A>=2.0, 但 A 是 1.0 → B 拒绝
+        std::vector<std::string> stems = {"A", "B"};
+        std::map<std::string, cesium::ModMeta> metas;
+        metas["A"] = cesium::parse_sidecar("{\"id\":\"A\",\"version\":\"1.0.0\"}");
+        metas["B"] = cesium::parse_sidecar(
+            "{\"id\":\"B\",\"version\":\"1.0.0\",\"dependencies\":[{\"id\":\"A\",\"minVersion\":\"2.0.0\"}]}");
+        std::vector<std::string> rejected;
+        auto order = cesium::sort_mods_by_deps(stems, metas, "2.0.0", &rejected);
+        check(join(order) == "A", ("A 保留 (实际 " + join(order) + ")").c_str());
+        check(rejected.size() == 1 && rejected[0] == "B", "B 版本过低被拒");
+    }
+    {
+        // 无 sidecar 的 mod 照常加载
+        std::vector<std::string> stems = {"Legacy"};
+        std::map<std::string, cesium::ModMeta> metas;
+        auto order = cesium::sort_mods_by_deps(stems, metas, "2.0.0", nullptr);
+        check(join(order) == "Legacy", "无声明 mod 照常加载");
+    }
+
+    printf("\n%s (%d 失败)\n", g_fail == 0 ? "全部通过" : "有失败", g_fail);
+    return g_fail == 0 ? 0 : 1;
+}

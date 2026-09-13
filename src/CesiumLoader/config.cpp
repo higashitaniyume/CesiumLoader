@@ -55,6 +55,15 @@ unsigned json_uint(const std::string& json, const char* key, unsigned def)
     return static_cast<unsigned>(v);
 }
 
+double json_double(const std::string& json, const char* key, double def)
+{
+    size_t pos = value_start(json, key);
+    if (pos == std::string::npos) return def;
+    double v = strtod(json.c_str() + pos, nullptr);
+    if (v <= 0.0 || v > 100.0) return def;   // 防御: 倍率范围 (0, 100]
+    return v;
+}
+
 std::string json_string(const std::string& json, const char* key, const std::string& def)
 {
     size_t pos = value_start(json, key);
@@ -103,6 +112,8 @@ LoaderConfig load_config(const std::wstring& config_path)
     cfg.consoleEnabled = json_bool(json, "consoleEnabled", true);
     cfg.consoleTopmost = json_bool(json, "consoleTopmost", true);
     cfg.forwardActivityLog = json_bool(json, "forwardActivityLog", true);
+    cfg.speedhackBaseSpeed = json_double(json, "speedhackBaseSpeed", 1.0);
+    cfg.sdkVersion = json_string(json, "sdkVersion", cfg.sdkVersion);
 
     // 记录加载到的配置, 便于排查
     log_line("[config] enabled=" + std::string(cfg.enabled ? "true" : "false"));

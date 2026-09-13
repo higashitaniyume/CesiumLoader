@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <AssemblyName>PermTest</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- 只引用 SDK(其中 Permissions/ModManifest 纯托管, 不依赖游戏程序集) -->
+    <ProjectReference Include="..\..\..\src\CesiumLoader.SDK\CesiumLoader.SDK.csproj" />
+  </ItemGroup>
+</Project>

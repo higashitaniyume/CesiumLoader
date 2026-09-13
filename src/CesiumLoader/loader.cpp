@@ -17,14 +17,22 @@
 
 #include "config.h"
 #include "speedhack.h"
+#include "modmeta.h"
+#include "il2cpp_safe.h"
 
 #include <tlhelp32.h>
 #include <vector>
 #include <filesystem>
 #include <fstream>
 #include <cstring>
+#include <cstdio>
+#include <string>
+#include <map>
 
 namespace fs = std::filesystem;
+
+// IL2CPP 安全封装的运行时错误缓冲(定义)
+namespace cesium_safe { std::string g_last_error; }
 
 // ---------- IL2CPP 导出函数类型 ----------
 
@@ -81,6 +89,9 @@ static std::string utf8_from_wide(const wchar_t* w)
 
 static Il2Cpp g_il2cpp;
 
+// IL2CPP 安全封装用的函数表(由 get_il2cpp 填充)
+static cesium_safe::il2cpp_tbl g_safe_il2cpp;
+
 static bool get_il2cpp(HMODULE game_assembly)
 {
     auto* p = g_il2cpp.domain_get = reinterpret_cast<Il2CppDomain* (*)()>(load_symbol(game_assembly, "il2cpp_domain_get"));
@@ -105,12 +116,37 @@ static bool get_il2cpp(HMODULE game_assembly)
     g_il2cpp.exception_get_message = reinterpret_cast<Il2CppString* (*)(Il2CppException*)>(load_symbol(game_assembly, "il2cpp_exception_get_message"));
     g_il2cpp.string_chars = reinterpret_cast<const wchar_t* (*)(Il2CppString*)>(load_symbol(game_assembly, "il2cpp_string_chars"));
     // 关键导出缺失即视为失败
-    return g_il2cpp.domain_get && g_il2cpp.assembly_get_image && g_il2cpp.image_get_assembly &&
-           g_il2cpp.class_from_name && g_il2cpp.class_get_method_from_name && g_il2cpp.class_get_methods &&
-           g_il2cpp.method_get_name && g_il2cpp.method_get_param && g_il2cpp.method_get_param_count &&
-           g_il2cpp.runtime_invoke && g_il2cpp.thread_attach && g_il2cpp.domain_get_assemblies &&
-           g_il2cpp.image_get_name && g_il2cpp.get_corlib && g_il2cpp.type_get_name &&
-           g_il2cpp.array_class_get && g_il2cpp.array_new && g_il2cpp.array_object_header_size;
+    bool ok = g_il2cpp.domain_get && g_il2cpp.assembly_get_image && g_il2cpp.image_get_assembly &&
+              g_il2cpp.class_from_name && g_il2cpp.class_get_method_from_name && g_il2cpp.class_get_methods &&
+              g_il2cpp.method_get_name && g_il2cpp.method_get_param && g_il2cpp.method_get_param_count &&
+              g_il2cpp.runtime_invoke && g_il2cpp.thread_attach && g_il2cpp.domain_get_assemblies &&
+              g_il2cpp.image_get_name && g_il2cpp.get_corlib && g_il2cpp.type_get_name &&
+              g_il2cpp.array_class_get && g_il2cpp.array_new && g_il2cpp.array_object_header_size;
+    if (ok)
+    {
+        // 填充安全封装用的函数表(独立于 Il2Cpp 结构, 避免布局耦合)
+        g_safe_il2cpp.domain_get = reinterpret_cast<void* (*)()>(g_il2cpp.domain_get);
+        g_safe_il2cpp.assembly_get_image = reinterpret_cast<void* (*)(void*)>(g_il2cpp.assembly_get_image);
+        g_safe_il2cpp.image_get_assembly = reinterpret_cast<void* (*)(void*)>(g_il2cpp.image_get_assembly);
+        g_safe_il2cpp.class_from_name = reinterpret_cast<void* (*)(void*, const char*, const char*)>(g_il2cpp.class_from_name);
+        g_safe_il2cpp.class_get_method_from_name = reinterpret_cast<void* (*)(void*, const char*, int)>(g_il2cpp.class_get_method_from_name);
+        g_safe_il2cpp.class_get_methods = reinterpret_cast<void* (*)(void*, void**)>(g_il2cpp.class_get_methods);
+        g_safe_il2cpp.method_get_name = reinterpret_cast<const char* (*)(void*)>(g_il2cpp.method_get_name);
+        g_safe_il2cpp.method_get_param = reinterpret_cast<void* (*)(void*, uint32_t)>(g_il2cpp.method_get_param);
+        g_safe_il2cpp.method_get_param_count = reinterpret_cast<uint32_t (*)(void*)>(g_il2cpp.method_get_param_count);
+        g_safe_il2cpp.runtime_invoke = reinterpret_cast<void* (*)(void*, void*, void**, void**)>(g_il2cpp.runtime_invoke);
+        g_safe_il2cpp.thread_attach = reinterpret_cast<void* (*)(void*)>(g_il2cpp.thread_attach);
+        g_safe_il2cpp.domain_get_assemblies = reinterpret_cast<void** (*)(void*, size_t*)>(g_il2cpp.domain_get_assemblies);
+        g_safe_il2cpp.image_get_name = reinterpret_cast<const char* (*)(void*)>(g_il2cpp.image_get_name);
+        g_safe_il2cpp.get_corlib = reinterpret_cast<void* (*)()>(g_il2cpp.get_corlib);
+        g_safe_il2cpp.type_get_name = reinterpret_cast<const char* (*)(void*)>(g_il2cpp.type_get_name);
+        g_safe_il2cpp.array_class_get = reinterpret_cast<void* (*)(void*, uint32_t)>(g_il2cpp.array_class_get);
+        g_safe_il2cpp.array_new = reinterpret_cast<void* (*)(void*, size_t)>(g_il2cpp.array_new);
+        g_safe_il2cpp.array_object_header_size = reinterpret_cast<size_t (*)()>(g_il2cpp.array_object_header_size);
+        g_safe_il2cpp.exception_get_message = reinterpret_cast<void* (*)(void*)>(g_il2cpp.exception_get_message);
+        g_safe_il2cpp.string_chars = reinterpret_cast<const wchar_t* (*)(void*)>(g_il2cpp.string_chars);
+    }
+    return ok;
 }
 
 // ---------- 进程/模块查找 ----------
@@ -153,18 +189,11 @@ static HMODULE wait_module(const wchar_t* name, DWORD timeout_secs)
 
 static bool hybridclr_ready(Il2CppDomain* domain)
 {
-    size_t count = 0;
-    Il2CppAssembly** p = g_il2cpp.domain_get_assemblies(domain, &count);
-    if (!p) return false;
-    for (size_t i = 0; i < count; i++)
+    // 安全封装: 枚举域内程序集(空检查 + 错误缓冲)
+    auto names = cesium_safe::safe_list_assembly_names(g_safe_il2cpp);
+    for (auto& n : names)
     {
-        Il2CppAssembly* asm_ = p[i];
-        if (!asm_) continue;
-        void* image = g_il2cpp.assembly_get_image(asm_);
-        if (!image) continue;
-        const char* n = g_il2cpp.image_get_name(image);
-        if (!n) continue;
-        if (strstr(n, "AstralParty.Runtime")) return true;
+        if (n.find("AstralParty.Runtime") != std::string::npos) return true;
     }
     return false;
 }
@@ -292,24 +321,15 @@ static bool run_entry(Il2CppAssembly* asm_, const char* entry_type, const char* 
     Il2CppMethod* method = g_il2cpp.class_get_method_from_name(cls, entry_method, 0);
     if (!method) { err_msg = "entry method not found: " + std::string(entry_method); return false; }
 
-    Il2CppException* exc = nullptr;
-    g_il2cpp.runtime_invoke(method, nullptr, nullptr, &exc);
-    if (exc)
+    // 安全封装: runtime_invoke 带空检查 + 异常转译(错误在 g_last_error)
+    cesium_safe::g_last_error.clear();
+    void* r = cesium_safe::safe_invoke_static(g_safe_il2cpp, method, nullptr, nullptr, "run_entry");
+    if (cesium_safe::g_last_error.empty())
     {
-        // 取异常消息(ClassName: Message)，方便定位 mod 入口失败原因
-        if (g_il2cpp.exception_get_message && g_il2cpp.string_chars)
-        {
-            Il2CppString* msg = g_il2cpp.exception_get_message(exc);
-            if (msg)
-            {
-                const wchar_t* w = g_il2cpp.string_chars(msg);
-                if (w) { err_msg = "entry threw exception: " + utf8_from_wide(w); return false; }
-            }
-        }
-        err_msg = "entry threw exception (no message)";
-        return false;
+        return true;
     }
-    return true;
+    err_msg = cesium_safe::g_last_error;
+    return false;
 }
 
 // ---------- 日志转发线程(activity-mod.log -> 控制台) ----------
@@ -378,7 +398,33 @@ static DWORD WINAPI forward_activity_log(LPVOID param)
     return 0;
 }
 
+// ---------- mod 元数据 (sidecar) 解析 + 依赖解析 ----------
+// 实现见 modmeta.h/cpp (纯标准库, 可单元测试)。
+// 原生层不读托管 attribute(需要反射), 依赖/版本信息全部来自 sidecar;
+// 无 sidecar 的 mod 视为"无声明", 按文件名排序加载(兼容旧 mod)。
+
 // ---------- 引导线程 ----------
+
+// 故障体验: 把 mod 加载/入口失败写入 logs\mod-errors.log(与 SDK ReportCrash 同一文件)。
+// 即使 mod 自身崩溃抛异常, 这里也能记录"哪个 mod 失败 + 原因", 方便定位。
+static void write_mod_error(const std::wstring& logs_dir, const std::string& mod_name, const std::string& reason)
+{
+    try
+    {
+        fs::create_directories(logs_dir);
+        fs::path p = fs::path(logs_dir) / L"mod-errors.log";
+        std::ofstream out(p, std::ios::app);
+        if (!out) return;
+        SYSTEMTIME st;
+        GetLocalTime(&st);
+        char buf[64];
+        sprintf_s(buf, sizeof(buf), "%04d-%02d-%02d %02d:%02d:%02d.%03d",
+                  st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+        out << "[" << buf << "] [" << mod_name << "] " << reason << "\r\n";
+        out << std::string(60, '-') << "\r\n";
+    }
+    catch (...) {}
+}
 
 static void set_env_w(const wchar_t* name, const std::wstring& value)
 {
@@ -391,11 +437,6 @@ static DWORD WINAPI boot_thread(LPVOID)
     // 进程初始化期间所有 DLL 的 DllMain 通常在几百 ms 内完成, 睡 1500ms 足够避开。
     // 若由首次转发调用触发(进程早已初始化), 这一觉无副作用。
     Sleep(1500);
-
-    // 变速引擎: 在 loader lock 释放后安装 hook(不在 DllMain 里做, 避免
-    // ERROR_DLL_INIT_FAILED / 内存竞态)。游戏进程已初始化, hook 生效后
-    // 游戏感知的时间从此刻开始缩放。
-    speedhack_init();
 
     ULONGLONG started = GetTickCount64();
 
@@ -414,6 +455,21 @@ static DWORD WINAPI boot_thread(LPVOID)
     {
         log_line("[hijack] doorstop_config.json enabled=false, 跳过引导");
         return 0;
+    }
+
+    // 3.5 变速引擎: 在 loader lock 释放后安装 hook(不在 DllMain 里做, 避免
+    // ERROR_DLL_INIT_FAILED / 内存竞态)。游戏进程已初始化, hook 生效后
+    // 游戏感知的时间从此刻开始缩放。
+    speedhack_init();
+
+    // 3.6 基础倍率: 若配置了非 1.0 倍率, 立即应用并一直保持
+    // (游戏启动即变速, 无需等 mod 初始化)。
+    if (cfg.speedhackBaseSpeed > 0.0 && cfg.speedhackBaseSpeed != 1.0)
+    {
+        if (speedhack_set_speed(cfg.speedhackBaseSpeed))
+            log_line("[hijack] 基础倍率已应用: " + std::to_string(cfg.speedhackBaseSpeed) + "x (全程保持)");
+        else
+            log_line("[hijack] 基础倍率应用失败: " + std::to_string(cfg.speedhackBaseSpeed));
     }
 
     // 4. 等待 GameAssembly.dll
@@ -528,27 +584,57 @@ static DWORD WINAPI boot_thread(LPVOID)
         if (entry.is_regular_file() && _stricmp(entry.path().extension().string().c_str(), ".dll") == 0)
             dlls.push_back(entry.path());
     }
-    std::sort(dlls.begin(), dlls.end());
-    log_line("[hijack] 发现 " + std::to_string(dlls.size()) + " 个 DLL");
+
+    // 读所有 sidecar(mods\{name}.json), 用于依赖解析 + SDK 版本协商
+    std::map<std::string, cesium::ModMeta> metas;
+    for (auto& dll : dlls)
+    {
+        std::string n = dll.stem().string();
+        fs::path sidecar = dll.parent_path() / (n + ".json");
+        if (fs::exists(sidecar))
+        {
+            cesium::ModMeta m = cesium::parse_sidecar(cesium::read_sidecar_text(sidecar.string()));
+            if (m.hasSidecar) metas[n] = m;
+        }
+    }
+
+    // 按依赖拓扑排序 + SDK 版本检查 + 缺失依赖报告
+    std::vector<fs::path> original_dlls = dlls;   // 保留原始路径列表
+    std::vector<std::string> stems;
+    for (auto& d : dlls) stems.push_back(d.stem().string());
+    std::vector<std::string> rejected;
+    std::vector<std::string> ordered = cesium::sort_mods_by_deps(stems, metas, cfg.sdkVersion, &rejected);
+    for (auto& r : rejected)
+        log_line("[hijack] " + r + " 被跳过 (缺失依赖/SDK 版本不符/循环依赖)");
+    dlls.clear();
+    for (auto& name : ordered)
+    {
+        for (auto& d : original_dlls)
+            if (d.stem().string() == name) { dlls.push_back(d); break; }
+    }
+    log_line("[hijack] 发现 " + std::to_string(dlls.size()) + " 个 DLL (依赖解析后)");
 
     for (auto& dll : dlls)
     {
         std::string name = dll.stem().string();
         std::ifstream in(dll, std::ios::binary);
-        if (!in) { log_line("[hijack] 读取 " + name + " 失败"); continue; }
+        if (!in) { log_line("[hijack] 读取 " + name + " 失败"); write_mod_error(logs, name, "读取 DLL 失败"); continue; }
         std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
         log_line("[hijack] 尝试加载 " + name + ": " + std::to_string(bytes.size()) + " bytes");
 
         std::string err;
         Il2CppAssembly* asm_ = load_assembly_bytes(domain, bytes, err);
-        if (!asm_) { log_line("[hijack] " + name + " Assembly.Load 失败: " + err); continue; }
+        if (!asm_) { log_line("[hijack] " + name + " Assembly.Load 失败: " + err); write_mod_error(logs, name, "Assembly.Load 失败: " + err); continue; }
         log_line("[hijack] " + name + " Assembly.Load(byte[]) 成功");
 
         std::string entry_type = name + ".ModEntry";
         if (run_entry(asm_, entry_type.c_str(), "Main", err))
             log_line("[hijack] " + name + " 入口执行成功");
         else
+        {
             log_line("[hijack] " + name + " 入口失败: " + err);
+            write_mod_error(logs, name, "入口执行失败: " + err);
+        }
     }
     log_line("[hijack] 引导线程结束");
 
