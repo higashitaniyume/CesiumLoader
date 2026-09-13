@@ -64,6 +64,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $bootstrap = "src/CesiumLoader.Bootstrap/bin/Release/netstandard2.0/CesiumLoader.Bootstrap.dll"
           if (-not (Test-Path $bootstrap)) { throw "CesiumLoader.Bootstrap.dll 未生成" }
+          New-Item -ItemType Directory -Path "dist/modloader/AstralParty_ModLoader/bootstrap" -Force | Out-Null
           Copy-Item $bootstrap "dist/modloader/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll" -Force
 
       - name: Verify dist prerequisites
