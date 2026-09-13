@@ -48,7 +48,8 @@ jobs:
       - name: Build C++ loader (version.dll)
         shell: pwsh
         run: |
-          & msbuild $env:SOLUTION /p:Configuration=Release /p:Platform=x64 /m /nologo /v:minimal
+          # 只构建 C++ 加载器(vcxproj), 不构建 sln —— sln 里还有 C# 项目(需 restore)
+          & msbuild src\CesiumLoader\CesiumLoader.vcxproj /p:Configuration=Release /p:Platform=x64 /m /nologo /v:minimal
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (-not (Test-Path "bin/Release/version.dll")) { throw "version.dll 未生成" }
 

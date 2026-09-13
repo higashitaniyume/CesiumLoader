@@ -6,8 +6,6 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CesiumLoader", "src\CesiumL
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CesiumCli", "tools\cesium\CesiumCli.csproj", "{9C6A52C5-F6E4-4101-B104-90234509D448}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpeedHackMod", "src\SpeedHackMod\SpeedHackMod.csproj", "{0F7F2AA0-3208-4EF3-A8CA-BA59AC84CE4B}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CesiumLoader.SDK", "src\CesiumLoader.SDK\CesiumLoader.SDK.csproj", "{B8C4F6E2-0D3A-5F9C-9E5B-2A4D0C8F6B33}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CesiumLoader.Bootstrap", "src\CesiumLoader.Bootstrap\CesiumLoader.Bootstrap.csproj", "{D1A6B4C2-3E5F-7A8B-9C0D-1E2F3A4B5C6D}"
@@ -28,10 +26,6 @@ Global
 		{9C6A52C5-F6E4-4101-B104-90234509D448}.Debug|x64.Build.0 = Debug|Any CPU
 		{9C6A52C5-F6E4-4101-B104-90234509D448}.Release|x64.ActiveCfg = Release|Any CPU
 		{9C6A52C5-F6E4-4101-B104-90234509D448}.Release|x64.Build.0 = Release|Any CPU
-		{0F7F2AA0-3208-4EF3-A8CA-BA59AC84CE4B}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{0F7F2AA0-3208-4EF3-A8CA-BA59AC84CE4B}.Debug|x64.Build.0 = Debug|Any CPU
-		{0F7F2AA0-3208-4EF3-A8CA-BA59AC84CE4B}.Release|x64.ActiveCfg = Release|Any CPU
-		{0F7F2AA0-3208-4EF3-A8CA-BA59AC84CE4B}.Release|x64.Build.0 = Release|Any CPU
 		{B8C4F6E2-0D3A-5F9C-9E5B-2A4D0C8F6B33}.Debug|x64.ActiveCfg = Debug|Any CPU
 		{B8C4F6E2-0D3A-5F9C-9E5B-2A4D0C8F6B33}.Debug|x64.Build.0 = Debug|Any CPU
 		{B8C4F6E2-0D3A-5F9C-9E5B-2A4D0C8F6B33}.Release|x64.ActiveCfg = Release|Any CPU
