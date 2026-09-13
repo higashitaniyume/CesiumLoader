@@ -9,7 +9,7 @@
 // loader lock), 流程:
 //   1. 读取 doorstop_config.json(enabled 开关/超时/控制台)
 //   2. 等待 GameAssembly.dll + IL2CPP + HybridCLR 热更就绪
-//   3. 原生加载 sdk\*.dll → mods\*.dll → 调用 {文件名}.ModEntry.Main()
+//   3. 原生加载 sdk\*.dll → mods\{ModId}\{ModId}.dll → 调用 {文件名}.ModEntry.Main()
 //      (useManagedBootstrap=true 时改走托管 Bootstrap 编排, 实验特性)
 //   4. 启动 activity-mod.log → 控制台 转发线程
 //
@@ -31,6 +31,21 @@
 void log_line(const char* msg);
 void log_line(const std::string& msg);
 void log_line(const std::wstring& msg);
+
+// ---------- 彩色分级日志(行业标准风格) ----------
+// 颜色码 = Windows 控制台文本属性(FOREGROUND_* 组合)。
+// 用法: console_set_color(LOG_CYAN); log_line("..."); console_set_color(LOG_DEFAULT);
+enum LogColor : WORD
+{
+    LOG_DEFAULT = 0x07,   // 灰白(默认)
+    LOG_DIM     = 0x08,   // 暗灰(次要信息)
+    LOG_GREEN   = 0x0A,   // 亮绿(成功)
+    LOG_CYAN    = 0x0B,   // 亮青(标题/分组)
+    LOG_RED     = 0x0C,   // 亮红(失败/错误)
+    LOG_YELLOW  = 0x0E,   // 亮黄(警告)
+    LOG_WHITE   = 0x0F,   // 亮白(强调)
+};
+void console_set_color(WORD attr);   // 设置控制台前景色(仅在已初始化时生效)
 
 // ---------- 控制台 ----------
 void console_init(bool topmost);

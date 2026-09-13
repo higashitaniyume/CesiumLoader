@@ -1,10 +1,14 @@
 // modmeta_test.cpp - 依赖解析/版本协商单元测试 (纯 C++, 不依赖游戏/il2cpp)
-// 编译: cl /nologo /std:c++17 /EHsc modmeta_test.cpp ..\..\src\CesiumLoader\modmeta.cpp /Fe:modmeta_test.exe
+// 编译: cl /nologo /std:c++17 /EHsc /utf-8 modmeta_test.cpp ..\..\src\CesiumLoader\modmeta.cpp /Fe:modmeta_test.exe
+//   (/utf-8: 源文件含中文注释, 无此标志在 GBK 代码页下可能解析错位)
 #include "../../src/CesiumLoader/modmeta.h"
+#include <windows.h>
 #include <cstdio>
 #include <string>
 #include <vector>
 #include <map>
+#include <filesystem>
+#include <fstream>
 
 static int g_fail = 0;
 static void check(bool cond, const char* what)
@@ -184,6 +188,40 @@ int main()
         auto order = cesium::sort_mods_by_deps(stems, metas, "2.0.0", &rejected);
         check(join(order) == "Act,Safe", ("声明操作游戏的 mod 照常加载 (实际 " + join(order) + ")").c_str());
         check(rejected.empty(), "权限声明不产生拒绝");
+    }
+
+    printf("=== scan_mods_dir 目录扫描(新布局: 每 mod 一个文件夹) ===\n");
+    {
+        namespace fs = std::filesystem;
+        fs::path root = fs::temp_directory_path() / ("cesium_mods_test_" + std::to_string(GetCurrentProcessId()));
+        fs::remove_all(root);
+        fs::create_directories(root / "ModA");       // 新布局: 文件夹 mod
+        fs::create_directories(root / "ModB");       // 新布局: 文件夹 mod + sidecar
+        fs::create_directories(root / "NotAMod");    // 无同名 dll, 应忽略
+        {
+            std::ofstream(root / "ModA" / "ModA.dll");
+            std::ofstream(root / "ModB" / "ModB.dll");
+            std::ofstream(root / "ModB" / "ModB.json") << "{\"id\":\"ModB\",\"version\":\"1.0.0\"}";
+            std::ofstream(root / "NotAMod" / "readme.txt") << "hi";
+            std::ofstream(root / "Legacy.dll");      // 旧布局: 平铺
+            std::ofstream(root / "Legacy.json") << "{\"id\":\"Legacy\",\"version\":\"0.5.0\"}";
+        }
+
+        auto mods = cesium::scan_mods_dir(root.string());
+        check(mods.size() == 3, "扫到 3 个 mod(ModA/ModB/Legacy)");
+        if (mods.size() == 3)
+        {
+            check(mods[0].id == "Legacy" && !mods[0].sidecar.empty(), "排序: Legacy 平铺(带 sidecar)");
+            check(mods[1].id == "ModA" && mods[1].sidecar.empty(), "排序: ModA 文件夹(无 sidecar)");
+            check(mods[2].id == "ModB" && !mods[2].sidecar.empty(), "排序: ModB 文件夹(带 sidecar)");
+            check(mods[1].dll.find("ModA\\ModA.dll") != std::string::npos ||
+                  mods[1].dll.find("ModA/ModA.dll") != std::string::npos, "ModA DLL 路径在文件夹内");
+        }
+
+        // 不存在的目录 → 空
+        check(cesium::scan_mods_dir((root / "missing").string()).empty(), "不存在目录返回空");
+
+        fs::remove_all(root);
     }
 
     printf("\n%s (%d 失败)\n", g_fail == 0 ? "全部通过" : "有失败", g_fail);

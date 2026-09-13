@@ -187,6 +187,53 @@ std::map<std::string, ModMeta> read_mods_meta(const std::string& mods_dir)
     return result;
 }
 
+std::vector<ModLoc> scan_mods_dir(const std::string& mods_dir)
+{
+    namespace fs = std::filesystem;
+    std::vector<ModLoc> result;
+    std::error_code ec;
+    if (!fs::exists(mods_dir, ec) || ec) return result;
+
+    auto add = [&](const std::string& id, const fs::path& dll, const fs::path& sidecar) {
+        if (id.empty() || !fs::exists(dll)) return;
+        for (auto& m : result)
+            if (m.id == id) return;   // 去重(新布局优先, 平铺同名跳过)
+        ModLoc loc;
+        loc.id = id;
+        loc.dll = dll.string();
+        if (!sidecar.empty() && fs::exists(sidecar)) loc.sidecar = sidecar.string();
+        result.push_back(std::move(loc));
+    };
+
+    // 新布局: 遍历 mods 下的子目录, 找 {目录名}.dll (+ 可选 {目录名}.json)
+    for (auto& entry : fs::directory_iterator(mods_dir, ec))
+    {
+        if (ec) break;
+        if (!entry.is_directory()) continue;
+        std::string id = entry.path().filename().string();
+        fs::path dll = entry.path() / (id + ".dll");
+        if (!fs::exists(dll)) continue;   // 文件夹里没有同名 dll, 不是 mod 文件夹
+        fs::path sc = entry.path() / (id + ".json");
+        add(id, dll, sc);
+    }
+    // 旧布局兼容: mods 根下平铺的 .dll (sidecar 在同目录 {id}.json)
+    for (auto& entry : fs::directory_iterator(mods_dir, ec))
+    {
+        if (ec) break;
+        if (!entry.is_regular_file()) continue;
+        auto p = entry.path();
+        if (p.extension() != ".dll") continue;
+        std::string id = p.stem().string();
+        fs::path sc = p.parent_path() / (id + ".json");
+        add(id, p, sc);
+    }
+
+    std::sort(result.begin(), result.end(), [](const ModLoc& a, const ModLoc& b) {
+        return a.id < b.id;
+    });
+    return result;
+}
+
 std::vector<std::string> sort_mods_by_deps(
     const std::vector<std::string>& dll_stems,
     const std::map<std::string, ModMeta>& metas,

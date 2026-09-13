@@ -41,15 +41,17 @@ version.dll (C++ 薄代理, 15 个导出转发到系统 version.dll)
        4. 等待 HybridCLR 热更 (AstralParty.Runtime 出现, 60s)
        5. 设置环境变量 CESIUM_* 目录
        6. 编排层:
-          - 默认 (useManagedBootstrap=false): 原生加载 sdk\*.dll → mods\*.dll,
-            逐个 Assembly.Load(byte[]) + 调用 {文件名}.ModEntry.Main()
+          - 默认 (useManagedBootstrap=false): 原生加载 sdk\*.dll → mods\ 下
+            每 mod 文件夹的 {ModId}.dll, 逐个 Assembly.Load(byte[]) +
+            调用 {文件名}.ModEntry.Main(), 控制台按行业标准分级彩色输出
+            (先列出要加载的 mod, 再逐个 ✔ 成功 / ✘ 失败, 末尾总结)
           - 实验 (useManagedBootstrap=true): Assembly.Load(byte[]) 加载
             bootstrap\CesiumLoader.Bootstrap.dll 并调用 Bootstrap.Main(),
             由托管代码编排一切
        7. 启动 activity-mod.log → 控制台 转发线程
   └─ CesiumLoader.Bootstrap.dll (C# 托管引导, 零引用, 可脱离游戏单元测试):
        1. 按文件名排序加载 sdk\*.dll (不调入口)
-       2. 按文件名排序加载 mods\*.dll 并调用 {文件名}.ModEntry.Main()
+       2. 按文件名排序加载 mods\ 下的 {ModId}.dll 并调用 {文件名}.ModEntry.Main()
        3. 单个 mod 失败不中断其他 mod
 ```
 
@@ -85,7 +87,7 @@ version.dll (C++ 薄代理, 15 个导出转发到系统 version.dll)
 | 特性 | 说明 |
 |---|---|
 | **Mod 能力声明 + 警告** | mod 在 `[ModManifest(Permissions=...)]` 声明会用到的能力（读对局/操作游戏/写文件），sidecar 同步导出。已取消权限门控：任何 mod 都能调用 SDK 全部 API；声明「操作游戏」的 mod 在加载时与工具列表里显示 ⚠️ 警告（仅提示来源可信，不阻止） |
-| **模组元数据标准 + 依赖解析** | `mods\{name}.json` sidecar（id/版本/能力/SDK 版本/依赖）；加载器按依赖**拓扑排序**加载，缺失依赖/版本不符/循环依赖的 mod 被跳过并报告（`modmeta.cpp` 纯标准库，可单测） |
+| **模组元数据标准 + 依赖解析** | `mods\{ModId}\{ModId}.json` sidecar（id/版本/能力/SDK 版本/依赖，与 DLL 同文件夹）；加载器按依赖**拓扑排序**加载，缺失依赖/版本不符/循环依赖的 mod 被跳过并报告（`modmeta.cpp` 纯标准库，可单测） |
 | **API 版本协商** | SDK 声明版本 `2.0.0`；mod 声明 `SdkVersion`，要求高于当前的 mod 被拒绝加载。`doorstop_config.json` 的 `sdkVersion` 声明当前版本 |
 | **事件驱动化** | `GameEvents.StartAutoHook()` 内部每 1 秒维持 RPC 挂钩，mod 无需每秒轮询；`ModBase.Run` 不传 tick 则不空转 |
 | **IL2CPP 互操作安全封装** | `il2cpp_safe.h` 收敛全部互操作点：函数指针空检查、参数/返回值校验、托管异常转译成可读错误，防止原生崩溃拖垮游戏 |
@@ -103,9 +105,14 @@ version.dll (C++ 薄代理, 15 个导出转发到系统 version.dll)
     ├── doorstop_config.json     ← 加载器配置 (enabled 总开关等)
     ├── bootstrap\               ← 托管引导程序 (CesiumLoader.Bootstrap.dll)
     ├── sdk\                     ← SDK 依赖 (CesiumLoader.SDK.dll)
-    ├── mods\                    ← 用户 mod (每个 DLL 一个 mod)
+    ├── mods\                    ← 用户 mod (每 mod 一个文件夹: mods\{ModId}\{ModId}.dll)
+    │   └── ActivityLogMod\      ← 示例 mod 文件夹 (DLL + sidecar 同文件夹)
+    │       ├── ActivityLogMod.dll
+    │       └── ActivityLogMod.json   ← sidecar (id/版本/权限/enabled/依赖)
     └── logs\                    ← cesium-loader.log + activity-mod.log
 ```
+
+> 兼容旧布局: 直接放在 `mods\` 根下的 `.dll`（旧版平铺）仍会被加载, 平滑升级无需迁移。
 
 ## doorstop_config.json
 
@@ -222,7 +229,8 @@ public static class ModEntry
 供工具和加载器展示警告——已取消权限门控，任何 mod 都能调用 SDK 全部 API。
 声明「操作游戏」的 mod 在加载时与工具列表会显示 ⚠️ 警告，仅提示来源可信，不阻止。
 
-编译出的 DLL + sidecar (`{name}.json`) 放进 `AstralParty_ModLoader\mods\`，重启游戏生效。
+编译出的 mod 放进 `AstralParty_ModLoader\mods\`（每 mod 一个文件夹：`mods\{ModId}\{ModId}.dll` + 可选同名 `.json` sidecar），重启游戏生效。
+`cesium package` 打出的 zip 已是该布局，解压到 `mods\` 即完成安装。
 发布前用 `cesium verify <mods_dir>` 离线预检依赖与版本兼容性。
 
 SDK API 一览:
@@ -277,5 +285,7 @@ mod 开发者从这个 URL 下载 SDK 工具包:
 dotnet build src\CesiumLoader.SDK -c Release
 dotnet build src\ActivityLogMod -c Release
 copy src\CesiumLoader.SDK\bin\Release\netstandard2.0\CesiumLoader.SDK.dll dist\modloader\AstralParty_ModLoader\sdk\
-copy src\ActivityLogMod\bin\Release\netstandard2.0\ActivityLogMod.dll dist\modloader\AstralParty_ModLoader\mods\
+mkdir dist\modloader\AstralParty_ModLoader\mods\ActivityLogMod   (若不存在)
+copy src\ActivityLogMod\bin\Release\netstandard2.0\ActivityLogMod.dll  dist\modloader\AstralParty_ModLoader\mods\ActivityLogMod\
+copy src\ActivityLogMod\bin\Release\netstandard2.0\ActivityLogMod.json dist\modloader\AstralParty_ModLoader\mods\ActivityLogMod\   (若存在)
 ```

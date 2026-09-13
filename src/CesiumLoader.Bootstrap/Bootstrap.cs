@@ -14,7 +14,7 @@ namespace CesiumLoader.Bootstrap
     ///
     /// 职责(从原生 loader.cpp 迁移而来, 全部在 C# 里完成, 可脱离游戏单元测试):
     ///   1. 按文件名排序加载 sdk\*.dll(不调入口, 供 mod 引用)
-    ///   2. 按文件名排序加载 mods\*.dll 并调用 {文件名}.ModEntry.Main()
+    ///   2. 按文件名排序加载 mods\ 下每 mod 文件夹的 {ModId}.dll 并调用 {文件名}.ModEntry.Main()
     ///   3. 全程 try/catch, 单个 mod 失败不中断其他 mod
     ///
     /// 目录来自环境变量(由原生代理设置):
@@ -235,17 +235,36 @@ namespace CesiumLoader.Bootstrap
             return string.IsNullOrEmpty(v) ? fallback : v;
         }
 
+        // 收集 mod DLL: 新布局 mods\{ModId}\{ModId}.dll (每 mod 一个文件夹) + 兼容旧布局平铺
         private static IEnumerable<string> SortedDlls(string dir)
         {
             if (!Directory.Exists(dir)) return Enumerable.Empty<string>();
-            return Directory.GetFiles(dir, "*.dll")
-                .OrderBy(p => Path.GetFileName(p), StringComparer.OrdinalIgnoreCase);
+            var list = new List<string>();
+            try
+            {
+                foreach (var sub in Directory.GetDirectories(dir))
+                {
+                    var id = Path.GetFileName(sub);
+                    if (string.IsNullOrEmpty(id)) continue;
+                    var dll = Path.Combine(sub, id + ".dll");
+                    if (File.Exists(dll)) list.Add(dll);
+                }
+                // 旧布局兼容: mods 根下平铺
+                foreach (var file in Directory.GetFiles(dir, "*.dll"))
+                {
+                    var stem = Path.GetFileNameWithoutExtension(file);
+                    if (list.Any(p => string.Equals(Path.GetFileNameWithoutExtension(p), stem, StringComparison.OrdinalIgnoreCase)))
+                        continue;
+                    list.Add(file);
+                }
+            }
+            catch { }
+            return list.OrderBy(p => Path.GetFileName(p), StringComparer.OrdinalIgnoreCase);
         }
 
         private static int CountDlls(string dir)
         {
-            if (!Directory.Exists(dir)) return 0;
-            return Directory.GetFiles(dir, "*.dll").Length;
+            return SortedDlls(dir).Count();
         }
     }
 }

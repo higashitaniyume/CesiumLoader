@@ -585,49 +585,82 @@ static DWORD WINAPI boot_thread(LPVOID)
         log_line(L"[hijack] 读取 mods 目录失败(不存在): " + mods);
         return 0;
     }
-    std::vector<fs::path> dlls;
-    for (auto& entry : fs::directory_iterator(mods))
-    {
-        if (entry.is_regular_file() && _stricmp(entry.path().extension().string().c_str(), ".dll") == 0)
-            dlls.push_back(entry.path());
-    }
 
-    // 读所有 sidecar(mods\{name}.json), 用于依赖解析 + SDK 版本协商
+    // ---- 扫描 mod 列表 ----
+    // 新布局: mods\{ModId}\{ModId}.dll (每 mod 一个文件夹, sidecar 在文件夹内 {ModId}.json)
+    // 兼容旧布局: mods\{ModId}.dll 平铺(直接放 mods 根下的 dll 仍加载)
+    std::map<std::string, cesium::ModLoc> mod_locs;
+    for (auto& loc : cesium::scan_mods_dir(utf8_from_wide(mods.c_str())))
+        mod_locs[loc.id] = loc;
+
+    // 读所有 sidecar, 用于依赖解析 + SDK 版本协商
     std::map<std::string, cesium::ModMeta> metas;
-    for (auto& dll : dlls)
+    for (auto& kv : mod_locs)
     {
-        std::string n = dll.stem().string();
-        fs::path sidecar = dll.parent_path() / (n + ".json");
-        if (fs::exists(sidecar))
+        const std::string& n = kv.first;
+        if (!kv.second.sidecar.empty())
         {
-            cesium::ModMeta m = cesium::parse_sidecar(cesium::read_sidecar_text(sidecar.string()));
+            cesium::ModMeta m = cesium::parse_sidecar(cesium::read_sidecar_text(kv.second.sidecar));
             if (m.hasSidecar) metas[n] = m;
         }
     }
 
     // 按依赖拓扑排序 + SDK 版本检查 + 缺失依赖报告
-    std::vector<fs::path> original_dlls = dlls;   // 保留原始路径列表
     std::vector<std::string> stems;
-    for (auto& d : dlls) stems.push_back(d.stem().string());
+    for (auto& kv : mod_locs) stems.push_back(kv.first);
     std::vector<std::string> rejected;
     std::vector<std::string> ordered = cesium::sort_mods_by_deps(stems, metas, cfg.sdkVersion, &rejected);
-    for (auto& r : rejected)
-        log_line("[hijack] " + r + " 被跳过 (缺失依赖/SDK 版本不符/循环依赖)");
     // 报告已禁用(不加载)的 mod
-    for (auto& d : dlls)
+    std::vector<std::string> disabled;
+    for (auto& kv : mod_locs)
     {
-        std::string n = d.stem().string();
+        std::string n = kv.first;
         auto it = metas.find(n);
         if (it != metas.end() && it->second.hasSidecar && !it->second.enabled)
-            log_line("[hijack] " + n + " 已禁用(sidecar enabled=false), 跳过加载");
+            disabled.push_back(n);
     }
-    dlls.clear();
+    // 按依赖序重建要加载的列表(排除禁用)
+    std::vector<std::string> to_load;
     for (auto& name : ordered)
+        if (std::find(disabled.begin(), disabled.end(), name) == disabled.end())
+            to_load.push_back(name);
+    std::sort(disabled.begin(), disabled.end());
+    std::sort(rejected.begin(), rejected.end());
+    std::sort(to_load.begin(), to_load.end());
+
+    // ---- 彩色分级输出: 要加载的 mod 列表 ----
+    console_set_color(LOG_CYAN);
+    log_line("──────────────────────────────────────────────");
+    log_line("  CesiumLoader v" + cfg.sdkVersion + " — mod 加载报告");
+    log_line("──────────────────────────────────────────────");
+    console_set_color(LOG_DEFAULT);
+
+    console_set_color(LOG_WHITE);
+    log_line("");
+    log_line("▶ 发现 " + std::to_string(mod_locs.size()) + " 个 mod:");
+    console_set_color(LOG_DEFAULT);
+    for (size_t i = 0; i < to_load.size(); i++)
     {
-        for (auto& d : original_dlls)
-            if (d.stem().string() == name) { dlls.push_back(d); break; }
+        const std::string& n = to_load[i];
+        auto mit = metas.find(n);
+        std::string ver = mit != metas.end() && !mit->second.version.empty() ? mit->second.version : "?";
+        console_set_color(LOG_CYAN);
+        log_line("  [" + std::to_string(i + 1) + "/" + std::to_string(to_load.size()) + "] " + n + "  v" + ver);
+        console_set_color(LOG_DEFAULT);
     }
-    log_line("[hijack] 发现 " + std::to_string(dlls.size()) + " 个 DLL (依赖解析后)");
+    // 已禁用 / 被拒(不加载的)也列出, 便于用户知道有哪些 mod 没被加载
+    for (auto& n : disabled)
+    {
+        console_set_color(LOG_DIM);
+        log_line("  - " + n + "  (已禁用)");
+        console_set_color(LOG_DEFAULT);
+    }
+    for (auto& n : rejected)
+    {
+        console_set_color(LOG_DIM);
+        log_line("  - " + n + "  (被跳过: 缺失依赖/SDK 版本不符/循环依赖)");
+        console_set_color(LOG_DEFAULT);
+    }
 
     // 警告: 声明了"操作游戏"能力(GameActions=2)的 mod —— 仅提示, 不阻止。
     // 权限机制已取消: 任何 mod 都能调用 SDK 的模拟操作 API, 此处仅告知用户。
@@ -635,31 +668,74 @@ static DWORD WINAPI boot_thread(LPVOID)
     {
         const auto& m = kv.second;
         if (m.hasSidecar && (m.permissions & 2) != 0 && m.enabled)
-            log_line("[hijack] ⚠ 警告: mod '" + m.name + "' (" + kv.first + ") 声明了可操作游戏(模拟操作)的能力, 请确认来源可信");
+        {
+            console_set_color(LOG_YELLOW);
+            log_line("⚠ 警告: mod '" + m.name + "' (" + kv.first + ") 声明了可操作游戏(模拟操作)的能力, 请确认来源可信");
+            console_set_color(LOG_DEFAULT);
+        }
     }
 
-    for (auto& dll : dlls)
+    // ---- 逐 mod 加载, 输出成功/失败 ----
+    console_set_color(LOG_WHITE);
+    log_line("");
+    log_line("▶ 加载结果:");
+    console_set_color(LOG_DEFAULT);
+    int okCount = 0, failCount = 0;
+    for (size_t i = 0; i < to_load.size(); i++)
     {
-        std::string name = dll.stem().string();
+        const std::string& name = to_load[i];
+        auto it = mod_locs.find(name);
+        if (it == mod_locs.end()) continue;
+        fs::path dll = it->second.dll;
+
         std::ifstream in(dll, std::ios::binary);
-        if (!in) { log_line("[hijack] 读取 " + name + " 失败"); write_mod_error(logs, name, "读取 DLL 失败"); continue; }
+        if (!in)
+        {
+            console_set_color(LOG_RED);
+            log_line("  ✘ [" + std::to_string(i + 1) + "/" + std::to_string(to_load.size()) + "] " + name + "  读取 DLL 失败");
+            console_set_color(LOG_DEFAULT);
+            write_mod_error(logs, name, "读取 DLL 失败");
+            failCount++;
+            continue;
+        }
         std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-        log_line("[hijack] 尝试加载 " + name + ": " + std::to_string(bytes.size()) + " bytes");
 
         std::string err;
         Il2CppAssembly* asm_ = load_assembly_bytes(domain, bytes, err);
-        if (!asm_) { log_line("[hijack] " + name + " Assembly.Load 失败: " + err); write_mod_error(logs, name, "Assembly.Load 失败: " + err); continue; }
-        log_line("[hijack] " + name + " Assembly.Load(byte[]) 成功");
+        if (!asm_)
+        {
+            console_set_color(LOG_RED);
+            log_line("  ✘ [" + std::to_string(i + 1) + "/" + std::to_string(to_load.size()) + "] " + name + "  加载失败: " + err);
+            console_set_color(LOG_DEFAULT);
+            write_mod_error(logs, name, "Assembly.Load 失败: " + err);
+            failCount++;
+            continue;
+        }
 
         std::string entry_type = name + ".ModEntry";
         if (run_entry(asm_, entry_type.c_str(), "Main", err))
-            log_line("[hijack] " + name + " 入口执行成功");
+        {
+            console_set_color(LOG_GREEN);
+            log_line("  ✔ [" + std::to_string(i + 1) + "/" + std::to_string(to_load.size()) + "] " + name + "  加载成功");
+            console_set_color(LOG_DEFAULT);
+            okCount++;
+        }
         else
         {
-            log_line("[hijack] " + name + " 入口失败: " + err);
+            console_set_color(LOG_RED);
+            log_line("  ✘ [" + std::to_string(i + 1) + "/" + std::to_string(to_load.size()) + "] " + name + "  入口执行失败: " + err);
+            console_set_color(LOG_DEFAULT);
             write_mod_error(logs, name, "入口执行失败: " + err);
+            failCount++;
         }
     }
+
+    // ---- 总结 ----
+    console_set_color(LOG_WHITE);
+    log_line("");
+    log_line("▶ 总结: " + std::to_string(okCount) + " 成功 / " + std::to_string(failCount) + " 失败 / " +
+             std::to_string(disabled.size() + rejected.size()) + " 未加载(禁用/跳过)");
+    console_set_color(LOG_DEFAULT);
     log_line("[hijack] 引导线程结束");
 
     // 7. 启动"mod 日志 -> 控制台"转发线程(持续运行直到进程退出)

@@ -65,6 +65,14 @@ std::wstring config_path()
     return loader_root() + L"\\doorstop_config.json";
 }
 
+// ---------- 彩色分级日志 ----------
+
+void console_set_color(WORD attr)
+{
+    if (g_console_handle == INVALID_HANDLE_VALUE) return;
+    SetConsoleTextAttribute(g_console_handle, attr);
+}
+
 // ---------- 日志 ----------
 
 static void ensure_log_path()

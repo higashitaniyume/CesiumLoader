@@ -202,13 +202,14 @@ namespace CesiumCli
                 if (outZip == null) outZip = Path.Combine(dir, name + "-1.0.0.zip");
 
                 using var zip = ZipFile.Open(outZip, ZipArchiveMode.Create);
-                // 包布局: {Name}.dll + {Name}.json(sidecar)
-                zip.CreateEntryFromFile(dll, name + ".dll");
+                // 包布局(新): 每 mod 一个文件夹 {Name}\{Name}.dll + {Name}.json(sidecar)
+                // 解压到 mods\ 即 mods\{Name}\{Name}.dll —— 与加载器新扫描布局一致
+                zip.CreateEntryFromFile(dll, name + "/" + name + ".dll");
                 string sidecar = Path.Combine(dir, name + ".json");
-                if (File.Exists(sidecar)) zip.CreateEntryFromFile(sidecar, name + ".json");
+                if (File.Exists(sidecar)) zip.CreateEntryFromFile(sidecar, name + "/" + name + ".json");
 
                 Console.WriteLine($"已打包: {outZip}");
-                Console.WriteLine("  解压到游戏目录 AstralParty_ModLoader\\mods\\ 即安装完成");
+                Console.WriteLine($"  解压到游戏目录 AstralParty_ModLoader\\mods\\ 即安装完成 (将生成 mods\\{name}\\ 文件夹)");
                 return 0;
             });
 
@@ -224,21 +225,20 @@ namespace CesiumCli
                     Console.Error.WriteLine($"目录不存在: {modsDir}");
                     return 1;
                 }
-                var dlls = Directory.GetFiles(modsDir, "*.dll")
-                    .Select(Path.GetFileNameWithoutExtension).OrderBy(x => x).ToList();
-                if (dlls.Count == 0) { Console.WriteLine("(无 mod)"); return 0; }
+                var mods = ScanMods(modsDir);
+                if (mods.Count == 0) { Console.WriteLine("(无 mod)"); return 0; }
 
                 Console.WriteLine($"mods 目录: {modsDir}");
                 Console.WriteLine($"{"ID",-24} {"版本",-10} {"SDK",-10} 权限  依赖");
-                foreach (var dll in dlls)
+                foreach (var mod in mods)
                 {
-                    string sidecar = Path.Combine(modsDir, dll + ".json");
-                    if (!File.Exists(sidecar))
+                    var dll = mod.Id;
+                    if (mod.Sidecar == null)
                     {
                         Console.WriteLine($"{dll,-24} (无 sidecar)");
                         continue;
                     }
-                    var meta = ParseSidecar(File.ReadAllText(sidecar));
+                    var meta = ParseSidecar(File.ReadAllText(mod.Sidecar));
                     string deps = meta.Deps.Count == 0 ? "-" : string.Join(",", meta.Deps.Select(d => $"{d.Id}{(d.MinVersion == null ? "" : ">=" + d.MinVersion)}"));
                     Console.WriteLine($"{meta.Id,-24} {meta.Version,-10} {(meta.SdkVersion ?? ""),-10} {meta.Permissions,6}  {deps}");
                 }
@@ -257,14 +257,13 @@ namespace CesiumCli
                     Console.Error.WriteLine($"目录不存在: {modsDir}");
                     return 1;
                 }
-                var dlls = Directory.GetFiles(modsDir, "*.dll")
-                    .Select(Path.GetFileNameWithoutExtension).ToList();
+                var mods = ScanMods(modsDir);
+                var dlls = mods.Select(m => m.Id).ToList();
                 var metas = new Dictionary<string, ModMeta>(StringComparer.OrdinalIgnoreCase);
-                foreach (var dll in dlls)
+                foreach (var mod in mods)
                 {
-                    string sidecar = Path.Combine(modsDir, dll + ".json");
-                    if (File.Exists(sidecar))
-                        metas[dll] = ParseSidecar(File.ReadAllText(sidecar));
+                    if (mod.Sidecar != null)
+                        metas[mod.Id] = ParseSidecar(File.ReadAllText(mod.Sidecar));
                 }
                 return VerifySimple(modsDir, dlls, metas);
             });
@@ -372,6 +371,45 @@ namespace CesiumCli
                 }
             }
             return null;
+        }
+
+        // 扫描 mods 目录里的 mod(与加载器一致):
+        //   新布局: mods\{ModId}\{ModId}.dll (每 mod 一个文件夹, sidecar 在文件夹内 {ModId}.json)
+        //   兼容旧布局: mods\{ModId}.dll 平铺(直接放 mods 根下的 dll 仍识别)
+        private sealed class ModLoc
+        {
+            public string Id = "";
+            public string Dll = "";
+            public string Sidecar = null;   // 无 sidecar 为 null
+        }
+
+        private static List<ModLoc> ScanMods(string modsDir)
+        {
+            var result = new List<ModLoc>();
+            try
+            {
+                if (!Directory.Exists(modsDir)) return result;
+                foreach (var sub in Directory.GetDirectories(modsDir))
+                {
+                    string id = Path.GetFileName(sub);
+                    if (string.IsNullOrEmpty(id)) continue;
+                    string dll = Path.Combine(sub, id + ".dll");
+                    if (!File.Exists(dll)) continue;   // 文件夹里没有同名 dll, 不是 mod 文件夹
+                    string sc = Path.Combine(sub, id + ".json");
+                    result.Add(new ModLoc { Id = id, Dll = dll, Sidecar = File.Exists(sc) ? sc : null });
+                }
+                // 旧布局兼容: mods 根下的平铺 .dll
+                foreach (var file in Directory.GetFiles(modsDir, "*.dll"))
+                {
+                    string id = Path.GetFileNameWithoutExtension(file);
+                    if (result.Any(m => m.Id.Equals(id, StringComparison.OrdinalIgnoreCase))) continue;
+                    string sc = Path.ChangeExtension(file, ".json");
+                    result.Add(new ModLoc { Id = id, Dll = file, Sidecar = File.Exists(sc) ? sc : null });
+                }
+                result.Sort((a, b) => string.Compare(a.Id, b.Id, StringComparison.OrdinalIgnoreCase));
+            }
+            catch { }
+            return result;
         }
 
         private class ModMeta
