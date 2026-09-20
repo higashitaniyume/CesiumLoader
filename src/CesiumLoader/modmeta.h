@@ -2,7 +2,7 @@
 //
 // sidecar 格式 (mods\{ModId}\{ModId}.json, 由 SDK 的 SdkManifest.ExportSidecar() 生成,
 // 或由脚手架在开发期生成并随 mod 分发):
-//   {"id":"X","name":"显示名","version":"1.0.0","sdkVersion":"2.1.1",
+//   {"id":"X","name":"显示名","version":"1.0.0","sdkVersion":"2.1.2",
 //    "permissions":1,"enabled":true,"dependencies":[{"id":"OtherMod","minVersion":"1.0.0"}]}
 //
 // 目录布局(与加载器扫描一致): 每 mod 一个文件夹 mods\{ModId}\{ModId}.dll,

@@ -34,6 +34,15 @@ namespace CesiumLoader.SDK
         /// <summary>轨道模式: 相机到观察点的最远距离。</summary>
         public const float MaxOrbitDistance = 120f;
 
+        /// <summary>俯瞰高度下限(米)。太低相机会陷进棋盘, 看不清全局。</summary>
+        public const float MinCameraHeight = 5f;
+
+        /// <summary>俯瞰高度上限(米)。给足"飞到很高看整张地图"的余地, 同时避免数值失控。</summary>
+        public const float MaxCameraHeight = 2000f;
+
+        /// <summary>高度步进的默认值(米/次)。</summary>
+        public const float DefaultHeightStep = 10f;
+
         /// <summary>加速倍率。</summary>
         public const float FastMultiplier = 4f;
 
@@ -237,6 +246,24 @@ namespace CesiumLoader.SDK
             if (value < min) return min;
             if (value > max) return max;
             return value;
+        }
+
+        /// <summary>
+        /// 按一次按键调整俯瞰相机高度并夹紧(用于游戏里实时调高度)。
+        ///
+        /// <paramref name="delta"/> 是"方向"(通常 ±1), <paramref name="step"/> 是每次的米数 ——
+        /// 这样调用方不必关心夹紧与非法输入:
+        ///   - <paramref name="step"/> ≤ 0 或 NaN 时退回 <see cref="DefaultHeightStep"/>(配置写错
+        ///     也不会变成"按键没反应");
+        ///   - 结果夹到 [<paramref name="min"/>, <paramref name="max"/>]。
+        /// 返回值可能与 <paramref name="height"/> 相同(已经顶到上下限), 调用方据此提示"已到极限"。
+        /// </summary>
+        public static float ApplyHeightStep(float height, float delta, float step = DefaultHeightStep,
+            float min = MinCameraHeight, float max = MaxCameraHeight)
+        {
+            if (float.IsNaN(delta) || float.IsInfinity(delta) || delta == 0f) return Clamp(height, min, max);
+            if (float.IsNaN(step) || float.IsInfinity(step) || step <= 0f) step = DefaultHeightStep;
+            return Clamp(height + delta * step, min, max);
         }
 
         /// <summary>两位小数的文本(日志用)。</summary>
