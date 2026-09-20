@@ -32,5 +32,63 @@ namespace CesiumLoader.SDK
             if (asm == null) return null;
             try { return asm.GetName()?.Name; } catch { return null; }
         }
+
+        // =====================================================================
+        // 展示 / 审计辅助 —— 权限不再门控, 但仍然要让用户看得见 mod 会动到什么
+        // =====================================================================
+
+        /// <summary>已定义的权限位(按位从低到高)。</summary>
+        private static readonly ModPermission[] Known =
+        {
+            ModPermission.ReadGameState,
+            ModPermission.GameActions,
+            ModPermission.SpeedHack,
+            ModPermission.FileWrite,
+            ModPermission.ModifyGameState,
+            ModPermission.Camera,
+            ModPermission.Input,
+            ModPermission.UI,
+            ModPermission.FileSystem,
+            ModPermission.Network,
+            ModPermission.Debug,
+        };
+
+        /// <summary>遍历所有已定义权限位。</summary>
+        public static ModPermission[] All()
+        {
+            var copy = new ModPermission[Known.Length];
+            Array.Copy(Known, copy, Known.Length);
+            return copy;
+        }
+
+        /// <summary>展开为已声明权限的名称列表(位序稳定, 未知位忽略)。</summary>
+        public static string[] Names(ModPermission permissions)
+        {
+            var list = new System.Collections.Generic.List<string>(4);
+            for (int i = 0; i < Known.Length; i++)
+            {
+                if ((permissions & Known[i]) == Known[i]) list.Add(Known[i].ToString());
+            }
+            return list.ToArray();
+        }
+
+        /// <summary>可读描述(工具输出 / 启动横幅 / 审计日志用)。</summary>
+        public static string Describe(ModPermission permissions)
+        {
+            var names = Names(permissions);
+            return names.Length == 0 ? "None" : string.Join(", ", names);
+        }
+
+        /// <summary>
+        /// 该权限是否属于"会改变游戏或对外产生副作用"的敏感类别 ——
+        /// 仅用于在工具/UI 里高亮提示, <b>不</b>用于阻止调用。
+        /// </summary>
+        public static bool IsSensitive(ModPermission perm)
+        {
+            return (perm & (ModPermission.GameActions |
+                            ModPermission.SpeedHack |
+                            ModPermission.ModifyGameState |
+                            ModPermission.Network)) != 0;
+        }
     }
 }

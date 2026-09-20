@@ -12,7 +12,8 @@
   "domainTimeoutSec": 30,
   "hybridclrTimeoutSec": 60,
   "consoleEnabled": true,
-  "consoleTopmost": true,
+  // 控制台窗口是否置顶。默认 false: 置顶窗口会一直压着游戏, 调试时很碍事。
+  "consoleTopmost": false,
   "forwardActivityLog": true,
   // 变速引擎基础倍率: 游戏启动即应用, 全程保持。1.0=正常(默认), 2.0=全程2倍速。
   // 范围 (0,100]; 设 1.0 或省略 = 不启用(可用 SpeedHackMod 热键临时变速)。

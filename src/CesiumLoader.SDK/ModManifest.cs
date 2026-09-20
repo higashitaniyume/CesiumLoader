@@ -6,6 +6,17 @@ namespace CesiumLoader.SDK
 {
     /// <summary>
     /// mod 权限位。敏感能力默认关闭, mod 必须声明才可用, 且可在配置中逐项禁用。
+    ///
+    /// <para>
+    /// <b>注意: 权限机制已取消门控(见 <see cref="Permissions"/>)</b> —— 这些位现在只用于
+    /// Manifest 声明 / 工具展示 / 安全审计 / 让用户知道"这个 mod 会动到什么"。声明不会
+    /// 阻止任何调用, 也不会因为没有声明就失败。
+    /// </para>
+    ///
+    /// <para>
+    /// 数值兼容性: 前 4 个位的历史数值保持不变(1/2/4/8), 新增类别一律追加在
+    /// 高位上 —— 旧加载器/旧工具读到的仍是它们认识的那几个位。
+    /// </para>
     /// </summary>
     [Flags]
     public enum ModPermission
@@ -26,6 +37,27 @@ namespace CesiumLoader.SDK
 
         /// <summary>写文件 (mods 目录内配置/日志)。默认授予, 限 mods 目录。</summary>
         FileWrite = 1 << 3,
+
+        /// <summary>修改对局/游戏状态(内存态改写, 不经过服务器 RPC)。比 GameActions 更危险。</summary>
+        ModifyGameState = 1 << 4,
+
+        /// <summary>相机控制(创建/驱动/接管相机, 改变渲染视角)。</summary>
+        Camera = 1 << 5,
+
+        /// <summary>读取与独占输入(键盘/鼠标)。</summary>
+        Input = 1 << 6,
+
+        /// <summary>创建 mod UI(叠加层/窗口/通知)。</summary>
+        UI = 1 << 7,
+
+        /// <summary>文件系统访问(mods 目录之外的读写)。</summary>
+        FileSystem = 1 << 8,
+
+        /// <summary>网络访问(自行发起连接/请求, 与游戏流量无关)。</summary>
+        Network = 1 << 9,
+
+        /// <summary>调试能力(调试叠加层/诊断转储/暂停与步进)。</summary>
+        Debug = 1 << 10,
     }
 
     /// <summary>

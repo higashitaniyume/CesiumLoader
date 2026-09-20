@@ -93,6 +93,33 @@ version.dll (C++ 薄代理, 15 个导出转发到系统 version.dll)
 | **IL2CPP 互操作安全封装** | `il2cpp_safe.h` 收敛全部互操作点：函数指针空检查、参数/返回值校验、托管异常转译成可读错误，防止原生崩溃拖垮游戏 |
 | **调试与故障体验** | mod 入口异常写 `logs\mod-errors.log`（SDK `SdkLog.ReportCrash` + 原生 `write_mod_error` 双写）；`cesium verify` 离线预检兼容性 |
 | **脚手架与包分发** | `tools\cesium` CLI：`new`（生成项目+程序集级元数据）/ `build` / `package`（zip 分发）/ `list` / `verify`（模拟加载器判定） |
+| **相机接管** | `CameraService` + `ICameraBackend` 接缝：解析/读写/快照还原；`CameraState` 可 JSON 持久化；`CinemachineService` 反射接入 Cinemachine（玩家没装也安全降级） |
+| **输入与光标** | `InputService`：按键/鼠标查询 + mod 间输入独占仲裁 + 光标锁定还原；后端为「Unity 反射 → Win32」两级兜底 |
+| **UI 登记** | `UiService`：通知 / 窗口 / 覆盖层 / OnGUI 回调，注册与渲染分离（无渲染后端时登记仍然可见）；mod 卸载自动全部移除 |
+| **场景与协程** | `SceneService`（查询 + 事件订阅 + **事件不触发时的每帧兜底补发**）；`CoroutineService`（不依赖 GameObject 的协程，按真实时间等待） |
+| **运行时反射** | `RuntimeAssemblyService`：按名找程序集/类型/成员，`SafeInvoke*` / `SafeGet*` 失败返回 `null`、`false` 并记日志 |
+| **诊断转储** | `SdkDiagnostics.Dump()` 一次性落盘运行时+相机+场景+UI+计数器；`DumpJson()` 给工具读；IL2CPP/HybridCLR 不可用时也报告原因而非留空 |
+| **ECall 隔离** | `UnityCall`：Unity 引擎调用全部两层隔离（`RawXxx` 只含 ECall + 安全方法只含 try/catch），保证"Unity 不可用时降级返回默认值"的契约真正成立。详见 `docs\SDK-Unity调用与ECall隔离.md` |
+
+## SDK 文档
+
+| 文档 | 内容 |
+|---|---|
+| [SDK-概览](docs/SDK-概览.md) | 整体分层、快速上手 |
+| [SDK-生命周期与日志](docs/SDK-生命周期与日志.md) | `ModBase` / `ModContext` / 清理顺序 / 日志分级 |
+| [SDK-配置与元数据](docs/SDK-配置与元数据.md) | `ModConfig`、sidecar、依赖解析 |
+| [SDK-能力声明与元数据](docs/SDK-能力声明与元数据.md) | `Permissions` 声明与警告 |
+| [SDK-事件](docs/SDK-事件.md) | `GameEvents` / `CameraEvents` / `UpdateService` |
+| [SDK-玩家与名字](docs/SDK-玩家与名字.md) | `Players.*` / `Names.*` |
+| [SDK-相机](docs/SDK-相机.md) | 相机解析、读写、快照还原、Cinemachine |
+| [SDK-输入与光标](docs/SDK-输入与光标.md) | 按键/鼠标、输入独占、光标锁定 |
+| [SDK-UI](docs/SDK-UI.md) | 通知 / 窗口 / 覆盖层 / OnGUI |
+| [SDK-场景与协程](docs/SDK-场景与协程.md) | 场景查询订阅、兜底补发、协程 |
+| [SDK-诊断](docs/SDK-诊断.md) | 三类 dump、落盘、反射工具、排查清单 |
+| [SDK-变速](docs/SDK-变速.md) | 变速引擎 |
+| [SDK-Unity调用与ECall隔离](docs/SDK-Unity调用与ECall隔离.md) | **改 SDK 前必读**：ECall 机制与隔离约定 |
+| [mod-FreeCameraMod](docs/mod-FreeCameraMod.md) | 俯瞰视角 mod 的配置与原理 |
+| [工具-cesium-CLI](docs/工具-cesium-CLI.md) | 脚手架 CLI |
 
 ## 目录布局
 
@@ -129,7 +156,7 @@ version.dll (C++ 薄代理, 15 个导出转发到系统 version.dll)
   "domainTimeoutSec": 30,             // il2cpp domain 等待超时
   "hybridclrTimeoutSec": 60,          // HybridCLR 热更等待超时
   "consoleEnabled": true,             // 分配控制台窗口
-  "consoleTopmost": true,             // 控制台窗口置顶
+  "consoleTopmost": false,            // 控制台窗口置顶(默认 false)
   "forwardActivityLog": true,         // mod 日志转发到控制台
   "speedhackBaseSpeed": 1.0,          // 变速(加载器内置): 1.0=正常, 2.0=全程2倍速
   "sdkVersion": "2.0.0"               // 当前 SDK 版本(校验 mod 的 SdkVersion)
