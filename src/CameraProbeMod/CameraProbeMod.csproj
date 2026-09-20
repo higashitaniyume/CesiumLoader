@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>CameraProbeMod</AssemblyName>
+    <RootNamespace>CameraProbeMod</RootNamespace>
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 只需要 SDK: 本示例不引用任何游戏程序集, 证明 SDK 可独立使用 -->
+    <ProjectReference Include="..\CesiumLoader.SDK\CesiumLoader.SDK.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- UnityEngine.CoreModule: Camera / KeyCode / Vector3 等 -->
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>..\..\..\..\extracted_dlls\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="CameraProbeMod.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

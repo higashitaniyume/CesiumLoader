@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <AssemblyName>CesiumLoader.SDK.Tests</AssemblyName>
+    <RootNamespace>CesiumLoader.SDK.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\CesiumLoader.SDK\CesiumLoader.SDK.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- CameraState / InputService 用到 Vector3 / Quaternion / Color / KeyCode:
+         必须复制到测试输出目录, 否则 net8.0 测试进程运行时加载不到。
+         路径深度与 CesiumLoader.SDK.csproj 一致(4 级回到仓库根, 再进 extracted_dlls)。 -->
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>..\..\..\..\extracted_dlls\UnityEngine.CoreModule.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <!-- UniTask: SDK 的异步生命周期(ModBase.RunAsync / UniTaskVoid)引用它。
+         如果测试进程加载不到 UniTask, SDK 程序集的 Assembly.GetTypes() 会抛
+         ReflectionTypeLoadException("Could not load file or assembly 'UniTask'"),
+         导致 RuntimeAssemblyService 索引 SDK 自己那 3 个引用 UniTask 的类型失败、
+         相关的 FindType 测试全部拿不到类型。游戏内 UniTask 一定存在, 所以这纯粹是
+         测试环境需要补齐的依赖。 -->
+    <Reference Include="UniTask">
+      <HintPath>..\..\..\..\extracted_dlls\UniTask.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

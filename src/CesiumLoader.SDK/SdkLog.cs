@@ -9,7 +9,9 @@ namespace CesiumLoader.SDK
         Debug = 0,
         Info = 1,
         Warn = 2,
-        Error = 3
+        Error = 3,
+        /// <summary>致命错误(新增, 原枚举值未变, 保持兼容)。</summary>
+        Fatal = 4
     }
 
     /// <summary>
@@ -25,15 +27,38 @@ namespace CesiumLoader.SDK
         private static string _logFile;
         private static string _errorFile;
         private static readonly object _lock = new object();
-        private static readonly SdkLogLevel _minLevel = ReadMinLevel();
+        private static SdkLogLevel _minLevel = ReadMinLevel();
+
+        /// <summary>
+        /// 最低输出级别(默认 Info, 也可用环境变量 CESIUM_LOG_LEVEL 设置)。
+        /// 运行期可修改, 便于 mod/诊断临时打开 Debug。
+        /// </summary>
+        public static SdkLogLevel MinLevel
+        {
+            get { return _minLevel; }
+            set { _minLevel = value; }
+        }
 
         private static SdkLogLevel ReadMinLevel()
         {
             try
             {
                 var raw = Environment.GetEnvironmentVariable("CESIUM_LOG_LEVEL");
-                if (!string.IsNullOrEmpty(raw) && Enum.TryParse<SdkLogLevel>(raw, true, out var level))
-                    return level;
+                if (string.IsNullOrEmpty(raw)) return SdkLogLevel.Info;
+
+                // 显式比较, 不用 Enum.TryParse<SdkLogLevel>:
+                // 泛型 Enum.TryParse 的实例化可能被 HybridCLR 的 AOT 裁剪, 而 SdkLog 是
+                // 所有 SDK 代码的必经路径, 这里不能出现"只在游戏内才炸"的 API。
+                switch (raw.Trim().ToLowerInvariant())
+                {
+                    case "debug": return SdkLogLevel.Debug;
+                    case "info": return SdkLogLevel.Info;
+                    case "warn":
+                    case "warning": return SdkLogLevel.Warn;
+                    case "error": return SdkLogLevel.Error;
+                    case "fatal": return SdkLogLevel.Fatal;
+                    default: return SdkLogLevel.Info;
+                }
             }
             catch { }
             return SdkLogLevel.Info;
@@ -113,8 +138,21 @@ namespace CesiumLoader.SDK
         /// <summary>警告日志。</summary>
         public static void Warn(string tag, string line) => Log(SdkLogLevel.Warn, tag, line);
 
+        /// <summary>警告日志(与 Warn 等价, 便于对齐常见命名习惯)。</summary>
+        public static void Warning(string tag, string line) => Log(SdkLogLevel.Warn, tag, line);
+
         /// <summary>错误日志。</summary>
         public static void Error(string tag, string line) => Log(SdkLogLevel.Error, tag, line);
+
+        /// <summary>致命错误日志。</summary>
+        public static void Fatal(string tag, string line) => Log(SdkLogLevel.Fatal, tag, line);
+
+        /// <summary>报告致命错误并附异常堆栈。</summary>
+        public static void Fatal(string tag, string context, Exception ex)
+        {
+            ReportCrash(tag, context, ex);
+            Log(SdkLogLevel.Fatal, tag, context);
+        }
 
         private static void Log(SdkLogLevel level, string tag, string line)
         {
@@ -128,6 +166,7 @@ namespace CesiumLoader.SDK
                     SdkLogLevel.Debug => "DBG",
                     SdkLogLevel.Warn => "WRN",
                     SdkLogLevel.Error => "ERR",
+                    SdkLogLevel.Fatal => "FTL",
                     _ => "INF"
                 };
                 lock (_lock)

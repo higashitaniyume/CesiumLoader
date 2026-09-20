@@ -32,7 +32,7 @@ struct LoaderConfig
 
     // 控制台
     bool consoleEnabled = true;             // 是否分配控制台窗口
-    bool consoleTopmost = true;             // 控制台窗口是否置顶
+    bool consoleTopmost = false;            // 控制台窗口是否置顶(默认不置顶: 置顶会一直压着游戏)
 
     // mod 日志 -> 控制台 转发线程
     bool forwardActivityLog = true;
