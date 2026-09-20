@@ -60,7 +60,7 @@ namespace CesiumLoader.SDK.Tests
 
             var map = parsed as Dictionary<string, object>;
             Assert.NotNull(map);
-            Assert.Equal("2.0.0", map["SdkVersion"]);
+            Assert.Equal("2.1.0", map["SdkVersion"]);
             Assert.Equal(false, map["Il2CppAvailable"]);
         }
 

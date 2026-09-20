@@ -1,1 +1,1 @@
-{"id":"DiagnosticsMod","name":"诊断工具","version":"2.0.0","author":"CesiumLoader","description":"F10 全量诊断转储, F11 相机信息, F12 场景信息 (输出到 logs\\cesium-loader.log)","permissions":1,"sdkVersion":"2.0.0","dependencies":[]}
+{"id":"DiagnosticsMod","name":"诊断工具","version":"2.1.0","author":"CesiumLoader","description":"F10 全量诊断转储, F11 相机信息, F12 场景信息 (输出到 logs\\cesium-loader.log)","permissions":1,"sdkVersion":"2.1.0","dependencies":[]}

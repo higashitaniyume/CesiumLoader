@@ -8,11 +8,12 @@ namespace CesiumLoader.SDK.Tests
     public class SdkVersionTests
     {
         [Fact]
-        public void Current_IsTwoZeroZero()
+        public void Current_MatchesReleaseLine()
         {
-            // 本次扩展保持向后兼容 → 不升 major
-            Assert.Equal("2.0.0", SdkVersion.Current);
-            Assert.Equal("2.0.0", SdkVersion.LoaderVersion);
+            // 本次扩展保持向后兼容 → 不升 major。发布时三处版本号同步递增:
+            // SdkVersion.Current / SdkVersion.LoaderVersion / CesiumLoader.SDK.csproj 的 <Version>。
+            Assert.Equal("2.1.0", SdkVersion.Current);
+            Assert.Equal("2.1.0", SdkVersion.LoaderVersion);
         }
 
         [Theory]
@@ -42,6 +43,8 @@ namespace CesiumLoader.SDK.Tests
         [Fact]
         public void Accepts_AllowsSameOrOlderDeclaration()
         {
+            // 与当前版本相同 → 兼容（SDK 2.1.0 接受声明 2.1.0 的 mod）
+            Assert.True(SdkVersion.Accepts(SdkVersion.Current));
             Assert.True(SdkVersion.Accepts("2.0.0"));
             Assert.True(SdkVersion.Accepts("1.0.0"));
             Assert.True(SdkVersion.Accepts("2.0.0-beta"));
@@ -50,7 +53,9 @@ namespace CesiumLoader.SDK.Tests
         [Fact]
         public void Accepts_RejectsNewerRequirement()
         {
-            Assert.False(SdkVersion.Accepts("2.0.1"));
+            // 比当前版本更高(次版本/主版本) → 拒绝加载该 mod
+            Assert.False(SdkVersion.Accepts("2.1.1"));
+            Assert.False(SdkVersion.Accepts("2.2.0"));
             Assert.False(SdkVersion.Accepts("3.0.0"));
         }
 
