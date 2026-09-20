@@ -47,6 +47,21 @@ namespace CesiumLoader.SDK.Tests
         }
 
         [Fact]
+        public void GetMainCamera_PrefersEnabledCandidate_ButStillFallsBackToDisabled()
+        {
+            // 本游戏过渡期会把 Main Camera 临时失活。若同时存在一台启用的同名相机,
+            // 应优先启用那台(避免接管到过渡相机); 若只有失活那台, 仍要能解析出来(旧行为兜底)。
+            var disabled = Cam("Main Camera", 0f, "MainCamera", enabled: false);
+            var enabled = Cam("Main Camera", -1f, "MainCamera", enabled: true);
+
+            Backend(disabled, enabled);
+            Assert.Same(enabled, CameraService.GetMainCameraHandle());
+
+            Backend(disabled);
+            Assert.Same(disabled, CameraService.GetMainCameraHandle());
+        }
+
+        [Fact]
         public void GetMainCamera_FallsBackToNameContainingMain()
         {
             var byName = Cam("PlayerMainView", 0.5f);

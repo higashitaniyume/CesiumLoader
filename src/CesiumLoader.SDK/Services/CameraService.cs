@@ -68,6 +68,15 @@ namespace CesiumLoader.SDK
 
         /// <summary>
         /// 取主相机句柄(按上述顺序解析)。返回 null 表示当前没有相机。
+        ///
+        /// 解析顺序在本游戏实测后做了细化: <b>优先挑启用中的相机, 但保留"含失活相机"的兜底</b>。
+        /// 原因是本游戏在菜单/场景过渡期会把 Main Camera 临时失活(enabled=false, 停在极高的
+        /// 过渡位置); 若只认启用相机, 过渡期就会返回 null 甚至退化成"随便一台启用的相机"
+        /// (可能是 UI 相机)。因此顺序为:
+        ///   1) Camera.main → 2) tag=MainCamera(启用中) → 3) 名字含 main(启用中)
+        ///   → 4) tag=MainCamera(含失活, 兼容过渡期) → 5) 名字含 main(含失活)
+        ///   → 6) depth 最高的启用相机
+        /// "这台相机能不能接管"由调用方判断(见自由相机的就绪校验); SDK 只负责给最合适的候选。
         /// </summary>
         public static object GetMainCameraHandle()
         {
@@ -83,17 +92,21 @@ namespace CesiumLoader.SDK
 
             object camera = null;
 
-            // 1) Camera.main
+            // 1) Camera.main(Unity 认定的主相机; 未启用时 Unity 自己就返回 null)
             try { camera = _backend.GetMainCamera(); } catch { }
             if (!SafeIsAlive(camera)) camera = null;
 
-            // 2) tag == MainCamera
-            if (camera == null) camera = FindByTag("MainCamera");
+            // 2) tag == MainCamera(启用中)
+            if (camera == null) camera = FindByTag("MainCamera", false);
 
-            // 3) 名字含 main
-            if (camera == null) camera = FindByNameContains("main");
+            // 3) 名字含 main(启用中)
+            if (camera == null) camera = FindByNameContains("main", false);
 
-            // 4) 最靠前的启用相机
+            // 4/5) 兜底: 允许失活 —— 过渡期游戏只有这一台相机时仍能解析到它(旧行为)
+            if (camera == null) camera = FindByTag("MainCamera", true);
+            if (camera == null) camera = FindByNameContains("main", true);
+
+            // 6) 最靠前的启用相机
             if (camera == null)
             {
                 var all = SafeGetAll(false);
@@ -415,16 +428,16 @@ namespace CesiumLoader.SDK
             return CameraState.Capture(_backend, camera);
         }
 
-        /// <summary>把状态写回相机。</summary>
-        public static bool RestoreState(Camera camera, CameraState state)
+        /// <summary>把状态写回相机(默认不还原 enabled, 见 <see cref="CameraState.Restore"/>)。</summary>
+        public static bool RestoreState(Camera camera, CameraState state, bool restoreEnabled = false)
         {
-            return CameraState.Restore(_backend, camera, state);
+            return CameraState.Restore(_backend, camera, state, restoreEnabled);
         }
 
-        /// <summary>把状态写回相机(句柄版)。</summary>
-        public static bool RestoreState(object camera, CameraState state)
+        /// <summary>把状态写回相机(句柄版; 默认不还原 enabled)。</summary>
+        public static bool RestoreState(object camera, CameraState state, bool restoreEnabled = false)
         {
-            return CameraState.Restore(_backend, camera, state);
+            return CameraState.Restore(_backend, camera, state, restoreEnabled);
         }
 
         /// <summary>序列化相机状态为 JSON。</summary>
@@ -556,26 +569,38 @@ namespace CesiumLoader.SDK
             try { return _backend.GetTag(camera); } catch { return null; }
         }
 
-        private static object FindByTag(string tag)
+        /// <summary>按 tag 找相机。<paramref name="includeDisabled"/>=false 时只认启用中的相机
+        /// (主相机解析优先用它, 避免在同时存在启用/失活相机时挑到过渡期那台)。</summary>
+        private static object FindByTag(string tag, bool includeDisabled = true)
         {
-            var all = SafeGetAll(true);
+            var all = SafeGetAll(includeDisabled);
             for (int i = 0; i < all.Length; i++)
             {
+                if (!includeDisabled && !SafeEnabled(all[i])) continue;
                 if (string.Equals(SafeTag(all[i]), tag, StringComparison.Ordinal)) return all[i];
             }
             return null;
         }
 
-        private static object FindByNameContains(string fragment)
+        private static object FindByNameContains(string fragment, bool includeDisabled = true)
         {
-            var all = SafeGetAll(true);
+            var all = SafeGetAll(includeDisabled);
             for (int i = 0; i < all.Length; i++)
             {
+                if (!includeDisabled && !SafeEnabled(all[i])) continue;
                 string name = SafeName(all[i]);
                 if (string.IsNullOrEmpty(name)) continue;
                 if (name.IndexOf(fragment, StringComparison.OrdinalIgnoreCase) >= 0) return all[i];
             }
             return null;
+        }
+
+        /// <summary>相机是否启用(读取失败视为启用, 与旧行为一致, 避免因读不到 enabled 而解析不出相机)。</summary>
+        private static bool SafeEnabled(object camera)
+        {
+            if (camera == null) return false;
+            try { return _backend.GetEnabled(camera); }
+            catch { return true; }
         }
 
         private static string SafeSceneName(UnityEngine.SceneManagement.Scene scene)

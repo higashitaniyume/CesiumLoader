@@ -180,8 +180,19 @@ namespace CesiumLoader.SDK
             return state;
         }
 
-        /// <summary>把状态写回相机。返回是否全部成功。</summary>
-        public static bool Restore(ICameraBackend backend, object camera, CameraState state)
+        /// <summary>
+        /// 把状态写回相机。返回是否全部成功。
+        ///
+        /// <paramref name="restoreEnabled"/> 默认 <c>false</c>，即<b>不还原 enabled</b>。
+        /// 原因(实测踩坑，别改回去): 本游戏在菜单/场景过渡期会把 Main Camera 临时
+        /// <c>enabled=false</c> 并停到极高处；如果快照恰好采到这一刻，退出时"完整还原"
+        /// 就会把游戏当前正在渲染的那台相机禁用掉 —— 画面变黑，而 ScreenSpaceOverlay
+        /// 的 HUD 还在(正是"画面黑了但 HUD 还在、声音照旧"的现场)。
+        /// 绝大多数接管方案(改位姿/镜头参数)从未碰过 enabled，所以默认不碰它才安全。
+        /// 确实禁用过相机的 mod 请显式传 <c>true</c>。
+        /// </summary>
+        public static bool Restore(ICameraBackend backend, object camera, CameraState state,
+            bool restoreEnabled = false)
         {
             if (backend == null || camera == null || !backend.IsAlive(camera)) return false;
             if (!state.Valid) return false;
@@ -202,7 +213,7 @@ namespace CesiumLoader.SDK
                 ok &= backend.SetBackgroundColor(camera, state.BackgroundColor);
                 // enabled/aspect 放最后: 某些渲染管线在 disabled 状态会拒绝改参数
                 ok &= backend.SetAspect(camera, state.Aspect);
-                ok &= backend.SetEnabled(camera, state.Enabled);
+                if (restoreEnabled) ok &= backend.SetEnabled(camera, state.Enabled);
             }
             catch (Exception e)
             {
