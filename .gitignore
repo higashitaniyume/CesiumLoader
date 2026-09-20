@@ -401,6 +401,13 @@ tools/smoke/speedtest/env/
 tools/cesium/bin/
 tools/cesium/obj/
 
+# 本地打包产物 (tools\package-modloader.ps1 的中间目录与 zip; zip 在 dist\release\ 已被忽略)
+staging/
+sdk-staging/
+sdk-tools/
+cesium-loader*.zip
+cesium-sdk-tools*.zip
+
 # 参考资料 (克隆的外部仓库, 不入库)
 tools/reference/
 

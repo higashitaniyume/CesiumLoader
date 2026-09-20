@@ -631,7 +631,7 @@ static DWORD WINAPI boot_thread(LPVOID)
     // ---- 彩色分级输出: 要加载的 mod 列表 ----
     console_set_color(LOG_CYAN);
     log_line("──────────────────────────────────────────────");
-    log_line("  CesiumLoader v" + cfg.sdkVersion + " — mod 加载报告");
+    log_line(std::string("  CesiumLoader loader v") + LoaderConfig::loaderVersion + " / SDK v" + cfg.sdkVersion + " — mod 加载报告");
     log_line("──────────────────────────────────────────────");
     console_set_color(LOG_DEFAULT);
 

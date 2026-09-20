@@ -88,7 +88,7 @@ version.dll (C++ 薄代理, 15 个导出转发到系统 version.dll)
 |---|---|
 | **Mod 能力声明 + 警告** | mod 在 `[ModManifest(Permissions=...)]` 声明会用到的能力（读对局/操作游戏/写文件），sidecar 同步导出。已取消权限门控：任何 mod 都能调用 SDK 全部 API；声明「操作游戏」的 mod 在加载时与工具列表里显示 ⚠️ 警告（仅提示来源可信，不阻止） |
 | **模组元数据标准 + 依赖解析** | `mods\{ModId}\{ModId}.json` sidecar（id/版本/能力/SDK 版本/依赖，与 DLL 同文件夹）；加载器按依赖**拓扑排序**加载，缺失依赖/版本不符/循环依赖的 mod 被跳过并报告（`modmeta.cpp` 纯标准库，可单测） |
-| **API 版本协商** | SDK 声明版本 `2.0.0`；mod 声明 `SdkVersion`，要求高于当前的 mod 被拒绝加载。`doorstop_config.json` 的 `sdkVersion` 声明当前版本 |
+| **API 版本协商** | SDK 声明版本 `2.1.0`；mod 声明 `SdkVersion`，要求高于当前的 mod 被拒绝加载。`doorstop_config.json` 的 `sdkVersion` 声明当前版本 |
 | **事件驱动化** | `GameEvents.StartAutoHook()` 内部每 1 秒维持 RPC 挂钩，mod 无需每秒轮询；`ModBase.Run` 不传 tick 则不空转 |
 | **IL2CPP 互操作安全封装** | `il2cpp_safe.h` 收敛全部互操作点：函数指针空检查、参数/返回值校验、托管异常转译成可读错误，防止原生崩溃拖垮游戏 |
 | **调试与故障体验** | mod 入口异常写 `logs\mod-errors.log`（SDK `SdkLog.ReportCrash` + 原生 `write_mod_error` 双写）；`cesium verify` 离线预检兼容性 |
@@ -159,7 +159,7 @@ version.dll (C++ 薄代理, 15 个导出转发到系统 version.dll)
   "consoleTopmost": false,            // 控制台窗口置顶(默认 false)
   "forwardActivityLog": true,         // mod 日志转发到控制台
   "speedhackBaseSpeed": 1.0,          // 变速(加载器内置): 1.0=正常, 2.0=全程2倍速
-  "sdkVersion": "2.0.0"               // 当前 SDK 版本(校验 mod 的 SdkVersion)
+  "sdkVersion": "2.1.0"               // 当前 SDK 版本(校验 mod 的 SdkVersion)
 }
 ```
 
@@ -232,7 +232,7 @@ dotnet run --project tools\cesium -c Release -- package MyMod -o MyMod-1.0.0.zip
 ```csharp
 [assembly: CesiumLoader.SDK.ModManifest("我的Mod", "1.0.0", "小明", "描述",
     Permissions = CesiumLoader.SDK.ModPermission.ReadGameState,  // 声明会用到的能力(仅展示/警告)
-    SdkVersion = "2.0.0")]                                        // API 版本协商
+    SdkVersion = "2.1.0")]                                        // API 版本协商
 ```
 
 **入口 (纯事件驱动, 无轮询):**

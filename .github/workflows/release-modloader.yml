@@ -87,7 +87,9 @@ jobs:
             "dist/modloader/AstralParty_ModLoader/doorstop_config.json",
             "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll",
             "dist/modloader/AstralParty_ModLoader/mods/ActivityLogMod/ActivityLogMod.dll",
-            "dist/modloader/AstralParty_ModLoader/mods/ActivityLogMod/ActivityLogMod.json"
+            "dist/modloader/AstralParty_ModLoader/mods/ActivityLogMod/ActivityLogMod.json",
+            "dist/modloader/AstralParty_ModLoader/mods/FreeCameraMod/FreeCameraMod.dll",
+            "dist/modloader/AstralParty_ModLoader/mods/FreeCameraMod/FreeCameraMod.json"
           )
           foreach ($f in $required) { if (-not (Test-Path $f)) { throw "缺少预编译产物: $f" } }
           Write-Host "dist 预编译产物齐全"
@@ -100,10 +102,13 @@ jobs:
           Copy-Item "dist/modloader/AstralParty_ModLoader/doorstop_config.json" "staging/AstralParty_ModLoader/doorstop_config.json" -Force
           Copy-Item "dist/modloader/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll" "staging/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll" -Force
           Copy-Item "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll" "staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll" -Force
-          # 示例 mod: 每 mod 一个文件夹(mods\{ModId}\{ModId}.dll + .json)
-          New-Item -ItemType Directory -Path "staging/AstralParty_ModLoader/mods/ActivityLogMod" -Force | Out-Null
-          Copy-Item "dist/modloader/AstralParty_ModLoader/mods/ActivityLogMod/ActivityLogMod.dll" "staging/AstralParty_ModLoader/mods/ActivityLogMod/ActivityLogMod.dll" -Force
-          Copy-Item "dist/modloader/AstralParty_ModLoader/mods/ActivityLogMod/ActivityLogMod.json" "staging/AstralParty_ModLoader/mods/ActivityLogMod/ActivityLogMod.json" -Force
+          # 内置 mod: 每 mod 一个文件夹(mods\{ModId}\{ModId}.dll + .json)
+          $builtInMods = @("ActivityLogMod", "FreeCameraMod")
+          foreach ($mod in $builtInMods) {
+            New-Item -ItemType Directory -Path "staging/AstralParty_ModLoader/mods/$mod" -Force | Out-Null
+            Copy-Item "dist/modloader/AstralParty_ModLoader/mods/$mod/$mod.dll" "staging/AstralParty_ModLoader/mods/$mod/$mod.dll" -Force
+            Copy-Item "dist/modloader/AstralParty_ModLoader/mods/$mod/$mod.json" "staging/AstralParty_ModLoader/mods/$mod/$mod.json" -Force
+          }
           # 部署说明(可选, apt 端可忽略)
           $readme = @(
             "cesium-loader-${{ steps.version.outputs.version }}",
@@ -113,6 +118,7 @@ jobs:
             "- AstralParty_ModLoader\sdk\           → SDK 依赖",
             "- AstralParty_ModLoader\mods\          → 用户 mod (每 mod 一个文件夹: mods\{ModId}\{ModId}.dll)",
             "- AstralParty_ModLoader\mods\{ModId}\{ModId}.json → mod sidecar (id/版本/权限/enabled 开关/依赖)",
+            "  随包内置: mods\ActivityLogMod (行为日志) / mods\FreeCameraMod (自由相机, F1 开关)",
             "- AstralParty_ModLoader\logs\          → 日志目录",
             "解压到游戏 exe 目录即完成安装。",
             "从旧版升级: 请删除游戏目录下的 winmm.dll (旧代理), 换成 version.dll。",
@@ -132,7 +138,9 @@ jobs:
             "staging/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll",
             "staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll",
             "staging/AstralParty_ModLoader/mods/ActivityLogMod/ActivityLogMod.dll",
-            "staging/AstralParty_ModLoader/mods/ActivityLogMod/ActivityLogMod.json"
+            "staging/AstralParty_ModLoader/mods/ActivityLogMod/ActivityLogMod.json",
+            "staging/AstralParty_ModLoader/mods/FreeCameraMod/FreeCameraMod.dll",
+            "staging/AstralParty_ModLoader/mods/FreeCameraMod/FreeCameraMod.json"
           )
           $fileMap = @{}
           foreach ($f in $files) {
