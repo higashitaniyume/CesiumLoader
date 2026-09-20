@@ -66,13 +66,14 @@ namespace FreeCameraMod
     {
         // ---------------- 配置 ----------------
         private ModConfig _config;
-        private string _cameraMode = "preset";  // "preset" 预设俯瞰 / "orbit" 环绕观察 / "fly" 自由飞行
+        private string _cameraMode = "raise";   // "raise" 跟随抬高(默认, 保留游戏自己的视角操作) / "preset" 固定俯瞰 / "orbit" 环绕 / "fly" 飞行
         private float _presetHeight = 160f;     // preset: 相机绝对高度(Y)
         private float _presetPitch = 70f;       // preset: 俯角(度, >0 向下看)
         private float _presetFov = 80f;         // preset: 固定 FOV(越大视野越宽)
         private float _boardHeight;             // preset: 棋盘/桌面高度(Y), 默认 0 = 地面
         private float _aimDistance;             // preset: >0 = 手动指定瞄准距离; 0 = 自动(沿用游戏原本的瞄准点)
-        private float _maxTargetDistance = 500f;// preset: 自动瞄准的交点距离上限(防止相机接近水平时算出天量距离)
+        private float _maxTargetDistance = 500f;// preset/raise: 自动瞄准的交点距离上限(防止相机接近水平时算出天量距离)
+        private float _maxReadyCameraHeight = 500f; // preset/raise: 高于此高度且朝向为0的相机视为"菜单/过渡相机", 拒绝接管
         private bool _autoActivate;             // preset: 启动后自动进入俯瞰视角(不需要按 F1)
         private float _autoActivateDelay = 20f; // preset: 自动进入的延迟秒数(等游戏进入棋盘再接管)
         private float _orbitDistance = 12f;     // 进入时相机与观察点的距离
@@ -115,6 +116,19 @@ namespace FreeCameraMod
         private bool _autoActivateDone;          // 自动进入只触发一次
         private int _autoActivateFrames;         // 自动进入的就绪轮询计数
         private bool _autoActivateWarned;        // "相机未就绪" 只提示一次
+        private bool _presetAimClamped;          // 本次算出的瞄准距离被 maxTargetDistance 截断(相机没在看棋盘)
+
+        // ---------------- 跟随抬高模式(raise)运行态 ----------------
+        // 思路: 每帧先读"游戏自己写下的位姿"当基准(而不是把相机钉死), 再按 height/pitch/fov
+        // 把它抬到高处; 水平朝向与瞄准点仍跟着游戏走, 于是游戏自己的鼠标转视角/平移照常生效。
+        private Vector3 _basePosition;           // 识别出的"游戏自己的"相机位姿
+        private Vector3 _baseEuler;
+        private bool _hasBasePose;
+        private Vector3 _lastWrittenPosition;    // 上一帧我们写下的值(用于识别"游戏这帧有没有写相机")
+        private float _lastWrittenPitch;
+        private float _lastWrittenYaw;
+        private bool _hasWrittenPose;
+        private int _raiseFrames;                // 本次接管的写入帧数(用于跟随校验日志)
 
         /// <summary>是否环绕观察模式。</summary>
         private bool IsOrbit
@@ -123,19 +137,44 @@ namespace FreeCameraMod
         }
 
         /// <summary>
-        /// 是否预设俯瞰模式: 只绑 F1 开关, 相机固定在配置好的高处俯视视角。
-        /// 不接管鼠标(本游戏也拿不到鼠标输入), 所以不修改光标状态。
+        /// 是否预设俯瞰模式: 相机每帧被钉死在配置好的位姿上。
+        ///
+        /// ⚠️ 这个模式<b>会顶掉游戏自己的视角操作</b>(鼠标转视角/平移一律看不出效果),
+        /// 因为游戏每帧写下的相机位姿都会被我们覆盖 —— 实测就是"F1 打开后动不了, 关掉就恢复"。
+        /// 想边抬高视角边继续正常操作游戏, 用 <see cref="IsRaise"/>(默认模式)。
         /// </summary>
         private bool IsPreset
         {
             get { return string.Equals(_cameraMode, "preset", StringComparison.OrdinalIgnoreCase); }
         }
 
+        /// <summary>
+        /// 是否跟随抬高模式(默认, mode=raise/follow/offset):
+        /// 保留游戏自己的视角控制, 只把相机抬到 height、按 pitch 俯视、用 fov 的视野。
+        /// 每帧以"游戏写下的位姿"为基准重新计算, 所以游戏里用鼠标转视角/平移地图都还有效,
+        /// 只是始终从高处往下看。
+        /// </summary>
+        private bool IsRaise
+        {
+            get
+            {
+                return string.Equals(_cameraMode, "raise", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(_cameraMode, "follow", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(_cameraMode, "offset", StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        /// <summary>是否"俯瞰类"模式(preset/raise 共用 height/pitch/fov 这组配置)。</summary>
+        private bool IsOverhead
+        {
+            get { return IsPreset || IsRaise; }
+        }
+
         /// <summary>显示名。</summary>
         public override string Name { get { return "自由相机"; } }
 
         /// <summary>版本。</summary>
-        public override string Version { get { return "2.1.0"; } }
+        public override string Version { get { return "2.1.1"; } }
 
         // =====================================================================
         // 生命周期
@@ -164,7 +203,7 @@ namespace FreeCameraMod
 
             Log.Info("自由相机已就绪: " + _toggleKey + " 开关, " + _resetKey + " 复位" +
                      " (模式=" + ModeName() +
-                     (IsPreset
+                     (IsOverhead
                          ? " height=" + F(_presetHeight) + " pitch=" + F(_presetPitch) +
                            " fov=" + F(_presetFov) + " boardHeight=" + F(_boardHeight) +
                            " aimDistance=" + F(_aimDistance)
@@ -173,7 +212,17 @@ namespace FreeCameraMod
                              : " speed=" + F(_moveSpeed)) +
                      " rotationSpeed=" + F(_rotationSpeed) +
                      " fov=" + F(_defaultFov) + " lockCursor=" + _lockCursor + ")");
-            if (IsPreset)
+            if (IsRaise)
+            {
+                Log.Info("操作: 只绑 " + _toggleKey + " 开关. 视角会自动抬高, 游戏自己的鼠标/键盘操作照常可用" +
+                         "(本 mod 只改相机位姿, 不接管鼠标)");
+                Log.Info("跟随抬高: 相机高度 Y=" + F(_presetHeight) + ", 俯角 " + F(_presetPitch) +
+                         "°, FOV " + F(_presetFov) + ", 棋盘高度 Y=" + F(_boardHeight) +
+                         (_aimDistance > 0.01f ? ", 手动瞄准距离 " + F(_aimDistance) + "m"
+                                               : ", 瞄准点=自动沿用游戏当前的瞄准点") +
+                         (_autoActivate ? ", 将在 " + F(_autoActivateDelay) + "s 后自动进入" : ""));
+            }
+            else if (IsPreset)
             {
                 Log.Info("操作: 只绑 " + _toggleKey + " 开关(其它按键/鼠标/滚轮均不接管). 视角由配置决定," +
                          " 改 config.json 后重启游戏生效");
@@ -182,6 +231,8 @@ namespace FreeCameraMod
                          (_aimDistance > 0.01f ? ", 手动瞄准距离 " + F(_aimDistance) + "m"
                                                : ", 棋盘中心=自动沿用游戏原本的瞄准点") +
                          (_autoActivate ? ", 将在 " + F(_autoActivateDelay) + "s 后自动进入" : ""));
+                Log.Warn("注意: preset 是完全固定视角 —— 相机每帧被写死, 游戏自己的鼠标/键盘视角操作会没有反应" +
+                         "(实测: 开着就动不了, 关掉才恢复). 需要边看高处边操作游戏请把 mode 改成 raise");
             }
             else if (IsOrbit)
                 Log.Info("操作: 鼠标=绕观察点转圈/上移抬高相机, 滚轮=FOV, Alt+滚轮=推拉距离, " +
@@ -189,14 +240,15 @@ namespace FreeCameraMod
             else
                 Log.Info("操作: WASD=移动, Q/E=升降, 鼠标=转向, Shift=加速, Ctrl=减速, 滚轮=FOV, " +
                          _resetKey + "=复位");
-            Log.Info("配置键: mode/height/pitch/fov/boardHeight/aimDistance/maxTargetDistance/" +
-                     "autoActivate/autoActivateDelay/orbitDistance/distanceStep/speed/rotationSpeed/" +
-                     "nearClip/farClip/invertY/toggleKey/resetKey/lockCursor");
+            Log.Info("配置键: mode(raise/preset/orbit/fly)/height/pitch/fov/boardHeight/aimDistance/" +
+                     "maxTargetDistance/maxReadyCameraHeight/autoActivate/autoActivateDelay/orbitDistance/" +
+                     "distanceStep/speed/rotationSpeed/nearClip/farClip/invertY/toggleKey/resetKey/lockCursor");
         }
 
         /// <summary>模式显示名。</summary>
         private string ModeName()
         {
+            if (IsRaise) return "跟随抬高 raise";
             if (IsPreset) return "预设俯瞰 preset";
             return IsOrbit ? "环绕观察 orbit" : "自由飞行 fly";
         }
@@ -220,8 +272,8 @@ namespace FreeCameraMod
         {
             try
             {
-                // 自动进入预设视角(配置 autoActivate; 只在相机就绪后触发一次, 用户按过开关键后不再自动触发)
-                if (!_active && !_autoActivateDone && _autoActivate && IsPreset)
+                // 自动进入俯瞰视角(配置 autoActivate; 只在相机就绪后触发一次, 用户按过开关键后不再自动触发)
+                if (!_active && !_autoActivateDone && _autoActivate && IsOverhead)
                 {
                     _autoActivateFrames++;
                     if (_autoActivateFrames % 30 == 1)
@@ -230,20 +282,23 @@ namespace FreeCameraMod
                         if (elapsedMs >= (int)(_autoActivateDelay * 1000f))
                         {
                             var cam = CameraService.GetMainCamera();
-                            if (!UnityObject.IsAlive(cam) || IsPlaceholderCamera(cam))
+                            string notReady = null;
+                            if (!UnityObject.IsAlive(cam) || !TryPrepareOverhead(cam, out notReady))
                             {
-                                // 菜单/加载阶段的相机是 (0,0,0) 占位相机: 现在接管只会算出一个没意义的
-                                // 瞄准点, 等真正的游戏相机出现再进(进棋盘后主相机会被替换)。
+                                // 菜单/加载阶段的相机是占位相机或失活的过渡相机: 现在接管只会算出一个
+                                // 没意义的瞄准点, 等真正的游戏相机出现再进(进棋盘后主相机会被替换)。
                                 if (!_autoActivateWarned)
                                 {
                                     _autoActivateWarned = true;
-                                    Log.Info("自动进入推迟: 主相机尚未就绪(占位相机), 等进入棋盘后再接管");
+                                    Log.Info("自动进入推迟: 主相机尚未就绪(" +
+                                             (notReady ?? "没有主相机") + "), 等进入棋盘后再接管");
                                 }
                             }
                             else
                             {
                                 _autoActivateDone = true;
-                                Log.Info("自动进入俯瞰视角 (autoActivate=true, 延迟 " + F(_autoActivateDelay) +
+                                Log.Info("自动进入" + (IsRaise ? "跟随抬高视角" : "俯瞰视角") +
+                                         " (autoActivate=true, 延迟 " + F(_autoActivateDelay) +
                                          "s, 相机已就绪); 按 " + _toggleKey + " 可随时关闭");
                                 Activate();
                                 return;
@@ -266,12 +321,16 @@ namespace FreeCameraMod
                 // 相机被销毁(切场景/换相机) -> 重新绑定, 绝不继续用失效引用
                 if (_driven != null && !UnityObject.IsAlive(_driven)) { Rebind("驱动的相机被销毁"); return; }
 
-                // 预设俯瞰模式: 不绑定其它按键, 相机由 OnLateUpdate 每帧保持。
-                // 这里顺带做一次"帧首校验", 用来判定上一帧渲染是否真的用了预设视角。
-                if (IsPreset)
+                // 俯瞰类模式(preset/raise): 不绑定其它按键, 相机由 OnLateUpdate 每帧保持。
+                // preset 顺带做一次"帧首校验", 用来判定上一帧渲染是否真的用了预设视角;
+                // raise 下游戏每帧本来就会写相机, 帧首位姿就是它的基准, 不做"是否生效"的判定。
+                if (IsOverhead)
                 {
-                    _frameStartChecks++;
-                    if (_frameStartChecks == 60 || _frameStartChecks == 300) LogFrameStartCheck();
+                    if (IsPreset)
+                    {
+                        _frameStartChecks++;
+                        if (_frameStartChecks == 60 || _frameStartChecks == 300) LogFrameStartCheck();
+                    }
                     return;
                 }
 
@@ -291,17 +350,19 @@ namespace FreeCameraMod
         /// <summary>
         /// 每帧 LateUpdate(主线程, 实际时机是 PostLateUpdate)。
         ///
-        /// preset 模式的接管写在这里: 游戏的相机逻辑(自己的 LateUpdate 或 Cinemachine Brain)
-        /// 跑完之后我们再写一遍, 所以渲染出来的必定是我们的预设视角 —— 这是本游戏里唯一
+        /// preset/raise 模式的接管写在这里: 游戏的相机逻辑(自己的 LateUpdate 或 Cinemachine Brain)
+        /// 跑完之后我们再写一遍, 所以渲染出来的必定是我们要的视角 —— 这是本游戏里唯一
         /// 可靠的接管点(实测 Brain 在失活对象上, 单靠 VirtualCamera 不会生效)。
-        /// 只写相机姿态, 不碰游戏逻辑, 退出时按保存的 CameraState 完整还原。
+        /// 只写相机姿态与镜头参数, 不碰游戏逻辑, 退出时按保存的 CameraState 还原
+        /// (注意: 不还原 enabled, 见 CameraState.Restore 的说明 —— 还原它会把画面弄黑)。
         /// </summary>
         public override void OnLateUpdate()
         {
-            if (!_active || !IsPreset) return;
+            if (!_active || !IsOverhead) return;
             try
             {
-                ApplyPreset();
+                if (IsPreset) ApplyPreset();
+                else ApplyRaise();
             }
             catch (Exception e)
             {
@@ -324,6 +385,21 @@ namespace FreeCameraMod
                 return;
             }
 
+            // 0) 就绪校验(仅俯瞰类): 实测菜单/切场景时主相机是失活的过渡相机(停在 Y≈1002.75,
+            //    euler=(0,0,0)), 用它算出的"瞄准点"毫无意义; 一旦接管, 退出时还会把这份坏状态
+            //    还原回相机 -> 画面变黑(HUD 仍在)。所以这里一律拒绝, 等就绪再进。
+            if (IsOverhead)
+            {
+                string notReady;
+                if (!TryPrepareOverhead(camera, out notReady))
+                {
+                    Log.Warn("暂不接管: " + notReady + " (等进入棋盘/加载完成后再按 " + _toggleKey + ")");
+                    UiService.Notify("自由相机: 相机未就绪 (" + notReady + ")",
+                        UiNotificationLevel.Warning, 3f, Context);
+                    return;
+                }
+            }
+
             // 1) 保存原始状态(相机 + Cinemachine)
             _savedState = CameraService.CaptureState(camera);
             _savedBrain = CinemachineService.CaptureBrainState();
@@ -331,12 +407,13 @@ namespace FreeCameraMod
             _freeVcam = null;
             _driven = null;
 
-            // 2) preset 模式: 直接驱动主相机。本游戏 Cinemachine Brain 位于失活对象,
+            // 2) 俯瞰类(preset/raise): 直接驱动主相机。本游戏 Cinemachine Brain 位于失活对象,
             //    VirtualCamera 不会驱动任何相机, 所以这条路是唯一可靠的。
-            if (IsPreset)
+            if (IsOverhead)
             {
                 _driven = camera;
-                _mode = "直接驱动主相机(预设俯瞰, PostLateUpdate 写入)";
+                _mode = IsPreset ? "直接驱动主相机(预设俯瞰, PostLateUpdate 写入)"
+                                 : "直接驱动主相机(跟随抬高, PostLateUpdate 写入)";
             }
             // 2b) orbit/fly: 优先独立 CinemachineVirtualCamera(priority=100)
             else if (_savedBrain.Available && _savedBrain.BrainFound)
@@ -350,7 +427,7 @@ namespace FreeCameraMod
             }
 
             // 3) 回退: 禁用 Brain, 直接驱动主相机
-            if (_freeVcam == null && !IsPreset)
+            if (_freeVcam == null && !IsOverhead)
             {
                 _driven = camera;
                 _mode = "直接驱动主相机";
@@ -373,19 +450,20 @@ namespace FreeCameraMod
             _currentFov = _savedState.FieldOfView > 0.1f ? _savedState.FieldOfView : _defaultFov;
             _zeroMouseFrames = 0;
 
-            // 4b) 姿态: preset 算固定俯瞰位姿(并立刻应用一次); orbit 建立观察点
-            if (IsPreset)
+            // 4b) 姿态: 俯瞰类的位姿已在 TryPrepareOverhead 里算好(立刻应用一次); orbit 建立观察点
+            if (IsOverhead)
             {
-                ComputePresetPose(camera);
-                ApplyPreset();
+                ResetRaiseState();
+                if (IsPreset) ApplyPreset();
+                else ApplyRaise();
             }
             else
             {
                 SetupOrbit();
             }
 
-            // 5) 鼠标独占(仅 orbit/fly 需要; preset 完全不接管鼠标, 游戏自己的鼠标操作照常)
-            if (IsPreset)
+            // 5) 鼠标独占(仅 orbit/fly 需要; preset/raise 完全不接管鼠标, 游戏自己的操作照常)
+            if (IsOverhead)
             {
                 _cursorCaptured = false;
             }
@@ -398,8 +476,8 @@ namespace FreeCameraMod
 
             _active = true;
             Log.Info("自由相机已开启 [接管: " + _mode + " / 模式: " + ModeName() + "]" +
-                     (IsPreset
-                         ? " 观察点=(" + F(_presetTarget.x) + "," + F(_presetTarget.y) + "," + F(_presetTarget.z) +
+                     (IsOverhead
+                         ? " 瞄准点=(" + F(_presetTarget.x) + "," + F(_presetTarget.y) + "," + F(_presetTarget.z) +
                            ") 相机=(" + F(_presetPose.x) + "," + F(_presetPose.y) + "," + F(_presetPose.z) +
                            ") 俯角=" + F(_presetUsedPitch) + " FOV=" + F(_presetUsedFov) +
                            (string.IsNullOrEmpty(_presetNote) ? "" : " [" + _presetNote + "]")
@@ -408,8 +486,9 @@ namespace FreeCameraMod
                                ") 距离=" + F(_distance) + " 仰角=" + F(_pitch)
                              : "") +
                      " 进入前状态: " + _savedState.Describe());
-            UiService.Notify(IsPreset ? "自由相机: 俯瞰视角已开启 (" + _toggleKey + " 关闭)"
-                                      : "自由相机: 开启 (" + _toggleKey + " 关闭)",
+            UiService.Notify(IsRaise ? "自由相机: 跟随抬高已开启 (" + _toggleKey + " 关闭)"
+                                     : IsPreset ? "自由相机: 俯瞰视角已开启 (" + _toggleKey + " 关闭)"
+                                                : "自由相机: 开启 (" + _toggleKey + " 关闭)",
                 UiNotificationLevel.Info, 2.5f, Context);
         }
 
@@ -420,11 +499,11 @@ namespace FreeCameraMod
             _active = false;
 
             // 1) 还原 Cinemachine(同时销毁我们创建的 VirtualCamera)
-            //    preset 模式从不碰 Brain/VirtualCamera(只驱动相机本体), 所以跳过, 避免
+            //    俯瞰类(preset/raise)从不碰 Brain/VirtualCamera(只驱动相机本体), 所以跳过, 避免
             //    去"还原"一个我们从未改过的 Brain。
             try
             {
-                if (IsPreset)
+                if (IsOverhead)
                 {
                     _freeVcam = null;
                 }
@@ -440,7 +519,9 @@ namespace FreeCameraMod
             }
             catch (Exception e) { Log.ReportCrash("Deactivate/Cinemachine", e); }
 
-            // 2) 还原主相机完整状态
+            // 2) 还原主相机状态(位姿/镜头参数)
+            //    注意: 不还原 enabled —— 见 CameraState.Restore 的说明, 快照可能采自过渡期的
+            //    失活相机, 把 enabled=false 还原回去会让画面整个变黑(HUD 还在, 声音照旧)。
             try
             {
                 var target = (_driven != null && UnityObject.IsAlive(_driven)) ? _driven : CameraService.GetMainCamera();
@@ -457,6 +538,7 @@ namespace FreeCameraMod
             catch (Exception e) { Log.ReportCrash("Deactivate/Restore", e); }
 
             _driven = null;
+            ResetRaiseState();
 
             // 3) 释放输入独占
             if (_cursorCaptured)
@@ -497,27 +579,27 @@ namespace FreeCameraMod
         // =====================================================================
 
         /// <summary>
-        /// 预设俯瞰模式: 由配置算出固定视角。
+        /// 俯瞰几何: 由"基准位姿"算出相机应该待的位置(preset 与 raise 共用同一套数学)。
         ///
-        ///   棋盘中心(观察点) = 默认取"进入时相机正在看的那一点": 相机朝向射线与
-        ///                      高度为 <c>boardHeight</c> 平面的交点。这样按 F1 只是
-        ///                      "升高 + 拉远 + 视野变广", 视线中心不变, 不会看歪。
-        ///                      <c>aimDistance</c> &gt; 0 时改为手动指定距离。
+        ///   瞄准点           = 基准相机正在看的那一点: 朝向射线与高度为 <c>boardHeight</c>
+        ///                      平面的交点(这样只是"升高 + 拉远 + 视野变广", 视线中心不变)。
+        ///                      <c>aimDistance</c> &gt; 0 时改为手动指定水平距离。
         ///   相机高度         = <c>height</c>(绝对 Y)
-        ///   水平后退距离     = (height - 棋盘中心Y) / tan(pitch)  → 保证相机正对棋盘中心
-        ///   朝向             = Euler(pitch, 进入时的 yaw, 0), 镜头 FOV = <c>fov</c>
+        ///   水平后退距离     = (height - 瞄准点Y) / tan(pitch)  → 保证相机正对瞄准点
+        ///   朝向             = Euler(pitch, 基准 yaw, 0), 镜头 FOV = <c>fov</c>
         ///
-        /// 也就是 height / pitch / fov 三个数字就完全确定视角: 相机永远正对棋盘中心,
-        /// 不需要鼠标, 也不需要任何热键。
+        /// 于是 height / pitch / fov 三个数字就完全确定视角: 相机永远正对瞄准点。
+        /// preset 的"基准"取进入时的相机(位姿固定); raise 的"基准"每帧换成游戏当前写下的
+        /// 相机位姿(位姿跟着游戏走, 所以游戏自己的视角操作仍然有效)。
+        ///
+        /// 只写 _yaw/_presetTarget/_presetPose/_presetUsedPitch/_presetUsedFov/_presetNote/
+        /// _presetAimClamped, 不动任何计数(调用方按需重置)。
         /// </summary>
-        private void ComputePresetPose(Camera camera)
+        private void ApplyOverheadGeometry(Vector3 basePosition, Vector3 baseEuler)
         {
-            Vector3 pos = CameraService.GetPosition(camera);
-            var euler = CameraService.GetEulerAngles(camera);
-
-            // 水平朝向沿用进入时的朝向(不做水平旋转); 俯角用配置值并钳制到合法范围
-            _yaw = euler.y;
-            float entryPitch = NormalizeAngle(euler.x);
+            // 水平朝向沿用基准的朝向(不做水平旋转); 俯角用配置值并钳制到合法范围
+            _yaw = baseEuler.y;
+            float entryPitch = NormalizeAngle(baseEuler.x);
             _presetUsedPitch = FreeCameraMath.Clamp(_presetPitch, 5f, 89f);
             _presetUsedFov = _presetFov > 1f ? _presetFov : _defaultFov;
             if (_presetUsedFov < 5f) _presetUsedFov = 5f;
@@ -528,13 +610,14 @@ namespace FreeCameraMod
             float hz = (float)Math.Cos(yawRad);
 
             _presetNote = "";
+            _presetAimClamped = false;
 
-            // ---- 棋盘中心 ----
+            // ---- 瞄准点 ----
             float tx, tz;
             if (_aimDistance > 0.01f)
             {
-                tx = pos.x + hx * _aimDistance;
-                tz = pos.z + hz * _aimDistance;
+                tx = basePosition.x + hx * _aimDistance;
+                tz = basePosition.z + hz * _aimDistance;
                 _presetNote = "手动瞄准 " + F(_aimDistance) + "m";
             }
             else
@@ -549,31 +632,30 @@ namespace FreeCameraMod
                     _presetNote = "相机接近水平, 瞄准距离已钳制";
                 }
 
-                float t = (pos.y - _boardHeight) / down;
+                float t = (basePosition.y - _boardHeight) / down;
                 if (t < 1f) t = 1f;
                 if (t > _maxTargetDistance)
                 {
                     t = _maxTargetDistance;
+                    _presetAimClamped = true;     // 相机没在看棋盘(菜单/过渡相机会这样) -> 拒绝接管
                     _presetNote = "瞄准距离超过上限 " + F(_maxTargetDistance);
                 }
-                tx = pos.x + fx * t;
-                tz = pos.z + fz * t;
+                tx = basePosition.x + fx * t;
+                tz = basePosition.z + fz * t;
             }
 
             _presetTarget = new Vector3(tx, _boardHeight, tz);
-            _presetFrames = 0;   // 接管校验重新计数
-            _frameStartChecks = 0;
 
-            // ---- 相机位姿: 高度固定, 水平后退 dy/tan(pitch), 正好俯视棋盘中心 ----
+            // ---- 相机位姿: 高度固定, 水平后退 dy/tan(pitch), 正好俯视瞄准点 ----
             float dy = _presetHeight - _presetTarget.y;
             float tan = (float)Math.Tan(_presetUsedPitch * Math.PI / 180.0);
             float back = tan > 0.0001f ? dy / tan : 0f;
-            if (back < 1f) back = 1f;   // 高度不足时至少退开 1 米, 免得相机陷进棋盘中心
+            if (back < 1f) back = 1f;   // 高度不足时至少退开 1 米, 免得相机陷进瞄准点
 
             _presetPose = new Vector3(tx - hx * back, _presetHeight, tz - hz * back);
 
             if (_presetNote.Length > 0) _presetNote += "; ";
-            _presetNote += "相机在棋盘中心后方 " + F(back) + "m";
+            _presetNote += "相机在瞄准点后方 " + F(back) + "m";
         }
 
         /// <summary>
@@ -604,6 +686,129 @@ namespace FreeCameraMod
             // 接管校验: 写入之后立刻回读, 确认真的写进去了
             _presetFrames++;
             if (_presetFrames == 60 || _presetFrames == 300) LogWriteBackCheck(camera);
+        }
+
+        /// <summary>
+        /// 跟随抬高模式(raise)的每帧写入 —— "视角抬高但仍能正常操作游戏"的关键。
+        ///
+        /// preset 把相机钉死, 于是游戏自己的视角操作全部失效(实测: 开着动不了, 关掉就恢复);
+        /// raise 改为:
+        ///   1) 先读"游戏这帧写下的位姿"当基准。要排除我们自己上一帧写进去的值: 若当前位姿
+        ///      与我们上次写入的完全一致, 说明游戏这帧没动相机(静态/暂停), 继续沿用上次
+        ///      识别出的基准 —— 否则每帧都会在"抬高后的位置"上再加一次偏移, 越飞越高。
+        ///   2) 用与 preset 完全相同的几何, 把基准位姿抬到 height、按 pitch 俯视、套用 fov;
+        ///   3) 写回。渲染用的是抬高后的视角, 但水平朝向与瞄准点都跟着游戏走, 所以在游戏里
+        ///      用鼠标转视角、平移地图依旧有效。
+        /// </summary>
+        private void ApplyRaise()
+        {
+            var camera = (_driven != null && UnityObject.IsAlive(_driven)) ? _driven : CameraService.GetMainCamera();
+            if (!UnityObject.IsAlive(camera))
+            {
+                // 相机没了: 由 OnUpdate 的 Rebind 负责重新绑定, 这里静默(否则每帧刷日志)
+                return;
+            }
+            _driven = camera;
+
+            Vector3 gamePosition = CameraService.GetPosition(camera);
+            Vector3 gameEuler = CameraService.GetEulerAngles(camera);
+
+            // 游戏这帧有没有写相机? 位姿与我们上一帧写入的一致 -> 没有, 沿用上次的基准
+            bool unchangedByGame = _hasWrittenPose && _hasBasePose &&
+                                   Distance(gamePosition, _lastWrittenPosition) < 0.005f &&
+                                   Math.Abs(NormalizeAngle(gameEuler.x - _lastWrittenPitch)) < 0.05f &&
+                                   Math.Abs(NormalizeAngle(gameEuler.y - _lastWrittenYaw)) < 0.05f;
+
+            if (!unchangedByGame)
+            {
+                _basePosition = gamePosition;
+                _baseEuler = gameEuler;
+                _hasBasePose = true;
+            }
+
+            // 以"游戏自己的位姿"为基准, 算抬高后的位姿
+            ApplyOverheadGeometry(_basePosition, _baseEuler);
+
+            CameraService.SetPosition(camera, _presetPose);
+            CameraService.SetRotation(camera, Quaternion.Euler(_presetUsedPitch, _yaw, 0f));
+            CameraService.SetFieldOfView(camera, _presetUsedFov);
+            CameraService.SetNearClipPlane(camera, _nearClip);
+            CameraService.SetFarClipPlane(camera, _farClip);
+
+            _lastWrittenPosition = _presetPose;
+            _lastWrittenPitch = _presetUsedPitch;
+            _lastWrittenYaw = _yaw;
+            _hasWrittenPose = true;
+
+            _raiseFrames++;
+            if (_raiseFrames == 60 || _raiseFrames == 300) LogRaiseCheck(gamePosition, gameEuler);
+        }
+
+        /// <summary>
+        /// 俯瞰类模式(preset/raise)接管前的就绪校验, 顺便把位姿算出来(只算不写)。
+        ///
+        /// 实测踩坑: 本游戏菜单/切场景时主相机会失活并停在 Y≈1002.75、euler=(0,0,0) ——
+        /// 此时算出的"瞄准点"会直接顶到 maxTargetDistance 上限, 完全没有意义; 若照此接管,
+        /// 退出时还会把这份坏状态还原回相机(画面变黑而 HUD 还在)。所以这里一律拒绝,
+        /// 等游戏真正进入棋盘再接管。
+        /// </summary>
+        private bool TryPrepareOverhead(Camera camera, out string reason)
+        {
+            reason = null;
+            if (!UnityObject.IsAlive(camera)) { reason = "没有主相机"; return false; }
+
+            Vector3 position = CameraService.GetPosition(camera);
+            Vector3 euler = CameraService.GetEulerAngles(camera);
+            if (IsPlaceholderCamera(position, euler))
+            {
+                reason = "主相机还是菜单/过渡相机(尚未进入棋盘)";
+                return false;
+            }
+
+            ApplyOverheadGeometry(position, euler);
+            _presetFrames = 0;
+            _frameStartChecks = 0;
+
+            if (_presetAimClamped)
+            {
+                reason = "相机没有看向棋盘(瞄准距离超过 " + F(_maxTargetDistance) +
+                         "m); 稍后再按, 或调大 maxTargetDistance";
+                return false;
+            }
+
+            if (!CameraService.GetEnabled(camera))
+                Log.Warn("主相机当前是失活状态(enabled=false), 仍按当前位姿接管; 若画面异常请按 " +
+                         _toggleKey + " 关闭");
+
+            return true;
+        }
+
+        /// <summary>清空跟随抬高的基准位姿(进入/退出/重新绑定时调用, 强制下一帧重新识别)。</summary>
+        private void ResetRaiseState()
+        {
+            _hasBasePose = false;
+            _hasWrittenPose = false;
+            _raiseFrames = 0;
+        }
+
+        /// <summary>
+        /// 跟随抬高校验: 确认基准位姿来自游戏、且我们的写入确实生效。
+        /// 偏差 ≈ 0 = 本帧渲染用的就是抬高后的视角; 基准位姿每帧都在变 = 游戏自己的操作有效。
+        /// </summary>
+        private void LogRaiseCheck(Vector3 gamePosition, Vector3 gameEuler)
+        {
+            var camera = (_driven != null && UnityObject.IsAlive(_driven)) ? _driven : null;
+            if (camera == null) return;
+
+            Vector3 actual = CameraService.GetPosition(camera);
+            float err = Distance(actual, _presetPose);
+
+            Log.Info("跟随校验(第" + _raiseFrames + "帧): 游戏位姿=(" + F(gamePosition.x) + "," + F(gamePosition.y) +
+                     "," + F(gamePosition.z) + ") euler=(" + F(gameEuler.x) + "," + F(gameEuler.y) + "," +
+                     F(gameEuler.z) + ") -> 抬高后=(" + F(_presetPose.x) + "," + F(_presetPose.y) + "," +
+                     F(_presetPose.z) + ") 俯角=" + F(_presetUsedPitch) + " FOV=" + F(_presetUsedFov) +
+                     " | 写入后实际=(" + F(actual.x) + "," + F(actual.y) + "," + F(actual.z) + ") 偏差=" +
+                     F(err) + "m" + (err < 0.5f ? " (写入生效)" : " (写入未生效!)"));
         }
 
         /// <summary>
@@ -657,18 +862,17 @@ namespace FreeCameraMod
         }
 
         /// <summary>
-        /// 是否是"还没初始化"的占位相机(菜单/加载阶段)。
-        /// 判据: 位置在原点且朝向为 (0,0,0) —— 游戏真正的游戏相机不会长这样。
-        /// 只用于推迟 autoActivate(否则会拿占位相机算出一个没意义的瞄准点)。
+        /// 是否是"还没就绪"的占位/过渡相机(菜单/加载阶段)。
+        /// 判据: 朝向为 (0,0,0) 且 (位置在原点 或 高度超过 maxReadyCameraHeight)。
+        /// 实测: 菜单/过渡相机是 euler=(0,0,0)、Y≈1002.75; 游戏真正的棋盘相机是
+        /// euler=(45,315,0)、Y≈108 —— 这个判据能可靠区分两者。
+        /// 只用于接管前的就绪校验(否则会拿占位相机算出一个没意义的瞄准点)。
         /// </summary>
-        private static bool IsPlaceholderCamera(Camera camera)
+        private bool IsPlaceholderCamera(Vector3 position, Vector3 euler)
         {
-            Vector3 position = CameraService.GetPosition(camera);
-            if (!position.IsZero()) return false;
-
-            Vector3 euler = CameraService.GetEulerAngles(camera);
-            return Math.Abs(NormalizeAngle(euler.x)) < 0.01f &&
-                   Math.Abs(NormalizeAngle(euler.y)) < 0.01f;
+            if (Math.Abs(NormalizeAngle(euler.x)) >= 0.01f) return false;
+            if (Math.Abs(NormalizeAngle(euler.y)) >= 0.01f) return false;
+            return position.IsZero() || position.y > _maxReadyCameraHeight;
         }
 
         // =====================================================================
@@ -872,8 +1076,8 @@ namespace FreeCameraMod
                 _freeVcam = null;
             }
 
-            // 还原 Brain 的启用状态(按进入前的记录; preset 模式从不碰 Brain)
-            if (!IsPreset && _savedBrain.Available && _savedBrain.BrainFound)
+            // 还原 Brain 的启用状态(按进入前的记录; 俯瞰类模式从不碰 Brain)
+            if (!IsOverhead && _savedBrain.Available && _savedBrain.BrainFound)
             {
                 var oldBrain = CinemachineService.FindBrain();
                 if (oldBrain != null) CinemachineService.SetBrainEnabled(oldBrain, _savedBrain.BrainEnabled);
@@ -898,10 +1102,11 @@ namespace FreeCameraMod
             _savedState = CameraService.CaptureState(camera);
             _savedBrain = CinemachineService.CaptureBrainState();
 
-            if (IsPreset)
+            if (IsOverhead)
             {
                 _driven = camera;
-                _mode = "直接驱动主相机(预设俯瞰, PostLateUpdate 写入)";
+                _mode = IsPreset ? "直接驱动主相机(预设俯瞰, PostLateUpdate 写入)"
+                                 : "直接驱动主相机(跟随抬高, PostLateUpdate 写入)";
             }
             else if (_savedBrain.Available && _savedBrain.BrainFound)
             {
@@ -909,7 +1114,7 @@ namespace FreeCameraMod
                 if (_freeVcam != null) _mode = "Cinemachine VirtualCamera(priority=100)";
             }
 
-            if (_freeVcam == null && !IsPreset)
+            if (_freeVcam == null && !IsOverhead)
             {
                 _driven = camera;
                 _mode = "直接驱动主相机";
@@ -926,10 +1131,15 @@ namespace FreeCameraMod
             _pitch = pitch;
             _currentFov = fov > 0.1f ? fov : _defaultFov;
 
-            if (IsPreset)
+            if (IsOverhead)
             {
-                // 新场景的新相机: 按配置重算预设位姿(位置/朝向都从新相机推)
-                ComputePresetPose(camera);
+                // 新场景的新相机: 重新做一次就绪校验并按配置重算位姿
+                // (只算不写; 若新相机还没就绪就保留上一份位姿继续驱动, 避免把视角甩到过渡相机的方向)
+                ResetRaiseState();
+                string notReady;
+                if (!TryPrepareOverhead(camera, out notReady))
+                    Log.Warn("重新绑定时相机尚未就绪(" + notReady + "), 暂用上一份视角继续; 若画面异常请按 " +
+                             _toggleKey + " 关闭");
             }
             else if (IsOrbit)
             {
@@ -941,11 +1151,12 @@ namespace FreeCameraMod
 
             _active = true;
             if (IsPreset) ApplyPreset();
+            else if (IsRaise) ApplyRaise();
             else Apply();
 
             Log.Info("自由相机已重新绑定 [接管: " + _mode + " / 模式: " + ModeName() + "]" +
-                     (IsPreset
-                         ? " 观察点=(" + F(_presetTarget.x) + "," + F(_presetTarget.y) + "," + F(_presetTarget.z) +
+                     (IsOverhead
+                         ? " 瞄准点=(" + F(_presetTarget.x) + "," + F(_presetTarget.y) + "," + F(_presetTarget.z) +
                            ") 相机=(" + F(_presetPose.x) + "," + F(_presetPose.y) + "," + F(_presetPose.z) + ")"
                          : ""));
         }
@@ -965,6 +1176,7 @@ namespace FreeCameraMod
             _boardHeight = _config.GetFloat("boardHeight", _boardHeight);
             _aimDistance = _config.GetFloat("aimDistance", _aimDistance);
             _maxTargetDistance = _config.GetFloat("maxTargetDistance", _maxTargetDistance);
+            _maxReadyCameraHeight = _config.GetFloat("maxReadyCameraHeight", _maxReadyCameraHeight);
             _autoActivate = _config.GetBool("autoActivate", _autoActivate);
             _autoActivateDelay = _config.GetFloat("autoActivateDelay", _autoActivateDelay);
             _orbitDistance = _config.GetFloat("orbitDistance", _orbitDistance);
@@ -989,6 +1201,7 @@ namespace FreeCameraMod
                 _config.Set("boardHeight", _boardHeight);
                 _config.Set("aimDistance", _aimDistance);
                 _config.Set("maxTargetDistance", _maxTargetDistance);
+                _config.Set("maxReadyCameraHeight", _maxReadyCameraHeight);
                 _config.Set("autoActivate", _autoActivate);
                 _config.Set("autoActivateDelay", _autoActivateDelay);
                 _config.Set("orbitDistance", _orbitDistance);
@@ -1015,6 +1228,7 @@ namespace FreeCameraMod
             _config.Set("boardHeight", _boardHeight);
             _config.Set("aimDistance", _aimDistance);
             _config.Set("maxTargetDistance", _maxTargetDistance);
+            _config.Set("maxReadyCameraHeight", _maxReadyCameraHeight);
             _config.Set("autoActivate", _autoActivate);
             _config.Set("autoActivateDelay", _autoActivateDelay);
             _config.Set("orbitDistance", _orbitDistance);

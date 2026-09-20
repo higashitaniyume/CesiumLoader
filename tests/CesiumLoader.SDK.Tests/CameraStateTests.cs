@@ -96,7 +96,8 @@ namespace CesiumLoader.SDK.Tests
             cam.Aspect = 0.5f;
 
             backend.WriteCount = 0;
-            Assert.True(CameraState.Restore(backend, cam, state));
+            // 完整还原(含 enabled)必须显式要求 —— 默认不碰 enabled, 见下一个用例
+            Assert.True(CameraState.Restore(backend, cam, state, restoreEnabled: true));
 
             Assert.Equal(1f, cam.Position.x, 4);
             Assert.Equal(62.5f, cam.FieldOfView, 4);
@@ -111,6 +112,29 @@ namespace CesiumLoader.SDK.Tests
             Assert.Equal(0.1f, cam.BackgroundColor.r, 3);
             Assert.Equal(1.777f, cam.Aspect, 3);
             Assert.True(backend.WriteCount >= 13, "还原应把全部参数写回, 实际写入 " + backend.WriteCount + " 次");
+        }
+
+        [Fact]
+        public void Restore_ByDefault_DoesNotTouchEnabled()
+        {
+            // 回归(实测踩坑): 快照若采自"过渡期的失活相机", 退出时一律还原 enabled 会把游戏
+            // 当前正在渲染的相机禁用掉 —— 画面变黑而 HUD 还在。默认必须不碰 enabled。
+            var backend = new FakeCameraBackend();
+            var cam = NewCamera();
+            var state = CameraState.Capture(backend, cam);
+            state.Enabled = false;      // 模拟"快照来自失活相机"
+
+            backend.WriteCount = 0;
+            Assert.True(CameraState.Restore(backend, cam, state));
+            int withoutEnabled = backend.WriteCount;
+            Assert.True(cam.Enabled, "默认还原不应改动 enabled");
+            Assert.True(withoutEnabled > 0, "默认还原仍应写回位姿/镜头参数");
+
+            // 显式要求时才还原 enabled
+            backend.WriteCount = 0;
+            Assert.True(CameraState.Restore(backend, cam, state, restoreEnabled: true));
+            Assert.Equal(withoutEnabled + 1, backend.WriteCount);   // 只多写 enabled 这一项
+            Assert.False(cam.Enabled);
         }
 
         [Fact]
