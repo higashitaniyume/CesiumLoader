@@ -129,5 +129,11 @@ CinemachineService.DestroyVirtualCamera(vcam);
 
 ## 8. FreeCameraMath
 
-纯托管数学，离线可测：`ForwardVector(yaw, pitch)`、`ClampPitch`（±89°）、`OrbitPosition`。
+纯托管数学，离线可测：`ForwardVector(yaw, pitch)`、`ClampPitch`（±89°）、`OrbitPosition`、
+`ApplyScrollToFieldOfView` / `ApplyScrollToDistance`、`ApplyHeightStep`。
 约定：yaw=0 指向 +Z；`pitch` 为正表示低头（与 `Quaternion.Euler` 一致）。
+
+`ApplyHeightStep(height, delta, step)` 是"游戏内实时调相机高度"用的纯函数：只做
+"方向 × 步进 + 夹紧到 `MinCameraHeight`(5) ~ `MaxCameraHeight`(2000)"，
+`step` 非法（≤0 / NaN / Inf）时退回 `DefaultHeightStep`(10)，返回值与入参相同即表示已到极限
+—— 于是调用方（mod）不用自己处理边界与脏配置，也不会有"按键没反应但看不出为什么"的情况。

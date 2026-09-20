@@ -58,9 +58,16 @@ namespace FreeCameraMod
     ///   - 所有 Unity 访问都在主线程(SDK 的 OnUpdate / OnLateUpdate)。
     ///
     /// 配置: mods\FreeCameraMod\config.json
-    ///   mode / height / pitch / fov / boardHeight / aimDistance /
+    ///   mode / height / heightStep / pitch / fov / boardHeight / aimDistance /
+    ///   maxTargetDistance / maxReadyCameraHeight / autoActivate / autoActivateDelay /
     ///   orbitDistance / distanceStep / speed / rotationSpeed /
     ///   nearClip / farClip / invertY / toggleKey / resetKey / lockCursor
+    ///
+    /// 热键(俯瞰类模式 preset/raise 通用):
+    ///   toggleKey(默认 F1)  开关;
+    ///   Ctrl+= / 小键盘 +   抬高 height, 每按一次 heightStep 米;
+    ///   Ctrl+- / 小键盘 -   降低 height, 每按一次 heightStep 米。
+    /// 高度热键只"读"键盘, 不抢鼠标/其它按键; 改完直接在下一帧生效(不必重启), 并写回 config.json。
     /// </summary>
     public sealed class FreeCameraController : ModBase
     {
@@ -87,6 +94,13 @@ namespace FreeCameraMod
         private bool _lockCursor = true;
         private KeyCode _toggleKey = KeyCode.F1;
         private KeyCode _resetKey = KeyCode.F2;
+        private float _heightStep = FreeCameraMath.DefaultHeightStep; // Ctrl+= / Ctrl+- 每次调整的高度(米)
+
+        // ---------------- 高度热键的写盘状态 ----------------
+        // 按住 Ctrl 连按 "+"/"-" 时不要每次都写盘: 攒到停止按键约 1 秒后再落盘(见 HandleHeightHotkeys)。
+        private const float HeightSaveDelaySec = 1.2f;
+        private bool _heightDirty;              // 高度被热键改过, 待写回 config.json
+        private float _heightSaveAt;            // 可以落盘的时刻(RealtimeSinceStartup, 不受变速/暂停影响)
 
         // ---------------- 运行态 ----------------
         private bool _active;
@@ -174,7 +188,7 @@ namespace FreeCameraMod
         public override string Name { get { return "自由相机"; } }
 
         /// <summary>版本。</summary>
-        public override string Version { get { return "2.1.1"; } }
+        public override string Version { get { return "2.1.2"; } }
 
         // =====================================================================
         // 生命周期
@@ -214,8 +228,9 @@ namespace FreeCameraMod
                      " fov=" + F(_defaultFov) + " lockCursor=" + _lockCursor + ")");
             if (IsRaise)
             {
-                Log.Info("操作: 只绑 " + _toggleKey + " 开关. 视角会自动抬高, 游戏自己的鼠标/键盘操作照常可用" +
-                         "(本 mod 只改相机位姿, 不接管鼠标)");
+                Log.Info("操作: " + _toggleKey + " 开关; Ctrl+= (或小键盘 +) 抬高相机, Ctrl+- 降低" +
+                         " —— 每按一次 " + F(_heightStep) + "m, 立刻生效并写回配置. " +
+                         "视角会自动抬高, 游戏自己的鼠标/键盘操作照常可用(本 mod 只改相机位姿, 不接管鼠标)");
                 Log.Info("跟随抬高: 相机高度 Y=" + F(_presetHeight) + ", 俯角 " + F(_presetPitch) +
                          "°, FOV " + F(_presetFov) + ", 棋盘高度 Y=" + F(_boardHeight) +
                          (_aimDistance > 0.01f ? ", 手动瞄准距离 " + F(_aimDistance) + "m"
@@ -224,8 +239,8 @@ namespace FreeCameraMod
             }
             else if (IsPreset)
             {
-                Log.Info("操作: 只绑 " + _toggleKey + " 开关(其它按键/鼠标/滚轮均不接管). 视角由配置决定," +
-                         " 改 config.json 后重启游戏生效");
+                Log.Info("操作: " + _toggleKey + " 开关; Ctrl+= (或小键盘 +) 抬高相机, Ctrl+- 降低" +
+                         " —— 每按一次 " + F(_heightStep) + "m(其它按键/鼠标/滚轮均不接管)");
                 Log.Info("预设视角: 相机高度 Y=" + F(_presetHeight) + ", 俯角 " + F(_presetPitch) +
                          "°, FOV " + F(_presetFov) + ", 棋盘高度 Y=" + F(_boardHeight) +
                          (_aimDistance > 0.01f ? ", 手动瞄准距离 " + F(_aimDistance) + "m"
@@ -240,7 +255,7 @@ namespace FreeCameraMod
             else
                 Log.Info("操作: WASD=移动, Q/E=升降, 鼠标=转向, Shift=加速, Ctrl=减速, 滚轮=FOV, " +
                          _resetKey + "=复位");
-            Log.Info("配置键: mode(raise/preset/orbit/fly)/height/pitch/fov/boardHeight/aimDistance/" +
+            Log.Info("配置键: mode(raise/preset/orbit/fly)/height/heightStep/pitch/fov/boardHeight/aimDistance/" +
                      "maxTargetDistance/maxReadyCameraHeight/autoActivate/autoActivateDelay/orbitDistance/" +
                      "distanceStep/speed/rotationSpeed/nearClip/farClip/invertY/toggleKey/resetKey/lockCursor");
         }
@@ -322,10 +337,13 @@ namespace FreeCameraMod
                 if (_driven != null && !UnityObject.IsAlive(_driven)) { Rebind("驱动的相机被销毁"); return; }
 
                 // 俯瞰类模式(preset/raise): 不绑定其它按键, 相机由 OnLateUpdate 每帧保持。
+                // 只额外接管 Ctrl+= / Ctrl+- 两个组合键(实时调高度, 不碰鼠标)。
                 // preset 顺带做一次"帧首校验", 用来判定上一帧渲染是否真的用了预设视角;
                 // raise 下游戏每帧本来就会写相机, 帧首位姿就是它的基准, 不做"是否生效"的判定。
                 if (IsOverhead)
                 {
+                    HandleHeightHotkeys();
+
                     if (IsPreset)
                     {
                         _frameStartChecks++;
@@ -454,6 +472,12 @@ namespace FreeCameraMod
             if (IsOverhead)
             {
                 ResetRaiseState();
+                // 记住"进入时的基准位姿": preset 的位姿只在这里算一次, 之后按 Ctrl+/- 调高度要靠它重算
+                // (raise 每帧都会用游戏写下的位姿刷新基准, 这里写进去只是让 preset 也有基准可用)
+                _basePosition = _position;
+                _baseEuler = euler;
+                _hasBasePose = true;
+
                 if (IsPreset) ApplyPreset();
                 else ApplyRaise();
             }
@@ -539,6 +563,7 @@ namespace FreeCameraMod
 
             _driven = null;
             ResetRaiseState();
+            FlushHeightSaveNow();   // 用热键调过的高度别丢(写盘有延迟, 这里补一次)
 
             // 3) 释放输入独占
             if (_cursorCaptured)
@@ -876,6 +901,83 @@ namespace FreeCameraMod
         }
 
         // =====================================================================
+        // 游戏内实时调高度(Ctrl + "="/"-")
+        // =====================================================================
+
+        /// <summary>
+        /// Ctrl + "="(也就是 "+", 小键盘 + 也行)= 抬高相机, Ctrl + "-" = 降低, 每次 <c>heightStep</c> 米。
+        ///
+        /// 为什么这样接:
+        ///   - 只"读"键盘, 不接管鼠标、不拦截任何按键 —— 不会重演"mod 抢走视角操作"的问题;
+        ///   - raise 每帧都会按 height 重算位姿, 所以改完下一帧就生效, 不必重启游戏;
+        ///   - preset 的位姿是进入时算好的, 这里用记下的基准位姿重算一次(_presetPose);
+        ///   - 连按时不逐次写盘, 停手约 <see cref="HeightSaveDelaySec"/> 秒后统一写回 config.json。
+        /// </summary>
+        private void HandleHeightHotkeys()
+        {
+            bool ctrl = InputService.IsKeyHeld(KeyCode.LeftControl) || InputService.IsKeyHeld(KeyCode.RightControl);
+            if (!ctrl)
+            {
+                FlushHeightSaveIfDue();
+                return;
+            }
+
+            // "=" 键本身就是 "+"(Shift+=), 小键盘另有独立的 +; "-" 同理。
+            bool up = InputService.IsKeyPressed(KeyCode.Equals) || InputService.IsKeyPressed(KeyCode.KeypadPlus);
+            bool down = InputService.IsKeyPressed(KeyCode.Minus) || InputService.IsKeyPressed(KeyCode.KeypadMinus);
+
+            // 都没按(或两个同时按: 直接忽略, 免得方向反复横跳)
+            if (up == down)
+            {
+                FlushHeightSaveIfDue();
+                return;
+            }
+
+            float before = _presetHeight;
+            _presetHeight = FreeCameraMath.ApplyHeightStep(_presetHeight, up ? 1f : -1f, _heightStep);
+
+            if (Math.Abs(_presetHeight - before) < 0.001f)
+            {
+                // 已经顶到上下限: 只提示, 不写盘(否则每次按键都要碰一次磁盘)
+                UiService.Notify("自由相机: 高度已到极限 " + F(_presetHeight) + "m",
+                    UiNotificationLevel.Info, 1.5f, Context);
+                FlushHeightSaveIfDue();
+                return;
+            }
+
+            // preset 的位姿只在进入时算过一次, 这里按新的高度重算(raise 会在 OnLateUpdate 自己重算)
+            if (IsPreset && _hasBasePose) ApplyOverheadGeometry(_basePosition, _baseEuler);
+
+            _heightDirty = true;
+            _heightSaveAt = UnityTime.RealtimeSinceStartup + HeightSaveDelaySec;
+
+            Log.Info("高度调整: " + F(before) + "m -> " + F(_presetHeight) + "m (步进 " + F(_heightStep) + "m)");
+            UiService.Notify("自由相机: 高度 " + F(_presetHeight) + "m", UiNotificationLevel.Info, 1.5f, Context);
+        }
+
+        /// <summary>到点了就把待写的高度落盘(连按期间只在停手后写一次)。</summary>
+        private void FlushHeightSaveIfDue()
+        {
+            if (!_heightDirty) return;
+            if (UnityTime.RealtimeSinceStartup < _heightSaveAt) return;
+            FlushHeightSaveNow();
+        }
+
+        /// <summary>立刻把待写的高度落盘(退出接管 / 卸载时调用, 保证不丢)。</summary>
+        private void FlushHeightSaveNow()
+        {
+            if (!_heightDirty) return;
+            _heightDirty = false;
+            try
+            {
+                SaveConfig();
+                Log.Info("高度 " + F(_presetHeight) + "m 已写回配置" +
+                         (_config != null && !string.IsNullOrEmpty(_config.Path) ? ": " + _config.Path : ""));
+            }
+            catch (Exception e) { Log.ReportCrash("保存高度", e); }
+        }
+
+        // =====================================================================
         // 输入处理
         // =====================================================================
 
@@ -1137,7 +1239,14 @@ namespace FreeCameraMod
                 // (只算不写; 若新相机还没就绪就保留上一份位姿继续驱动, 避免把视角甩到过渡相机的方向)
                 ResetRaiseState();
                 string notReady;
-                if (!TryPrepareOverhead(camera, out notReady))
+                if (TryPrepareOverhead(camera, out notReady))
+                {
+                    // 就绪: 把新相机位姿当作基准记下来(preset 之后调高度要在它上面重算)
+                    _basePosition = CameraService.GetPosition(camera);
+                    _baseEuler = CameraService.GetEulerAngles(camera);
+                    _hasBasePose = true;
+                }
+                else
                     Log.Warn("重新绑定时相机尚未就绪(" + notReady + "), 暂用上一份视角继续; 若画面异常请按 " +
                              _toggleKey + " 关闭");
             }
@@ -1171,6 +1280,7 @@ namespace FreeCameraMod
 
             _cameraMode = _config.GetString("mode", _cameraMode);
             _presetHeight = _config.GetFloat("height", _presetHeight);
+            _heightStep = _config.GetFloat("heightStep", _heightStep);
             _presetPitch = _config.GetFloat("pitch", _presetPitch);
             _presetFov = _config.GetFloat("fov", _presetFov);   // preset 模式的固定 FOV(与 orbit/fly 的兜底 FOV 共用一个键)
             _boardHeight = _config.GetFloat("boardHeight", _boardHeight);
@@ -1197,6 +1307,7 @@ namespace FreeCameraMod
             {
                 _config.Set("mode", _cameraMode);
                 _config.Set("height", _presetHeight);
+                _config.Set("heightStep", _heightStep);
                 _config.Set("pitch", _presetPitch);
                 _config.Set("boardHeight", _boardHeight);
                 _config.Set("aimDistance", _aimDistance);
@@ -1224,6 +1335,7 @@ namespace FreeCameraMod
             if (_config == null) return;
             _config.Set("mode", _cameraMode);
             _config.Set("height", _presetHeight);
+            _config.Set("heightStep", _heightStep);
             _config.Set("pitch", _presetPitch);
             _config.Set("boardHeight", _boardHeight);
             _config.Set("aimDistance", _aimDistance);

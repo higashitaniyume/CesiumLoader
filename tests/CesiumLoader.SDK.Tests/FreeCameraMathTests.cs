@@ -508,6 +508,69 @@ namespace CesiumLoader.SDK.Tests
             Assert.Equal("2", FreeCameraMath.Format(2f));
         }
 
+        // ---------------- 游戏内调高度(Ctrl + "="/"-") ----------------
+
+        [Fact]
+        public void ApplyHeightStep_MovesByOneStepInTheGivenDirection()
+        {
+            Assert.Equal(170f, FreeCameraMath.ApplyHeightStep(160f, 1f, 10f));
+            Assert.Equal(150f, FreeCameraMath.ApplyHeightStep(160f, -1f, 10f));
+            // 步进用配置里的值(例如 25m 一档)
+            Assert.Equal(185f, FreeCameraMath.ApplyHeightStep(160f, 1f, 25f));
+        }
+
+        [Theory]
+        [InlineData(FreeCameraMath.MinCameraHeight)]     // 5: 已经在下限
+        [InlineData(0f)]
+        [InlineData(-100f)]
+        [InlineData(float.NaN)]
+        public void ApplyHeightStep_ClampsToMinimum(float start)
+        {
+            float result = FreeCameraMath.ApplyHeightStep(start, -1f, 10f);
+            Assert.Equal(FreeCameraMath.MinCameraHeight, result);
+        }
+
+        [Theory]
+        [InlineData(FreeCameraMath.MaxCameraHeight)]     // 2000: 已经在上限
+        [InlineData(5000f)]
+        public void ApplyHeightStep_ClampsToMaximum(float start)
+        {
+            float result = FreeCameraMath.ApplyHeightStep(start, 1f, 10f);
+            Assert.Equal(FreeCameraMath.MaxCameraHeight, result);
+        }
+
+        [Fact]
+        public void ApplyHeightStep_AlreadyAtLimitReturnsSameValue()
+        {
+            // 顶到极限时返回值不变 -> 调用方据此提示"已到极限"(别把 NaN/越界当成一次有效调整)
+            Assert.Equal(FreeCameraMath.MaxCameraHeight,
+                FreeCameraMath.ApplyHeightStep(FreeCameraMath.MaxCameraHeight, 1f, 10f));
+            Assert.Equal(FreeCameraMath.MinCameraHeight,
+                FreeCameraMath.ApplyHeightStep(FreeCameraMath.MinCameraHeight, -1f, 10f));
+        }
+
+        [Theory]
+        [InlineData(0f)]
+        [InlineData(-5f)]
+        [InlineData(float.NaN)]
+        [InlineData(float.PositiveInfinity)]
+        public void ApplyHeightStep_FallsBackToDefaultStepWhenStepIsUnusable(float step)
+        {
+            // 配置里把 heightStep 写成 0/负数/NaN 时不能让"按键没反应", 退回默认步进
+            Assert.Equal(160f + FreeCameraMath.DefaultHeightStep,
+                FreeCameraMath.ApplyHeightStep(160f, 1f, step));
+        }
+
+        [Fact]
+        public void ApplyHeightStep_IgnoresUsableButZeroDelta()
+        {
+            // delta 为 0/NaN/Inf 时只是把当前高度夹紧, 不移动
+            Assert.Equal(160f, FreeCameraMath.ApplyHeightStep(160f, 0f, 10f));
+            Assert.Equal(160f, FreeCameraMath.ApplyHeightStep(160f, float.NaN, 10f));
+            Assert.Equal(FreeCameraMath.MaxCameraHeight,
+                FreeCameraMath.ApplyHeightStep(9999f, float.PositiveInfinity, 10f));
+        }
+
         [Fact]
         public void Constants_MatchDocumentedDefaults()
         {
@@ -517,6 +580,9 @@ namespace CesiumLoader.SDK.Tests
             Assert.Equal(120f, FreeCameraMath.MaxFieldOfView);
             Assert.Equal(4f, FreeCameraMath.FastMultiplier);
             Assert.Equal(0.25f, FreeCameraMath.SlowMultiplier);
+            Assert.Equal(5f, FreeCameraMath.MinCameraHeight);
+            Assert.Equal(2000f, FreeCameraMath.MaxCameraHeight);
+            Assert.Equal(10f, FreeCameraMath.DefaultHeightStep);
             Assert.True(Eps > 0f);
         }
     }
