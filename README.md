@@ -17,8 +17,11 @@ CesiumLoader.sln
 │   ├── SpeedHackMod\              内置 mod (变速热键)
 ├── third_party\minhook\            MinHook (inline hook 库, 变速引擎使用, MIT)
 ├── smoke\SpeedCtlSmoke\            冒烟测试宿主 (变速控制文件通道, 不依赖游戏)
+├── dist\modloader\                 预编译托管产物 (SDK + 内置 mod + doorstop_config.json,
+│                                   必须入库 —— CI 只校验不重建, 见「发布」)
 └── tools\
     ├── cesium\                    模组脚手架与包分发 CLI (new/build/package/list/verify)
+    ├── builtin-mods.json          内置 mod 清单的唯一来源 (CI 与打包脚本共用)
     ├── package-modloader.ps1      构建 + 组装 + 打包 Release 压缩包
     └── smoke-speedctl.ps1         跑变速控制文件通道冒烟测试
 ```
@@ -83,9 +86,16 @@ version.dll (C++ 薄代理, 15 个导出转发到系统 version.dll)
   AstralParty.Toys 的模组页面提供可视化开关。
 - 游戏内实时调整用内置 mod **变速 (SpeedHackMod)**：`Delete` 设为 `1.0x`，
   `Alt+=` / `Alt+-` 调倍率（`1.0` 起，默认每次 0.5，按住连续调，调完自动写回配置）。
+- **时间连续性**：`speed == 1.0` 同样走虚拟时间公式（此时是精确的整数平移），**不做**"直接返回真实时间"
+  的快捷路径 —— 否则从 2x 切回 1.0x 的瞬间游戏看到的时钟会倒退（主线程卡住约十秒，画面冻结但声音还在）。
+  设成 `1.0` 时 hook 仍保持安装（`state.txt` 里 `active=1`），只是斜率变成 1。
+- 控制文件通道的目录 `speed\` 会镜像一份到 `%LocalAppData%\AstralParty_ModLoader\speed`，两处都监听、都写。
 
 > ⚠️ 变速影响游戏感知的所有时间（动画/演出/回合/网络超时），**别把倍率调太高**（建议 ≤3x）。
-> 倍率范围 `[1.0, 100]`：`1.0` = 正常，**低于 1 倍（减速）被硬性禁止**，请求在加载器层就会被忽略。
+> 倍率范围 `[1.0, 100]`：`1.0` = 正常，**低于 1 倍（减速）被硬性禁止** ——
+> 请求解析（`parse_speed`）、引擎设置（`speedhack_set_speed`）、
+> SDK（`SetSpeed`/`ClampSpeed`/`StepSpeed`）与 AstralParty.Toys 前端逐层拦截，且一律**不改动引擎状态**；
+> 把 `config.json` 的 `minSpeed` 写成 `0.1` 也会被 SDK 抬回 `1.0`。
 
 ## 模组生态能力
 
@@ -121,7 +131,8 @@ version.dll (C++ 薄代理, 15 个导出转发到系统 version.dll)
 | [SDK-UI](docs/SDK-UI.md) | 通知 / 窗口 / 覆盖层 / OnGUI |
 | [SDK-场景与协程](docs/SDK-场景与协程.md) | 场景查询订阅、兜底补发、协程 |
 | [SDK-诊断](docs/SDK-诊断.md) | 三类 dump、落盘、反射工具、排查清单 |
-| [SDK-变速](docs/SDK-变速.md) | 变速引擎 |
+| [SDK-操作](docs/SDK-操作.md) | `GameActions`：像玩家一样发送 C2S 指令（⚠️ 真实影响对局）|
+| [SDK-变速](docs/SDK-变速.md) | 变速引擎（倍率下限 1.0、控制文件通道）|
 | [SDK-Unity调用与ECall隔离](docs/SDK-Unity调用与ECall隔离.md) | **改 SDK 前必读**：ECall 机制与隔离约定 |
 | [mod-FreeCameraMod](docs/mod-FreeCameraMod.md) | 俯瞰视角 mod 的配置与原理 |
 | [mod-SpeedHackMod](docs/mod-SpeedHackMod.md) | 变速 mod 的热键、配置与风险 |
@@ -142,7 +153,8 @@ version.dll (C++ 薄代理, 15 个导出转发到系统 version.dll)
     │   └── ActivityLogMod\      ← 示例 mod 文件夹 (DLL + sidecar 同文件夹)
     │       ├── ActivityLogMod.dll
     │       └── ActivityLogMod.json   ← sidecar (id/版本/权限/enabled/依赖)
-    └── logs\                    ← cesium-loader.log + activity-mod.log
+    ├── logs\                    ← cesium-loader.log + activity-mod.log
+    └── speed\                   ← 变速控制文件通道 (request.txt / state.txt)
 ```
 
 > 兼容旧布局: 直接放在 `mods\` 根下的 `.dll`（旧版平铺）仍会被加载, 平滑升级无需迁移。
@@ -164,7 +176,7 @@ version.dll (C++ 薄代理, 15 个导出转发到系统 version.dll)
   "consoleEnabled": true,             // 分配控制台窗口
   "consoleTopmost": false,            // 控制台窗口置顶(默认 false)
   "forwardActivityLog": true,         // mod 日志转发到控制台
-  "speedhackBaseSpeed": 1.0,          // 变速(加载器内置): 1.0=正常, 2.0=全程2倍速
+  "speedhackBaseSpeed": 1.0,          // 变速(加载器内置): 1.0=正常, 2.0=全程2倍速; 低于 1.0 按 1.0 处理(不允许减速)
   "speedControlEnabled": true,        // 变速控制文件通道(mod 热键变速用; false=关掉)
   "sdkVersion": "2.1.5"               // 当前 SDK 版本(校验 mod 的 SdkVersion)
 }
@@ -181,18 +193,25 @@ dotnet restore CesiumLoader.sln
 # 2. 命令行构建 (或直接用 VS2022 打开 sln 按 F7)
 MSBuild CesiumLoader.sln /p:Configuration=Release /p:Platform=x64
 
-# 3. 单元测试 (SDK, 不依赖游戏)
+# 3. 单元测试 (SDK, 不依赖游戏; 覆盖控制文件通道 / 倍率下限 / 时间连续性, 当前 313 个用例)
 dotnet test tests\CesiumLoader.SDK.Tests\CesiumLoader.SDK.Tests.csproj -c Release
 
-# 4. 冒烟测试: 变速控制文件通道 (真实 version.dll + 宿主进程, 不依赖游戏)
+# 4. 冒烟测试: 变速控制文件通道 (真实 version.dll + 宿主进程, 不依赖游戏 ——
+#    控制文件通道在"等 GameAssembly.dll"之前就已就绪, 所以不需要游戏)
 pwsh -NoProfile -File tools\smoke-speedctl.ps1
+
+# 5. 构建 + 组装 dist + 打包 Release 压缩包 (托管部分走 dotnet build,
+#    内置 mod 清单读 tools\builtin-mods.json; 产物在 dist\release\)
+pwsh -NoProfile -File tools\package-modloader.ps1
 ```
 
 产物:
 - `bin\Release\version.dll` — C++ 加载器 (Doorstop 代理 + 变速引擎)
 - `src\CesiumLoader.Bootstrap\bin\Release\netstandard2.0\CesiumLoader.Bootstrap.dll`
 - `src\CesiumLoader.SDK\bin\Release\netstandard2.0\CesiumLoader.SDK.dll`
-- `src\ActivityLogMod\bin\Release\netstandard2.0\ActivityLogMod.dll`
+- `src\ActivityLogMod\bin\Release\netstandard2.0\ActivityLogMod.dll` — 内置 mod (行为日志)
+- `src\FreeCameraMod\bin\Release\netstandard2.0\FreeCameraMod.dll` — 内置 mod (自由相机)
+- `src\SpeedHackMod\bin\Release\netstandard2.0\SpeedHackMod.dll` — 内置 mod (变速热键)
 - `tools\cesium\bin\Release\net8.0\cesium.exe` — mod 脚手架与包分发 CLI
 
 ## SDK 工具包下载
@@ -291,24 +310,28 @@ SDK API 一览:
 
 ## 发布 (GitHub Action)
 
-打 tag `modloader-<版本>` 自动构建并发布「解压即部署」的压缩包到 GitHub Release：
+打 tag `modloader-<版本>` 自动构建并发布「解压即部署」的压缩包到 GitHub Release。
+**版本号取自 tag**（CI 把 `modloader-` 前缀去掉），所以打 tag 前不需要改任何版本文件，
+但要保证 SDK / mods / dist / 文档里的 `2.x.y` 字符串彼此一致：
 
 ```
-git tag modloader-0.2.0
-git push origin modloader-0.2.0
+git tag modloader-2.1.5
+git push origin modloader-2.1.5
 ```
 
 `release-modloader.yml` 会:
-1. windows-latest 上 MSBuild 构建 C++ 加载器 (version.dll, 无游戏依赖)
+1. windows-latest 上 MSBuild **只构建原生加载器**（`src\CesiumLoader\CesiumLoader.vcxproj`
+   `/p:Configuration=Release /p:Platform=x64`，不是整个 sln），无游戏依赖
 2. dotnet 现场构建 CesiumLoader.Bootstrap (自包含, 零引用) + cesium CLI (SDK 工具包)
-3. 用 `dist\modloader\` 里的预编译 SDK / 示例 mod (游戏热更 DLL 不入库, 故用 dist)
+3. 用 `dist\modloader\` 里的预编译 SDK / 内置 mod (游戏热更 DLL 不入库, 故用 dist)；
+   内置 mod 清单读 `tools\builtin-mods.json`（与本地打包脚本同一来源），并逐项校验产物存在
 4. 打包成部署布局 + 生成 `cesium-loader.json` 清单 (版本 / SHA256 / 布局)
 5. 组装 SDK 工具包 (cesium.exe + SDK DLL + 文档 + 示例源码)
 
 产物 (Release 资产):
-- `cesium-loader-v1.0.0.zip` — 加载器部署包 (带版本号)
+- `cesium-loader-2.1.5.zip` — 加载器部署包 (带版本号)
 - `cesium-loader.zip` — 固定名, 供 `releases/latest/download/cesium-loader.zip` 使用
-- `cesium-sdk-tools-v1.0.0.zip` — SDK 工具包 (带版本号)
+- `cesium-sdk-tools-2.1.5.zip` — SDK 工具包 (带版本号)
 - `cesium-sdk-tools.zip` — 固定名, 供 `releases/latest/download/cesium-sdk-tools.zip` 使用
 
 AstralParty.Toys 的 Mod 管理功能从这个 URL 下载安装:
@@ -317,12 +340,17 @@ AstralParty.Toys 的 Mod 管理功能从这个 URL 下载安装:
 mod 开发者从这个 URL 下载 SDK 工具包:
 `https://github.com/higashitaniyume/CesiumLoader/releases/latest/download/cesium-sdk-tools.zip`
 
-更新 SDK / mod 后记得同步 dist (本地构建 → 覆盖 dist → 提交):
+> 📌 **发布顺序：先发加载器，再发 Toys。** AstralParty.Toys 的发布流水线固定从
+> `releases/latest/download/cesium-loader.zip` 拉取并内嵌（覆盖 `Resources\ModLoader\`，
+> 含 `loader-version.json`，但不含 `doorstop_config.json`），所以加载器还没发布就先打 Toys 的 tag，
+> 会把上一版加载器打进去。
+
+更新 SDK / mod 后同步 dist（`dist\` 里预编译的托管产物必须入库，CI 只校验不重建）:
+
 ```
-dotnet build src\CesiumLoader.SDK -c Release
-dotnet build src\ActivityLogMod -c Release
-copy src\CesiumLoader.SDK\bin\Release\netstandard2.0\CesiumLoader.SDK.dll dist\modloader\AstralParty_ModLoader\sdk\
-mkdir dist\modloader\AstralParty_ModLoader\mods\ActivityLogMod   (若不存在)
-copy src\ActivityLogMod\bin\Release\netstandard2.0\ActivityLogMod.dll  dist\modloader\AstralParty_ModLoader\mods\ActivityLogMod\
-copy src\ActivityLogMod\bin\Release\netstandard2.0\ActivityLogMod.json dist\modloader\AstralParty_ModLoader\mods\ActivityLogMod\   (若存在)
+pwsh -NoProfile -File tools\package-modloader.ps1
 ```
+
+它会重建 SDK 与 `tools\builtin-mods.json` 里列出的每个内置 mod，组装
+`dist\modloader\AstralParty_ModLoader\`（sdk + mods + doorstop_config.json），
+再产出 `dist\release\*.zip` 与清单。跑完 `git status` 看一眼 dist 的改动一起提交即可。
