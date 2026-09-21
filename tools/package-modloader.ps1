@@ -41,7 +41,7 @@ $repo = Split-Path -Parent $PSScriptRoot
 Set-Location $repo
 
 # 内置 mod: 随加载器一起分发(mods\{ModId}\{ModId}.dll + sidecar)
-$BuiltInMods = @('ActivityLogMod', 'FreeCameraMod')
+$BuiltInMods = @('ActivityLogMod', 'FreeCameraMod', 'SpeedHackMod')
 
 function Write-Step([string] $text) { Write-Host "`n=== $text ===" -ForegroundColor Cyan }
 
@@ -180,7 +180,8 @@ $readme = @(
     "从旧版升级: 请删除游戏目录下的 winmm.dll (旧代理), 换成 version.dll。",
     "⚠ 与本加载器互斥: 旧版独立变速器也使用 version.dll(speedhack-rs) —— 不要同时安装!",
     "  CesiumLoader 已内置变速引擎(加载器功能, 非 mod): 改 doorstop_config.json 的",
-    "  speedhackBaseSpeed 即可(2.0=全程2倍速, 1.0=正常), 或直接用 AstralParty.Toys 的模组页面开关。"
+    "  speedhackBaseSpeed 即可(2.0=全程2倍速, 1.0=正常), 或直接用 AstralParty.Toys 的模组页面开关。",
+    "  游戏内实时调整: 内置 mod 变速(SpeedHackMod) —— Delete 开关, Alt+= / Alt+- 调倍率。"
 ) -join [Environment]::NewLine
 Set-Content -Path 'staging\README.txt' -Value $readme -Encoding UTF8
 

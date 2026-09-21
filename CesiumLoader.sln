@@ -18,6 +18,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FreeCameraMod", "src\FreeCa
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DiagnosticsMod", "src\DiagnosticsMod\DiagnosticsMod.csproj", "{A4D9E6FA-7C3B-4E5A-9D84-9FAC3A6B4E73}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpeedHackMod", "src\SpeedHackMod\SpeedHackMod.csproj", "{B5E0F70B-8D4C-4F6B-AE95-A0BD4B7C5F84}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -56,6 +58,10 @@ Global
 		{A4D9E6FA-7C3B-4E5A-9D84-9FAC3A6B4E73}.Debug|x64.Build.0 = Debug|Any CPU
 		{A4D9E6FA-7C3B-4E5A-9D84-9FAC3A6B4E73}.Release|x64.ActiveCfg = Release|Any CPU
 		{A4D9E6FA-7C3B-4E5A-9D84-9FAC3A6B4E73}.Release|x64.Build.0 = Release|Any CPU
+		{B5E0F70B-8D4C-4F6B-AE95-A0BD4B7C5F84}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{B5E0F70B-8D4C-4F6B-AE95-A0BD4B7C5F84}.Debug|x64.Build.0 = Debug|Any CPU
+		{B5E0F70B-8D4C-4F6B-AE95-A0BD4B7C5F84}.Release|x64.ActiveCfg = Release|Any CPU
+		{B5E0F70B-8D4C-4F6B-AE95-A0BD4B7C5F84}.Release|x64.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
