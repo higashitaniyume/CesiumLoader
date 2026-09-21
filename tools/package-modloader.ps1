@@ -187,7 +187,7 @@ $readme = @(
     "⚠ 与本加载器互斥: 旧版独立变速器也使用 version.dll(speedhack-rs) —— 不要同时安装!",
     "  CesiumLoader 已内置变速引擎(加载器功能, 非 mod): 改 doorstop_config.json 的",
     "  speedhackBaseSpeed 即可(2.0=全程2倍速, 1.0=正常; 倍率下限 1.0, 不支持减速), 或直接用 AstralParty.Toys 的模组页面开关。",
-    "  游戏内实时调整: 内置 mod 变速(SpeedHackMod) —— Delete 设为 1.0x, Alt+= / Alt+- 调倍率(最低 1.0x)。"
+    "  游戏内实时调整: 内置 mod 变速(SpeedHackMod) —— Delete 在 1.0x 与刚才的倍率之间切换(再按一次切回), Alt+= / Alt+- 调倍率(最低 1.0x)。"
 ) -join [Environment]::NewLine
 Set-Content -Path 'staging\README.txt' -Value $readme -Encoding UTF8
 
