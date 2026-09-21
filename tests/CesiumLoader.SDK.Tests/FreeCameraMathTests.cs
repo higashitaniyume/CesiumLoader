@@ -483,6 +483,52 @@ namespace CesiumLoader.SDK.Tests
             Assert.Equal(8f, FreeCameraMath.ApplyScrollToDistance(10f, 1f, 2f), 3);
         }
 
+        // ---------------- 俯瞰高度(滚轮) ----------------
+
+        [Fact]
+        public void ApplyScrollToHeight_ScrollsUpToRaiseAndClamps()
+        {
+            // 俯瞰模式下滚轮直接调高度: 向上 = 抬高(与 FOV/距离那两处"向上 = 拉近"相反)
+            Assert.Equal(170f, FreeCameraMath.ApplyScrollToHeight(160f, 1f, 10f), 3);
+            Assert.Equal(150f, FreeCameraMath.ApplyScrollToHeight(160f, -1f, 10f), 3);
+
+            // 一次滚多格(部分鼠标/驱动会一次送出多格)按比例累积
+            Assert.Equal(190f, FreeCameraMath.ApplyScrollToHeight(160f, 3f, 10f), 3);
+
+            Assert.Equal(FreeCameraMath.MinCameraHeight,
+                FreeCameraMath.ApplyScrollToHeight(6f, -5f, 10f), 3);
+            Assert.Equal(FreeCameraMath.MaxCameraHeight,
+                FreeCameraMath.ApplyScrollToHeight(1995f, 5f, 10f), 3);
+        }
+
+        [Fact]
+        public void ApplyScrollToHeight_NoScrollOnlyClamps()
+        {
+            Assert.Equal(160f, FreeCameraMath.ApplyScrollToHeight(160f, 0f), 3);
+            Assert.Equal(160f, FreeCameraMath.ApplyScrollToHeight(160f, float.NaN), 3);
+            Assert.Equal(FreeCameraMath.MinCameraHeight, FreeCameraMath.ApplyScrollToHeight(1f, 0f), 3);
+            Assert.Equal(FreeCameraMath.MaxCameraHeight, FreeCameraMath.ApplyScrollToHeight(9999f, 0f), 3);
+        }
+
+        [Fact]
+        public void ApplyScrollToHeight_UnusableStepFallsBackToDefault()
+        {
+            // 配置里 heightStep 写错(0/负数/NaN)也不能变成"滚轮没反应"
+            foreach (var step in new[] { 0f, -1f, float.NaN, float.PositiveInfinity })
+            {
+                Assert.Equal(160f + FreeCameraMath.DefaultHeightStep,
+                    FreeCameraMath.ApplyScrollToHeight(160f, 1f, step), 3);
+            }
+        }
+
+        [Fact]
+        public void ApplyScrollToHeight_DefaultStepIsHeightStep()
+        {
+            // 不传步进时按 DefaultHeightStep(与 Ctrl+=/- 每次的米数同源, 即配置里的 heightStep 默认值)
+            Assert.Equal(160f + FreeCameraMath.DefaultHeightStep,
+                FreeCameraMath.ApplyScrollToHeight(160f, 1f), 3);
+        }
+
         [Fact]
         public void OrbitConstants_MatchDocumentedDefaults()
         {

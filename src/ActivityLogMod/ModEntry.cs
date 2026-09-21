@@ -54,7 +54,7 @@ namespace ActivityLogMod
 
         private static void MainSafe()
         {
-            SdkLog.Info("ActivityLog", "=== 实时行为日志 v2.1.6 启动 ===");
+            SdkLog.Info("ActivityLog", "=== 实时行为日志 v2.1.7 启动 ===");
             SdkManifest.ExportSidecar(); // [ModManifest] → 同名 .json, 供 apt 模组列表读取
 
             _cfg = SdkConfig.Load<ActivityLogConfig>("ActivityLogMod");

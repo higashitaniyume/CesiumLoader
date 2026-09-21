@@ -36,6 +36,23 @@ if (InputService.TryGetMousePosition(out pos)) { }
 > `InputService` 提供的这些读取**不区分按键来自游戏还是 mod**。想避免"按 F1 顺便触发了游戏功能"，
 > 请配合下面的输入独占，或让游戏自己处理。
 
+### 键位名字与两个后端的覆盖范围
+
+键位统一用 Unity 的 `KeyCode` 枚举名（`Delete`、`F8`、`Alpha1`、`PageUp`、`Mouse3`…）在配置里书写，
+SDK 不做自己的键名体系（`Enum.TryParse` 直接认）。
+
+| | 反射后端（首选） | Win32 兜底 |
+| --- | --- | --- |
+| 字母/数字/`F1`~`F12` | ✅ | ✅ |
+| 方向键、`Delete`/`Insert`/`Home`/`End`/`PageUp`/`PageDown`、修饰键、标点 | ✅ | ✅ |
+| 小键盘 `0`~`9` 与 `+` `-` `*` `/` `.`（`Keypad*`） | ✅ | ✅ |
+| 鼠标键 `Mouse0`~`Mouse4`（含**侧键** `Mouse3`/`Mouse4`） | ✅ | ✅（`Mouse3`/`Mouse4` → `VK_XBUTTON1`/`VK_XBUTTON2`） |
+| 一次性滚轮 | ✅ | ✅ |
+
+> 兜底后端是"认得多少个键就映射多少个"的白名单（`Win32InputBackend.ToVirtualKey`），
+> 没进白名单的键会返回 0 = 永远认为"没按"。**新增键位支持时两边都要加**，
+> 并补 `InputBackendTests` 的断言 —— 漏了不会报错，只会表现为"设了没反应"。
+
 ## 3. 每帧读取一次的语义
 
 所有 `IsKeyDown` / `IsKeyUp` / `IsMouseButtonPressed` 都是"本帧"语义，**一帧内重复调用会重复返回 true**，
