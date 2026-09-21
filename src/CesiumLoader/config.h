@@ -51,11 +51,11 @@ struct LoaderConfig
     // 当前分发的 SDK 版本(SemVer)。加载器用它校验 mod 声明的 SdkVersion,
     // 不兼容(mod 要求更高版本)时拒绝加载该 mod 并记录警告。
     // 发布新版 SDK 时手动更新此字段 + dist\sdk\CesiumLoader.SDK.dll。
-    std::string sdkVersion = "2.1.5";
+    std::string sdkVersion = "2.1.6";
 
     // 加载器自身版本(SemVer)。与发布 tag (modloader-<版本>) 对应, 启动横幅会打印。
     // 与 sdkVersion 独立递增: 改动引导/互操作/打包时递增此值。
-    static constexpr const char* loaderVersion = "2.1.5";
+    static constexpr const char* loaderVersion = "2.1.6";
 };
 
 // 从 config_path 读取配置。文件不存在/解析失败返回默认配置(不抛异常)。

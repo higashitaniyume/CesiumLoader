@@ -40,7 +40,7 @@ namespace CesiumLoader.SDK.Tests
         private void WriteState(string text) => File.WriteAllText(StatePath, text);
 
         private void WriteHealthyState(string speed = "2.000") =>
-            WriteState("version=2.1.5\r\nspeed=" + speed + "\r\nbase=2.000\r\nactive=1\r\nhooks=4\r\n");
+            WriteState("version=2.1.6\r\nspeed=" + speed + "\r\nbase=2.000\r\nactive=1\r\nhooks=4\r\n");
 
         // ---------------- 纯计算 ----------------
 
@@ -235,7 +235,7 @@ namespace CesiumLoader.SDK.Tests
         [InlineData(" 1.500 ", 1.5)]
         public void Speed_ParsesLoaderDecimalFormat(string text, double expected)
         {
-            WriteState("version=2.1.5\r\nspeed=" + text + "\r\nbase=1.000\r\nactive=1\r\nhooks=4\r\n");
+            WriteState("version=2.1.6\r\nspeed=" + text + "\r\nbase=1.000\r\nactive=1\r\nhooks=4\r\n");
 
             Assert.True(SpeedHack.IsAvailable);
             Assert.Equal(expected, SpeedHack.Speed, Eps);
@@ -255,7 +255,7 @@ namespace CesiumLoader.SDK.Tests
         [InlineData("0.100")]
         public void Speed_UnparsableValueFallsBackToNormalSpeed(string text)
         {
-            WriteState("version=2.1.5\r\nspeed=" + text + "\r\nbase=1.000\r\nactive=1\r\nhooks=4\r\n");
+            WriteState("version=2.1.6\r\nspeed=" + text + "\r\nbase=1.000\r\nactive=1\r\nhooks=4\r\n");
 
             // 解析不了 -> 1.0(默认值) 且绝不抛异常
             Assert.Equal(1.0, SpeedHack.Speed, Eps);
@@ -264,7 +264,7 @@ namespace CesiumLoader.SDK.Tests
         [Fact]
         public void ZeroHooks_ReportsUnavailable()
         {
-            WriteState("version=2.1.5\r\nspeed=2.000\r\nbase=2.000\r\nactive=0\r\nhooks=0\r\n");
+            WriteState("version=2.1.6\r\nspeed=2.000\r\nbase=2.000\r\nactive=0\r\nhooks=0\r\n");
 
             // hook 一个都没装上 -> 即便能写文件也变不了速, 必须报不可用
             Assert.False(SpeedHack.IsAvailable);
@@ -273,7 +273,7 @@ namespace CesiumLoader.SDK.Tests
         [Fact]
         public void StateFileWithoutHooksKey_ReportsUnavailable()
         {
-            WriteState("version=2.1.5\r\nspeed=2.000\r\n");
+            WriteState("version=2.1.6\r\nspeed=2.000\r\n");
 
             Assert.False(SpeedHack.IsAvailable);
         }
@@ -350,7 +350,7 @@ namespace CesiumLoader.SDK.Tests
                 Directory.CreateDirectory(logDir);
                 Directory.CreateDirectory(speedDir);
                 File.WriteAllText(Path.Combine(speedDir, "state.txt"),
-                    "version=2.1.5\r\nspeed=4.000\r\nbase=1.000\r\nactive=1\r\nhooks=4\r\n");
+                    "version=2.1.6\r\nspeed=4.000\r\nbase=1.000\r\nactive=1\r\nhooks=4\r\n");
 
                 using (new EnvScope("CESIUM_SPEED_DIR", null))
                 using (new EnvScope("CESIUM_LOG_DIR", logDir))
@@ -374,7 +374,7 @@ namespace CesiumLoader.SDK.Tests
             try
             {
                 File.WriteAllText(Path.Combine(other, "state.txt"),
-                    "version=2.1.5\r\nspeed=5.000\r\nbase=1.000\r\nactive=1\r\nhooks=4\r\n");
+                    "version=2.1.6\r\nspeed=5.000\r\nbase=1.000\r\nactive=1\r\nhooks=4\r\n");
 
                 SpeedHack.DirectoryOverride = other;
                 SpeedHack.Refresh();
@@ -414,7 +414,7 @@ namespace CesiumLoader.SDK.Tests
                 string speedDir = Path.Combine(mirror, "AstralParty_ModLoader", "speed");
                 Directory.CreateDirectory(speedDir);
                 File.WriteAllText(Path.Combine(speedDir, "state.txt"),
-                    "version=2.1.5\r\nspeed=6.000\r\nbase=1.000\r\nactive=1\r\nhooks=4\r\n");
+                    "version=2.1.6\r\nspeed=6.000\r\nbase=1.000\r\nactive=1\r\nhooks=4\r\n");
 
                 using (new EnvScope("CESIUM_SPEED_DIR", null))
                 using (new EnvScope("CESIUM_LOG_DIR", null))

@@ -7,9 +7,9 @@
     <AssemblyName>CesiumLoader.SDK</AssemblyName>
     <RootNamespace>CesiumLoader.SDK</RootNamespace>
     <!-- SDK 版本: 与 ModManifest.cs 的 SdkVersion.Current 保持一致, 发布时同步递增 -->
-    <Version>2.1.5</Version>
-    <AssemblyVersion>2.1.5.0</AssemblyVersion>
-    <FileVersion>2.1.5.0</FileVersion>
+    <Version>2.1.6</Version>
+    <AssemblyVersion>2.1.6.0</AssemblyVersion>
+    <FileVersion>2.1.6.0</FileVersion>
     <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- 不生成 XML 文档, 减少构建噪音 -->

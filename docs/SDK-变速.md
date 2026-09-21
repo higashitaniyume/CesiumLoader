@@ -101,8 +101,9 @@ string text = SpeedHack.Describe();
 AstralParty.Toys 的模组页面提供可视化开关（写入该字段）。
 
 **已经做好的热键 mod**：随包内置的 `SpeedHackMod`（[文档](mod-SpeedHackMod.md)）——
-`Delete` 设为 `1.0x`（引擎保持开启，不是"关闭变速"）、`Alt+=` / `Alt+-` 实时调倍率、调完自动写回配置。
-想自己写一个的话，下面是最小示例。
+`Delete` 在 `1.0x` 与"刚才的倍率"之间切换（再按一次切回；引擎保持开启，不是"关闭变速"）、
+`Alt+=` / `Alt+-` 实时调倍率、调完自动写回配置。
+想自己写一个的话，下面是最小示例（示例只演示"设为 1.0x"，不含回切）。
 
 ## 纯计算辅助 (热键调倍率用)
 
@@ -132,7 +133,7 @@ using CesiumLoader.SDK;
 using UnityEngine;
 
 [ModManifest("我的变速mod", "1.0.0", "作者", "描述",
-    Permissions = ModPermission.SpeedHack, SdkVersion = "2.1.5")]
+    Permissions = ModPermission.SpeedHack, SdkVersion = "2.1.6")]
 public static class ModEntry
 {
     public static void Main()
