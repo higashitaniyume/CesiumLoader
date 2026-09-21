@@ -16,7 +16,7 @@
 |---|---|
 | 原生加载器 (version.dll) | 进程启动后用 **MinHook** inline hook 4 个系统时间函数，按倍率缩放返回值 |
 | SDK `SpeedHack` 类 | P/Invoke 调加载器的 `ap_speed_set` / `ap_speed_get` / `ap_speed_active` 导出 |
-| mod | 调用 `SpeedHack.SetSpeed()`，自行轮询热键（`GetAsyncKeyState`） |
+| mod | 调用 `SpeedHack.SetSpeed()`，用 SDK 的 `InputService` 轮询热键（内置 `SpeedHackMod` 就是这么做的） |
 
 被 hook 的函数（与 CheatEngine/speedhack-rs 一致）：
 
@@ -47,7 +47,7 @@ double cur = SpeedHack.Speed;
 SpeedHack.Reset();
 ```
 
-`SetSpeed` 返回 `false` 的情况：引擎不可用、倍率 ≤ 0 或 > 100。
+`SetSpeed` 返回 `false` 的情况：引擎不可用、加载器没有相应导出、倍率为 `NaN`/`≤0`/`>100`（不抛异常）。
 
 ## 变速是加载器内置功能
 
@@ -55,47 +55,90 @@ SpeedHack.Reset();
 （`1.0`=正常，`2.0`=全程 2 倍速），游戏启动即应用并全程保持。
 AstralParty.Toys 的模组页面提供可视化开关（写入该字段）。
 
+**已经做好的热键 mod**：随包内置的 `SpeedHackMod`（[文档](mod-SpeedHackMod.md)）——
+`Delete` 开关、`Alt+=` / `Alt+-` 实时调倍率、调完自动写回配置。
+想自己写一个的话，下面是最小示例。
+
+## 纯计算辅助 (热键调倍率用)
+
+`SpeedHack.StepSpeed` / `SpeedHack.ClampSpeed` 不碰引擎，只做"方向 × 步长 + 夹紧 + 规整小数位"，
+便于离线测试与复用（内置 SpeedHackMod 就是用它算倍率的）：
+
+```csharp
+// 从当前倍率按一次热键: 2.0 -> 2.5 (+0.5); 返回值与入参相同 = 已到极限
+double next = SpeedHack.StepSpeed(current: 2.0, delta: +1, step: 0.5, min: 0.1, max: 10.0);
+
+// 脏配置也安全: step <= 0 / NaN / Inf 退回 DefaultSpeedStep(0.5),
+// min/max 非法或写反自动纠正, NaN 倍率当 1.0
+double safe = SpeedHack.StepSpeed(2.0, +1, step: 0.0);
+```
+
+常量：`MinSpeed`(0.1) / `MaxSpeed`(10) / `DefaultSpeedStep`(0.5)。
+
+> `SetSpeed` 会显式拒绝 `NaN`。`NaN` 与任何数比较都是 false，只靠 `<=0 / >100` 拦不住，
+> 而 `NaN` 倍率会让游戏虚拟时间彻底坏掉 —— 自己直接 P/Invoke `ap_speed_set` 时也要注意这点。
+
+
 mod 也可用 SDK API 编程控制（配合热键轮询实现 CheatEngine 式变速）：
 
 ```csharp
-[ModManifest("我的变速mod", "1.0.0", "作者", "描述")]
+using CesiumLoader.SDK;
+using UnityEngine;
+
+[ModManifest("我的变速mod", "1.0.0", "作者", "描述",
+    Permissions = ModPermission.SpeedHack, SdkVersion = "2.1.3")]
 public static class ModEntry
 {
     public static void Main()
     {
-        if (!SpeedHack.IsAvailable) return;
-        ModBase.Run(OnInit, OnTick, tag: "MySpeed");
+        if (!SpeedHack.IsAvailable) return;    // 引擎装不上就什么都不做
+        ModBase.Run(new MySpeedMod(), 10000);  // 不碰游戏单例, 可以早点接管热键
     }
+}
 
-    static void OnTick()
+public sealed class MySpeedMod : ModBase
+{
+    private double _speed = 2.0;
+
+    public override void OnUpdate()
     {
-        // 轮询热键: F1=2x, F2=0.5x, F3=恢复
-        if (IsKeyDown("F1")) SpeedHack.SetSpeed(2.0);
-        else if (IsKeyDown("F2")) SpeedHack.SetSpeed(0.5);
-        else if (IsKeyDown("F3")) SpeedHack.Reset();
-    }
+        // 热键用 SDK 的 InputService(键盘可靠; 本作拿不到鼠标输入)
+        if (InputService.IsKeyPressed(KeyCode.Delete))
+            SpeedHack.SetSpeed(_speed > 1.0 ? 1.0 : _speed);      // 开关
 
-    [DllImport("user32.dll")]
-    static extern short GetAsyncKeyState(int vKey);
-    static bool IsKeyDown(string key) { /* 用 GetAsyncKeyState 映射 */ }
+        bool alt = InputService.IsKeyHeld(KeyCode.LeftAlt) || InputService.IsKeyHeld(KeyCode.RightAlt);
+        if (alt && InputService.IsKeyHeld(KeyCode.Equals))
+        {
+            _speed = SpeedHack.StepSpeed(_speed, +1, 0.5, 0.5, 4.0);  // 夹紧 + 规整小数位
+            SpeedHack.SetSpeed(_speed);
+        }
+    }
 }
 ```
 
-### mod 配置示例 (configs/MySpeedMod.json)
+> 版本 ≥ 2.1.3 的 SDK 里，`ModBase.Run(mod, delayMs)` 传的延迟可以小于默认的 30 秒：
+> 30 秒是为了避开"启动早期访问游戏单例"的崩溃窗口，只碰加载器导出/Input 的 mod 不需要等那么久。
+
+### mod 配置示例 (mods\MySpeedMod\config.json)
 
 ```json5
 {
-  "Enabled": true,          // 总开关
-  "BaseSpeed": 2.0,         // 启用即应用的基础倍率 (全程保持)
-  "SpeedUpKey": "F1",       // 加速热键
-  "SpeedUpValue": 2.0,      // 加速倍率
-  "SlowDownKey": "F2",      // 减速热键
-  "SlowDownValue": 0.5,     // 减速倍率
-  "ResetKey": "F3",         // 恢复 1x 热键
-  "IsToggle": false,        // true=切换模式, false=按住生效
-  "ReloadConfigOnTick": false // 每次 tick 重读配置
+  "speed": 2.0,             // 开启时使用的倍率(热键调整后自动更新)
+  "speedStep": 0.5,         // 每次调整的步长
+  "minSpeed": 0.1,          // 可调下限
+  "maxSpeed": 10.0,         // 可调上限
+  "toggleKey": "Delete",    // 开关键
+  "speedUpKey": "Equals",   // 加速键(按住 Alt)
+  "speedDownKey": "Minus",  // 减速键(按住 Alt)
+  "useNumpadKeys": true,    // 小键盘 +/- 也认
+  "repeatInterval": 0.15,   // 按住连调的间隔(秒), 0 = 只调一次
+  "rememberSpeed": true,    // 写回配置
+  "notify": true            // 屏幕提示
 }
 ```
+
+> `ModConfig` 自动落在 `mods\{ModId}\config.json`（与 mod 的 DLL 同文件夹），
+> 不要放到旧的 `AstralParty_ModLoader\configs\` 下 —— 那是已废弃的旧布局。
 
 ## 与外部变速工具的关系
 

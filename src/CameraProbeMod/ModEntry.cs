@@ -33,7 +33,7 @@ namespace CameraProbeMod
         public override string Name { get { return "相机探针"; } }
 
         /// <summary>版本。</summary>
-        public override string Version { get { return "2.1.2"; } }
+        public override string Version { get { return "2.1.3"; } }
 
         /// <summary>初始化(主线程, 启动延迟之后)。</summary>
         public override void OnInitialize()
