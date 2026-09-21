@@ -1,8 +1,6 @@
 # CesiumLoader
 
-Astral Party 国服 (Steam appid 2622000, Unity 2021.3.45f2 IL2CPP + HybridCLR) 的 Mod 加载器与 SDK。
-
-GitHub: https://github.com/higashitaniyume/CesiumLoader
+Astral Party (Steam appid 2622000, Unity 2021.3.45f2 IL2CPP + HybridCLR) 的 Mod 加载器与 SDK。
 
 全部代码收在一个 Visual Studio 2022 解决方案里：
 
