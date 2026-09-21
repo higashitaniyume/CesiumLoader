@@ -18,9 +18,11 @@ CesiumLoader.sln
 │   ├── FreeCameraMod\             内置 mod (俯瞰视角)
 │   ├── SpeedHackMod\              内置 mod (变速热键)
 ├── third_party\minhook\            MinHook (inline hook 库, 变速引擎使用, MIT)
+├── smoke\SpeedCtlSmoke\            冒烟测试宿主 (变速控制文件通道, 不依赖游戏)
 └── tools\
     ├── cesium\                    模组脚手架与包分发 CLI (new/build/package/list/verify)
-    └── smoke\                     冒烟测试 (modmeta/变速, 不依赖游戏)
+    ├── package-modloader.ps1      构建 + 组装 + 打包 Release 压缩包
+    └── smoke-speedctl.ps1         跑变速控制文件通道冒烟测试
 ```
 
 ## 原理 (Doorstop 式引导)
@@ -73,18 +75,19 @@ version.dll (C++ 薄代理, 15 个导出转发到系统 version.dll)
 加载器内置 CheatEngine 式变速能力（借鉴 [speedhack-rs](https://github.com/Hirtol/speedhack-rs)）：
 - 引导线程启动后用 **MinHook** inline hook 4 个系统时间函数（`GetTickCount` /
   `GetTickCount64` / `timeGetTime` / `QueryPerformanceCounter`），按倍率缩放返回值。
-- 通过 `ap_speed_set` / `ap_speed_get` / `ap_speed_active` 导出暴露给 SDK
-  （`CesiumLoader.SDK.SpeedHack` 类封装，mod 可直接调用）。
+- 通过 `ap_speed_set` / `ap_speed_get` / `ap_speed_active` 导出暴露（原生调用方可用），
+  以及**变速控制文件通道**（`<speed>\request.txt` / `state.txt`）暴露给 mod ——
+  本作的热更程序集无法 P/Invoke，所以 SDK 的 `CesiumLoader.SDK.SpeedHack` 走文件。
 - 缩放算法与 speedhack-rs 的 `TimeState` 等价：切换倍率时重设时间基准，
   保证虚拟时间连续不跳变。
 - 变速是加载器内置功能（不是 mod）：`doorstop_config.json` 的
   `speedhackBaseSpeed` 控制（1.0=正常，2.0=全程 2 倍速），游戏启动即应用；
   AstralParty.Toys 的模组页面提供可视化开关。
-- 游戏内实时调整用内置 mod **变速 (SpeedHackMod)**：`Delete` 开关，
-  `Alt+=` / `Alt+-` 调倍率（默认每次 0.5，按住连续调，调完自动写回配置）。
+- 游戏内实时调整用内置 mod **变速 (SpeedHackMod)**：`Delete` 设为 `1.0x`，
+  `Alt+=` / `Alt+-` 调倍率（`1.0` 起，默认每次 0.5，按住连续调，调完自动写回配置）。
 
-> ⚠️ 变速影响游戏感知的所有时间（动画/回合/网络超时）。联机对局慎用：
-> 服务器权威时钟会检测到本地时间戳异常，有断线/封号风险。
+> ⚠️ 变速影响游戏感知的所有时间（动画/演出/回合/网络超时），**别把倍率调太高**（建议 ≤3x）。
+> 倍率范围 `[1.0, 100]`：`1.0` = 正常，**低于 1 倍（减速）被硬性禁止**，请求在加载器层就会被忽略。
 
 ## 模组生态能力
 
@@ -92,7 +95,7 @@ version.dll (C++ 薄代理, 15 个导出转发到系统 version.dll)
 |---|---|
 | **Mod 能力声明 + 警告** | mod 在 `[ModManifest(Permissions=...)]` 声明会用到的能力（读对局/操作游戏/写文件），sidecar 同步导出。已取消权限门控：任何 mod 都能调用 SDK 全部 API；声明「操作游戏」的 mod 在加载时与工具列表里显示 ⚠️ 警告（仅提示来源可信，不阻止） |
 | **模组元数据标准 + 依赖解析** | `mods\{ModId}\{ModId}.json` sidecar（id/版本/能力/SDK 版本/依赖，与 DLL 同文件夹）；加载器按依赖**拓扑排序**加载，缺失依赖/版本不符/循环依赖的 mod 被跳过并报告（`modmeta.cpp` 纯标准库，可单测） |
-| **API 版本协商** | SDK 声明版本 `2.1.3`；mod 声明 `SdkVersion`，要求高于当前的 mod 被拒绝加载。`doorstop_config.json` 的 `sdkVersion` 声明当前版本 |
+| **API 版本协商** | SDK 声明版本 `2.1.5`；mod 声明 `SdkVersion`，要求高于当前的 mod 被拒绝加载。`doorstop_config.json` 的 `sdkVersion` 声明当前版本 |
 | **事件驱动化** | `GameEvents.StartAutoHook()` 内部每 1 秒维持 RPC 挂钩，mod 无需每秒轮询；`ModBase.Run` 不传 tick 则不空转 |
 | **IL2CPP 互操作安全封装** | `il2cpp_safe.h` 收敛全部互操作点：函数指针空检查、参数/返回值校验、托管异常转译成可读错误，防止原生崩溃拖垮游戏 |
 | **调试与故障体验** | mod 入口异常写 `logs\mod-errors.log`（SDK `SdkLog.ReportCrash` + 原生 `write_mod_error` 双写）；`cesium verify` 离线预检兼容性 |
@@ -164,7 +167,8 @@ version.dll (C++ 薄代理, 15 个导出转发到系统 version.dll)
   "consoleTopmost": false,            // 控制台窗口置顶(默认 false)
   "forwardActivityLog": true,         // mod 日志转发到控制台
   "speedhackBaseSpeed": 1.0,          // 变速(加载器内置): 1.0=正常, 2.0=全程2倍速
-  "sdkVersion": "2.1.3"               // 当前 SDK 版本(校验 mod 的 SdkVersion)
+  "speedControlEnabled": true,        // 变速控制文件通道(mod 热键变速用; false=关掉)
+  "sdkVersion": "2.1.5"               // 当前 SDK 版本(校验 mod 的 SdkVersion)
 }
 ```
 
@@ -179,8 +183,11 @@ dotnet restore CesiumLoader.sln
 # 2. 命令行构建 (或直接用 VS2022 打开 sln 按 F7)
 MSBuild CesiumLoader.sln /p:Configuration=Release /p:Platform=x64
 
-# 3. 冒烟测试 (转发 + 引导, 不依赖游戏)
-dotnet run --project tools\smoke\host\BootstrapHostTest.csproj -c Release
+# 3. 单元测试 (SDK, 不依赖游戏)
+dotnet test tests\CesiumLoader.SDK.Tests\CesiumLoader.SDK.Tests.csproj -c Release
+
+# 4. 冒烟测试: 变速控制文件通道 (真实 version.dll + 宿主进程, 不依赖游戏)
+pwsh -NoProfile -File tools\smoke-speedctl.ps1
 ```
 
 产物:
@@ -237,7 +244,7 @@ dotnet run --project tools\cesium -c Release -- package MyMod -o MyMod-1.0.0.zip
 ```csharp
 [assembly: CesiumLoader.SDK.ModManifest("我的Mod", "1.0.0", "小明", "描述",
     Permissions = CesiumLoader.SDK.ModPermission.ReadGameState,  // 声明会用到的能力(仅展示/警告)
-    SdkVersion = "2.1.3")]                                        // API 版本协商
+    SdkVersion = "2.1.5")]                                        // API 版本协商
 ```
 
 **入口 (纯事件驱动, 无轮询):**

@@ -81,18 +81,21 @@ jobs:
       - name: Verify dist prerequisites
         shell: pwsh
         run: |
-          # version.dll 由上面的 msbuild 现场构建; bootstrap 已复制; dist 只需 SDK + 示例 mod
+          # version.dll 由上面的 msbuild 现场构建; bootstrap 已复制; dist 只需 SDK + 内置 mod。
+          # 内置 mod 清单来自 tools/builtin-mods.json(与 tools/package-modloader.ps1 共用同一来源)。
+          $builtInMods = @(Get-Content "tools/builtin-mods.json" -Raw | ConvertFrom-Json)
+          if ($builtInMods.Count -eq 0) { throw "tools/builtin-mods.json 里没有内置 mod" }
           $required = @(
             "dist/modloader/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll",
             "dist/modloader/AstralParty_ModLoader/doorstop_config.json",
-            "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll",
-            "dist/modloader/AstralParty_ModLoader/mods/ActivityLogMod/ActivityLogMod.dll",
-            "dist/modloader/AstralParty_ModLoader/mods/ActivityLogMod/ActivityLogMod.json",
-            "dist/modloader/AstralParty_ModLoader/mods/FreeCameraMod/FreeCameraMod.dll",
-            "dist/modloader/AstralParty_ModLoader/mods/FreeCameraMod/FreeCameraMod.json"
+            "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll"
           )
+          foreach ($mod in $builtInMods) {
+            $required += "dist/modloader/AstralParty_ModLoader/mods/$mod/$mod.dll"
+            $required += "dist/modloader/AstralParty_ModLoader/mods/$mod/$mod.json"
+          }
           foreach ($f in $required) { if (-not (Test-Path $f)) { throw "缺少预编译产物: $f" } }
-          Write-Host "dist 预编译产物齐全"
+          Write-Host "dist 预编译产物齐全: $($builtInMods -join ', ')"
 
       - name: Stage deployment layout
         shell: pwsh
@@ -103,11 +106,20 @@ jobs:
           Copy-Item "dist/modloader/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll" "staging/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll" -Force
           Copy-Item "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll" "staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll" -Force
           # 内置 mod: 每 mod 一个文件夹(mods\{ModId}\{ModId}.dll + .json)
-          $builtInMods = @("ActivityLogMod", "FreeCameraMod")
+          # 清单来源: tools/builtin-mods.json(单一来源, 与打包脚本共用)
+          $builtInMods = @(Get-Content "tools/builtin-mods.json" -Raw | ConvertFrom-Json)
+          $modNames = @{
+            "ActivityLogMod" = "行为日志"
+            "FreeCameraMod"  = "自由相机, F1 开关"
+            "SpeedHackMod"   = "变速, Delete 开关 / Alt+= Alt+- 调倍率"
+          }
+          $modList = @()
           foreach ($mod in $builtInMods) {
             New-Item -ItemType Directory -Path "staging/AstralParty_ModLoader/mods/$mod" -Force | Out-Null
             Copy-Item "dist/modloader/AstralParty_ModLoader/mods/$mod/$mod.dll" "staging/AstralParty_ModLoader/mods/$mod/$mod.dll" -Force
             Copy-Item "dist/modloader/AstralParty_ModLoader/mods/$mod/$mod.json" "staging/AstralParty_ModLoader/mods/$mod/$mod.json" -Force
+            $label = if ($modNames.ContainsKey($mod)) { $modNames[$mod] } else { $mod }
+            $modList += "mods\$mod ($label)"
           }
           # 部署说明(可选, apt 端可忽略)
           $readme = @(
@@ -118,13 +130,14 @@ jobs:
             "- AstralParty_ModLoader\sdk\           → SDK 依赖",
             "- AstralParty_ModLoader\mods\          → 用户 mod (每 mod 一个文件夹: mods\{ModId}\{ModId}.dll)",
             "- AstralParty_ModLoader\mods\{ModId}\{ModId}.json → mod sidecar (id/版本/权限/enabled 开关/依赖)",
-            "  随包内置: mods\ActivityLogMod (行为日志) / mods\FreeCameraMod (自由相机, F1 开关)",
+            "  随包内置: " + ($modList -join " / "),
             "- AstralParty_ModLoader\logs\          → 日志目录",
             "解压到游戏 exe 目录即完成安装。",
             "从旧版升级: 请删除游戏目录下的 winmm.dll (旧代理), 换成 version.dll。",
             "⚠ 与本加载器互斥: 旧版独立变速器也使用 version.dll(speedhack-rs) —— 不要同时安装!",
             "  CesiumLoader 已内置变速引擎(加载器功能, 非 mod): 改 doorstop_config.json 的",
-            "  speedhackBaseSpeed 即可(2.0=全程2倍速, 1.0=正常), 或直接用 AstralParty.Toys 的模组页面开关。"
+            "  speedhackBaseSpeed 即可(2.0=全程2倍速, 1.0=正常), 或直接用 AstralParty.Toys 的模组页面开关。",
+            "  游戏内实时调整: 内置 mod 变速(SpeedHackMod) —— Delete 开关, Alt+= / Alt+- 调倍率。"
           ) -join [Environment]::NewLine
           Set-Content -Path "staging/README.txt" -Value $readme -Encoding UTF8
 
@@ -136,12 +149,14 @@ jobs:
             "staging/version.dll",
             "staging/AstralParty_ModLoader/doorstop_config.json",
             "staging/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll",
-            "staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll",
-            "staging/AstralParty_ModLoader/mods/ActivityLogMod/ActivityLogMod.dll",
-            "staging/AstralParty_ModLoader/mods/ActivityLogMod/ActivityLogMod.json",
-            "staging/AstralParty_ModLoader/mods/FreeCameraMod/FreeCameraMod.dll",
-            "staging/AstralParty_ModLoader/mods/FreeCameraMod/FreeCameraMod.json"
+            "staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll"
           )
+          # 内置 mod 清单同样来自 tools/builtin-mods.json —— 保证 manifest 与实际打包内容一致
+          $builtInMods = @(Get-Content "tools/builtin-mods.json" -Raw | ConvertFrom-Json)
+          foreach ($mod in $builtInMods) {
+            $files += "staging/AstralParty_ModLoader/mods/$mod/$mod.dll"
+            $files += "staging/AstralParty_ModLoader/mods/$mod/$mod.json"
+          }
           $fileMap = @{}
           foreach ($f in $files) {
             $rel = $f.Substring("staging/".Length) -replace '\\', '/'

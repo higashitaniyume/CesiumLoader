@@ -7,6 +7,7 @@
 #include "config.h"
 
 #include "loader.h"
+#include "speedhack.h"   // kSpeedMin / kSpeedMax: 倍率区间与引擎共用一份定义
 
 #include <fstream>
 #include <sstream>
@@ -60,7 +61,8 @@ double json_double(const std::string& json, const char* key, double def)
     size_t pos = value_start(json, key);
     if (pos == std::string::npos) return def;
     double v = strtod(json.c_str() + pos, nullptr);
-    if (v <= 0.0 || v > 100.0) return def;   // 防御: 倍率范围 (0, 100]
+    // 防御: 倍率范围 [1, 100] —— 低于 1 倍(减速)被硬性禁止, 非法值一律退回默认(1.0)。
+    if (!(v >= kSpeedMin && v <= kSpeedMax)) return def;
     return v;
 }
 
@@ -113,6 +115,7 @@ LoaderConfig load_config(const std::wstring& config_path)
     cfg.consoleTopmost = json_bool(json, "consoleTopmost", true);
     cfg.forwardActivityLog = json_bool(json, "forwardActivityLog", true);
     cfg.speedhackBaseSpeed = json_double(json, "speedhackBaseSpeed", 1.0);
+    cfg.speedControlEnabled = json_bool(json, "speedControlEnabled", true);
     cfg.sdkVersion = json_string(json, "sdkVersion", cfg.sdkVersion);
 
     // 记录加载到的配置, 便于排查

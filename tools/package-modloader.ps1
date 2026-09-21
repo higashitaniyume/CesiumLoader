@@ -40,8 +40,14 @@ $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 Set-Location $repo
 
-# 内置 mod: 随加载器一起分发(mods\{ModId}\{ModId}.dll + sidecar)
-$BuiltInMods = @('ActivityLogMod', 'FreeCameraMod', 'SpeedHackMod')
+# 内置 mod: 随加载器一起分发(mods\{ModId}\{ModId}.dll + sidecar)。
+# 清单来源: tools\builtin-mods.json —— 单一来源, CI 的 release-modloader.yml 也读同一个文件,
+# 避免出现"本地打包有、CI 发布包漏"的两份清单(新增内置 mod 时只改这一个 json)。
+$BuiltInMods = @(
+    (Get-Content (Join-Path $PSScriptRoot 'builtin-mods.json') -Raw | ConvertFrom-Json) |
+        ForEach-Object { [string]$_ }
+)
+if ($BuiltInMods.Count -eq 0) { throw 'tools\builtin-mods.json 里没有内置 mod, 请先补上' }
 
 function Write-Step([string] $text) { Write-Host "`n=== $text ===" -ForegroundColor Cyan }
 
@@ -180,8 +186,8 @@ $readme = @(
     "从旧版升级: 请删除游戏目录下的 winmm.dll (旧代理), 换成 version.dll。",
     "⚠ 与本加载器互斥: 旧版独立变速器也使用 version.dll(speedhack-rs) —— 不要同时安装!",
     "  CesiumLoader 已内置变速引擎(加载器功能, 非 mod): 改 doorstop_config.json 的",
-    "  speedhackBaseSpeed 即可(2.0=全程2倍速, 1.0=正常), 或直接用 AstralParty.Toys 的模组页面开关。",
-    "  游戏内实时调整: 内置 mod 变速(SpeedHackMod) —— Delete 开关, Alt+= / Alt+- 调倍率。"
+    "  speedhackBaseSpeed 即可(2.0=全程2倍速, 1.0=正常; 倍率下限 1.0, 不支持减速), 或直接用 AstralParty.Toys 的模组页面开关。",
+    "  游戏内实时调整: 内置 mod 变速(SpeedHackMod) —— Delete 设为 1.0x, Alt+= / Alt+- 调倍率(最低 1.0x)。"
 ) -join [Environment]::NewLine
 Set-Content -Path 'staging\README.txt' -Value $readme -Encoding UTF8
 

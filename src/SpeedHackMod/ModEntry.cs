@@ -19,13 +19,15 @@ namespace SpeedHackMod
 
         public static void Main()
         {
-            // 变速引擎由加载器在进程启动时安装(inline hook 4 个时间 API);
-            // 没有它就什么都不做 —— 装了 mod 也不会误报能变速。
+            // 变速引擎由加载器在进程启动时安装(inline hook 4 个时间 API), 并与 mod 之间
+            // 通过"控制文件通道"通信(request.txt / state.txt)。本游戏的热更程序集无法
+            // P/Invoke, 所以走文件(详见 CesiumLoader.SDK 的 SpeedHack 类注释)。
+            //
+            // 引擎此刻不可用也不放弃: 控制器照常跑, 每秒重试一次, 一旦读到加载器状态文件
+            // 就自动就绪。这样"加载器/ mod 初始化先后顺序"再怎么变, 热键都能用上。
             if (!SpeedHack.IsAvailable)
-            {
-                SdkLog.Warn("SpeedHack", "变速引擎不可用(加载器未安装 hook), 变速热键不启用");
-                return;
-            }
+                SdkLog.Warn("SpeedHack", "引擎暂不可用(会每秒重试): " + SpeedHack.UnavailableReason +
+                                         " [需要加载器 ≥ 2.1.5 且 speedControlEnabled 不为 false]");
 
             ModBase.Run(new SpeedHackController(), StartupDelayMs);
         }
@@ -35,7 +37,7 @@ namespace SpeedHackMod
     /// 变速热键。把加载器的变速引擎(SDK 的 <see cref="SpeedHack"/>)接到键盘上:
     ///
     /// <code>
-    ///   Delete               开关变速(开 = 上次的倍率, 关 = 回到 1.0x)
+    ///   Delete               把倍率设为 1.0x(引擎保持开启, 不卸载 hook)
     ///   Alt + =(小键盘 +)    加速, 每次 speedStep; 按住不放会连续加速
     ///   Alt + -(小键盘 -)    减速, 同上
     /// </code>
@@ -43,13 +45,15 @@ namespace SpeedHackMod
     /// 几个刻意的设计:
     ///  - <b>只读键盘</b>: 不接管鼠标、不用输入独占, 也不拦截游戏自己的按键 —— 不会影响正常游玩;
     ///  - <b>立即生效</b>: 调完马上调 <see cref="SpeedHack.SetSpeed"/>, 不用重启游戏;
-    ///  - <b>沿用加载器的基准倍率</b>: 启动时若引擎已是 2.0x(即 doorstop_config.json 的
-    ///    <c>speedhackBaseSpeed</c> = 2.0), 那 mod 一开始就是"开着 2.0x"的状态, 按 Delete 才回 1.0x;
-    ///    引擎为 1.0x 时, 则用 config.json 里记住的倍率(默认 2.0x), 但<b>不会</b>主动改倍率;
-    ///  - <b>关着的时候按 Alt+/- 直接开</b>: 从当前真实倍率(1.0x)起算, 免得"想减速反而变快";
-    ///  - 调过的倍率写回 config.json(停手约 1.2 秒后), 下次启动沿用。
+    ///  - <b>Delete 只是"调到 1 倍", 不是"关掉变速"</b>: 走的代码路径与 Alt 调整**完全一致**
+    ///    (一次纯粹的倍率写入)。加载器的变速引擎一旦装上 hook 就常驻, 1.0x 时 hook 原样返回
+    ///    真实时间 —— 所以不存在"卸载 hook / 切换引擎状态"这种会引发卡顿的额外动作;
+    ///  - <b>Alt 永远从"引擎当前真实倍率"起算</b>: 所以 Delete 调到 1.0x 后按 Alt+= 得到 1.5x,
+    ///    而不是跳到"上次记忆的倍率";
+    ///  - 调过的倍率写回 config.json(停手约 1.2 秒后), 下次启动沿用; Delete 的 1.0x 不写回
+    ///    (1.0 是"临时恢复正常", 不该覆盖你习惯的倍率)。
     ///
-    /// ⚠️ 变速影响游戏感知的所有时间(动画/演出/回合/网络超时), 联机对局有断线/封号风险,
+    /// ⚠️ 变速影响游戏感知的所有时间(动画/演出/回合/网络超时), 倍率别调太高(建议 ≤3x),
     /// 详见 docs/mod-SpeedHackMod.md。
     /// </summary>
     public sealed class SpeedHackController : ModBase
@@ -75,13 +79,14 @@ namespace SpeedHackMod
         // =====================================================================
         // 运行态
         // =====================================================================
-        private bool _on;                  // 当前是否处于变速状态(引擎倍率 != 1.0)
+        private bool _ready;               // 引擎是否已确认可用(不可用时每秒重试)
+        private float _nextProbeAt;        // 下次探测引擎的时刻
         private bool _holding;             // 上一帧是否按着 Alt+加/减键(用于"按下立即调一次")
         private float _nextRepeatAt;       // 连续调整的下一次时刻
         private bool _speedDirty;          // 倍率改过, 待写回配置
         private float _saveAt;             // 可以落盘的时刻
 
-        public override string Version { get { return "2.1.3"; } }
+        public override string Version { get { return "2.1.5"; } }
 
         // =====================================================================
         // 生命周期
@@ -92,33 +97,62 @@ namespace SpeedHackMod
             _config = Config;
             LoadConfig();
 
+            if (SpeedHack.IsAvailable) MarkReady();
+            else
+            {
+                // 引擎还没就绪(加载器刚起来 / state.txt 还没写出来): 每秒重试, 不做变速
+                _nextProbeAt = UnityTime.RealtimeSinceStartup + 1.0f;
+                Log.Warn("变速引擎暂不可用, 每秒重试; 期间热键不起作用");
+                Log.Warn("引擎诊断: " + SpeedHack.UnavailableReason);
+            }
+
+            // 输入不可用时热键必然没反应 —— 提前写清楚, 省得排查"按了没反应"
+            Log.Info("输入后端: " + InputService.BackendName + " (可用=" + InputService.IsAvailable + ")");
+            Log.Info("操作: " + _toggleKey + " 设为 1.0x(引擎保持开启); 按住 Alt + " + _speedUpKey + " 加速, Alt + " + _speedDownKey +
+                     " 减速 (每次 " + F(_speedStep) + "x, 范围 " + F(_minSpeed) + "~" + F(_maxSpeed) + "x" +
+                     (_rememberSpeed ? ", 停手 " + F(SaveDelaySec) + "s 后写回配置" : "") + ")");
+            Log.Info("配置键: speed(Alt 调整的记忆倍率)/speedStep/minSpeed/maxSpeed/toggleKey/speedUpKey/speedDownKey/" +
+                     "useNumpadKeys/rememberSpeed/repeatInterval/notify");
+            Log.Warn("注意: 变速会改变游戏感知的所有时间(动画/演出/回合/网络超时), 倍率别调太高(建议 ≤3x)");
+        }
+
+        /// <summary>引擎可用了: 记录当前倍率并打日志。</summary>
+        private void MarkReady()
+        {
+            _ready = true;
+
             double current = SpeedHack.Speed;
             if (current > 0.0 && Math.Abs(current - 1.0) > 0.0001)
             {
-                // 加载器已经按 doorstop 的 speedhackBaseSpeed 设过倍率: 以它为准, 别覆盖用户的设置
-                _on = true;
+                // 加载器已按 doorstop 的 speedhackBaseSpeed 设过倍率: 以它为准, 并记下来作为
+                // "记忆倍率"(用户按 Alt 继续调整时用得上)
                 _activeSpeed = SpeedHack.ClampSpeed(current, _minSpeed, _maxSpeed);
             }
             else
             {
-                // 引擎是 1.0x: 记着配置里的倍率, 但不主动变速(按 Delete 或 Alt+/- 才生效)
-                _on = false;
                 _activeSpeed = SpeedHack.ClampSpeed(_activeSpeed, _minSpeed, _maxSpeed);
             }
 
             Log.Info("变速热键已就绪: " + Describe());
-            Log.Info("操作: " + _toggleKey + " 开关; 按住 Alt + " + _speedUpKey + " 加速, Alt + " + _speedDownKey +
-                     " 减速 (每次 " + F(_speedStep) + "x, 范围 " + F(_minSpeed) + "~" + F(_maxSpeed) + "x" +
-                     (_rememberSpeed ? ", 停手 " + F(SaveDelaySec) + "s 后写回配置" : "") + ")");
-            Log.Info("配置键: speed(开启时倍率)/speedStep/minSpeed/maxSpeed/toggleKey/speedUpKey/speedDownKey/" +
-                     "useNumpadKeys/rememberSpeed/repeatInterval/notify");
-            Log.Warn("注意: 变速会改变游戏感知的所有时间(动画/演出/回合/网络超时); 联机对局使用有断线/封号风险");
+            Log.Info("引擎: " + SpeedHack.Describe());
+            if (_notify) Notify("变速: 热键已就绪 (" + F(SpeedHack.Speed) + "x)", UiNotificationLevel.Success);
         }
 
         public override void OnUpdate()
         {
             try
             {
+                if (!_ready)
+                {
+                    float now = UnityTime.RealtimeSinceStartup;
+                    if (now < _nextProbeAt) return;
+                    _nextProbeAt = now + 1.0f;
+
+                    if (!SpeedHack.IsAvailable) return;   // 静默重试, 免得刷屏
+                    Log.Info("变速引擎已就绪(重试成功)");
+                    MarkReady();
+                }
+
                 HandleHotkeys();
                 FlushSaveIfDue();
             }
@@ -138,7 +172,7 @@ namespace SpeedHackMod
 
         private void HandleHotkeys()
         {
-            if (InputService.IsKeyPressed(_toggleKey)) Toggle();
+            if (InputService.IsKeyPressed(_toggleKey)) SetNormalSpeed();
             if (!InputService.IsAvailable) return;
 
             // Alt 是"调整倍率"的修饰键: 和 FreeCameraMod 的 Ctrl+=/Ctrl+- 一样只读键盘
@@ -172,54 +206,59 @@ namespace SpeedHackMod
         /// <summary>按一次热键调整倍率, 下一帧即生效。</summary>
         private void Adjust(int dir)
         {
-            // 关着的时候按 Alt+/-: 从"当前真实倍率"(1.0)起算, 否则"减速"会变成加速
-            double baseSpeed = _on ? _activeSpeed : 1.0;
-            double next = SpeedHack.StepSpeed(baseSpeed, dir, _speedStep, _minSpeed, _maxSpeed);
+            // 永远从"引擎当前真实倍率"起算: 这样 Delete 调到 1.0x 之后, Alt+= 得到的是 1.5x
+            // 而不是跳到记忆里的旧倍率。
+            double current = CurrentEngineSpeed();
+            double next = SpeedHack.StepSpeed(current, dir, _speedStep, _minSpeed, _maxSpeed);
 
-            if (Math.Abs(next - baseSpeed) < 0.0005)
+            if (Math.Abs(next - current) < 0.0005)
             {
                 // 已经顶到上下限: 只提示, 不改状态也不写盘
-                Notify("变速: 已是极限 " + F(baseSpeed) + "x", UiNotificationLevel.Info);
+                Notify("变速: 已是极限 " + F(current) + "x", UiNotificationLevel.Info);
                 return;
             }
 
-            _activeSpeed = next;
-            MarkSpeedDirty();
-
-            if (_on)
-            {
-                if (!Apply(next)) return;
-                Log.Info("倍率 " + F(baseSpeed) + "x -> " + F(next) + "x");
-                Notify("变速: " + F(next) + "x", UiNotificationLevel.Info);
-                return;
-            }
-
-            // 原本关着: 视为"想变速", 直接开启(等价于按了一次 Delete)
             if (!Apply(next)) return;
-            _on = true;
-            Log.Info("变速已开启 (Alt 调整): " + F(next) + "x");
-            Notify("变速: 开启 " + F(next) + "x", UiNotificationLevel.Success);
+
+            _activeSpeed = next;      // 记住用户选的倍率(下次变速沿用)
+            MarkSpeedDirty();
+            Log.Info("倍率 " + F(current) + "x -> " + F(next) + "x");
+            Notify("变速: " + F(next) + "x", UiNotificationLevel.Info);
         }
 
-        /// <summary>Delete: 在"上次的倍率"和 1.0x 之间切换。</summary>
-        private void Toggle()
+        /// <summary>
+        /// Delete: 把倍率设成 1.0x。
+        ///
+        /// 这里刻意**不是**"关闭变速": 加载器的变速引擎一旦装上 hook 就常驻, 1.0x 时 hook
+        /// 原样返回真实时间(等价于不变速)。所以本方法就是一次普通的倍率写入 ——
+        /// 与 Alt 调整走完全相同的代码路径(踩过"按 Delete 卡死、改成 1 倍却正常"的坑)。
+        /// 同时不把 1.0x 写回配置: 那只是临时恢复正常, 不该覆盖用户习惯的倍率。
+        /// </summary>
+        private void SetNormalSpeed()
         {
-            if (_on)
+            double current = CurrentEngineSpeed();
+            if (Math.Abs(current - 1.0) < 0.0005)
             {
-                if (!Apply(1.0)) return;
-                _on = false;
-                Log.Info("变速已关闭 (1.0x)");
-                Notify("变速: 关闭 (1.0x)", UiNotificationLevel.Info);
+                Notify("变速: 已是 1.0x", UiNotificationLevel.Info);
                 return;
             }
 
-            double target = SpeedHack.ClampSpeed(_activeSpeed, _minSpeed, _maxSpeed);
-            if (!Apply(target)) return;
-            _activeSpeed = target;
-            _on = true;
-            MarkSpeedDirty();
-            Log.Info("变速已开启: " + F(target) + "x");
-            Notify("变速: 开启 " + F(target) + "x", UiNotificationLevel.Success);
+            if (!Apply(1.0)) return;
+
+            Log.Info("倍率 " + F(current) + "x -> 1.0x (引擎保持开启, 未卸载 hook)");
+            Notify("变速: 1.0x (引擎保持开启)", UiNotificationLevel.Info);
+        }
+
+        /// <summary>
+        /// 引擎当前真实倍率(读不到就退回记忆值), 并夹到 [minSpeed, maxSpeed]。
+        /// Alt 调整与 Delete 都以此为准, 保证"看到的就是引擎里的"。
+        /// </summary>
+        private double CurrentEngineSpeed()
+        {
+            double real = SpeedHack.IsAvailable ? SpeedHack.Speed : 1.0;
+            if (!(real > 0.0) || real > _maxSpeed)
+                real = SpeedHack.ClampSpeed(_activeSpeed, _minSpeed, _maxSpeed);
+            return SpeedHack.ClampSpeed(real, _minSpeed, _maxSpeed);
         }
 
         /// <summary>真正写引擎倍率(失败只提示, 不抛)。</summary>
@@ -244,6 +283,7 @@ namespace SpeedHackMod
             _speedStep = _config.GetDouble("speedStep", _speedStep);
             _minSpeed = _config.GetDouble("minSpeed", _minSpeed);
             _maxSpeed = _config.GetDouble("maxSpeed", _maxSpeed);
+
             _toggleKey = ParseKey(_config.GetString("toggleKey", null), _toggleKey);
             _speedUpKey = ParseKey(_config.GetString("speedUpKey", null), _speedUpKey);
             _speedDownKey = ParseKey(_config.GetString("speedDownKey", null), _speedDownKey);
@@ -252,12 +292,50 @@ namespace SpeedHackMod
             _rememberSpeed = _config.GetBool("rememberSpeed", _rememberSpeed);
             _repeatInterval = _config.GetFloat("repeatInterval", _repeatInterval);
 
+            // 夹紧范围。注意要放在**读完全部键之后**: SaveConfig 会把所有键整份重写,
+            // 提前调用会把还没读到的键写回默认值(等于吃掉用户的配置)。
+            bool boundsFixed = ClampConfigBounds();
+
             // 首次运行: 把默认值整份写出来, 省得用户去翻文档猜键名
             if (!_config.Has("speed") || !_config.Has("toggleKey"))
             {
                 SaveConfig();
                 Log.Info("已生成默认配置: " + (_config.Path ?? "(未知路径)"));
             }
+            else if (boundsFixed)
+            {
+                // 老的 config.json 里可能留着 minSpeed=0.1(那时候还能减速) —— 一次性改掉,
+                // 免得每次启动都警告、也免得用户以为"改小就能减速"。
+                SaveConfig();
+                Log.Info("配置里的倍率范围已按新规则纠正(下限 1.0, 不允许减速)");
+            }
+        }
+
+        /// <summary>
+        /// 把 speed/minSpeed/maxSpeed 夹到合法区间。返回是否真的改动了值(用于决定要不要写回配置)。
+        ///
+        /// 硬下限 1.0: 手改 config.json 把 minSpeed 写成 0.2 也没用 —— SDK 的
+        /// ClampSpeed/SetSpeed 与加载器都会再拦一次, 这里只是让日志/提示如实反映。
+        /// </summary>
+        private bool ClampConfigBounds()
+        {
+            bool changed = false;
+
+            if (_minSpeed < SpeedHack.MinSpeed)
+            {
+                SdkLog.Warn("SpeedHack", "minSpeed=" + F(_minSpeed) + " 低于硬下限, 按 " +
+                             F(SpeedHack.MinSpeed) + " 处理(不允许减速)");
+                _minSpeed = SpeedHack.MinSpeed;
+                changed = true;
+            }
+
+            if (_maxSpeed < _minSpeed) { _maxSpeed = _minSpeed; changed = true; }
+            if (_maxSpeed > SpeedHack.HardMaxSpeed) { _maxSpeed = SpeedHack.HardMaxSpeed; changed = true; }
+
+            if (_activeSpeed < _minSpeed) { _activeSpeed = _minSpeed; changed = true; }
+            if (_activeSpeed > _maxSpeed) { _activeSpeed = _maxSpeed; changed = true; }
+
+            return changed;
         }
 
         private void SaveConfig()
@@ -323,8 +401,8 @@ namespace SpeedHackMod
 
         private string Describe()
         {
-            return (_on ? "已开启 " : "未开启 ") + F(_on ? _activeSpeed : 1.0) + "x" +
-                   " (开启时倍率 " + F(_activeSpeed) + "x, 引擎当前 " + F(SpeedHack.Speed) + "x)";
+            return "引擎当前 " + F(SpeedHack.IsAvailable ? SpeedHack.Speed : 1.0) + "x" +
+                   " (Alt 调整的记忆倍率 " + F(_activeSpeed) + "x, 每次 " + F(_speedStep) + "x)";
         }
 
         private void Notify(string text, UiNotificationLevel level)

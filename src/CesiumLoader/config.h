@@ -38,18 +38,24 @@ struct LoaderConfig
     bool forwardActivityLog = true;
 
     // 变速引擎基础倍率: 加载器 hook 装好后立即应用, 一直保持。
-    // 1.0 = 正常(默认), 2.0 = 全程 2 倍速, 0.5 = 全程半速。
+    // 1.0 = 正常(默认), 2.0 = 全程 2 倍速。**低于 1 倍(减速)被硬性禁止** ——
+    // 写 0.5 之类的值会被当成非法并退回 1.0(见 speedhack.h 的 kSpeedMin)。
     // 设为 1.0 或 0 则不启用基础倍率(SpeedHackMod 可用热键临时变速)。
     double speedhackBaseSpeed = 1.0;
+
+    // 变速控制文件通道(<speed>\request.txt / state.txt)。默认开:
+    // mod 侧的热更程序集无法 P/Invoke, 只能通过文件请求倍率 ——
+    // 关掉它等于"游戏内热键变速"不可用(基础倍率仍然生效)。
+    bool speedControlEnabled = true;
 
     // 当前分发的 SDK 版本(SemVer)。加载器用它校验 mod 声明的 SdkVersion,
     // 不兼容(mod 要求更高版本)时拒绝加载该 mod 并记录警告。
     // 发布新版 SDK 时手动更新此字段 + dist\sdk\CesiumLoader.SDK.dll。
-    std::string sdkVersion = "2.1.3";
+    std::string sdkVersion = "2.1.5";
 
     // 加载器自身版本(SemVer)。与发布 tag (modloader-<版本>) 对应, 启动横幅会打印。
     // 与 sdkVersion 独立递增: 改动引导/互操作/打包时递增此值。
-    static constexpr const char* loaderVersion = "2.1.3";
+    static constexpr const char* loaderVersion = "2.1.5";
 };
 
 // 从 config_path 读取配置。文件不存在/解析失败返回默认配置(不抛异常)。
