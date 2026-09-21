@@ -80,7 +80,7 @@ try
   "hybridclrTimeoutSec": 1,
   "speedhackBaseSpeed": 2,
   "speedControlEnabled": true,
-  "sdkVersion": "2.1.6"
+  "sdkVersion": "2.1.7"
 }
 '@
     Set-Content -Path (Join-Path $loaderDir 'doorstop_config.json') -Value $config -Encoding UTF8

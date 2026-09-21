@@ -21,7 +21,7 @@
 ```csharp
 [assembly: ModManifest("我的Mod", "1.0.0", "作者", "描述",
     Permissions = ModPermission.GameActions,   // 声明会用到的能力
-    SdkVersion = "2.1.6")]
+    SdkVersion = "2.1.7")]
 ```
 
 ### 警告 (仅提示, 不阻止)
@@ -42,7 +42,7 @@
 
 ```json
 {"id":"MyMod","name":"我的Mod","version":"1.0.0","author":"作者",
- "description":"描述","permissions":1,"sdkVersion":"2.1.6",
+ "description":"描述","permissions":1,"sdkVersion":"2.1.7",
  "dependencies":[{"id":"LibMod","minVersion":"1.0.0"}]}
 ```
 
@@ -67,7 +67,7 @@
 
 ## API 版本协商
 
-- SDK 当前版本: `SdkVersion.Current = "2.1.6"` (与 csproj Version 一致)
+- SDK 当前版本: `SdkVersion.Current = "2.1.7"` (与 csproj Version 一致)
 - 加载器声明的当前版本: `doorstop_config.json` 的 `sdkVersion` (发布时同步更新)
 - mod 声明 `SdkVersion`: 高于当前 → 加载器拒绝加载该 mod
 - 运行时防御: `SdkVersion.Accepts("1.5.0")` / `SdkVersion.Compare(a, b)`

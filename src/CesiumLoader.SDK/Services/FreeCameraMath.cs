@@ -239,7 +239,23 @@ namespace CesiumLoader.SDK
             return Clamp(distance - scroll * unitsPerNotch, min, max);
         }
 
-        /// <summary>限制数值范围(NaN 归到 min)。</summary>
+        /// <summary>
+    /// 按滚轮增量调整俯瞰相机的高度并夹紧(俯瞰模式下滚轮直接调高度, 不必按修饰键)。
+    ///
+    /// 与 <see cref="ApplyScrollToDistance"/> 的符号约定不同: 这里**滚轮向上 = 抬高**
+    /// (俯瞰时"往上滚 = 站得更高、看得更全"更直觉, 而 FOV/距离那两处"往上滚 = 拉近放大")。
+    /// <paramref name="metersPerNotch"/> ≤ 0 / NaN / 无穷时退回 <see cref="DefaultHeightStep"/>。
+    /// </summary>
+    public static float ApplyScrollToHeight(float height, float scroll,
+        float metersPerNotch = DefaultHeightStep, float min = MinCameraHeight, float max = MaxCameraHeight)
+    {
+        if (scroll == 0f || float.IsNaN(scroll)) return Clamp(height, min, max);
+        if (float.IsNaN(metersPerNotch) || float.IsInfinity(metersPerNotch) || metersPerNotch <= 0f)
+            metersPerNotch = DefaultHeightStep;
+        return Clamp(height + scroll * metersPerNotch, min, max);
+    }
+
+    /// <summary>限制数值范围(NaN 归到 min)。</summary>
         public static float Clamp(float value, float min, float max)
         {
             if (float.IsNaN(value)) return min;

@@ -152,17 +152,50 @@ namespace CesiumLoader.SDK
             catch { return false; }
         }
 
-        /// <summary>滚轮增量。</summary>
+        /// <summary>滚轮增量(统一成"每格 ±1")。</summary>
         public Vector2 GetMouseScrollDelta()
         {
-            if (_mouseScrollDelta == null) return Vector2.zero;
-            try
+            // 1) 首选 mouseScrollDelta: Unity 原生就是"每格 ±1", 不受轴的灵敏度配置影响
+            if (_mouseScrollDelta != null)
             {
-                object value = _mouseScrollDelta.GetValue(null, null);
-                if (value is Vector2 v2) return v2;
-                return Vector2.zero;
+                try
+                {
+                    if (_mouseScrollDelta.GetValue(null, null) is Vector2 v2 && v2 != Vector2.zero) return v2;
+                }
+                catch { }
             }
-            catch { return Vector2.zero; }
+
+            // 2) 回退 Unity 轴 "Mouse ScrollWheel"(默认每格 ±0.1, 折算成格数)
+            //    某些输入配置/环境下 mouseScrollDelta 恒为 0, 这条能兜住; 轴也取不到就返回 0。
+            //    注意 Win32 后端没有滚轮实现(回去看返回值), 所以这里是滚轮唯一可能的来源。
+            if (_getAxis != null)
+            {
+                try
+                {
+                    object value = _getAxis.Invoke(null, new object[] { "Mouse ScrollWheel" });
+                    if (value is float f)
+                    {
+                        float notches = NormalizeScrollAxis(f);
+                        if (notches != 0f) return new Vector2(0f, notches);
+                    }
+                }
+                catch { }
+            }
+
+            return Vector2.zero;
+        }
+
+        /// <summary>
+        /// 把 Unity 轴 "Mouse ScrollWheel" 的取值折算成"格数"。
+        ///
+        /// 轴的默认灵敏度是每格 0.1, 而 <c>mouseScrollDelta</c> 是每格 ±1 —— 统一成后者,
+        /// 调用方(自由相机的 FOV / 距离 / 高度)才能共用同一套"每格多少米/多少度"的步进。
+        /// 绝对值 ≥ 0.5 的直接当格数(轴被改过灵敏度, 或某些平台本来就给格数)。
+        /// </summary>
+        public static float NormalizeScrollAxis(float value)
+        {
+            if (float.IsNaN(value) || float.IsInfinity(value)) return 0f;
+            return Math.Abs(value) < 0.5f ? value * 10f : value;
         }
 
         /// <summary>
@@ -575,6 +608,10 @@ namespace CesiumLoader.SDK
             if (value >= (int)KeyCode.F1 && value <= (int)KeyCode.F12)
                 return 0x70 + (value - (int)KeyCode.F1);
 
+            // 小键盘数字: VK_NUMPAD0(0x60) ~ VK_NUMPAD9(0x69)
+            if (value >= (int)KeyCode.Keypad0 && value <= (int)KeyCode.Keypad9)
+                return 0x60 + (value - (int)KeyCode.Keypad0);
+
             switch (key)
             {
                 case KeyCode.Space: return 0x20;
@@ -596,9 +633,17 @@ namespace CesiumLoader.SDK
                 case KeyCode.Insert: return 0x2D;
                 case KeyCode.Delete: return 0x2E;
                 case KeyCode.CapsLock: return 0x14;
-                case KeyCode.Mouse0: return 0x01;
-                case KeyCode.Mouse1: return 0x02;
-                case KeyCode.Mouse2: return 0x04;
+                case KeyCode.Mouse0: return 0x01;   // VK_LBUTTON
+                case KeyCode.Mouse1: return 0x02;   // VK_RBUTTON
+                case KeyCode.Mouse2: return 0x04;   // VK_MBUTTON
+                case KeyCode.Mouse3: return 0x05;   // VK_XBUTTON1(侧键"后退")
+                case KeyCode.Mouse4: return 0x06;   // VK_XBUTTON2(侧键"前进")
+                case KeyCode.KeypadMultiply: return 0x6A;
+                case KeyCode.KeypadPlus: return 0x6B;
+                case KeyCode.KeypadMinus: return 0x6D;
+                case KeyCode.KeypadPeriod: return 0x6E;
+                case KeyCode.KeypadDivide: return 0x6F;
+                case KeyCode.KeypadEnter: return 0x0D;   // 与主回车同码
                 case KeyCode.Semicolon: return 0xBA;
                 case KeyCode.Equals: return 0xBB;
                 case KeyCode.Comma: return 0xBC;
