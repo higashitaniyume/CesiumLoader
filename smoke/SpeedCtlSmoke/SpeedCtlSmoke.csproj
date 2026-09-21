@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 变速控制文件通道的冒烟测试宿主(见 Program.cs)。不加入 CesiumLoader.sln:
+       它需要一个真实的 version.dll 才能跑, 由 tools\smoke-speedctl.ps1 按需构建。 -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>SpeedCtlSmoke</AssemblyName>
+    <RootNamespace>SpeedCtlSmoke</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+</Project>

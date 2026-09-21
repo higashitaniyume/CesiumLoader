@@ -17,6 +17,7 @@
 
 #include "config.h"
 #include "speedhack.h"
+#include "speedctl.h"
 #include "modmeta.h"
 #include "il2cpp_safe.h"
 
@@ -479,6 +480,14 @@ static DWORD WINAPI boot_thread(LPVOID)
             log_line("[hijack] 基础倍率应用失败: " + std::to_string(cfg.speedhackBaseSpeed));
     }
 
+    // 3.7 变速控制文件通道(见 speedctl.h): 热更程序集无法 P/Invoke, mod 只能通过文件请求倍率。
+    //     放在这里(=引擎就绪后立刻)而不是等 GameAssembly: 通道越早就绪越好, 且与加载流程解耦。
+    //     必须在加载 mod 之前 —— mod 初始化时会读 state.txt 判断引擎是否可用。
+    if (cfg.speedControlEnabled)
+        speedctl_start(speedctl_dir(), cfg.speedhackBaseSpeed);
+    else
+        log_line("[hijack] speedControlEnabled=false, 跳过变速控制文件通道");
+
     // 4. 等待 GameAssembly.dll
     HMODULE ga = wait_module(L"GameAssembly.dll", cfg.gameAssemblyTimeoutSec);
     if (!ga) { log_line("[hijack] GameAssembly.dll 超时"); return 0; }
@@ -505,15 +514,18 @@ static DWORD WINAPI boot_thread(LPVOID)
     std::wstring logs = logs_dir();
     std::wstring sdk = sdk_dir();
     std::wstring boot = bootstrap_dir();
+    std::wstring speed = speedctl_dir();
     set_env_w(L"CESIUM_MODS_DIR", mods);
     set_env_w(L"CESIUM_LOG_DIR", logs);
     set_env_w(L"CESIUM_SDK_DIR", sdk);
     set_env_w(L"CESIUM_BOOTSTRAP_DIR", boot);
+    set_env_w(L"CESIUM_SPEED_DIR", speed);
     log_line(L"[hijack] 加载器根目录: " + loader_root());
     log_line(L"[hijack] bootstrap 目录: " + boot);
     log_line(L"[hijack] SDK 目录: " + sdk);
     log_line(L"[hijack] mods 目录: " + mods);
     log_line(L"[hijack] 日志目录: " + logs);
+    log_line(L"[hijack] 变速目录: " + speed);
 
     // 6a. 实验特性: useManagedBootstrap=true 时, 加载 bootstrap DLL 并调用入口,
     //     由托管代码负责 sdk/mods 加载与入口调用(注意 HybridCLR 反射裁剪风险)。

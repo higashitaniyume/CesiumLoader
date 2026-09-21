@@ -42,12 +42,30 @@ param(
     [switch] $Build,
     [switch] $Launch,
     [int] $SteamAppId = 2622000,
-    [string[]] $Mods = @('ActivityLogMod', 'CameraProbeMod', 'DiagnosticsMod', 'FreeCameraMod')
+    # 默认部署"随包内置 mod"(tools\builtin-mods.json, 与打包脚本/CI 同一份清单)
+    # + 两个开发用示例 mod。清单只维护这一处, 避免出现"打包里有、部署漏掉"的情况
+    # (SpeedHackMod 就踩过这个坑: 打包/CI 都有, 但部署脚本的硬编码列表漏了它)。
+    [string[]] $Mods = @()
 )
 
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot          # modding\msvc
 $src = Join-Path $repo 'src'
+
+if ($Mods.Count -eq 0)
+{
+    $builtIn = @()
+    $manifest = Join-Path $PSScriptRoot 'builtin-mods.json'
+    if (Test-Path -LiteralPath $manifest)
+    {
+        $builtIn = @((Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json) | ForEach-Object { [string]$_ })
+    }
+    else
+    {
+        Write-Warning "缺少 $manifest, 只部署开发用示例 mod"
+    }
+    $Mods = @($builtIn + @('CameraProbeMod', 'DiagnosticsMod') | Select-Object -Unique)
+}
 
 # ---------------------------------------------------------------- 定位游戏目录
 function Resolve-GameDir
@@ -143,7 +161,7 @@ if (Test-Path -LiteralPath (Join-Path $gameDir 'version.dll'))
     Copy-Item -LiteralPath (Join-Path $gameDir 'version.dll') -Destination $backup -Force
     Write-Host "已备份原有 version.dll -> version.dll.bak"
 }
-Deploy-File -From (Join-Path $repo "bin\$Configuration\version.dll") -To (Join-Path $gameDir 'version.dll')
+Deploy-File -From (Join-Path $src "CesiumLoader\bin\$Configuration\version.dll") -To (Join-Path $gameDir 'version.dll')
 
 # 2) 加载器配置
 Deploy-File -From (Join-Path $repo 'dist\modloader\AstralParty_ModLoader\doorstop_config.json') `

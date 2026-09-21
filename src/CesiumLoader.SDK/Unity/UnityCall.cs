@@ -696,6 +696,8 @@ namespace CesiumLoader.SDK
         [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
         internal static string RawPersistentDataPath() { return Application.persistentDataPath; }
         [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        internal static string RawDataPath() { return Application.dataPath; }
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
         internal static bool RawIsPlaying() { return Application.isPlaying; }
         [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
         internal static string RawActiveSceneName() { return SceneManager.GetActiveScene().name; }
@@ -722,6 +724,9 @@ namespace CesiumLoader.SDK
 
         /// <summary>持久化数据目录; 不可用时 null。</summary>
         internal static string PersistentDataPath() { try { return RawPersistentDataPath(); } catch { return null; } }
+
+        /// <summary>Unity 数据目录(&lt;游戏&gt;\&lt;产品&gt;_Data); 不可用时 null。</summary>
+        internal static string DataPath() { try { return RawDataPath(); } catch { return null; } }
 
         /// <summary>是否在播放; 不可用时 false。</summary>
         internal static bool IsPlaying() { try { return RawIsPlaying(); } catch { return false; } }

@@ -10,7 +10,7 @@
 //     保证时间连续不跳变
 //
 // 与 CheatEngine/speedhack 相同的效果。变速会影响游戏感知的所有时间
-// (动画/回合/网络超时), 联机对局慎用。
+// (动画/回合/网络超时), 倍率别调太高; 倍率下限硬性为 1.0(不允许减速, 见 speedhack.h)。
 
 #include "speedhack.h"
 
@@ -60,20 +60,31 @@ inline double load_speed()
 }
 
 // 计算当前"虚拟时间"(用旧 state), 供切换倍率时保持连续
+//
+// ⚠️ 1.0 倍**必须也走这条公式**, 不能"直接返回 real"!!
+// 切速时 offset 会被设成"当时的虚拟时间" —— 如果用 2.0x 跑了 10 秒, 虚拟时间比真实时间
+// 快 10 秒, 此时 offset 就比 real 大 10 秒。若 1.0 时直接返回 real, 游戏看到的时钟会
+// **向后跳 10 秒**(时间倒流), 主线程会僵住(音频线程不受影响, 表现为"画面冻结但声音还在"),
+// 等到这段亏空被追平才恢复。所以 1.0 只是"斜率 1"的普通情形, 照样要加 offset。
+// speed == 1.0 时用整数加减, 既精确又不跳变(等价于纯平移)。
 inline uint32_t virt_gtc(const TimeState& st, uint32_t real)
 {
+    if (st.speed == 1.0) return st.gtc_offset + (real - st.gtc_basetime);
     return st.gtc_offset + (uint32_t)((double)(real - st.gtc_basetime) * st.speed);
 }
 inline uint64_t virt_gtc64(const TimeState& st, uint64_t real)
 {
+    if (st.speed == 1.0) return st.gtc64_offset + (real - st.gtc64_basetime);
     return st.gtc64_offset + (uint64_t)((double)(real - st.gtc64_basetime) * st.speed);
 }
 inline uint32_t virt_tgt(const TimeState& st, uint32_t real)
 {
+    if (st.speed == 1.0) return st.tgt_offset + (real - st.tgt_basetime);
     return st.tgt_offset + (uint32_t)((double)(real - st.tgt_basetime) * st.speed);
 }
 inline int64_t virt_qpc(const TimeState& st, int64_t real)
 {
+    if (st.speed == 1.0) return st.qpc_offset + (real - st.qpc_basetime);
     return st.qpc_offset + (int64_t)((double)(real - st.qpc_basetime) * st.speed);
 }
 
@@ -93,25 +104,22 @@ BOOL(WINAPI* Real_QPC)(LARGE_INTEGER*);
 ULONG WINAPI Hook_GetTickCount()
 {
     ULONG real = Real_GetTickCount();
-    TimeState st = g_state.load(std::memory_order_relaxed);
-    if (st.speed == 1.0) return real;
-    return virt_gtc(st, real);
+    // 注意: 不能在这里对 speed==1.0 做"直接返回 real"的短路 —— 那会让时钟在切回 1.0 时
+    // 向后跳变(见 virt_gtc 上方注释)。virt_gtc 在 1.0 下就是纯平移。
+    return virt_gtc(g_state.load(std::memory_order_relaxed), real);
 }
 
 ULONGLONG WINAPI Hook_GetTickCount64()
 {
     ULONGLONG real = Real_GetTickCount64();
-    TimeState st = g_state.load(std::memory_order_relaxed);
-    if (st.speed == 1.0) return real;
-    return virt_gtc64(st, real);
+    // 同 Hook_GetTickCount: 1.0 也要经过 virt_gtc64(纯平移), 不能直接返回 real
+    return virt_gtc64(g_state.load(std::memory_order_relaxed), real);
 }
 
 DWORD WINAPI Hook_timeGetTime()
 {
     DWORD real = Real_timeGetTime();
-    TimeState st = g_state.load(std::memory_order_relaxed);
-    if (st.speed == 1.0) return real;
-    return virt_tgt(st, real);
+    return virt_tgt(g_state.load(std::memory_order_relaxed), real);
 }
 
 BOOL WINAPI Hook_QPC(LARGE_INTEGER* lpCount)
@@ -119,15 +127,14 @@ BOOL WINAPI Hook_QPC(LARGE_INTEGER* lpCount)
     if (!lpCount) return Real_QPC(lpCount);
     BOOL ok = Real_QPC(lpCount);
     if (!ok) return ok;
-    TimeState st = g_state.load(std::memory_order_relaxed);
-    if (st.speed == 1.0) return ok;
-    lpCount->QuadPart = virt_qpc(st, lpCount->QuadPart);
+    lpCount->QuadPart = virt_qpc(g_state.load(std::memory_order_relaxed), lpCount->QuadPart);
     return ok;
 }
 
 // ---------- MinHook 生命周期 ----------
 
 bool g_hooked = false;
+int g_hook_count = 0;   // 成功 EnableHook 的数量(0 表示变速不可用)
 
 } // namespace
 
@@ -194,6 +201,7 @@ bool speedhack_init()
 
     g_hooked = true;
     g_enabled.store(true);
+    g_hook_count = enabled;
     log_line("[speedhack] 变速引擎就绪 (speed=1.0, hooks=" + std::to_string(enabled) + "/4)");
     return true;
 }
@@ -204,12 +212,14 @@ void speedhack_shutdown()
     MH_DisableHook(MH_ALL_HOOKS);
     MH_Uninitialize();
     g_hooked = false;
+    g_hook_count = 0;
     g_enabled.store(false);
 }
 
 bool speedhack_set_speed(double speed)
 {
-    if (!g_enabled.load() || speed <= 0.0 || speed > 100.0) return false;
+    // 硬下限 1.0: 低于 1 倍一律拒绝(见 speedhack.h 的说明), 且不改动任何状态。
+    if (!g_enabled.load() || !(speed >= kSpeedMin && speed <= kSpeedMax)) return false;
 
     // 与 speedhack-rs 相同: 先取当前真实时间与旧虚拟时间, 更新 basetime/offset
     // 注意: hook 已 enable, 必须经 Real_* (trampoline) 取真实时间, 不能调 API 本身
@@ -241,4 +251,9 @@ double speedhack_get_speed()
 bool speedhack_active()
 {
     return g_enabled.load() && g_hooked;
+}
+
+int speedhack_hook_count()
+{
+    return g_hooked ? g_hook_count : 0;
 }
