@@ -189,7 +189,7 @@ namespace FreeCameraMod
         public override string Name { get { return "自由相机"; } }
 
         /// <summary>版本。</summary>
-        public override string Version { get { return "2.1.7"; } }
+        public override string Version { get { return "2.2.0"; } }
 
         // =====================================================================
         // 生命周期

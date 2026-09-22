@@ -161,11 +161,11 @@ struct LoaderConfig
     // 只受本开关控制。设为 false = 恢复原版行为(退房/解散/被踢时 await 之后的代码仍会被 NRE 跳过)。
     bool steamBypassLobbyQuery = true;
 
-    std::string sdkVersion = "2.1.7";
+    std::string sdkVersion = "2.2.0";
 
     // 加载器自身版本(SemVer)。与发布 tag (modloader-<版本>) 对应, 启动横幅会打印。
     // 与 sdkVersion 独立递增: 改动引导/互操作/打包时递增此值。
-    static constexpr const char* loaderVersion = "2.1.7";
+    static constexpr const char* loaderVersion = "2.2.0";
 };
 
 // 从 config_path 读取配置。文件不存在/解析失败返回默认配置(不抛异常)。

@@ -84,7 +84,7 @@ namespace CesiumLoader.SDK
     /// 用法:
     ///   [ModManifest("我的Mod", "1.0.0", "作者", "描述",
     ///       Permissions = ModPermission.ReadGameState,
-    ///       SdkVersion = "2.1.7",
+    ///       SdkVersion = "2.2.0",
     ///       Dependencies = new[] { new ModDependency("OtherMod", "1.0.0") })]
     ///
     /// 敏感权限 (GameActions / SpeedHack) 默认关闭, 声明只是"请求"——最终是否
@@ -109,7 +109,7 @@ namespace CesiumLoader.SDK
         /// <summary>mod 请求的权限(默认 None; ReadGameState/FileWrite 默认授予, 敏感项默认拒绝)。</summary>
         public ModPermission Permissions { get; set; } = ModPermission.None;
 
-        /// <summary>依赖的 SDK 最低版本(SemVer, 如 "2.1.7")。加载器会检查兼容性。</summary>
+        /// <summary>依赖的 SDK 最低版本(SemVer, 如 "2.2.0")。加载器会检查兼容性。</summary>
         public string SdkVersion { get; set; }
 
         /// <summary>依赖的其他 mod(程序集名 + 最低版本)。加载器按依赖顺序加载。</summary>
@@ -191,10 +191,10 @@ namespace CesiumLoader.SDK
     public static class SdkVersion
     {
         /// <summary>当前 SDK 版本 (SemVer)。与 CesiumLoader.SDK.csproj 的 Version 保持一致。</summary>
-        public const string Current = "2.1.7";
+        public const string Current = "2.2.0";
 
         /// <summary>加载器原生层版本(与 version.dll 构建对应)。</summary>
-        public const string LoaderVersion = "2.1.7";
+        public const string LoaderVersion = "2.2.0";
 
         /// <summary>最小可接受的 mod 声明的 SDK 版本。</summary>
         public static bool Accepts(string modSdkVersion)

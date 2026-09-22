@@ -91,7 +91,7 @@ namespace SpeedHackMod
         private float _saveAt;             // 可以落盘的时刻
         private double _restoreSpeed;      // 被 toggleKey 压到 1.0x 之前的倍率(0 = 本次运行还没记过)
 
-        public override string Version { get { return "2.1.7"; } }
+        public override string Version { get { return "2.2.0"; } }
 
         // =====================================================================
         // 生命周期
