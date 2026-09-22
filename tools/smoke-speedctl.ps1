@@ -92,6 +92,15 @@ try
     & (Join-Path $hostDir 'SpeedCtlSmoke.exe')
     $code = $LASTEXITCODE
     if ($code -ne 0) { throw "变速控制文件通道冒烟测试失败 (exit $code)" }
+
+    # 加载器日志要等宿主退出才读得到(spdlog 的 sink 独占持有到进程结束), 所以在这里打印
+    $logFile = Join-Path $loaderDir 'logs\cesium-loader.log'
+    if (Test-Path $logFile) {
+      Write-Host '[smoke] --- 加载器日志 ---'
+      Select-String -Path $logFile -Pattern 'speedctl|speedhack|倍率|基础' -Encoding UTF8 |
+        ForEach-Object { Write-Host "        $($_.Line.TrimEnd())" }
+    }
+
     Write-Host "[smoke] 通过 (version.dll: $((Get-Item $nativeDll).Length) bytes)"
 }
 finally

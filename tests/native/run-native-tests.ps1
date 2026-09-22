@@ -1,14 +1,13 @@
 # run-native-tests.ps1 - 原生(C++)侧单元测试运行器
 #
-# 编译并运行 tests\native\test_*.cpp。依赖来自 vcpkg 清单(..\..\vcpkg.json),
-# 因此不需要在工程文件里加测试项目 —— 用 VsDevCmd 初始化 MSVC 环境后直接调 cl。
+# 编译并运行 tests\native\test_*.cpp。第三方库是 vendored 的(源码在 ..\..\third_party,
+# 见该目录的 README.md), 不需要包管理器 —— 用 VsDevCmd 初始化 MSVC 环境后直接调 cl。
 #
 # 用法: powershell -File tests\native\run-native-tests.ps1
 
 #requires -Version 7
 [CmdletBinding()]
 param(
-    [string]$Triplet = 'x64-windows-static-md',
     [string]$Configuration = 'Release'
 )
 
@@ -16,12 +15,12 @@ $ErrorActionPreference = 'Stop'
 
 $nativeDir = $PSScriptRoot
 $root = Split-Path -Parent (Split-Path -Parent $nativeDir)   # modding\msvc
-$inst = Join-Path $root "vcpkg_installed\$Triplet"
-$inc = Join-Path $inst 'include'
-$lib = Join-Path $inst 'lib'
-
-if (-not (Test-Path $inc)) {
-    throw "vcpkg 依赖未安装: $inc`n请先在 $root 运行: vcpkg install --triplet $Triplet"
+$thirdParty = Join-Path $root 'third_party'
+# vendored 头文件(与主工程 vcxproj 的 AdditionalIncludeDirectories 保持一致)
+$includes = @('fmt\include', 'nlohmann_json\include', 'spdlog\include') |
+    ForEach-Object { Join-Path $thirdParty $_ }
+foreach ($p in $includes) {
+    if (-not (Test-Path $p)) { throw "vendored 依赖缺失: $p`n(third_party 应随仓库一起提交)" }
 }
 
 $vsDevCmd = Get-ChildItem 'C:\Program Files\Microsoft Visual Studio\*\*\Common7\Tools\VsDevCmd.bat' -ErrorAction SilentlyContinue |
@@ -50,14 +49,18 @@ foreach ($src in $sources) {
     }
     $srcArgs = (@($src.FullName) + $extraSrc | ForEach-Object { "`"$_`"" }) -join ' '
 
+    $incArgs = ($includes | ForEach-Object { "/I`"$_`"" }) -join ' '
+
     $bat = Join-Path $outDir ($src.BaseName + '.build.cmd')
     # /utf-8 是必须的: fmt 在 MSVC 上有 "Unicode support requires compiling with /utf-8"
     # 静态断言, 且源码里的中文注释在默认 936 代码页下会被破坏。主工程 AdditionalOptions 里
     # 也是这么设的, 测试保持一致。
+    # FMT_HEADER_ONLY / SPDLOG_FMT_EXTERNAL 也必须与主工程一致: 同一个 exe 里的所有 TU
+    # (含被链接进来的 logging.cpp) 都要按同一种方式使用 fmt, 否则就是 ODR 冲突。
     $lines = @(
         '@echo off'
         "call `"$($vsDevCmd.FullName)`" -arch=x64 -host_arch=x64 -no_logo >nul 2>nul"
-        "cl /nologo /utf-8 /std:c++17 /EHsc /W3 /MD /O2 /I`"$inc`" /Fo:`"$outDir\\`" /Fe:`"$exe`" $srcArgs /link /LIBPATH:`"$lib`" fmt.lib user32.lib"
+        "cl /nologo /utf-8 /std:c++17 /EHsc /W3 /MD /O2 $incArgs /DFMT_HEADER_ONLY /DSPDLOG_FMT_EXTERNAL /Fo:`"$outDir\\`" /Fe:`"$exe`" $srcArgs /link user32.lib"
         'if errorlevel 1 exit /b 1'
         "`"$exe`" `"$root`""
     )

@@ -411,16 +411,6 @@ cesium-sdk-tools*.zip
 # 参考资料 (克隆的外部仓库, 不入库)
 tools/reference/
 
-# ---------- vcpkg (C++ 依赖, 见 vcpkg.json) ----------
-
-# vcpkg 依赖安装目录: 由 vcpkg.json 的 builtin-baseline 钉住版本后还原, 实测约 272 MB, 不入库。
-# 首次构建前在 modding\msvc 下执行(或直接 msbuild, manifest 模式会自动还原):
-#   "<VS>\VC\vcpkg\vcpkg.exe" install --triplet x64-windows-static-md
-vcpkg_installed/
-
-# vcpkg 清单模式的日志
-vcpkg-manifest-install.log
-
 # ---------- 原生(C++)侧单元测试 ----------
 
 # tests\native\out\ 下的 .exe/.obj/.build.cmd 已被上面的 [Oo]ut/ 覆盖, 这里只列兜底项

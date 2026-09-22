@@ -5,9 +5,9 @@
 // 1) **header-only**(不定义 SPDLOG_COMPILED_LIB):
 //    spdlog 的 common.h 在未定义 COMPILED_LIB 时会自动启用 SPDLOG_HEADER_ONLY, 于是所有模板
 //    都在本 TU 内实例化。这一点是下面第 2 条的前提 —— SPDLOG_WCHAR_FILENAMES 会改变
-//    spdlog::filename_t 与 basic_file_sink/file_helper 的布局, 若与 vcpkg 预编译的 spdlog.lib
-//    里的实例化混在一起, 就是 ODR / 对象布局冲突(可能直接内存损坏)。
-//    所以**不要**在工程属性里加 SPDLOG_COMPILED_LIB。
+//    spdlog::filename_t 与 basic_file_sink/file_helper 的布局, 若与"用别的宏配置编译出来的
+//    spdlog 目标文件/预编译库"混在一起, 就是 ODR / 对象布局冲突(可能直接内存损坏)。
+//    所以**不要**在工程属性里加 SPDLOG_COMPILED_LIB, 也不要链接任何预编译的 spdlog 库。
 //
 // 2) **SPDLOG_WCHAR_FILENAMES**:
 //    让 file_helper 走 _wfopen 而不是 fopen。加载器日志路径可能是中文(游戏装在中文目录, 或

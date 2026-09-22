@@ -15,7 +15,11 @@ CesiumLoader.sln
 │   ├── ActivityLogMod\            C# 示例 mod (行为日志)
 │   ├── FreeCameraMod\             内置 mod (俯瞰视角)
 │   ├── SpeedHackMod\              内置 mod (变速热键)
-├── third_party\minhook\            MinHook (inline hook 库, 变速引擎使用, MIT)
+├── third_party\                    随仓库入库的第三方依赖 (vendored: 不要包管理器, 克隆即可编译, 见其 README)
+│   ├── minhook\                    MinHook (inline hook 库, 变速引擎使用, BSD-2-Clause)
+│   ├── fmt\                        fmt (字符串格式化, header-only, MIT)
+│   ├── spdlog\                     spdlog (日志, header-only, MIT)
+│   └── nlohmann_json\              nlohmann/json (JSON/JSONC 解析, 单头文件, MIT)
 ├── smoke\SpeedCtlSmoke\            冒烟测试宿主 (变速控制文件通道, 不依赖游戏)
 ├── dist\modloader\                 预编译托管产物 (SDK + 内置 mod + doorstop_config.json,
 │                                   必须入库 —— CI 只校验不重建, 见「发布」)
