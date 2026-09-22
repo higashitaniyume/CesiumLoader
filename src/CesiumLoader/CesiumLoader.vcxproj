@@ -18,21 +18,16 @@
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
     <ProjectName>CesiumLoader</ProjectName>
   </PropertyGroup>
-  <!-- vcpkg manifest 模式: 依赖声明见 ..\..\vcpkg.json, 版本由 builtin-baseline 钉死。
-       必须显式开启 manifest 并指定 triplet —— 命令行 msbuild 不会自动启用(只会打印一条提示),
-       triplet 不指定则默认 x64-windows(动态库), 会拿到与预期不符的静态/动态组合。
-       x64-windows-static-md = 静态库 + 动态 CRT, 与本工程默认的 /MD 一致; 本 DLL 是注入到
-       游戏进程的代理 version.dll, 绝不能要求额外的 spdlog.dll/fmt.dll 一起分发。 -->
-  <PropertyGroup Label="Vcpkg">
-    <VcpkgEnableManifest>true</VcpkgEnableManifest>
-    <VcpkgTriplet>x64-windows-static-md</VcpkgTriplet>
-    <!-- 关掉"把 <triplet>\lib\*.lib 全部自动塞进链接"的行为, 依赖改为显式列出(见下方 fmt.lib)。
-         原因: spdlog 在本工程是 **header-only**(见 logging.cpp 顶部说明), 但 vcpkg 同时也把它
-         预编译成了 spdlog.lib。两者的符号名相同(SPDLOG_WCHAR_FILENAMES 不体现在模板实参里)
-         而对象布局不同 —— 只要链接器从库里拉进任何一个符号, 就是 ODR/内存布局冲突, 表现为
-         静默的内存损坏。显式只链 fmt.lib 可彻底杜绝这种可能。 -->
-    <VcpkgAutoLink>false</VcpkgAutoLink>
-  </PropertyGroup>
+  <!-- 第三方依赖全部 **源码入库(vendored)**, 见 ..\..\third_party\README.md —— 不用包管理器:
+       拉下仓库直接 msbuild 就能编, 本机和 CI 都不需要 vcpkg(命令行 msbuild 并不会自动发现 vcpkg,
+       runner 是全新环境, 每个 runner 都得现装一遍依赖)。
+         fmt            header-only(下方 FMT_HEADER_ONLY), 不产生也不需要任何 .lib
+         spdlog         header-only(不定义 SPDLOG_COMPILED_LIB); 它的 tweakme.h 里写死了
+                        SPDLOG_FMT_EXTERNAL, 即 spdlog 用的就是我们这份 fmt —— 只有一份 fmt, 不存在混用
+         nlohmann/json  单头文件
+       本 DLL 是注入游戏进程的代理 version.dll, 这些库必须全是静态/内联的,
+       绝不能要求额外的 spdlog.dll / fmt.dll 一起分发。
+       路径一律用相对路径: 直接 msbuild 这个 vcxproj 时 $(SolutionDir) 不可靠。 -->
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
@@ -75,19 +70,19 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_DEBUG;_WINDOWS;_USRDLL;CESIUMLOADER_EXPORTS;SPDLOG_FMT_EXTERNAL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_DEBUG;_WINDOWS;_USRDLL;CESIUMLOADER_EXPORTS;SPDLOG_FMT_EXTERNAL;FMT_HEADER_ONLY;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalIncludeDirectories>..\..\third_party\minhook\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..\third_party\fmt\include;..\..\third_party\nlohmann_json\include;..\..\third_party\spdlog\include;..\..\third_party\minhook\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ControlFlowGuard>Guard</ControlFlowGuard>
       <ModuleDefinitionFile>version.def</ModuleDefinitionFile>
-      <AdditionalDependencies>winmm.lib;fmt.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -96,14 +91,14 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>NDEBUG;_WINDOWS;_USRDLL;CESIUMLOADER_EXPORTS;SPDLOG_FMT_EXTERNAL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>NDEBUG;_WINDOWS;_USRDLL;CESIUMLOADER_EXPORTS;SPDLOG_FMT_EXTERNAL;FMT_HEADER_ONLY;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <Optimization>MaxSpeed</Optimization>
       <SpectreMitigation>Spectre</SpectreMitigation>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalIncludeDirectories>..\..\third_party\minhook\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..\third_party\fmt\include;..\..\third_party\nlohmann_json\include;..\..\third_party\spdlog\include;..\..\third_party\minhook\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -112,7 +107,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ControlFlowGuard>Guard</ControlFlowGuard>
       <ModuleDefinitionFile>version.def</ModuleDefinitionFile>
-      <AdditionalDependencies>winmm.lib;fmt.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
