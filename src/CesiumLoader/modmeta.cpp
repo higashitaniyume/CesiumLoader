@@ -2,121 +2,16 @@
 
 #include "modmeta.h"
 
+#include "jsonc.h"   // JSONC 读取(nlohmann/json 封装: 允许注释、剥离 BOM、失败不抛异常)
+
 #include <fstream>
 #include <cstdlib>
 
 namespace cesium
 {
 
-namespace
-{
-
-// 在 json 中定位 "key" 后的 ':' 值起始位置
-size_t jval(const std::string& json, const char* key)
-{
-    std::string needle = std::string("\"") + key + "\"";
-    size_t pos = json.find(needle);
-    if (pos == std::string::npos) return std::string::npos;
-    pos = json.find(':', pos);
-    if (pos == std::string::npos) return std::string::npos;
-    pos++;
-    while (pos < json.size() && (json[pos] == ' ' || json[pos] == '\t' || json[pos] == '\r' || json[pos] == '\n'))
-        pos++;
-    return pos;
-}
-
-std::string jstr(const std::string& json, const char* key)
-{
-    size_t pos = jval(json, key);
-    if (pos == std::string::npos || pos >= json.size() || json[pos] != '"') return "";
-    pos++;
-    std::string out;
-    while (pos < json.size() && json[pos] != '"')
-    {
-        if (json[pos] == '\\' && pos + 1 < json.size())
-        {
-            char c = json[pos + 1];
-            switch (c) { case 'n': out.push_back('\n'); break; case 't': out.push_back('\t'); break; case 'r': out.push_back('\r'); break; default: out.push_back(c); break; }
-            pos += 2;
-        }
-        else { out.push_back(json[pos]); pos++; }
-    }
-    return out;
-}
-
-void jdeps(const std::string& json, const char* key, std::vector<ModDep>& out)
-{
-    size_t pos = jval(json, key);
-    if (pos == std::string::npos || pos >= json.size() || json[pos] != '[') return;
-    pos++;  // 跳过 [
-    while (pos < json.size())
-    {
-        size_t closeBracket = json.find(']', pos);
-        size_t idq = json.find("\"id\"", pos);
-        if (idq == std::string::npos || (closeBracket != std::string::npos && idq > closeBracket)) break;
-        size_t colon = json.find(':', idq);
-        if (colon == std::string::npos) break;
-        size_t v1 = json.find('"', colon);
-        if (v1 == std::string::npos) break;
-        size_t v2 = json.find('"', v1 + 1);
-        if (v2 == std::string::npos) break;
-        ModDep dep;
-        dep.id = json.substr(v1 + 1, v2 - v1 - 1);
-        size_t braceEnd = json.find('}', v2);
-        if (braceEnd == std::string::npos) break;
-        size_t mq = json.find("\"minVersion\"", v2);
-        if (mq != std::string::npos && mq < braceEnd)
-        {
-            size_t mc = json.find(':', mq);
-            size_t m1 = mc == std::string::npos ? std::string::npos : json.find('"', mc);
-            size_t m2 = m1 == std::string::npos ? std::string::npos : json.find('"', m1 + 1);
-            if (m2 != std::string::npos) dep.minVersion = json.substr(m1 + 1, m2 - m1 - 1);
-        }
-        out.push_back(dep);
-        pos = braceEnd + 1;
-    }
-}
-
-// 读布尔值; 缺失/非 true 返回 false(注意: enabled 缺失按 true 处理, 用 jbool_opt 区分)
-bool jbool_opt(const std::string& json, const char* key, bool& present)
-{
-    present = false;
-    size_t pos = jval(json, key);
-    if (pos == std::string::npos || pos >= json.size()) return false;
-    present = true;
-    // 读取 true/false token
-    size_t end = pos;
-    while (end < json.size() && json[end] != ',' && json[end] != '}' && json[end] != ']')
-        end++;
-    std::string token = json.substr(pos, end - pos);
-    // 去空白
-    while (!token.empty() && (token.front() == ' ' || token.front() == '\t' || token.front() == '\r' || token.front() == '\n'))
-        token.erase(token.begin());
-    while (!token.empty() && (token.back() == ' ' || token.back() == '\t' || token.back() == '\r' || token.back() == '\n'))
-        token.pop_back();
-    return token == "true";
-}
-
-// 读整数; 缺失/损坏返回 fallback, 并置 present
-int jint_opt(const std::string& json, const char* key, int fallback, bool& present)
-{
-    present = false;
-    size_t pos = jval(json, key);
-    if (pos == std::string::npos || pos >= json.size()) return fallback;
-    present = true;
-    size_t end = pos;
-    while (end < json.size() && json[end] != ',' && json[end] != '}' && json[end] != ']')
-        end++;
-    std::string token = json.substr(pos, end - pos);
-    while (!token.empty() && (token.front() == ' ' || token.front() == '\t' || token.front() == '\r' || token.front() == '\n'))
-        token.erase(token.begin());
-    while (!token.empty() && (token.back() == ' ' || token.back() == '\t' || token.back() == '\r' || token.back() == '\n'))
-        token.pop_back();
-    if (token.empty()) return fallback;
-    return atoi(token.c_str());
-}
-
-} // namespace
+// 解析实现见下方 parse_sidecar —— 旧的"在 JSON 文本里按 key 找冒号"的手写扫描器
+// (jval / jstr / jdeps / jbool_opt / jint_opt) 已删除, 改用 nlohmann/json(见 jsonc.h)。
 
 std::string read_sidecar_text(const std::string& path)
 {
@@ -130,17 +25,37 @@ ModMeta parse_sidecar(const std::string& json)
     ModMeta m;
     if (json.empty()) return m;
     m.hasSidecar = true;
-    m.id = jstr(json, "id");
-    if (m.id.empty()) m.id = jstr(json, "name");   // 旧格式无 id
-    m.name = jstr(json, "name");
-    m.version = jstr(json, "version");
-    m.sdkVersion = jstr(json, "sdkVersion");
-    bool present = false;
-    bool en = jbool_opt(json, "enabled", present);
-    if (present) m.enabled = en;   // 缺失 → 保持默认 true
-    bool permPresent = false;
-    m.permissions = jint_opt(json, "permissions", 0, permPresent);   // 缺失 → 0(无声明)
-    jdeps(json, "dependencies", m.deps);
+
+    // 解析一次(JSONC: 允许注释; 失败得到 discarded, 不抛异常, 各字段退回默认值)。
+    // 与旧实现一致: 只要 json 非空就置 hasSidecar = true —— 损坏的 sidecar 仍算"有声明"。
+    const jsonc::Json j = jsonc::parse(json);
+
+    m.id = jsonc::str(j, "id");
+    if (m.id.empty()) m.id = jsonc::str(j, "name");   // 旧格式无 id
+    m.name = jsonc::str(j, "name");
+    m.version = jsonc::str(j, "version");
+    m.sdkVersion = jsonc::str(j, "sdkVersion");
+
+    // enabled: 只在键**存在**时覆盖默认 true。旧 jbool_opt 的语义是"键在但值不是 true → false",
+    // 因此这里 def 传 false(非布尔值也落到 false), 与旧行为一致。
+    bool enabledPresent = false;
+    const bool enabled = jsonc::boolean_present(j, "enabled", enabledPresent, /*def=*/false);
+    if (enabledPresent) m.enabled = enabled;
+
+    // permissions: 缺失 → 0(无声明); 字符串形式的数字也接受(兼容手改过的清单)。
+    m.permissions = static_cast<int>(jsonc::integer(j, "permissions", 0));
+
+    // dependencies: [{ "id": "...", "minVersion": "..." }]
+    // 与旧扫描器的差异(仅影响畸形输入): 旧实现在遇到第一个不含 "id" 的项就停止解析,
+    // 这里改为跳过没有非空 id 的项、继续解析后续项。
+    for (const auto& d : jsonc::array(j, "dependencies"))
+    {
+        if (!d.is_object()) continue;
+        ModDep dep;
+        dep.id = jsonc::str(d, "id");
+        dep.minVersion = jsonc::str(d, "minVersion");
+        if (!dep.id.empty()) m.deps.push_back(std::move(dep));
+    }
     return m;
 }
 

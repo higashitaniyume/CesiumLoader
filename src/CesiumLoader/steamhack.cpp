@@ -74,6 +74,8 @@
 #include <vector>
 #include <filesystem>
 
+#include <fmt/format.h>
+
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
@@ -90,9 +92,7 @@ namespace
 
 std::string hex_str(uintptr_t v)
 {
-    char buf[32];
-    sprintf_s(buf, sizeof(buf), "0x%llX", (unsigned long long)v);
-    return buf;
+    return fmt::format("0x{:X}", static_cast<unsigned long long>(v));
 }
 
 // 某地址相对指定模块基址的偏移(用于日志: 直接跳这个 RVA 就能在 IDA/Ghidra 里看到代码)
@@ -1233,9 +1233,7 @@ void pod_resolve_hasvalue_method(const cesium_safe::il2cpp_tbl* t, void* nullabl
 
 std::string hex_code_str(unsigned long code)
 {
-    char buf[32];
-    sprintf_s(buf, sizeof(buf), "0x%08lX", code);
-    return buf;
+    return fmt::format("0x{:08X}", code);
 }
 
 // 装箱路径 -> 可读描述
