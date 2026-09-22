@@ -20,6 +20,7 @@
 #include "speedctl.h"
 #include "modmeta.h"
 #include "il2cpp_safe.h"
+#include "steamhack.h"
 
 #include <tlhelp32.h>
 #include <vector>
@@ -68,6 +69,34 @@ struct Il2Cpp
     size_t (*array_object_header_size)() = nullptr;
     Il2CppString* (*exception_get_message)(Il2CppException*) = nullptr;
     const wchar_t* (*string_chars)(Il2CppString*) = nullptr;
+    // Steam 大厅绕过(steamhack.cpp 第二阶段)新增: 从返回值 MethodInfo 推导闭合泛型类并造默认返回值。
+    // 全部**可选**: 不在下面的 ok 必需项里, 缺失只记日志, 由调用方自行放弃该功能。
+    void* (*method_get_return_type)(const Il2CppMethod*) = nullptr;
+    Il2CppObject* (*type_get_object)(const void*) = nullptr;
+    Il2CppClass* (*class_from_system_type)(Il2CppObject*) = nullptr;
+    Il2CppObject* (*object_new)(Il2CppClass*) = nullptr;
+    Il2CppObject* (*value_box)(Il2CppClass*, void*) = nullptr;
+    void* (*class_get_property_from_name)(Il2CppClass*, const char*) = nullptr;
+    Il2CppMethod* (*property_get_get_method)(void*) = nullptr;
+    Il2CppClass* (*object_get_class)(Il2CppObject*) = nullptr;
+    const char* (*class_get_name)(Il2CppClass*) = nullptr;
+    bool (*class_is_valuetype)(const Il2CppClass*) = nullptr;
+    void* (*object_unbox)(Il2CppObject*) = nullptr;
+    Il2CppClass* (*class_get_parent)(Il2CppClass*) = nullptr;
+    // 阶段3(steamhack.cpp): Nullable<Lobby>.get_HasValue 挂钩 + hasValue 字段诊断。
+    // 同样全部可选, 缺失只记日志。
+    void* (*class_get_field_from_name)(Il2CppClass*, const char*) = nullptr;
+    size_t (*field_get_offset)(void*) = nullptr;
+    void (*field_get_value)(void*, void*, void*) = nullptr;
+    Il2CppObject* (*field_get_value_object)(void*, Il2CppObject*) = nullptr;
+    // 方案B(steamhack.cpp): Lobby 类字段枚举 + Id 是字段还是属性的判定 + get_Id 返回值尺寸核对。
+    void* (*class_get_fields)(Il2CppClass*, void**) = nullptr;
+    const char* (*field_get_name)(void*) = nullptr;
+    uint32_t (*class_value_size)(Il2CppClass*, uint32_t*) = nullptr;
+    // 阶段5(steamhack.cpp): LobbyQuery.RequestAsync 兜底 —— 读空数组的元素个数 + 显式 GC root。
+    // 同样全部可选, 缺失只记日志。
+    uint32_t (*array_length)(Il2CppObject*) = nullptr;
+    uint32_t (*gchandle_new)(Il2CppObject*, bool) = nullptr;
 };
 
 // ---------- 工具 ----------
@@ -116,6 +145,61 @@ static bool get_il2cpp(HMODULE game_assembly)
     g_il2cpp.array_object_header_size = reinterpret_cast<size_t (*)()>(load_symbol(game_assembly, "il2cpp_array_object_header_size"));
     g_il2cpp.exception_get_message = reinterpret_cast<Il2CppString* (*)(Il2CppException*)>(load_symbol(game_assembly, "il2cpp_exception_get_message"));
     g_il2cpp.string_chars = reinterpret_cast<const wchar_t* (*)(Il2CppString*)>(load_symbol(game_assembly, "il2cpp_string_chars"));
+    // Steam 大厅绕过(第二阶段)新增导出: 缺失不影响启动(下面单独记日志), 不进 ok 必需项。
+    g_il2cpp.method_get_return_type = reinterpret_cast<void* (*)(const Il2CppMethod*)>(load_symbol(game_assembly, "il2cpp_method_get_return_type"));
+    g_il2cpp.type_get_object = reinterpret_cast<Il2CppObject* (*)(const void*)>(load_symbol(game_assembly, "il2cpp_type_get_object"));
+    g_il2cpp.class_from_system_type = reinterpret_cast<Il2CppClass* (*)(Il2CppObject*)>(load_symbol(game_assembly, "il2cpp_class_from_system_type"));
+    g_il2cpp.object_new = reinterpret_cast<Il2CppObject* (*)(Il2CppClass*)>(load_symbol(game_assembly, "il2cpp_object_new"));
+    g_il2cpp.value_box = reinterpret_cast<Il2CppObject* (*)(Il2CppClass*, void*)>(load_symbol(game_assembly, "il2cpp_value_box"));
+    g_il2cpp.class_get_property_from_name = reinterpret_cast<void* (*)(Il2CppClass*, const char*)>(load_symbol(game_assembly, "il2cpp_class_get_property_from_name"));
+    g_il2cpp.property_get_get_method = reinterpret_cast<Il2CppMethod* (*)(void*)>(load_symbol(game_assembly, "il2cpp_property_get_get_method"));
+    g_il2cpp.object_get_class = reinterpret_cast<Il2CppClass* (*)(Il2CppObject*)>(load_symbol(game_assembly, "il2cpp_object_get_class"));
+    g_il2cpp.class_get_name = reinterpret_cast<const char* (*)(Il2CppClass*)>(load_symbol(game_assembly, "il2cpp_class_get_name"));
+    g_il2cpp.class_is_valuetype = reinterpret_cast<bool (*)(const Il2CppClass*)>(load_symbol(game_assembly, "il2cpp_class_is_valuetype"));
+    g_il2cpp.object_unbox = reinterpret_cast<void* (*)(Il2CppObject*)>(load_symbol(game_assembly, "il2cpp_object_unbox"));
+    g_il2cpp.class_get_parent = reinterpret_cast<Il2CppClass* (*)(Il2CppClass*)>(load_symbol(game_assembly, "il2cpp_class_get_parent"));
+    // 阶段3: Nullable<Lobby>.get_HasValue 挂钩 + hasValue 字段诊断(可选)。
+    g_il2cpp.class_get_field_from_name = reinterpret_cast<void* (*)(Il2CppClass*, const char*)>(load_symbol(game_assembly, "il2cpp_class_get_field_from_name"));
+    g_il2cpp.field_get_offset = reinterpret_cast<size_t (*)(void*)>(load_symbol(game_assembly, "il2cpp_field_get_offset"));
+    g_il2cpp.field_get_value = reinterpret_cast<void (*)(void*, void*, void*)>(load_symbol(game_assembly, "il2cpp_field_get_value"));
+    g_il2cpp.field_get_value_object = reinterpret_cast<Il2CppObject* (*)(void*, Il2CppObject*)>(load_symbol(game_assembly, "il2cpp_field_get_value_object"));
+    // 方案B: Lobby 字段枚举 + Id 字段/属性判定 + get_Id 返回结构体尺寸核对(可选)。
+    g_il2cpp.class_get_fields = reinterpret_cast<void* (*)(Il2CppClass*, void**)>(load_symbol(game_assembly, "il2cpp_class_get_fields"));
+    g_il2cpp.field_get_name = reinterpret_cast<const char* (*)(void*)>(load_symbol(game_assembly, "il2cpp_field_get_name"));
+    g_il2cpp.class_value_size = reinterpret_cast<uint32_t (*)(Il2CppClass*, uint32_t*)>(load_symbol(game_assembly, "il2cpp_class_value_size"));
+    // 阶段5: LobbyQuery.RequestAsync 兜底(读空数组长度 + 显式 GC root), 可选。
+    g_il2cpp.array_length = reinterpret_cast<uint32_t (*)(Il2CppObject*)>(load_symbol(game_assembly, "il2cpp_array_length"));
+    g_il2cpp.gchandle_new = reinterpret_cast<uint32_t (*)(Il2CppObject*, bool)>(load_symbol(game_assembly, "il2cpp_gchandle_new"));
+    {
+        // 缺失只记日志(照现有风格): 记下"哪些大厅绕过所需的导出缺失", 便于下一轮定位。
+        struct { const char* n; const void* p; } extra[] = {
+            { "il2cpp_method_get_return_type", (const void*)g_il2cpp.method_get_return_type },
+            { "il2cpp_type_get_object",        (const void*)g_il2cpp.type_get_object },
+            { "il2cpp_class_from_system_type", (const void*)g_il2cpp.class_from_system_type },
+            { "il2cpp_object_new",             (const void*)g_il2cpp.object_new },
+            { "il2cpp_value_box",              (const void*)g_il2cpp.value_box },
+            { "il2cpp_class_get_property_from_name", (const void*)g_il2cpp.class_get_property_from_name },
+            { "il2cpp_property_get_get_method",(const void*)g_il2cpp.property_get_get_method },
+            { "il2cpp_object_get_class",       (const void*)g_il2cpp.object_get_class },
+            { "il2cpp_class_get_name",         (const void*)g_il2cpp.class_get_name },
+            { "il2cpp_class_is_valuetype",     (const void*)g_il2cpp.class_is_valuetype },
+            { "il2cpp_object_unbox",           (const void*)g_il2cpp.object_unbox },
+            { "il2cpp_class_get_parent",       (const void*)g_il2cpp.class_get_parent },
+            { "il2cpp_class_get_field_from_name", (const void*)g_il2cpp.class_get_field_from_name },
+            { "il2cpp_field_get_offset",       (const void*)g_il2cpp.field_get_offset },
+            { "il2cpp_field_get_value",        (const void*)g_il2cpp.field_get_value },
+            { "il2cpp_field_get_value_object", (const void*)g_il2cpp.field_get_value_object },
+            { "il2cpp_class_get_fields",       (const void*)g_il2cpp.class_get_fields },
+            { "il2cpp_field_get_name",         (const void*)g_il2cpp.field_get_name },
+            { "il2cpp_class_value_size",       (const void*)g_il2cpp.class_value_size },
+            { "il2cpp_array_length",           (const void*)g_il2cpp.array_length },
+            { "il2cpp_gchandle_new",           (const void*)g_il2cpp.gchandle_new },
+        };
+        std::string missing;
+        for (auto& e : extra) if (!e.p) { if (!missing.empty()) missing += ", "; missing += e.n; }
+        if (!missing.empty())
+            log_line("[hijack] 可选导出缺失(不影响启动, Steam 大厅绕过会自行降级): " + missing);
+    }
     // 关键导出缺失即视为失败
     bool ok = g_il2cpp.domain_get && g_il2cpp.assembly_get_image && g_il2cpp.image_get_assembly &&
               g_il2cpp.class_from_name && g_il2cpp.class_get_method_from_name && g_il2cpp.class_get_methods &&
@@ -146,6 +230,30 @@ static bool get_il2cpp(HMODULE game_assembly)
         g_safe_il2cpp.array_object_header_size = reinterpret_cast<size_t (*)()>(g_il2cpp.array_object_header_size);
         g_safe_il2cpp.exception_get_message = reinterpret_cast<void* (*)(void*)>(g_il2cpp.exception_get_message);
         g_safe_il2cpp.string_chars = reinterpret_cast<const wchar_t* (*)(void*)>(g_il2cpp.string_chars);
+        // Steam 大厅绕过(第二阶段): 同样转成 void* 形态(结构体与 il2cpp_safe.h 解耦)
+        g_safe_il2cpp.method_get_return_type = reinterpret_cast<void* (*)(void*)>(g_il2cpp.method_get_return_type);
+        g_safe_il2cpp.type_get_object = reinterpret_cast<void* (*)(void*)>(g_il2cpp.type_get_object);
+        g_safe_il2cpp.class_from_system_type = reinterpret_cast<void* (*)(void*)>(g_il2cpp.class_from_system_type);
+        g_safe_il2cpp.object_new = reinterpret_cast<void* (*)(void*)>(g_il2cpp.object_new);
+        g_safe_il2cpp.value_box = reinterpret_cast<void* (*)(void*, void*)>(g_il2cpp.value_box);
+        g_safe_il2cpp.class_get_property_from_name = reinterpret_cast<void* (*)(void*, const char*)>(g_il2cpp.class_get_property_from_name);
+        g_safe_il2cpp.property_get_get_method = reinterpret_cast<void* (*)(void*)>(g_il2cpp.property_get_get_method);
+        g_safe_il2cpp.object_get_class = reinterpret_cast<void* (*)(void*)>(g_il2cpp.object_get_class);
+        g_safe_il2cpp.class_get_name = reinterpret_cast<const char* (*)(void*)>(g_il2cpp.class_get_name);
+        g_safe_il2cpp.class_is_valuetype = reinterpret_cast<bool (*)(void*)>(g_il2cpp.class_is_valuetype);
+        g_safe_il2cpp.object_unbox = reinterpret_cast<void* (*)(void*)>(g_il2cpp.object_unbox);
+        g_safe_il2cpp.class_get_parent = reinterpret_cast<void* (*)(void*)>(g_il2cpp.class_get_parent);
+        // 阶段3: Nullable<Lobby>.get_HasValue 挂钩 + hasValue 字段诊断。
+        g_safe_il2cpp.class_get_field_from_name = reinterpret_cast<void* (*)(void*, const char*)>(g_il2cpp.class_get_field_from_name);
+        g_safe_il2cpp.field_get_offset = reinterpret_cast<size_t (*)(void*)>(g_il2cpp.field_get_offset);
+        g_safe_il2cpp.field_get_value = reinterpret_cast<void (*)(void*, void*, void*)>(g_il2cpp.field_get_value);
+        g_safe_il2cpp.field_get_value_object = reinterpret_cast<void* (*)(void*, void*)>(g_il2cpp.field_get_value_object);
+        // 方案B: Lobby 字段枚举 + Id 字段/属性判定 + get_Id 返回结构体尺寸核对。
+        g_safe_il2cpp.class_get_fields = reinterpret_cast<void* (*)(void*, void**)>(g_il2cpp.class_get_fields);
+        g_safe_il2cpp.field_get_name = reinterpret_cast<const char* (*)(void*)>(g_il2cpp.field_get_name);
+        g_safe_il2cpp.class_value_size = reinterpret_cast<uint32_t (*)(void*, uint32_t*)>(g_il2cpp.class_value_size);
+        g_safe_il2cpp.array_length = reinterpret_cast<uint32_t (*)(void*)>(g_il2cpp.array_length);
+        g_safe_il2cpp.gchandle_new = reinterpret_cast<uint32_t (*)(void*, bool)>(g_il2cpp.gchandle_new);
     }
     return ok;
 }
@@ -505,6 +613,41 @@ static DWORD WINAPI boot_thread(LPVOID)
     }
     g_il2cpp.thread_attach(domain);
     log_line("[hijack] il2cpp 运行时就绪, 等待 HybridCLR 热更...");
+
+    // 3.8 Steam 绕过(见 steamhack.h)。插入点很关键: 必须在 thread_attach 之后
+    //     (IL2CPP 就绪、已挂到运行时上)、wait_hybridclr 之前(此时枚举到的就是 AOT 镜像,
+    //     且 AOT 的 SteamManager.Awake() 要到进程启动约 7s 后才执行, 窗口充裕)。
+    //     阶段1 = 自杀门(受 steamBypassEnabled / steamBypassRestartCheck 控制),
+    //     阶段2 = 大厅匹配(受 steamBypassMatchmaking 控制, 修"创建/加入房间点了没反应"),
+    //     阶段3 = Nullable<Lobby>.get_HasValue 恒 false(受 steamBypassLobbyHasValue 控制)。
+    //             **实测作废**: HybridCLR 解释器把 Nullable.HasValue 当内建指令内联, 这个 hook
+    //             从未被命中(实机日志里没有"首次被拦截"那行)。hook 保留但无害, 它不是解法。
+    //     方案C = Task<T>..ctor(T) 按**原生 ABI 直调** methodPointer, 绕过 il2cpp_runtime_invoke
+    //             对 Nullable<Lobby> 的错误编组(受 steamBypassTaskCtorMode 控制, 默认 "auto")。
+    //     方案B = Steamworks.Data.Lobby.SetPublic/SetJoinable 挂 no-op、Id 是属性则 get_Id 恒返回 0
+    //             (受 steamBypassLobbyMethods 控制, **默认 false**) —— 备用安全网。
+    //             注意: 该开关**默认必须是 false** —— 实机证明 true 会让游戏启动早期崩溃
+    //             (0xC0000005 / GameAssembly.dll), 详见 config.h 里同名字段的注释。
+    //     阶段5 = Steamworks.Data.LobbyQuery.RequestAsync() 恒返回"结果为空 Lobby[] 的已完成 Task"
+    //             (受 steamBypassLobbyQuery 控制, **默认 true**)。实机实测: 退房/解散/被踢时 6 条 NRE
+    //             抛在 `await ((LobbyQuery)(ref lobbyList)).RequestAsync()` 上(不是 LobbyList 取值本身),
+    //             让 RoomLogic.cs:398/401 与 :567-573 全部被跳过 —— 本地房间状态不清、被踢提示不弹、
+    //             不返回房间列表页。返回长度 0 的数组后 `array.Length > 0` 为 false, 这几段正常执行。
+    //             它是**独立**的一层: 不依赖阶段2 的动态返回值工厂, 只受自己那一个开关控制。
+    //     **失败只记日志, 绝不阻止游戏启动** —— 绕过没装上时游戏行为与原版一致。
+    if (cfg.steamBypassEnabled || cfg.steamBypassMatchmaking || cfg.steamBypassLobbyQuery)
+    {
+        steamhack_install(g_safe_il2cpp, cfg.steamBypassEnabled,
+                          cfg.steamBypassRestartCheck, cfg.steamBypassMatchmaking,
+                          cfg.steamBypassLobbyHasValue,
+                          cfg.steamBypassTaskCtorMode, cfg.steamBypassLobbyMethods,
+                          cfg.steamBypassLobbyQuery);
+    }
+    else
+    {
+        log_line("[steamhack] steamBypassEnabled=false 且 steamBypassMatchmaking=false 且 "
+                 "steamBypassLobbyQuery=false, 跳过 Steam 绕过(原版行为)");
+    }
 
     if (!wait_hybridclr(domain, cfg.hybridclrTimeoutSec)) { log_line("[hijack] AstralParty.Runtime 超时"); return 0; }
     log_line("[hijack] HybridCLR 热更就绪");

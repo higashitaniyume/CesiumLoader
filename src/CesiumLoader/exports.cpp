@@ -12,6 +12,7 @@
 
 #include "loader.h"
 #include "speedhack.h"
+#include "steamhack.h"
 
 #include <windows.h>
 
@@ -192,6 +193,9 @@ BOOL WINAPI DllMain(HINSTANCE, DWORD reason, LPVOID)
     }
     else if (reason == DLL_PROCESS_DETACH)
     {
+        // 先摘掉 steamhack 自己的 hook, 再交给 speedhack 收尾 ——
+        // speedhack_shutdown() 会 MH_Uninitialize(), 卸载整个 MinHook(speedhack 拥有它)。
+        steamhack_uninstall();
         speedhack_shutdown();
     }
     return TRUE;
