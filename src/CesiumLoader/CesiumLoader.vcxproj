@@ -108,6 +108,7 @@
     <ClCompile Include="modmeta.cpp" />
     <ClCompile Include="speedctl.cpp" />
     <ClCompile Include="speedhack.cpp" />
+    <ClCompile Include="steamhack.cpp" />
     <ClCompile Include="..\..\third_party\minhook\src\buffer.c" />
     <ClCompile Include="..\..\third_party\minhook\src\hook.c" />
     <ClCompile Include="..\..\third_party\minhook\src\trampoline.c" />
@@ -120,6 +121,7 @@
     <ClInclude Include="modmeta.h" />
     <ClInclude Include="speedctl.h" />
     <ClInclude Include="speedhack.h" />
+    <ClInclude Include="steamhack.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="version.def" />

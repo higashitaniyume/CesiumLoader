@@ -116,6 +116,28 @@ LoaderConfig load_config(const std::wstring& config_path)
     cfg.forwardActivityLog = json_bool(json, "forwardActivityLog", true);
     cfg.speedhackBaseSpeed = json_double(json, "speedhackBaseSpeed", 1.0);
     cfg.speedControlEnabled = json_bool(json, "speedControlEnabled", true);
+    // Steam 自杀门绕过: 缺失/损坏走默认(启用), 绝不阻止启动(见 steamhack.h)。
+    cfg.steamBypassEnabled = json_bool(json, "steamBypassEnabled", true);
+    cfg.steamBypassRestartCheck = json_bool(json, "steamBypassRestartCheck", true);
+    // 阶段2: 大厅匹配绕过(CreateLobbyAsync/JoinLobbyAsync -> 已完成的空 Task)。
+    // 同样缺失/损坏走默认(启用), 绝不阻止启动。
+    cfg.steamBypassMatchmaking = json_bool(json, "steamBypassMatchmaking", true);
+    // 阶段3: Nullable<Lobby>.get_HasValue 恒返回 false(修 val.HasValue 误判 -> SetPublic NRE)。
+    // 同样缺失/损坏走默认(启用), 绝不阻止启动。
+    cfg.steamBypassLobbyHasValue = json_bool(json, "steamBypassLobbyHasValue", true);
+    // 方案C: Task<T>..ctor(T) 的调用方式 "auto"(默认) / "direct" / "invoke"。
+    // 字符串原样读入, 合法性校验与降级日志在 steamhack_install 里做(非法值按 "auto")。
+    cfg.steamBypassTaskCtorMode = json_string(json, "steamBypassTaskCtorMode", cfg.steamBypassTaskCtorMode);
+    // 方案B(备用安全网): Lobby.SetPublic/SetJoinable/Id 挂成无害。
+    // **缺失/损坏走默认 false, 不要改回 true**: 实机证明 true 会让游戏启动早期崩溃
+    // (0xC0000005 / GameAssembly.dll, 崩溃前最后一条日志是方案B 的 "Lobby.get_Id 首次被拦截");
+    // 改回 false 后同样配置完全正常。现在也不需要它 —— 方案C 已把 Task 结果构造成真正的空
+    // Nullable(HasValue=false), SetPublic/SetJoinable 不会被调用; 它只是"hasValue 若又变 true"
+    // 时的备用安全网, 启用前需自行实机验证。详见 config.h 同名字段的注释。
+    cfg.steamBypassLobbyMethods = json_bool(json, "steamBypassLobbyMethods", false);
+    // 阶段5: LobbyQuery.RequestAsync 恒返回"结果为空 Lobby[] 的已完成 Task"。
+    // 同样缺失/损坏走默认(启用), 绝不阻止启动。独立开关, 与上面几个互不影响。
+    cfg.steamBypassLobbyQuery = json_bool(json, "steamBypassLobbyQuery", true);
     cfg.sdkVersion = json_string(json, "sdkVersion", cfg.sdkVersion);
 
     // 记录加载到的配置, 便于排查

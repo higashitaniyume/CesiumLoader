@@ -46,6 +46,61 @@ struct il2cpp_tbl
     void* (*exception_get_message)(void*) = nullptr;
     const wchar_t* (*string_chars)(void*) = nullptr;
 
+    // ---- Steam 大厅绕过(steamhack.cpp 第二阶段)新增 ----
+    // 用途: 从"被挂钩方法自己的 MethodInfo"推导返回类型, 再据此造一个"已完成、结果为 null"
+    // 的 Task<T>(详见 steamhack.cpp 的 make_default_completed_task)。
+    // 这些**不是**必需项: 是否存在于各版本导出表中不确定, 缺失只记日志(缺失时对应功能
+    // 自行放弃, 绝不崩)。因此刻意不加入 complete() 判定, 以免影响既有调用方。
+    void* (*method_get_return_type)(void*) = nullptr;          // il2cpp_method_get_return_type
+    void* (*type_get_object)(void*) = nullptr;                 // il2cpp_type_get_object
+    void* (*class_from_system_type)(void*) = nullptr;          // il2cpp_class_from_system_type
+    void* (*object_new)(void*) = nullptr;                      // il2cpp_object_new
+    // 把**值类型参数**装箱: runtime_invoke 对值类型参数要求传装箱对象, 传 null 会在
+    // il2cpp_field_get_value_object 里解引用空指针(实测 0xC0000005)。空 Nullable 装箱
+    // 按 .NET 语义可能返回 null, 因此调用点必须再用 object_new 兜底。
+    void* (*value_box)(void*, void*) = nullptr;                // il2cpp_value_box(klass, data)
+    void* (*class_get_property_from_name)(void*, const char*) = nullptr;   // il2cpp_class_get_property_from_name
+    void* (*property_get_get_method)(void*) = nullptr;         // il2cpp_property_get_get_method
+    void* (*object_get_class)(void*) = nullptr;                // il2cpp_object_get_class
+    const char* (*class_get_name)(void*) = nullptr;            // il2cpp_class_get_name
+    bool (*class_is_valuetype)(void*) = nullptr;               // il2cpp_class_is_valuetype
+    void* (*object_unbox)(void*) = nullptr;                    // il2cpp_object_unbox
+    void* (*class_get_parent)(void*) = nullptr;                // il2cpp_class_get_parent
+
+    // ---- 阶段3: Nullable<Lobby>.get_HasValue 挂钩 + hasValue 字段诊断新增 ----
+    // 用途 1: 解析 System.Nullable`1<Steamworks.Data.Lobby>::get_HasValue() 以便 inline hook
+    //         (恒返回 false —— Steam 不存在时任何 Lobby? 都视同无值)。
+    // 用途 2: **诊断**: 直接读出装箱 Nullable<Lobby> 的 hasValue 字段真实值, 把"Task 里到底
+    //         存的是有值还是无值"从推理变成事实(见 steamhack.cpp 的 pod_read_nullable_hasvalue)。
+    // 与上面那批一样全部**可选**: 缺失只记日志, 相关能力自行放弃, 绝不崩。
+    void* (*class_get_field_from_name)(void*, const char*) = nullptr;  // il2cpp_class_get_field_from_name
+    size_t (*field_get_offset)(void*) = nullptr;                       // il2cpp_field_get_offset
+    void (*field_get_value)(void*, void*, void*) = nullptr;            // il2cpp_field_get_value(field, obj, out)
+    void* (*field_get_value_object)(void*, void*) = nullptr;           // il2cpp_field_get_value_object(field, obj) -> 装箱值
+
+    // ---- 方案B: Steamworks.Data.Lobby 的字段/方法名诊断 + get_Id 返回值尺寸核对 ----
+    // 用途 1: 列出 Lobby 类的字段名(需求: 字段名列表上限 24 条)。
+    // 用途 2: 判定 Lobby.Id 到底是字段还是属性(两边的 API 都试), 并把结论写进日志。
+    // 用途 3: 核对 get_Id 的返回结构体尺寸 —— x64 ABI 下 >8 字节的结构体走**隐藏返回缓冲区**,
+    //         那时"RAX 返回 0"是错的(会写错位置), 必须据此拒绝挂钩而不是硬来。
+    // 同样全部**可选**: 缺失只记日志, 相关能力自行放弃, 绝不崩。
+    void* (*class_get_fields)(void*, void**) = nullptr;        // il2cpp_class_get_fields(klass, &iter)
+    const char* (*field_get_name)(void*) = nullptr;            // il2cpp_field_get_name(field)
+    uint32_t (*class_value_size)(void*, uint32_t*) = nullptr;  // il2cpp_class_value_size(klass, &align)
+
+    // ---- 阶段5: Steamworks.Data.LobbyQuery.RequestAsync 兜底新增 ----
+    // 用途 1: 读"长度为 0 的 Lobby[]"的元素个数, 作为安装期探针的**权威**校验。
+    //         缺失时退化为按数组布局读 max_length(见 steamhack.cpp 的 pod_array_length) —— 所以它
+    //         **不是**必需项, 缺失只是日志里少一条权威来源。
+    // 用途 2: 把预建好的 Task<Lobby[]> **显式**注册成 GC root。模块级全局变量(静态存储期)理论上
+    //         也能当根(Boehm 会扫描已加载模块的可写数据段), 但"Boehm 到底扫不扫我们这张 DLL 的
+    //         .data"不是本模块能保证的事; 而该 Task 会被**所有** RequestAsync 调用复用, 一旦被回收
+    //         就是 use-after-free(运行期崩溃, 不是功能失效)。所以这里多上一道显式保证。
+    //         缺失时只用全局变量, 并在日志里如实标注。
+    // 与上面几批一样全部**可选**: 缺失只记日志, 相关能力自行降级, 绝不崩。
+    uint32_t (*array_length)(void*) = nullptr;                 // il2cpp_array_length(array) -> 元素个数
+    uint32_t (*gchandle_new)(void*, bool) = nullptr;           // il2cpp_gchandle_new(obj, pinned) -> 句柄
+
     // 关键导出是否齐全(与 get_il2cpp 的校验一致)
     bool complete() const
     {
