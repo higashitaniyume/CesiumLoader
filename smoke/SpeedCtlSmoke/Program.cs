@@ -252,10 +252,13 @@ internal static class Program
              fast1 - fast0 >= 1000);
 
         // 关键断言: 从 4x 切回 1.0x —— 时钟既不能倒退, 也不能跳变
+        long realBeforeBack = RealMs();
         Apply("1.000");
         ulong after = VirtualTick();
+        long realBack = RealMs() - realBeforeBack;
         True("切回 1.0x 时虚拟时钟不倒退", after >= fast1);
-        True("切回 1.0x 时没有大跳变(实测 " + (after - fast1) + "ms)", after - fast1 < 500);
+        True("切回 1.0x 时没有大跳变(实测 " + (after - fast1) + "ms / 上限 " + AllowedAdvance(realBack, 4.0) + "ms)",
+             after - fast1 <= AllowedAdvance(realBack, 4.0));
 
         // 1.0x 必须与真实时间大致同速(offset 只是平移, 不影响斜率)
         ulong normal0 = VirtualTick();
@@ -268,15 +271,19 @@ internal static class Program
         // 多来几次来回切换: 每次切回 1.0x 都不能跳变(累积 offset 越大越容易暴露问题)
         for (int round = 0; round < 3; round++)
         {
-            Apply((round == 0) ? "4.000" : "7.250");
+            string fast = (round == 0) ? "4.000" : "7.250";
+            double mult = (round == 0) ? 4.0 : 7.25;
+            Apply(fast);
             Thread.Sleep(300);
             ulong high = VirtualTick();
-            Apply("1.000");
+            long realBeforeLow = RealMs();
+            Apply("1.000");                       // 阻塞到加载器真的切回 1.0x
+            long realLow = RealMs() - realBeforeLow;
             ulong low = VirtualTick();
             True("第 " + (round + 1) + " 轮切回 1.0x 时钟不倒退(实测 " + (low - high) + "ms)",
                  low >= high);
-            True("第 " + (round + 1) + " 轮切回 1.0x 没有大跳变(实测 " + (low - high) + "ms)",
-                 low - high < 500);
+            True("第 " + (round + 1) + " 轮切回 1.0x 没有大跳变(实测 " + (low - high) + "ms / 上限 " + AllowedAdvance(realLow, mult) + "ms)",
+                 low - high <= AllowedAdvance(realLow, mult));
         }
 
         // 减速请求被拒绝时, 时钟也必须纹丝不动(不能被"半个请求"带跑)
@@ -292,6 +299,13 @@ internal static class Program
         // 收尾: 回到测试主流程约定的倍率
         Apply("1.000");
     }
+
+    /// <summary>切换倍率时加载器要等下一次轮询才生效 —— 这段"切换延迟"里时钟仍按**旧倍率**前进,
+    /// 属于正常前进, 不是跳变。允许量 = 真实耗时 × 旧倍率 (+ 余量), 超出它才是真跳变。
+    /// (原先这里用固定 500ms 阈值, 而 7.25x 下光轮询延迟就能到 700ms+ —— 断言靠运气通过,
+    ///  机器一忙就误报失败。)</summary>
+    private static ulong AllowedAdvance(long realMs, double oldMultiplier)
+        => (ulong)(realMs * oldMultiplier) + 150;
 
     private static void Apply(string speed)
     {
@@ -351,7 +365,24 @@ internal static class Program
     {
         if (!File.Exists(_log)) { Console.WriteLine("[smoke] (没有加载器日志)"); return; }
         Console.WriteLine("[smoke] --- 加载器日志 ---");
-        foreach (var line in File.ReadAllLines(_log))
+
+        // 加载器的 spdlog sink 是"进程活着就一直持有"的(没有 shutdown_logging), 而本宿主就是把
+        // 加载器装进自己进程里跑的 —— 所以这里读到一半完全可能撞上共享冲突。
+        // 那是时序问题, 不是用例失败: 读不到就跳过(宿主退出后由 smoke-speedctl.ps1 打印)。
+        string[] lines;
+        try
+        {
+            using var fs = new FileStream(_log, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            using var reader = new StreamReader(fs);
+            lines = reader.ReadToEnd().Split('\n');
+        }
+        catch (IOException)
+        {
+            Console.WriteLine("        (日志仍被加载器占用, 跳过打印)");
+            return;
+        }
+
+        foreach (var line in lines)
             if (line.Contains("speedctl") || line.Contains("speedhack") || line.Contains("倍率") || line.Contains("基础"))
                 Console.WriteLine("        " + line.TrimEnd());
     }
