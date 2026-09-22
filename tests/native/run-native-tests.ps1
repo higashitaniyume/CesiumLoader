@@ -57,7 +57,7 @@ foreach ($src in $sources) {
     $lines = @(
         '@echo off'
         "call `"$($vsDevCmd.FullName)`" -arch=x64 -host_arch=x64 -no_logo >nul 2>nul"
-        "cl /nologo /utf-8 /std:c++17 /EHsc /W3 /MD /O2 /I`"$inc`" /Fo:`"$outDir\\`" /Fe:`"$exe`" $srcArgs /link /LIBPATH:`"$lib`" fmt.lib"
+        "cl /nologo /utf-8 /std:c++17 /EHsc /W3 /MD /O2 /I`"$inc`" /Fo:`"$outDir\\`" /Fe:`"$exe`" $srcArgs /link /LIBPATH:`"$lib`" fmt.lib user32.lib"
         'if errorlevel 1 exit /b 1'
         "`"$exe`" `"$root`""
     )
