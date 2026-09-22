@@ -297,13 +297,43 @@ static HMODULE wait_module(const wchar_t* name, DWORD timeout_secs)
 
 // ---------- HybridCLR 就绪检测 ----------
 
+/// 诊断: 把域内程序集清单落盘到 logs\aot-assemblies.txt。
+///
+/// 用途: 游戏的 BCL 是**被裁剪过的**(IL2CPP 托管裁剪), 热更代码(含第三方程序集)只能引用
+/// 这里存在的程序集与类型。一旦看到 "TypeLoadException: Could not load type 'X' from
+/// assembly 'Y'", 第一件事就是对照这份清单与 Y 的类型表 —— 而不是去猜。
+static void dump_aot_assemblies(const std::vector<std::string>& names)
+{
+    try
+    {
+        std::wstring dir = logs_dir();
+        if (dir.empty()) return;
+        fs::create_directories(dir);
+        std::ofstream out(fs::path(dir) / L"aot-assemblies.txt",
+                          std::ios::binary | std::ios::trunc);
+        if (!out) return;
+        out << "# 游戏 AOT 域内程序集清单(HybridCLR 就绪时枚举, 共 " << names.size() << " 个)\n";
+        out << "# 热更代码与第三方程序集只能引用此处存在的程序集/类型\n";
+        std::vector<std::string> sorted = names;
+        std::sort(sorted.begin(), sorted.end());
+        for (auto& n : sorted) out << n << "\n";
+    }
+    catch (...) { /* 诊断失败不影响加载 */ }
+}
+
 static bool hybridclr_ready(Il2CppDomain* domain)
 {
     // 安全封装: 枚举域内程序集(空检查 + 错误缓冲)
     auto names = cesium_safe::safe_list_assembly_names(g_safe_il2cpp);
     for (auto& n : names)
     {
-        if (n.find("AstralParty.Runtime") != std::string::npos) return true;
+        if (n.find("AstralParty.Runtime") != std::string::npos)
+        {
+            // 只在第一次就绪时落盘一次
+            static bool dumped = false;
+            if (!dumped) { dumped = true; dump_aot_assemblies(names); }
+            return true;
+        }
     }
     return false;
 }
@@ -396,11 +426,19 @@ static Il2CppAssembly* load_assembly_bytes(Il2CppDomain* domain, const std::vect
     if (!load) { err_msg = "Assembly.Load(byte[]) not found"; return nullptr; }
 
     void* arg = arr;
-    Il2CppException* exc = nullptr;
     std::vector<std::string> before = list_assembly_names(domain);
-    Il2CppObject* asm_obj = g_il2cpp.runtime_invoke(load, nullptr, &arg, &exc);
-    if (exc) { err_msg = "Assembly.Load threw exception"; return nullptr; }
-    if (!asm_obj) { err_msg = "Assembly.Load returned null"; return nullptr; }
+
+    // 用 safe_invoke_static 而不是直接 runtime_invoke: 它会把**托管异常的类型与消息**转成
+    // UTF-8 写进 g_last_error。原实现只留下 "Assembly.Load threw exception", 异常内容被丢弃 ——
+    // 一旦第三方程序集加载失败(例如它引用了被 IL2CPP 裁剪掉的程序集), 就完全没有线索。
+    cesium_safe::g_last_error.clear();
+    Il2CppObject* asm_obj = reinterpret_cast<Il2CppObject*>(
+        cesium_safe::safe_invoke_static(g_safe_il2cpp, load, nullptr, &arg, "Assembly.Load"));
+    if (!asm_obj)
+    {
+        err_msg = cesium_safe::g_last_error.empty() ? "Assembly.Load 返回 null" : cesium_safe::g_last_error;
+        return nullptr;
+    }
     std::vector<std::string> after = list_assembly_names(domain);
 
     // 对比 Load 前后,找新增的程序集(不依赖反射对象布局)。
@@ -699,27 +737,55 @@ static DWORD WINAPI boot_thread(LPVOID)
     // 6b. 原生编排(默认): 加载 sdk 依赖, 枚举 mods, 逐个 Assembly.Load + 调用入口。
     //     全部走 il2cpp 原生 API, 不受 HybridCLR AOT 反射裁剪影响 —— 已验证可靠。
 
-    // 先加载 SDK 依赖(不调入口): 供 mods 引用。顺序: 按文件名排序, 保证确定性。
+    // 先加载 SDK 依赖(不调入口): 供 mods 引用。
+    //
+    // **必须按依赖顺序加载**, 不能只按文件名排序: HybridCLR 在 Assembly.Load 时就要把被加载
+    // 程序集的每个 AssemblyRef 解析成"已加载的 Il2CppAssembly", 依赖缺失就直接抛异常
+    // (实测: "Serilog.Sinks.File.dll" 按文件名排在 "Serilog.dll" 之前 → 前者必然加载失败)。
+    // 这里改成"多轮重试, 直到某一轮没有任何进展": 每轮把能加载的加载掉, 剩下的留到下一轮,
+    // 这样任意命名与依赖深度的闭包都能正确加载, 同时失败项会被逐条报告出来。
     if (fs::exists(sdk))
     {
-        std::vector<fs::path> sdk_dlls;
+        std::vector<fs::path> pending;
         for (auto& entry : fs::directory_iterator(sdk))
         {
             if (entry.is_regular_file() && _stricmp(entry.path().extension().string().c_str(), ".dll") == 0)
-                sdk_dlls.push_back(entry.path());
+                pending.push_back(entry.path());
         }
-        std::sort(sdk_dlls.begin(), sdk_dlls.end());
-        for (auto& dll : sdk_dlls)
+        std::sort(pending.begin(), pending.end());   // 仅用于保证每轮的顺序确定
+
+        std::map<std::string, std::string> last_error;   // 名字 -> 最近一次失败原因
+        int round = 0;
+        while (!pending.empty())
+        {
+            ++round;
+            std::vector<fs::path> next;
+            for (auto& dll : pending)
+            {
+                std::string name = dll.stem().string();
+                std::ifstream in(dll, std::ios::binary);
+                if (!in) { log_line("[hijack] SDK " + name + " 读取失败"); continue; }
+                std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+                std::string err;
+                if (load_assembly_bytes(domain, bytes, err))
+                {
+                    log_line("[hijack] SDK " + name + " 加载成功" + (round > 1 ? (" (第 " + std::to_string(round) + " 轮)") : ""));
+                }
+                else
+                {
+                    last_error[name] = err;
+                    next.push_back(dll);
+                }
+            }
+            // 这一轮一个都没成功 → 剩下的依赖缺口无法通过再试解决, 跳出
+            if (next.size() == pending.size()) { pending.swap(next); break; }
+            pending.swap(next);
+        }
+        for (auto& dll : pending)
         {
             std::string name = dll.stem().string();
-            std::ifstream in(dll, std::ios::binary);
-            if (!in) { log_line("[hijack] SDK " + name + " 读取失败"); continue; }
-            std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-            std::string err;
-            if (load_assembly_bytes(domain, bytes, err))
-                log_line("[hijack] SDK " + name + " 加载成功");
-            else
-                log_line("[hijack] SDK " + name + " 加载失败: " + err);
+            auto it = last_error.find(name);
+            log_line("[hijack] SDK " + name + " 加载失败: " + (it == last_error.end() ? std::string("未知") : it->second));
         }
     }
 

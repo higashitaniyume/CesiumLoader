@@ -135,6 +135,7 @@ version.dll (C++ 薄代理, 15 个导出转发到系统 version.dll)
 | [SDK-操作](docs/SDK-操作.md) | `GameActions`：像玩家一样发送 C2S 指令（⚠️ 真实影响对局）|
 | [SDK-变速](docs/SDK-变速.md) | 变速引擎（倍率下限 1.0、控制文件通道）|
 | [SDK-Unity调用与ECall隔离](docs/SDK-Unity调用与ECall隔离.md) | **改 SDK 前必读**：ECall 机制与隔离约定 |
+| [平台约束-第三方库与AOT裁剪](docs/平台约束-第三方库与AOT裁剪.md) | **引第三方库前必读**：托管第三方库为何加载不起来、游戏内置 Newtonsoft 的裁剪面、存在性权威判定方法 |
 | [mod-FreeCameraMod](docs/mod-FreeCameraMod.md) | 俯瞰视角 mod 的配置与原理 |
 | [mod-SpeedHackMod](docs/mod-SpeedHackMod.md) | 变速 mod 的热键、配置与风险 |
 | [工具-cesium-CLI](docs/工具-cesium-CLI.md) | 脚手架 CLI |

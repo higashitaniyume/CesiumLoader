@@ -151,6 +151,98 @@ inline std::vector<std::string> safe_list_assembly_names(const il2cpp_tbl& t)
     return names;
 }
 
+/// 宽字符 → UTF-8(小工具; 不依赖任何运行时)
+inline std::string wide_to_utf8(const wchar_t* w)
+{
+    std::string out;
+    for (; w && *w; ++w)
+    {
+        uint32_t cp = (uint32_t)*w;
+        if (cp < 0x80) out.push_back((char)cp);
+        else if (cp < 0x800)
+        {
+            out.push_back((char)(0xC0 | (cp >> 6)));
+            out.push_back((char)(0x80 | (cp & 0x3F)));
+        }
+        else
+        {
+            out.push_back((char)(0xE0 | (cp >> 12)));
+            out.push_back((char)(0x80 | ((cp >> 6) & 0x3F)));
+            out.push_back((char)(0x80 | (cp & 0x3F)));
+        }
+    }
+    return out;
+}
+
+/// 调用一个无参"返回 string"的实例方法, 取出结果(失败返回空串)。
+inline std::string invoke_string(const il2cpp_tbl& t, void* method, void* self)
+{
+    if (!method || !t.runtime_invoke || !t.string_chars) return std::string();
+    void* exc = nullptr;
+    void* s = t.runtime_invoke(method, self, nullptr, &exc);
+    if (exc || !s) return std::string();
+    return wide_to_utf8(t.string_chars(s));
+}
+
+/// 把托管异常转成可读文本(尽力而为, 绝不抛)。
+///
+/// 为什么要这么绕: **il2cpp_exception_get_message 并不是 IL2CPP 的标准导出**, 很多游戏
+/// (包括本游戏)根本没有它 —— 只靠它就只会得到一句无信息的"托管异常"。
+/// 所以这里依次尝试:
+///   1) il2cpp_exception_get_message(有就用)
+///   2) 反射调用托管 `System.Exception.get_Message`(基类实现直接读 _message 字段)
+///   3) `Object.ToString()` 兜底
+///   4) 至少给出异常**类型名**(object_get_class + class_get_name 是标准导出)
+inline std::string exception_text(const il2cpp_tbl& t, void* exc)
+{
+    if (!exc) return "托管异常";
+
+    // 异常类型名(标准导出, 一定有)
+    std::string type_name;
+    if (t.object_get_class && t.class_get_name)
+    {
+        void* cls = t.object_get_class(exc);
+        if (cls)
+        {
+            const char* n = t.class_get_name(cls);
+            if (n) type_name = n;
+        }
+    }
+
+    // 消息: 先试原生导出
+    std::string detail;
+    if (t.exception_get_message && t.string_chars)
+    {
+        void* s = t.exception_get_message(exc);
+        if (s) detail = wide_to_utf8(t.string_chars(s));
+    }
+
+    // 再试托管 Exception.Message / Object.ToString
+    if (detail.empty() && t.get_corlib && t.class_from_name && t.class_get_method_from_name)
+    {
+        void* corlib = t.get_corlib();
+        if (corlib)
+        {
+            void* exc_cls = t.class_from_name(corlib, "System", "Exception");
+            if (exc_cls)
+            {
+                detail = invoke_string(t, t.class_get_method_from_name(exc_cls, "get_Message", 0), exc);
+                if (detail.empty())
+                {
+                    void* obj_cls = t.class_from_name(corlib, "System", "Object");
+                    if (obj_cls)
+                        detail = invoke_string(t, t.class_get_method_from_name(obj_cls, "ToString", 0), exc);
+                }
+            }
+        }
+    }
+
+    if (!type_name.empty() && !detail.empty()) return type_name + ": " + detail;
+    if (!type_name.empty()) return type_name + " (消息取不到)";
+    if (!detail.empty()) return detail;
+    return "托管异常(类型名与消息都取不到)";
+}
+
 /// 安全地调用一个静态方法(instance=nullptr), 异常转译成错误消息。
 /// 返回托管返回值(可为空); 失败返回 nullptr, g_last_error 记录原因。
 inline void* safe_invoke_static(const il2cpp_tbl& t,
@@ -172,30 +264,7 @@ inline void* safe_invoke_static(const il2cpp_tbl& t,
     void* result = t.runtime_invoke(method, obj, args, &exc);
     if (exc)
     {
-        // 转译异常消息(ClassName: Message)
-        std::string msg = "托管异常";
-        if (t.exception_get_message && t.string_chars)
-        {
-            void* exc_msg = t.exception_get_message(exc);
-            if (exc_msg)
-            {
-                const wchar_t* w = t.string_chars(exc_msg);
-                if (w)
-                {
-                    // 宽字符 → UTF-8 (小工具)
-                    std::string utf8;
-                    for (; *w; w++)
-                    {
-                        uint32_t cp = *w;
-                        if (cp < 0x80) utf8.push_back((char)cp);
-                        else if (cp < 0x800) { utf8.push_back((char)(0xC0 | (cp >> 6))); utf8.push_back((char)(0x80 | (cp & 0x3F))); }
-                        else { utf8.push_back((char)(0xE0 | (cp >> 12))); utf8.push_back((char)(0x80 | ((cp >> 6) & 0x3F))); utf8.push_back((char)(0x80 | (cp & 0x3F))); }
-                    }
-                    msg = utf8;
-                }
-            }
-        }
-        set_error(where, msg);
+        set_error(where, exception_text(t, exc));
         return nullptr;
     }
     return result;
