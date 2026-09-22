@@ -21,6 +21,8 @@
 #include <cstdio>
 #include <string>
 
+#include <fmt/format.h>
+
 namespace
 {
 
@@ -121,12 +123,11 @@ bool write_text(const std::wstring& path, const std::string& text)
     return true;
 }
 
-// 倍率文本: 固定 '#' 位小数 + 点号(与 mod 侧 InvariantCulture 一致, 与系统区域无关)。
+// 倍率文本: 固定 3 位小数 + 点号(与 mod 侧 InvariantCulture 一致, 与系统区域无关)。
 std::string fmt_speed(double v)
 {
-    char buf[32];
-    _snprintf_s(buf, sizeof(buf), _TRUNCATE, "%.3f", v);
-    return std::string(buf);
+    // fmt 的格式化与系统区域无关(小数点固定为 '.'), 行为与原来的 _snprintf_s 一致。
+    return fmt::format("{:.3f}", v);
 }
 
 // 严格解析: 只接受 [+-]?数字[.数字] 形式的十进制, 范围 [kSpeedMin, kSpeedMax] = [1, 100]。
