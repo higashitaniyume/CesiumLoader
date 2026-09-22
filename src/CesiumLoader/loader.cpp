@@ -19,6 +19,7 @@
 #include "speedhack.h"
 #include "speedctl.h"
 #include "modmeta.h"
+#include "logging.h"
 #include "il2cpp_safe.h"
 #include "steamhack.h"
 
@@ -523,23 +524,10 @@ static DWORD WINAPI forward_activity_log(LPVOID param)
 
 // 故障体验: 把 mod 加载/入口失败写入 logs\mod-errors.log(与 SDK ReportCrash 同一文件)。
 // 即使 mod 自身崩溃抛异常, 这里也能记录"哪个 mod 失败 + 原因", 方便定位。
+// 具体写盘由 spdlog 负责(见 logging.cpp): 行格式 [时间] [mod] 原因 + 分隔线保持不变。
 static void write_mod_error(const std::wstring& logs_dir, const std::string& mod_name, const std::string& reason)
 {
-    try
-    {
-        fs::create_directories(logs_dir);
-        fs::path p = fs::path(logs_dir) / L"mod-errors.log";
-        std::ofstream out(p, std::ios::app);
-        if (!out) return;
-        SYSTEMTIME st;
-        GetLocalTime(&st);
-        char buf[64];
-        sprintf_s(buf, sizeof(buf), "%04d-%02d-%02d %02d:%02d:%02d.%03d",
-                  st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
-        out << "[" << buf << "] [" << mod_name << "] " << reason << "\r\n";
-        out << std::string(60, '-') << "\r\n";
-    }
-    catch (...) {}
+    cesium::log::mod_error(logs_dir, mod_name, reason);
 }
 
 static void set_env_w(const wchar_t* name, const std::wstring& value)

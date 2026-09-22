@@ -6,12 +6,13 @@
 
 #include "loader.h"
 
+#include "logging.h"   // 文件日志(spdlog)
+
 #include <io.h>
 #include <fcntl.h>
 #include <cstdio>
 
 static HANDLE g_console_handle = INVALID_HANDLE_VALUE;
-static std::wstring g_log_path;
 
 // ---------- 路径 ----------
 
@@ -75,30 +76,14 @@ void console_set_color(WORD attr)
 
 // ---------- 日志 ----------
 
-static void ensure_log_path()
-{
-    if (!g_log_path.empty()) return;
-    g_log_path = logs_dir() + L"\\cesium-loader.log";
-    auto pos = g_log_path.find_last_of(L"\\/");
-    if (pos != std::wstring::npos)
-    {
-        std::wstring dir = g_log_path.substr(0, pos);
-        CreateDirectoryW(dir.c_str(), nullptr);
-    }
-}
-
+// 一行日志 = 控制台(当前属性色) + 文件(logs\cesium-loader.log)。
+// 文件那一半由 spdlog 负责(见 logging.cpp): 句柄常开、线程安全、带时间戳、每行落盘。
+// 旧实现是**每行** CreateFileW + WriteFile + CloseHandle, 已废弃。
 void log_line(const char* msg)
 {
+    if (msg == nullptr) return;
     console_write(msg);
-    ensure_log_path();
-    if (g_log_path.empty()) return;
-    HANDLE f = CreateFileW(g_log_path.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
-                           nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (f == INVALID_HANDLE_VALUE) return;
-    DWORD written = 0;
-    WriteFile(f, msg, (DWORD)strlen(msg), &written, nullptr);
-    WriteFile(f, "\r\n", 2, &written, nullptr);
-    CloseHandle(f);
+    cesium::log::write(msg);
 }
 
 // std::string 便捷重载(UTF-8 内容)
