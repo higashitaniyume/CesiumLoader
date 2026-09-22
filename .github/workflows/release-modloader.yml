@@ -31,8 +31,37 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      # vcpkg 依赖的二进制缓存(fmt/spdlog 在 x64-windows-static-md 下要从源码构建, 缓存后后续发布只需几十秒)
+      - name: Cache vcpkg
+        uses: actions/cache@v4
+        with:
+          path: |
+            vcpkg_installed
+            ~/AppData/Local/vcpkg/archives
+          key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: vcpkg-${{ runner.os }}-
+
       - name: Set up MSBuild
         uses: microsoft/setup-msbuild@v2
+
+      # ★ 必须显式准备 vcpkg: C++ 加载器用 manifest 模式依赖 nlohmann-json / spdlog / fmt
+      #   (triplet x64-windows-static-md)。命令行 msbuild **不会**自己发现 vcpkg —— 本机之所以能编译,
+      #   是因为 `vcpkg integrate install` 往用户目录写了 vcpkg.user.targets/props; runner 是全新用户目录,
+      #   不装这一步就会报 "Cannot open include file: 'nlohmann/json.hpp'"(实测踩过)。
+      - name: Set up vcpkg (manifest mode)
+        shell: pwsh
+        run: |
+          $root = if ($env:VCPKG_INSTALLATION_ROOT) { $env:VCPKG_INSTALLATION_ROOT } else { "C:\vcpkg" }
+          $vcpkg = Join-Path $root "vcpkg.exe"
+          if (-not (Test-Path $vcpkg)) { throw "runner 上找不到 vcpkg: $vcpkg" }
+          Write-Host "vcpkg: $(& $vcpkg version | Select-Object -First 1)"
+          & $vcpkg integrate install
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # 预装依赖: 依赖问题在这一步就暴露(而不是混在编译日志里), 装到仓库根的 vcpkg_installed
+          & $vcpkg install --triplet x64-windows-static-md --clean-after-build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "VCPKG_ROOT=$root" >> $env:GITHUB_ENV
+          "VCPKG_DEFAULT_TRIPLET=x64-windows-static-md" >> $env:GITHUB_ENV
 
       - name: Resolve version
         id: version
