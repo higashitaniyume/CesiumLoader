@@ -272,9 +272,9 @@
 | `steamBypassTaskCtorMode` | string | `"auto"` | 方案C:造空 Task 时 `Task\`1..ctor(T)` 的调用方式 —— `auto`(先 direct,探针失败自动退回 invoke)/ `direct` / `invoke` | 非法值按 `"auto"` 处理并记日志。仅在 `steamBypassMatchmaking=true` 时有意义 |
 | `steamBypassLobbyMethods` | bool | **`false`(★ 必须是 false)** | 方案B 备用安全网:`Lobby.SetPublic()`/`SetJoinable(bool)` 挂 no-op,`Id` 是属性则 `get_Id()` 恒返回 0 | **实测 `true` 会让游戏启动早期崩溃**(见下)。仅在 `steamBypassMatchmaking=true` 时有意义 |
 | `steamBypassLobbyQuery` | bool | **缺省 = `true`** | 阶段5:`LobbyQuery.RequestAsync()` 恒返回"预建好的、结果为**长度 0 的 `Lobby[]`** 的已完成 `Task<Lobby[]>`",修"退房/解散/被踢后 `await` 之后的代码被 NRE 跳过" | **只受本开关控制**,与上面几个 `steamBypass*` 互不影响(它不依赖阶段2 的动态返回值工厂)。关掉 = 退房/解散/被踢后本地房间状态仍不清、被踢提示仍不弹、仍不返回房间列表页。全游戏只有 2 处调用(`RoomLogic.cs:384`/`:554`),影响面为零 |
-| `sdkVersion` | string | `"2.2.0"` | 当前分发的 SDK 版本,用于校验 mod 声明的 `SdkVersion` | 升级 SDK 时同步更新 |
+| `sdkVersion` | string | `"2.2.1"` | 当前分发的 SDK 版本,用于校验 mod 声明的 `SdkVersion` | 升级 SDK 时同步更新 |
 
-> `loaderVersion` 不是 JSON 键,它是 `config.h` 里的 `static constexpr const char* loaderVersion`(当前 `"2.2.0"`),
+> `loaderVersion` 不是 JSON 键,它是 `config.h` 里的 `static constexpr const char* loaderVersion`(当前 `"2.2.1"`),
 > 与 tag `modloader-<版本>` 对应,启动横幅打印。
 
 ### ★ 为什么 `steamBypassLobbyMethods` 的默认值必须是 `false`

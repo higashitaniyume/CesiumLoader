@@ -1,6 +1,6 @@
 using CesiumLoader.SDK;
 
-// 自由相机: 默认"跟随抬高"俯瞰(保留游戏自己的视角操作), 退出时还原位姿/镜头参数。
-[assembly: ModManifest("自由相机", "2.2.0", "CesiumLoader",
-    "F1 开关俯瞰视角(默认跟随抬高, 游戏自带的鼠标/键盘操作照常可用); Ctrl+= / Ctrl+- 游戏内实时调高度; config.json 里 mode=preset 可改为固定机位",
-    Permissions = ModPermission.ReadGameState, SdkVersion = "2.2.0")]
+// 自由相机: 滚轮缩放(沿当前视线前后移动, 视角完全不变), F1 恢复原来的视角; 进游戏不接管任何东西。
+[assembly: ModManifest("自由相机", "2.2.1", "CesiumLoader",
+    "滚轮缩放: 相机沿当前视线前后移动(朝向/俯角完全不变, 向前滚=拉近/放大, 向后滚=拉远/看更多); F1(可改键)恢复原来的视角。进游戏不接管任何东西, 只在你滚轮后才临时覆盖相机位置, 复原/回到原位/切场景都会完整交还",
+    Permissions = ModPermission.ReadGameState, SdkVersion = "2.2.1")]

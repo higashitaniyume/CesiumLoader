@@ -130,10 +130,19 @@ CinemachineService.DestroyVirtualCamera(vcam);
 ## 8. FreeCameraMath
 
 纯托管数学，离线可测：`ForwardVector(yaw, pitch)`、`ClampPitch`（±89°）、`OrbitPosition`、
-`ApplyScrollToFieldOfView` / `ApplyScrollToDistance`、`ApplyHeightStep`。
+`ApplyScrollToFieldOfView` / `ApplyScrollToDistance`、`ApplyHeightStep`、
+`ApplyScrollToZoom` / `SmoothTowards` / `DollyPosition` / `IsSettled`。
 约定：yaw=0 指向 +Z；`pitch` 为正表示低头（与 `Quaternion.Euler` 一致）。
 
 `ApplyHeightStep(height, delta, step)` 是"游戏内实时调相机高度"用的纯函数：只做
 "方向 × 步进 + 夹紧到 `MinCameraHeight`(5) ~ `MaxCameraHeight`(2000)"，
 `step` 非法（≤0 / NaN / Inf）时退回 `DefaultHeightStep`(10)，返回值与入参相同即表示已到极限
 —— 于是调用方（mod）不用自己处理边界与脏配置，也不会有"按键没反应但看不出为什么"的情况。
+
+`ApplyScrollToZoom` / `DollyPosition` 是"滚轮缩放（沿视线前后移动，**朝向不变**）"用的纯函数。
+符号约定：偏移 **>0 = 沿视线向前（拉近/放大）**，滚轮向上取正 —— 于是"向前滚 = 拉近"；
+上下限默认 `[-DefaultZoomOutMax(-1500), +DefaultZoomInMax(120)]`。
+`DollyPosition` 只算 `基准位置 + forward × 偏移`，所以调用方**只写位置、不写旋转**就能得到
+"视角一点不变、只改远近"的缩放。
+`SmoothTowards` 是指数逼近（每帧保留 `exp(-dt/smoothTime)` 的剩余差，帧率无关，掉帧不会冲过头；
+`smoothTime <= 0` 直接返回目标），`IsSettled` 用来判断"是否已经回到原位"，据此自动把相机交还游戏。

@@ -5,6 +5,6 @@
   "author": "astralparty-re",
   "description": "清空 FixMap 给『极限』档(难度 Index=4)写的时间窗, 让极限难度重新出现在房间设置和匹配面板里。仅对定义了第 5 档的 3 张 PvE 图生效(82010 水乡古镇 / 82007 星趴·梦想号 / 82008 御魂庆典)。是否真能开局由服务器裁决 —— 实测服务器会回 Code.NotOpen=10015(界面提示『开启时间未到』)。日志见 AstralParty_ModLoader\\logs\\activity-mod.log, 搜索 [ExtremeDifficulty]。两条观测途径: (1) 只读监视 —— 玩家自己点「匹配 → PvE」建队后, 服务器回传的 MatchDifficulty 会打进日志(看到『匹配队伍: ...』行); (2) 主动探测 —— 游戏内按 F9 直接发一次 CreateMatchTeamC2S(Pve) 并记录服务器返回的 errId。v1.0.4 新增只读的队伍状态监视。v1.0.3 修复热键完全无响应: 探测键判定被 % 120 帧节流挡住, 而 IsKeyPressed 只在按下那一帧为真; 现改为每帧检查, 并用 IsKeyHeld 自算下降沿。v1.0.1 修复: v1.0.0 在 HybridCLR 下 DateTimeOffset.FromUnixTimeSeconds 是 MethodNotFind, 且格式化排在了打补丁之前, 导致补丁从未生效; 现改用纯整数日期换算。",
   "permissions": 17,
-  "sdkVersion": "2.2.0",
+  "sdkVersion": "2.2.1",
   "dependencies": []
 }
