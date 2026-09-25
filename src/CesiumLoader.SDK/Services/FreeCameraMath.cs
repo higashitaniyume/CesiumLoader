@@ -43,6 +43,15 @@ namespace CesiumLoader.SDK
         /// <summary>高度步进的默认值(米/次)。</summary>
         public const float DefaultHeightStep = 10f;
 
+        /// <summary>滚轮缩放的默认步进(米/格)。</summary>
+        public const float DefaultZoomStep = 20f;
+
+        /// <summary>滚轮缩放: 沿视线<b>向前</b>(拉近/放大)的默认上限(米)。拉到棋盘附近就够, 再近会穿进场景。</summary>
+        public const float DefaultZoomInMax = 120f;
+
+        /// <summary>滚轮缩放: 沿视线<b>向后</b>(拉远/缩小)的默认上限(米)。给足"拉到很高看整张地图"的余地。</summary>
+        public const float DefaultZoomOutMax = 1500f;
+
         /// <summary>加速倍率。</summary>
         public const float FastMultiplier = 4f;
 
@@ -280,6 +289,69 @@ namespace CesiumLoader.SDK
             if (float.IsNaN(delta) || float.IsInfinity(delta) || delta == 0f) return Clamp(height, min, max);
             if (float.IsNaN(step) || float.IsInfinity(step) || step <= 0f) step = DefaultHeightStep;
             return Clamp(height + delta * step, min, max);
+        }
+
+        // =====================================================================
+        // 滚轮缩放(沿视线前后移动, 朝向不变)
+        // =====================================================================
+
+        /// <summary>
+        /// 按滚轮增量调整"沿视线方向的缩放偏移"并夹紧。
+        ///
+        /// 约定(与 <see cref="ApplyScrollToDistance"/> 的"滚轮向上 = 拉近"一致):
+        ///   offset &gt; 0 = 沿视线<b>向前</b>(拉近/放大), offset &lt; 0 = 向后(拉远/缩小);
+        ///   滚轮向上(正增量) = 向前拉近。
+        /// <paramref name="metersPerNotch"/> 非法(≤0 / NaN / Inf)时退回
+        /// <see cref="DefaultZoomStep"/>, 免得配置写错就变成"滚轮没反应"。
+        /// </summary>
+        public static float ApplyScrollToZoom(float offset, float scroll,
+            float metersPerNotch = DefaultZoomStep,
+            float min = -DefaultZoomOutMax, float max = DefaultZoomInMax)
+        {
+            if (scroll == 0f || float.IsNaN(scroll)) return Clamp(offset, min, max);
+            if (float.IsNaN(metersPerNotch) || float.IsInfinity(metersPerNotch) || metersPerNotch <= 0f)
+                metersPerNotch = DefaultZoomStep;
+            return Clamp(offset + scroll * metersPerNotch, min, max);
+        }
+
+        /// <summary>
+        /// 指数平滑逼近(帧率无关): 每帧把 <paramref name="current"/> 朝 <paramref name="target"/> 拉近,
+        /// 每帧只保留 <c>exp(-dt/smoothTime)</c> 的剩余差 —— 所以"分两步小 dt"和"一步大 dt"结果一致,
+        /// 掉帧时也不会突然冲过头。<paramref name="smoothTime"/> ≤ 0 / NaN 时直接返回 target(不插值)。
+        /// </summary>
+        public static float SmoothTowards(float current, float target, float smoothTime, float deltaTime)
+        {
+            if (float.IsNaN(current)) current = 0f;
+            if (float.IsNaN(target)) return current;
+            if (float.IsNaN(smoothTime) || smoothTime <= 0f) return target;
+            if (float.IsNaN(deltaTime) || float.IsInfinity(deltaTime)) return target;
+            if (deltaTime <= 0f) return current;
+            float keep = (float)Math.Exp(-deltaTime / smoothTime);
+            return target + (current - target) * keep;
+        }
+
+        /// <summary>
+        /// 沿视线方向平移相机: 结果 = 基准位置 + forward × offset。
+        /// 朝向不参与计算 —— 调用方只写位置、不写旋转, 所以这是"只改远近、不改视角"的缩放。
+        /// </summary>
+        public static void DollyPosition(float baseX, float baseY, float baseZ,
+            float fx, float fy, float fz, float offset,
+            out float x, out float y, out float z)
+        {
+            if (float.IsNaN(offset) || float.IsInfinity(offset)) offset = 0f;
+            x = baseX + fx * offset;
+            y = baseY + fy * offset;
+            z = baseZ + fz * offset;
+        }
+
+        /// <summary>
+        /// 是否已经收敛到目标值(容差内)。缩放偏移回到 0 时据此自动把相机交还给游戏,
+        /// 免得"滚回原位了还在每帧写相机"。
+        /// </summary>
+        public static bool IsSettled(float current, float target, float tolerance = 0.01f)
+        {
+            if (float.IsNaN(current) || float.IsNaN(target)) return false;
+            return Math.Abs(current - target) <= Math.Abs(tolerance);
         }
 
         /// <summary>两位小数的文本(日志用)。</summary>

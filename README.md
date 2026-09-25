@@ -13,7 +13,7 @@ CesiumLoader.sln
 │   ├── CesiumLoader.Bootstrap\    C# 托管引导程序 (netstandard2.0, 零引用, 编排 SDK/mods)
 │   ├── CesiumLoader.SDK\          C# SDK (netstandard2.0, 供 mod 引用)
 │   ├── ActivityLogMod\            C# 示例 mod (行为日志)
-│   ├── FreeCameraMod\             内置 mod (俯瞰视角)
+│   ├── FreeCameraMod\             内置 mod (滚轮缩放)
 │   ├── SpeedHackMod\              内置 mod (变速热键)
 ├── third_party\                    随仓库入库的第三方依赖 (vendored: 不要包管理器, 克隆即可编译, 见其 README)
 │   ├── minhook\                    MinHook (inline hook 库, 变速引擎使用, BSD-2-Clause)
@@ -108,7 +108,7 @@ version.dll (C++ 薄代理, 15 个导出转发到系统 version.dll)
 |---|---|
 | **Mod 能力声明 + 警告** | mod 在 `[ModManifest(Permissions=...)]` 声明会用到的能力（读对局/操作游戏/写文件），sidecar 同步导出。已取消权限门控：任何 mod 都能调用 SDK 全部 API；声明「操作游戏」的 mod 在加载时与工具列表里显示 ⚠️ 警告（仅提示来源可信，不阻止） |
 | **模组元数据标准 + 依赖解析** | `mods\{ModId}\{ModId}.json` sidecar（id/版本/能力/SDK 版本/依赖，与 DLL 同文件夹）；加载器按依赖**拓扑排序**加载，缺失依赖/版本不符/循环依赖的 mod 被跳过并报告（`modmeta.cpp` 纯标准库，可单测） |
-| **API 版本协商** | SDK 声明版本 `2.2.0`；mod 声明 `SdkVersion`，要求高于当前的 mod 被拒绝加载。`doorstop_config.json` 的 `sdkVersion` 声明当前版本 |
+| **API 版本协商** | SDK 声明版本 `2.2.1`；mod 声明 `SdkVersion`，要求高于当前的 mod 被拒绝加载。`doorstop_config.json` 的 `sdkVersion` 声明当前版本 |
 | **事件驱动化** | `GameEvents.StartAutoHook()` 内部每 1 秒维持 RPC 挂钩，mod 无需每秒轮询；`ModBase.Run` 不传 tick 则不空转 |
 | **IL2CPP 互操作安全封装** | `il2cpp_safe.h` 收敛全部互操作点：函数指针空检查、参数/返回值校验、托管异常转译成可读错误，防止原生崩溃拖垮游戏 |
 | **调试与故障体验** | mod 入口异常写 `logs\mod-errors.log`（SDK `SdkLog.ReportCrash` + 原生 `write_mod_error` 双写）；`cesium verify` 离线预检兼容性 |
@@ -141,7 +141,7 @@ version.dll (C++ 薄代理, 15 个导出转发到系统 version.dll)
 | [SDK-Unity调用与ECall隔离](docs/SDK-Unity调用与ECall隔离.md) | **改 SDK 前必读**：ECall 机制与隔离约定 |
 | [平台约束-第三方库与AOT裁剪](docs/平台约束-第三方库与AOT裁剪.md) | **引第三方库前必读**：托管第三方库为何加载不起来、游戏内置 Newtonsoft 的裁剪面、存在性权威判定方法 |
 | [steam-bypass](docs/steam-bypass.md) | **脱离 Steam 运行**：加载器原生绕过（6 hook）的四阶段原理、配置全表、已验证测试矩阵、已知损失与回退方法 |
-| [mod-FreeCameraMod](docs/mod-FreeCameraMod.md) | 俯瞰视角 mod 的配置与原理 |
+| [mod-FreeCameraMod](docs/mod-FreeCameraMod.md) | 滚轮缩放 mod 的配置与原理（进游戏不接管；F1 恢复原视角）|
 | [mod-SpeedHackMod](docs/mod-SpeedHackMod.md) | 变速 mod 的热键、配置与风险 |
 | [工具-cesium-CLI](docs/工具-cesium-CLI.md) | 脚手架 CLI |
 
@@ -218,7 +218,7 @@ version.dll (C++ 薄代理, 15 个导出转发到系统 version.dll)
                                       // / :567-573 正常执行。全游戏只有这 2 处调用(:384/:554), 影响面为零。
                                       // **独立开关**: 与上面几个 steamBypass* 互不影响。
                                       // false = 恢复原版行为(退房/解散/被踢时 await 之后仍被跳过)
-  "sdkVersion": "2.2.0"               // 当前 SDK 版本(校验 mod 的 SdkVersion)
+  "sdkVersion": "2.2.1"               // 当前 SDK 版本(校验 mod 的 SdkVersion)
 }
 ```
 
@@ -250,7 +250,7 @@ pwsh -NoProfile -File tools\package-modloader.ps1
 - `src\CesiumLoader.Bootstrap\bin\Release\netstandard2.0\CesiumLoader.Bootstrap.dll`
 - `src\CesiumLoader.SDK\bin\Release\netstandard2.0\CesiumLoader.SDK.dll`
 - `src\ActivityLogMod\bin\Release\netstandard2.0\ActivityLogMod.dll` — 内置 mod (行为日志)
-- `src\FreeCameraMod\bin\Release\netstandard2.0\FreeCameraMod.dll` — 内置 mod (自由相机)
+- `src\FreeCameraMod\bin\Release\netstandard2.0\FreeCameraMod.dll` — 内置 mod (自由相机: 滚轮缩放)
 - `src\SpeedHackMod\bin\Release\netstandard2.0\SpeedHackMod.dll` — 内置 mod (变速热键)
 - `tools\cesium\bin\Release\net8.0\cesium.exe` — mod 脚手架与包分发 CLI
 
@@ -301,7 +301,7 @@ dotnet run --project tools\cesium -c Release -- package MyMod -o MyMod-1.0.0.zip
 ```csharp
 [assembly: CesiumLoader.SDK.ModManifest("我的Mod", "1.0.0", "小明", "描述",
     Permissions = CesiumLoader.SDK.ModPermission.ReadGameState,  // 声明会用到的能力(仅展示/警告)
-    SdkVersion = "2.2.0")]                                        // API 版本协商
+    SdkVersion = "2.2.1")]                                        // API 版本协商
 ```
 
 **入口 (纯事件驱动, 无轮询):**
@@ -355,8 +355,8 @@ SDK API 一览:
 但要保证 SDK / mods / dist / 文档里的 `2.x.y` 字符串彼此一致：
 
 ```
-git tag modloader-2.2.0
-git push origin modloader-2.2.0
+git tag modloader-2.2.1
+git push origin modloader-2.2.1
 ```
 
 `release-modloader.yml` 会:
@@ -369,9 +369,9 @@ git push origin modloader-2.2.0
 5. 组装 SDK 工具包 (cesium.exe + SDK DLL + 文档 + 示例源码)
 
 产物 (Release 资产):
-- `cesium-loader-2.2.0.zip` — 加载器部署包 (带版本号)
+- `cesium-loader-2.2.1.zip` — 加载器部署包 (带版本号)
 - `cesium-loader.zip` — 固定名, 供 `releases/latest/download/cesium-loader.zip` 使用
-- `cesium-sdk-tools-2.2.0.zip` — SDK 工具包 (带版本号)
+- `cesium-sdk-tools-2.2.1.zip` — SDK 工具包 (带版本号)
 - `cesium-sdk-tools.zip` — 固定名, 供 `releases/latest/download/cesium-sdk-tools.zip` 使用
 
 AstralParty.Toys 的 Mod 管理功能从这个 URL 下载安装:

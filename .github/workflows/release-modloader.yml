@@ -110,7 +110,7 @@ jobs:
           $builtInMods = @(Get-Content "tools/builtin-mods.json" -Raw | ConvertFrom-Json)
           $modNames = @{
             "ActivityLogMod" = "行为日志"
-            "FreeCameraMod"  = "自由相机, F1 开关"
+            "FreeCameraMod"  = "自由相机, 滚轮缩放(视角不变) / F1 恢复原视角"
             "SpeedHackMod"   = "变速, Delete 开关 / Alt+= Alt+- 调倍率"
           }
           $modList = @()

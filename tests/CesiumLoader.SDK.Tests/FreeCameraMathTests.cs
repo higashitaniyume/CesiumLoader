@@ -536,6 +536,127 @@ namespace CesiumLoader.SDK.Tests
             Assert.Equal(120f, FreeCameraMath.MaxOrbitDistance);
         }
 
+        // ---------------- 滚轮缩放(沿视线前后移动, 朝向不变) ----------------
+
+        [Fact]
+        public void ApplyScrollToZoom_ScrollUpMovesForwardAndClamps()
+        {
+            // 滚轮向上(正) = 沿视线向前 = 拉近/放大; 向下 = 拉远
+            Assert.Equal(20f, FreeCameraMath.ApplyScrollToZoom(0f, 1f, 20f), 3);
+            Assert.Equal(-20f, FreeCameraMath.ApplyScrollToZoom(0f, -1f, 20f), 3);
+
+            // 一次滚多格(部分鼠标/驱动会一次送出多格)按比例累积
+            Assert.Equal(60f, FreeCameraMath.ApplyScrollToZoom(0f, 3f, 20f), 3);
+
+            // 夹到 [min, max] = [-拉远上限, 拉近上限]
+            Assert.Equal(120f, FreeCameraMath.ApplyScrollToZoom(100f, 5f, 20f, -1500f, 120f), 3);
+            Assert.Equal(-1500f, FreeCameraMath.ApplyScrollToZoom(-1400f, -10f, 20f, -1500f, 120f), 3);
+        }
+
+        [Fact]
+        public void ApplyScrollToZoom_NoScrollOnlyClamps()
+        {
+            Assert.Equal(50f, FreeCameraMath.ApplyScrollToZoom(50f, 0f, 20f, -100f, 100f), 3);
+            Assert.Equal(50f, FreeCameraMath.ApplyScrollToZoom(50f, float.NaN, 20f, -100f, 100f), 3);
+            Assert.Equal(100f, FreeCameraMath.ApplyScrollToZoom(999f, 0f, 20f, -100f, 100f), 3);
+            Assert.Equal(-100f, FreeCameraMath.ApplyScrollToZoom(-999f, 0f, 20f, -100f, 100f), 3);
+        }
+
+        [Fact]
+        public void ApplyScrollToZoom_UnusableStepFallsBackToDefault()
+        {
+            // 配置里 zoomStep 写错(0/负数/NaN/Inf)也不能变成"滚轮没反应"
+            foreach (var step in new[] { 0f, -1f, float.NaN, float.PositiveInfinity })
+            {
+                Assert.Equal(FreeCameraMath.DefaultZoomStep,
+                    FreeCameraMath.ApplyScrollToZoom(0f, 1f, step), 3);
+            }
+        }
+
+        [Fact]
+        public void ApplyScrollToZoom_DefaultsZoomInOnScrollUp()
+        {
+            Assert.Equal(FreeCameraMath.DefaultZoomStep, FreeCameraMath.ApplyScrollToZoom(0f, 1f), 3);
+            Assert.Equal(FreeCameraMath.DefaultZoomInMax,
+                FreeCameraMath.ApplyScrollToZoom(FreeCameraMath.DefaultZoomInMax, 1f), 3);
+            Assert.Equal(-FreeCameraMath.DefaultZoomOutMax,
+                FreeCameraMath.ApplyScrollToZoom(-FreeCameraMath.DefaultZoomOutMax, -1f), 3);
+        }
+
+        [Fact]
+        public void SmoothTowards_ConvergesAndIsFrameRateIndependent()
+        {
+            // 一步 0.1s 与两步 0.05s 必须一致(指数衰减的性质) —— 掉帧时不会冲过头
+            float one = FreeCameraMath.SmoothTowards(0f, 100f, 0.12f, 0.1f);
+            float two = FreeCameraMath.SmoothTowards(
+                FreeCameraMath.SmoothTowards(0f, 100f, 0.12f, 0.05f), 100f, 0.12f, 0.05f);
+            Assert.Equal(one, two, 3);
+
+            // 单调逼近且不越过目标
+            Assert.True(one > 0f && one < 100f);
+        }
+
+        [Fact]
+        public void SmoothTowards_ZeroOrInvalidSmoothTimeJumpsToTarget()
+        {
+            Assert.Equal(100f, FreeCameraMath.SmoothTowards(0f, 100f, 0f, 0.016f), 3);
+            Assert.Equal(100f, FreeCameraMath.SmoothTowards(0f, 100f, -1f, 0.016f), 3);
+            Assert.Equal(100f, FreeCameraMath.SmoothTowards(0f, 100f, float.NaN, 0.016f), 3);
+        }
+
+        [Fact]
+        public void SmoothTowards_InvalidInputsNeverProduceNaN()
+        {
+            // 首帧/暂停时 deltaTime 可能是 0: 保持当前值, 不动
+            Assert.Equal(30f, FreeCameraMath.SmoothTowards(30f, 100f, 0.12f, 0f), 3);
+            Assert.Equal(0f, FreeCameraMath.SmoothTowards(float.NaN, 100f, 0.12f, 0f), 3);
+            // 目标读坏(NaN): 保持当前值
+            Assert.Equal(30f, FreeCameraMath.SmoothTowards(30f, float.NaN, 0.12f, 0.016f), 3);
+            // 已经到目标: 不再变化
+            Assert.Equal(100f, FreeCameraMath.SmoothTowards(100f, 100f, 0.12f, 0.016f), 3);
+        }
+
+        [Fact]
+        public void DollyPosition_MovesAlongForwardOnly()
+        {
+            // 基准 (10,5,-3), 朝向 +Z: 向前 20m 只改 Z
+            float x, y, z;
+            FreeCameraMath.DollyPosition(10f, 5f, -3f, 0f, 0f, 1f, 20f, out x, out y, out z);
+            Assert.Equal(10f, x, 3);
+            Assert.Equal(5f, y, 3);
+            Assert.Equal(17f, z, 3);
+
+            // 俯角 45°(pitch>0 = 低头 ⇒ forward.y < 0): 向前拉近的同时会自然下降
+            float fx, fy, fz;
+            FreeCameraMath.ForwardVector(0f, 45f, out fx, out fy, out fz);
+            FreeCameraMath.DollyPosition(0f, 100f, 0f, fx, fy, fz, 10f, out x, out y, out z);
+            Assert.Equal(0f, x, 3);
+            Assert.Equal(92.929f, y, 3);
+            Assert.Equal(7.071f, z, 3);
+        }
+
+        [Fact]
+        public void DollyPosition_ZeroAndInvalidOffsetKeepBasePosition()
+        {
+            float x, y, z;
+            FreeCameraMath.DollyPosition(1f, 2f, 3f, 0f, 0f, 1f, 0f, out x, out y, out z);
+            Assert.Equal(1f, x, 3); Assert.Equal(2f, y, 3); Assert.Equal(3f, z, 3);
+
+            FreeCameraMath.DollyPosition(1f, 2f, 3f, 0f, 0f, 1f, float.NaN, out x, out y, out z);
+            Assert.Equal(1f, x, 3); Assert.Equal(2f, y, 3); Assert.Equal(3f, z, 3);
+        }
+
+        [Fact]
+        public void IsSettled_UsesToleranceAndRejectsNaN()
+        {
+            Assert.True(FreeCameraMath.IsSettled(0f, 0f));
+            Assert.True(FreeCameraMath.IsSettled(0.2f, 0f, 0.25f));
+            Assert.True(FreeCameraMath.IsSettled(-0.2f, 0f, 0.25f));
+            Assert.False(FreeCameraMath.IsSettled(0.3f, 0f, 0.25f));
+            Assert.False(FreeCameraMath.IsSettled(float.NaN, 0f, 0.25f));
+            Assert.False(FreeCameraMath.IsSettled(0f, float.NaN, 0.25f));
+        }
+
         // ---------------- 杂项 ----------------
 
         [Fact]
@@ -629,6 +750,9 @@ namespace CesiumLoader.SDK.Tests
             Assert.Equal(5f, FreeCameraMath.MinCameraHeight);
             Assert.Equal(2000f, FreeCameraMath.MaxCameraHeight);
             Assert.Equal(10f, FreeCameraMath.DefaultHeightStep);
+            Assert.Equal(20f, FreeCameraMath.DefaultZoomStep);
+            Assert.Equal(120f, FreeCameraMath.DefaultZoomInMax);
+            Assert.Equal(1500f, FreeCameraMath.DefaultZoomOutMax);
             Assert.True(Eps > 0f);
         }
     }
