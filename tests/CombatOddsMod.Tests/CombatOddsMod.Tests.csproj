@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <AssemblyName>CombatOddsMod.Tests</AssemblyName>
+    <RootNamespace>CombatOddsMod.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 直接编译 mod 里的纯计算核心(零游戏/SDK 依赖), 离线可测, 不引入任何游戏 DLL。 -->
+    <Compile Include="..\..\src\CombatOddsMod\CombatMath.cs" Link="CombatMath.cs" />
+    <!-- 覆盖层编排逻辑(纯 System, 用假反射器单测状态机)。 -->
+    <Compile Include="..\..\src\CombatOddsMod\FightOverlay.cs" Link="FightOverlay.cs" />
+  </ItemGroup>
+
+</Project>
