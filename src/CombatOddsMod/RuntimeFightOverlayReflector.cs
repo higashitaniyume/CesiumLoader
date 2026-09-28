@@ -16,6 +16,14 @@ namespace CombatOddsMod
     /// </summary>
     public sealed class RuntimeFightOverlayReflector : IFightOverlayReflector
     {
+        // 布局参数(由 ModEntry 按配置在启动时写入; 有默认值, 便于单独使用)。
+        internal static int BaseFontSize = 28;          // 正文基准字号(比旧版 22 更大)
+        internal static float LabelWidth = 720f;        // 面板宽(容纳更大字号)
+        internal static float LabelHeight = 560f;
+        internal static string Anchor = "left-center";  // left-center / top-left / top-center / top-right / right-center
+        internal static float OffsetX = 0f;
+        internal static float OffsetY = 0f;
+
         // FightWindow 实例(强类型可取, 但其 FairyGUI 成员一律反射)。
         private object GetFightWindow()
         {
@@ -48,11 +56,9 @@ namespace CombatOddsMod
                 var label = Activator.CreateInstance(gtfType);
                 if (label == null) return null;
 
-                // 尺寸/位置: 摆在窗口左上, 足够放结论 + 全体攻防面板(最多 ~10 行)。
-                RuntimeAssemblyService.SafeInvoke(label, "SetSize", new object[] { 600f, 480f }, "CombatOdds.overlay");
-                RuntimeAssemblyService.SafeInvoke(label, "SetXY", new object[] { 24f, 24f }, "CombatOdds.overlay");
-                // 兼容 FairyGUI 不同版本的定位方法名。
-                RuntimeAssemblyService.SafeInvoke(label, "SetPosition", new object[] { 24f, 24f, 0f }, "CombatOdds.overlay");
+                // 尺寸: 更大面板容纳放大字号; 位置在 AddChildToPane 里按锚点摆放(需要 pane 宽度)。
+                RuntimeAssemblyService.SafeInvoke(label, "SetSize", new object[] { LabelWidth, LabelHeight }, "CombatOdds.overlay");
+                RuntimeAssemblyService.SafeInvoke(label, "SetXY", new object[] { OffsetX, OffsetY }, "CombatOdds.overlay");
 
                 RuntimeAssemblyService.SafeSetProperty(label, "touchable", false, "CombatOdds.overlay");
                 RuntimeAssemblyService.SafeSetProperty(label, "sortingOrder", 9000, "CombatOdds.overlay");
@@ -68,8 +74,8 @@ namespace CombatOddsMod
                 var tf = RuntimeAssemblyService.SafeGetProperty(label, "textFormat", "CombatOdds.overlay");
                 if (tf != null)
                 {
-                    RuntimeAssemblyService.SafeSetField(tf, "size", 22, "CombatOdds.overlay");
-                    RuntimeAssemblyService.SafeSetProperty(tf, "size", 22, "CombatOdds.overlay");
+                    RuntimeAssemblyService.SafeSetField(tf, "size", BaseFontSize, "CombatOdds.overlay");
+                    RuntimeAssemblyService.SafeSetProperty(tf, "size", BaseFontSize, "CombatOdds.overlay");
                     RuntimeAssemblyService.SafeSetField(tf, "color", Color.white, "CombatOdds.overlay");
                     RuntimeAssemblyService.SafeSetProperty(tf, "color", Color.white, "CombatOdds.overlay");
                     RuntimeAssemblyService.SafeSetField(tf, "bold", true, "CombatOdds.overlay");
@@ -107,9 +113,44 @@ namespace CombatOddsMod
             try
             {
                 RuntimeAssemblyService.SafeInvoke(pane, "AddChild", new object[] { label }, "CombatOdds.overlay");
+                PositionByAnchor(pane, label);
                 SdkLog.Info("CombatOdds", "[overlay] AddChild → paneId=" + Id(pane) + " labelId=" + Id(label));
             }
             catch (Exception e) { SdkLog.Warn("CombatOdds", "覆盖层挂载失败: " + e.Message); }
+        }
+
+        /// <summary>按锚点把面板摆到位置(靠左中间/左上/居中/右上等), 并叠加配置微调偏移。</summary>
+        private void PositionByAnchor(object pane, object label)
+        {
+            try
+            {
+                float paneW = RuntimeAssemblyService.SafeGetProperty<float>(pane, "width", 0f, "CombatOdds.overlay");
+                float paneH = RuntimeAssemblyService.SafeGetProperty<float>(pane, "height", 0f, "CombatOdds.overlay");
+                float x = OffsetX;
+                float y = OffsetY;
+                string a = (Anchor ?? "left-center").Trim().ToLowerInvariant();
+
+                // 水平
+                if (paneW > 0f)
+                {
+                    if (a == "top-center") x = (paneW - LabelWidth) * 0.5f + OffsetX;
+                    else if (a == "top-right") x = paneW - LabelWidth - 24f + OffsetX;
+                    else x = 24f + OffsetX;   // left-center / top-left / 其它 → 靠左
+                }
+                // 垂直: 带 -center(靠左中间)时垂直居中, 否则从顶部 OffsetY 起算
+                if ((a == "left-center" || a == "right-center") && paneH > 0f)
+                    y = (paneH - LabelHeight) * 0.5f + OffsetY;
+                if (a == "right-center" && paneW > 0f)
+                    x = paneW - LabelWidth - 24f + OffsetX;
+
+                RuntimeAssemblyService.SafeInvoke(label, "SetXY", new object[] { x, y }, "CombatOdds.overlay");
+                // 顶部居中锚点时面板内文本也居中; 枚举设置失败无妨, 单独包一层不影响上面的定位。
+                if (a == "top-center")
+                {
+                    try { RuntimeAssemblyService.SafeSetProperty(label, "align", 1, "CombatOdds.overlay"); } catch { }
+                }
+            }
+            catch { /* 位置失败无所谓, 保底用创建时的 OffsetX/Y */ }
         }
 
         public void SetText(object label, string text)
