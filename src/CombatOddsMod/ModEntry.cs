@@ -57,22 +57,72 @@ namespace CombatOddsMod
 
         private static void MainSafe()
         {
-            SdkLog.Info("CombatOdds", "=== 战斗胜率助手 v0.1.0 启动 ===");
+            SdkLog.Info("CombatOdds", "=== 战斗胜率助手启动 ===");
             SdkManifest.ExportSidecar();
-
-            _cfg = SdkConfig.Load<CombatOddsConfig>("CombatOddsMod");
-            if (!_cfg.Enabled)
-            {
-                SdkLog.Warn("CombatOdds", "配置 Enabled=false, mod 已停用");
-                return;
-            }
-
             ModBase.Run(init: OnInit, tick: OnTick, tag: "CombatOdds");
+        }
+
+        /// <summary>
+        /// 从 <c>mods\CombatOddsMod\config.json</c>(DLL 同目录)读配置, 并把默认值补齐后落盘。
+        /// 这个位置正是 AstralParty.Toys「模组」页 ⚙ 配置表单读写的文件, 因此字号/位置/开关
+        /// 都能在 Toys 里用勾选框/数字框/文本框直接改(改完重启游戏生效)。
+        /// </summary>
+        private static void LoadConfig()
+        {
+            try
+            {
+                var c = _ctx != null ? _ctx.Config : null;
+                var d = new CombatOddsConfig();   // 默认值来源
+                if (c != null)
+                {
+                    _cfg.Enabled               = c.GetBool("Enabled", d.Enabled);
+                    _cfg.ShowForOthers         = c.GetBool("ShowForOthers", d.ShowForOthers);
+                    _cfg.PopupNotification     = c.GetBool("PopupNotification", d.PopupNotification);
+                    _cfg.NotificationTtl       = c.GetFloat("NotificationTtl", d.NotificationTtl);
+                    _cfg.DodgeKeepsBaseDefense = c.GetBool("DodgeKeepsBaseDefense", d.DodgeKeepsBaseDefense);
+                    _cfg.ColorHighlight        = c.GetBool("ColorHighlight", d.ColorHighlight);
+                    _cfg.ShowBuffBreakdown     = c.GetBool("ShowBuffBreakdown", d.ShowBuffBreakdown);
+                    _cfg.InGameOverlay         = c.GetBool("InGameOverlay", d.InGameOverlay);
+                    _cfg.OverlayFontScale      = c.GetDouble("OverlayFontScale", d.OverlayFontScale);
+                    _cfg.OverlayAnchor         = c.GetString("OverlayAnchor", d.OverlayAnchor);
+                    _cfg.OverlayOffsetX        = c.GetDouble("OverlayOffsetX", d.OverlayOffsetX);
+                    _cfg.OverlayOffsetY        = c.GetDouble("OverlayOffsetY", d.OverlayOffsetY);
+
+                    // 全字段写回, 保证 config.json 始终含全部键 → Toys ⚙ 表单能把每一项都列出来。
+                    c.Set("Enabled", _cfg.Enabled);
+                    c.Set("ShowForOthers", _cfg.ShowForOthers);
+                    c.Set("PopupNotification", _cfg.PopupNotification);
+                    c.Set("NotificationTtl", _cfg.NotificationTtl);
+                    c.Set("DodgeKeepsBaseDefense", _cfg.DodgeKeepsBaseDefense);
+                    c.Set("ColorHighlight", _cfg.ColorHighlight);
+                    c.Set("ShowBuffBreakdown", _cfg.ShowBuffBreakdown);
+                    c.Set("InGameOverlay", _cfg.InGameOverlay);
+                    c.Set("OverlayFontScale", _cfg.OverlayFontScale);
+                    c.Set("OverlayAnchor", string.IsNullOrEmpty(_cfg.OverlayAnchor) ? d.OverlayAnchor : _cfg.OverlayAnchor);
+                    c.Set("OverlayOffsetX", _cfg.OverlayOffsetX);
+                    c.Set("OverlayOffsetY", _cfg.OverlayOffsetY);
+                    try { c.Save(); } catch { }
+                }
+            }
+            catch (Exception e) { SdkLog.Warn("CombatOdds", "读配置失败, 用默认值: " + e.Message); }
+
+            // 覆盖层布局参数(字号/锚点/偏移) → 反射器静态字段。
+            double sc = _cfg.OverlayFontScale > 0 ? _cfg.OverlayFontScale : 1.0;
+            RuntimeFightOverlayReflector.BaseFontSize = System.Math.Max(12, (int)System.Math.Round(28 * sc));
+            RuntimeFightOverlayReflector.Anchor = string.IsNullOrEmpty(_cfg.OverlayAnchor) ? "left-center" : _cfg.OverlayAnchor;
+            RuntimeFightOverlayReflector.OffsetX = (float)_cfg.OverlayOffsetX;
+            RuntimeFightOverlayReflector.OffsetY = (float)_cfg.OverlayOffsetY;
         }
 
         private static void OnInit()
         {
             _ctx = ModContext.Current;
+            LoadConfig();
+            if (!_cfg.Enabled)
+            {
+                SdkLog.Warn("CombatOdds", "配置 Enabled=false, mod 已停用");
+                return;
+            }
             GameEvents.BattleUpdate += OnBattleUpdate;
             GameEvents.StartAutoHook();
 
@@ -347,9 +397,17 @@ namespace CombatOddsMod
 
         private static bool Color => _cfg != null && _cfg.ColorHighlight;
 
+        /// <summary>按配置缩放字号(默认已是放大版)。</summary>
+        private static int Sz(int baseSize)
+        {
+            double s = _cfg != null && _cfg.OverlayFontScale > 0 ? _cfg.OverlayFontScale : 1.0;
+            int v = (int)System.Math.Round(baseSize * s);
+            return v < 10 ? 10 : v;
+        }
+
         private static string C(string text, string hex) => Color ? ("[color=#" + hex + "]" + text + "[/color]") : text;
-        private static string Big(string text) => Color ? ("[size=30]" + text + "[/size]") : text;
-        private static string Dim(string text) => Color ? ("[size=18][color=#" + Gray + "]" + text + "[/color][/size]") : text;
+        private static string Big(string text) => Color ? ("[size=" + Sz(40) + "]" + text + "[/size]") : text;
+        private static string Dim(string text) => Color ? ("[size=" + Sz(22) + "][color=#" + Gray + "]" + text + "[/color][/size]") : text;
 
         /// <summary>被击倒率彩片: 颜色按危险度(绿低/黄中/红高), 推荐项(更安全)前加 ★。</summary>
         private static string KnockChip(double p, bool recommended)
@@ -412,5 +470,13 @@ namespace CombatOddsMod
         public bool ShowBuffBreakdown = true;
         /// <summary>是否把读数以 FairyGUI 覆盖层显示在 FightWindow 上(真机验证; 失败自动降级到控制台/通知)。</summary>
         public bool InGameOverlay = true;
+        /// <summary>覆盖层字号缩放(1.0=默认已放大版; 想更大调 1.2~1.5, 想更小调 0.8)。</summary>
+        public double OverlayFontScale = 1.0;
+        /// <summary>覆盖层锚点: "left-center"(默认, 靠左竖直居中) / "top-left" / "top-center" / "top-right" / "right-center"。</summary>
+        public string OverlayAnchor = "left-center";
+        /// <summary>覆盖层水平微调(像素, 正=右移)。</summary>
+        public double OverlayOffsetX = 0;
+        /// <summary>覆盖层垂直微调(像素, 正=下移; 靠左居中时可用负值上移)。</summary>
+        public double OverlayOffsetY = 0;
     }
 }
