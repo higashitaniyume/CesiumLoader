@@ -126,6 +126,24 @@ namespace AstralParty.AgentMod.Bridge
                     _tracker.OnPursueMonsterOffer(e.PlayerId, e.Sn, now);
                     return "PursueMonsterOffer{空负载}";
                 }
+                // 5093 医院 / 5233 复活队友 / 5259 机制选择: 这三条 offer 同样是**零负载**
+                // (对应窗口只读 action.Sn, 从不 ReadObject), 所以"空负载 = 服务器在问",
+                // "有负载 = 某人的答案(Info.Sn 非 0)被回播", 两者分开处理。
+                if (e.Id == 5093)
+                {
+                    _tracker.OnHospitalOffer(e.PlayerId, e.Sn, now);
+                    return "HospitalOffer{空负载}";
+                }
+                if (e.Id == 5233)
+                {
+                    _tracker.OnReviveTeammateOffer(e.PlayerId, e.Sn, now);
+                    return "ReviveTeammateOffer{空负载}";
+                }
+                if (e.Id == 5259)
+                {
+                    _tracker.OnSelectMechanismOffer(e.PlayerId, e.Sn, now);
+                    return "SelectMechanismOffer{空负载}";
+                }
                 return null; // 其余 id 的空负载无从判断语义, 只记长度(外层已记)
             }
             try
@@ -366,6 +384,63 @@ namespace AstralParty.AgentMod.Bridge
                             if (d == null) return null;
                             _tracker.OnStopOrContinueDone(e.PlayerId, now);
                             return "StopOrContinueResult{playerId=" + d.PlayerId + ", stop=" + d.Stop + "}";
+                        }
+
+                    // ---------- 医院(5093 / 回执 5094) ----------
+                    case 5093:
+                        {
+                            var d = ByteBuf.ReadObject<TriggerHospitalC2S>(e.Data);
+                            if (d == null) return null;
+                            long answerSn = d.Info != null ? d.Info.Sn : 0;
+                            if (answerSn != 0) return "HospitalAnswer{sn=" + answerSn + "}";
+                            _tracker.OnHospitalOffer(e.PlayerId, e.Sn, now);
+                            return "HospitalOffer{len=" + e.Data.Length + "}";
+                        }
+
+                    case 5094:
+                        {
+                            var d = ByteBuf.ReadObject<TriggerHospitalS2C>(e.Data);
+                            if (d == null) return null;
+                            _tracker.OnHospitalDone(e.PlayerId, now);
+                            return "HospitalResult{playerId=" + d.PlayerId + ", inHospital=" + d.InHospital + "}";
+                        }
+
+                    // ---------- 复活队友(5233 / 回执 5234) ----------
+                    case 5233:
+                        {
+                            var d = ByteBuf.ReadObject<AskReviveTeammateC2S>(e.Data);
+                            if (d == null) return null;
+                            long answerSn = d.Info != null ? d.Info.Sn : 0;
+                            if (answerSn != 0) return "ReviveTeammateAnswer{sn=" + answerSn + ", revive=" + d.IsRevive + "}";
+                            _tracker.OnReviveTeammateOffer(e.PlayerId, e.Sn, now);
+                            return "ReviveTeammateOffer{len=" + e.Data.Length + "}";
+                        }
+
+                    case 5234:
+                        {
+                            var d = ByteBuf.ReadObject<AskReviveTeammateS2C>(e.Data);
+                            if (d == null) return null;
+                            _tracker.OnReviveTeammateDone(e.PlayerId, now);
+                            return "ReviveTeammateResult{playerId=" + d.PlayerId + ", revive=" + d.IsRevive + "}";
+                        }
+
+                    // ---------- 机制选择(5259 / 回执 5260) ----------
+                    case 5259:
+                        {
+                            var d = ByteBuf.ReadObject<SelectMechanismC2S>(e.Data);
+                            if (d == null) return null;
+                            long answerSn = d.Info != null ? d.Info.Sn : 0;
+                            if (answerSn != 0) return "SelectMechanismAnswer{sn=" + answerSn + ", select=" + d.Select + "}";
+                            _tracker.OnSelectMechanismOffer(e.PlayerId, e.Sn, now);
+                            return "SelectMechanismOffer{len=" + e.Data.Length + "}";
+                        }
+
+                    case 5260:
+                        {
+                            var d = ByteBuf.ReadObject<SelectMechanismS2C>(e.Data);
+                            if (d == null) return null;
+                            _tracker.OnSelectMechanismDone(e.PlayerId, now);
+                            return "SelectMechanismResult{playerId=" + d.PlayerId + ", select=" + d.Select + "}";
                         }
 
                     // ---------- 怪物追击(5213 / 回执 5214) ----------

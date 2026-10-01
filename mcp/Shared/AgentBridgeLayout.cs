@@ -90,6 +90,12 @@ namespace AstralParty.Agent
             public const string VendorBuyCard = "vendor_buy_card";
             /// <summary>控制移动卡选点(动作 5067): 用 1..MaxPoint 点移动力。</summary>
             public const string SelectPoint = "select_point";
+            /// <summary>复活队友(动作 5233): 要不要花星币复活倒下的队友。超时 = 不复活。</summary>
+            public const string ReviveTeammate = "revive_teammate";
+            /// <summary>机制选择(动作 5259): 启动(true)/不启动(false)这个地块机制。超时 = 不启动。</summary>
+            public const string SelectMechanism = "select_mechanism";
+            /// <summary>医院(动作 5093): 接受检查。这是该窗口**唯一**的合法上行(超时也走它)。</summary>
+            public const string HospitalCheck = "hospital_check";
         }
 
         /// <summary>把这些名字拼成外部工具名(<c>astral_xxx</c>)。</summary>

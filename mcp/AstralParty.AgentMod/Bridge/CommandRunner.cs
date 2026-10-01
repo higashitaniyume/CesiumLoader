@@ -121,6 +121,15 @@ namespace AstralParty.AgentMod.Bridge
                     case AgentBridgeLayout.Tool.SelectPoint:
                         return SelectPoint(cmd, started);
 
+                    case AgentBridgeLayout.Tool.ReviveTeammate:
+                        return ReviveTeammate(cmd, started);
+
+                    case AgentBridgeLayout.Tool.SelectMechanism:
+                        return SelectMechanism(cmd, started);
+
+                    case AgentBridgeLayout.Tool.HospitalCheck:
+                        return HospitalCheck(cmd, started);
+
                     default:
                         return BridgeResult.Failure(cmd.Id, cmd.Tool, AgentBridgeLayout.Code.UnknownTool,
                             "未知工具: " + cmd.Tool);
@@ -558,6 +567,61 @@ namespace AstralParty.AgentMod.Bridge
             if (!GameActions.StopOrContinue(stop, sn)) return NotSent(cmd, "停留/继续走应答");
             OnSent(sn);
             return Done(cmd, started, "已发送 停留/继续走 StopOrContinue(stop=" + stop + ", sn=" + Show(sn) + ")");
+        }
+
+        /// <summary>
+        /// 复活队友(5233 窗口): revive=true 复活(花星币), false 不复活。
+        /// 反编译证据: <c>btn_Stop</c> → <c>IsRevive=true</c>, <c>btn_Continue</c> → <c>IsRevive=false</c>,
+        /// 超时回调点的是 <c>btn_Continue</c> —— 所以**不答 = 不复活**。
+        /// </summary>
+        private BridgeResult ReviveTeammate(BridgeCommand cmd, long started)
+        {
+            bool revive = cmd.GetBool("revive", false);
+
+            long? sn = ResolveSn(cmd, AgentPendingKind.ReviveTeammate);
+            if (!sn.HasValue || sn.Value <= 0)
+                return BadArgs(cmd, "现在没有复活队友窗口(5233): sn 只有服务器推 5233 时才有。" +
+                                    "先用 astral_pending 看有没有 kind=reviveTeammate");
+
+            if (!GameActions.ReviveTeammate(revive, sn)) return NotSent(cmd, "复活队友应答");
+            OnSent(sn);
+            return Done(cmd, started, "已发送 复活队友 AskReviveTeammate(revive=" + revive + ", sn=" + Show(sn) + ")");
+        }
+
+        /// <summary>
+        /// 机制选择(5259 窗口): select=true 启动, false 不启动。
+        /// 反编译证据: <c>btn_Stop</c>("启动") → <c>Select=true</c>, <c>btn_Continue</c> → <c>Select=false</c>,
+        /// 超时回调点的是 <c>btn_Continue</c> —— 所以**不答 = 不启动**。
+        /// </summary>
+        private BridgeResult SelectMechanism(BridgeCommand cmd, long started)
+        {
+            bool select = cmd.GetBool("select", false);
+
+            long? sn = ResolveSn(cmd, AgentPendingKind.SelectMechanism);
+            if (!sn.HasValue || sn.Value <= 0)
+                return BadArgs(cmd, "现在没有机制选择窗口(5259): sn 只有服务器推 5259 时才有。" +
+                                    "先用 astral_pending 看有没有 kind=selectMechanism");
+
+            if (!GameActions.SelectMechanism(select, sn)) return NotSent(cmd, "机制选择应答");
+            OnSent(sn);
+            return Done(cmd, started, "已发送 机制选择 SelectMechanism(select=" + select + ", sn=" + Show(sn) + ")");
+        }
+
+        /// <summary>
+        /// 医院(5093 窗口): 接受检查 —— 这条窗口只有<b>一个</b>合法上行
+        /// (<c>TriggerHospitalC2S</c> 里没有"拒绝"字段), 所以工具不带选项。
+        /// 反编译证据: 倒计时结束时点的是 <c>btn_check</c> → 服务器超时代答也是"检查"。
+        /// </summary>
+        private BridgeResult HospitalCheck(BridgeCommand cmd, long started)
+        {
+            long? sn = ResolveSn(cmd, AgentPendingKind.HospitalCheck);
+            if (!sn.HasValue || sn.Value <= 0)
+                return BadArgs(cmd, "现在没有医院窗口(5093): sn 只有服务器推 5093 时才有。" +
+                                    "先用 astral_pending 看有没有 kind=hospitalCheck");
+
+            if (!GameActions.HospitalCheck(sn)) return NotSent(cmd, "医院检查应答");
+            OnSent(sn);
+            return Done(cmd, started, "已发送 医院检查 TriggerHospital(sn=" + Show(sn) + ")");
         }
 
         /// <summary>
