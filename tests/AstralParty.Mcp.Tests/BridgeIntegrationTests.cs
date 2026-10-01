@@ -508,6 +508,91 @@ namespace AstralParty.Mcp.Tests
         }
 
         [Fact]
+        public void 加油站工具_把停留决定送进命令文件()
+        {
+            WriteHeartbeat();
+            var captured = new List<string>();
+            using (var game = StartCapturingGame(captured))
+            {
+                Assert.False(_host.CallTool("astral_stop_or_continue", Args("{\"stop\":true}")).IsError);
+                Assert.False(_host.CallTool("astral_stop_or_continue", Args("{}")).IsError);
+            }
+
+            Assert.Equal(2, captured.Count);
+            Assert.Contains(AgentBridgeLayout.Tool.StopOrContinue, captured[0]);
+            Assert.Contains("\"stop\":true", captured[0].Replace(" ", ""));
+            // 不传 stop = 继续走(false)
+            Assert.Contains("\"stop\":false", captured[1].Replace(" ", ""));
+        }
+
+        [Fact]
+        public void 追击工具_支持追怪与不追两种给法()
+        {
+            WriteHeartbeat();
+            var captured = new List<string>();
+            using (var game = StartCapturingGame(captured))
+            {
+                Assert.False(_host.CallTool("astral_pursue_monster", Args("{\"monsterId\":1080857}")).IsError);
+                Assert.False(_host.CallTool("astral_pursue_monster", Args("{\"pass\":true}")).IsError);
+            }
+
+            Assert.Equal(2, captured.Count);
+            Assert.Contains(AgentBridgeLayout.Tool.PursueMonster, captured[0]);
+            Assert.Contains("monsterId", captured[0]);
+            Assert.Contains("1080857", captured[0]);
+            Assert.Contains("pass", captured[1]);
+            Assert.Contains("true", captured[1]);
+        }
+
+        [Fact]
+        public void 追击工具_既没给monsterId也没pass时报错且不落命令()
+        {
+            WriteHeartbeat();
+            var captured = new List<string>();
+            using (var game = StartCapturingGame(captured))
+            {
+                var r = _host.CallTool("astral_pursue_monster", Args("{}"));
+                Assert.True(r.IsError);
+                Assert.Contains("monsterId", r.Text);
+            }
+            Assert.Empty(captured);
+        }
+
+        [Fact]
+        public void 商人买卡工具_把买不买送进命令文件()
+        {
+            WriteHeartbeat();
+            var captured = new List<string>();
+            using (var game = StartCapturingGame(captured))
+            {
+                Assert.False(_host.CallTool("astral_vendor_buy_card", Args("{\"buy\":true}")).IsError);
+                Assert.False(_host.CallTool("astral_vendor_buy_card", Args("{\"buy\":false}")).IsError);
+            }
+
+            Assert.Equal(2, captured.Count);
+            Assert.Contains(AgentBridgeLayout.Tool.VendorBuyCard, captured[0]);
+            Assert.Contains("\"buy\":true", captured[0].Replace(" ", ""));
+            Assert.Contains("\"buy\":false", captured[1].Replace(" ", ""));
+        }
+
+        [Fact]
+        public void 选点工具_默认1点并可显式给点数()
+        {
+            WriteHeartbeat();
+            var captured = new List<string>();
+            using (var game = StartCapturingGame(captured))
+            {
+                Assert.False(_host.CallTool("astral_select_point", Args("{}")).IsError);
+                Assert.False(_host.CallTool("astral_select_point", Args("{\"point\":4}")).IsError);
+            }
+
+            Assert.Equal(2, captured.Count);
+            Assert.Contains(AgentBridgeLayout.Tool.SelectPoint, captured[0]);
+            Assert.Contains("\"point\":1", captured[0].Replace(" ", ""));
+            Assert.Contains("\"point\":4", captured[1].Replace(" ", ""));
+        }
+
+        [Fact]
         public void 事件选择工具_把index送进命令文件()
         {
             WriteHeartbeat();
@@ -634,6 +719,10 @@ namespace AstralParty.Mcp.Tests
             Assert.Contains("astral_shop_buy", names);
             Assert.Contains("astral_atm_transfer", names);
             Assert.Contains("astral_buy_relic", names);
+            Assert.Contains("astral_stop_or_continue", names);
+            Assert.Contains("astral_pursue_monster", names);
+            Assert.Contains("astral_vendor_buy_card", names);
+            Assert.Contains("astral_select_point", names);
             Assert.Contains("astral_speed", names);
             Assert.Contains("astral_control", names);
             Assert.Contains("astral_emergency_stop", names);

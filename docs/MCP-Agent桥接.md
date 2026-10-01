@@ -127,6 +127,10 @@ RecentActions[]{AtMs,Tool,Ok,Code,Detail}
 | **5047** | `AskBattleC2S{AskPlayerId,FightBack,…}`；**`FightBack=true` 不开窗**（客户端自己立刻接受） | AskFight |
 | **5035** | 不解负载（客户端也不解，实测 537/537 条 `Data` 长度为 0）：`sn`=自带 `Sn` | FightCard |
 | **5039** | `BattleChoiceC2S{NoDodge,…}`（只用得上 `NoDodge`，其余字段是服务器填的） | FightChoice |
+| **5077** | **零负载**（实测 63/63 条 `DataLen=0`）：`sn`=自带 `Sn` | StopOrContinue |
+| **5213** | **零负载**（实测 10/10 条长度为 0）：`sn`=自带 `Sn`；候选是客户端本地算的 | PursueMonster |
+| **5323** | `VendorBuyCardC2S`：`Info.Sn==0` → offer（读 `CardId`/`Gold`）；`Info.Sn!=0` → 某人的答案 | VendorCard |
+| **5067** | `ThrowDiceResultC2S`：`Info.Sn==0` → offer（读 `MaxPoint`）；`Info.Sn!=0` → 某人的答案 | SelectPoint |
 | 5030 / 5216 / 5250 | 各回执 → 关窗口 | — |
 | 5212 | `SelectRelicS2C`（`IsReroll` 时 SDK 事件被过滤） | — |
 | **5318** | `SelectEventS2C{PlayerId,EventId}` → 关窗口 | — |
@@ -134,6 +138,10 @@ RecentActions[]{AtMs,Tool,Ok,Code,Detail}
 | **5048** | `AskBattleS2C{PlayerId,IsBattle}` → 关窗口 | — |
 | **5036** | `BattleUseCardS2C{PlayerId,CardId}`（`CardId==0` = 这次没出牌）→ 关窗口 | — |
 | **5040** | `BattleChoiceS2C{PlayerId,Val,Dodge}` → 关窗口 | — |
+| **5078** | `StopOrContinueS2C{PlayerId,Stop}` → 关窗口 | — |
+| **5214** | `MonsterPursuitS2C{PlayerId,NodeId,FrontIds,BackId,Exit}` → 关窗口 | — |
+| **5324** | `VendorBuyCardS2C{PlayerId,IsBuy}` → 关窗口 | — |
+| **5068** | `ThrowDiceResultS2C{PlayerId,MaxPoint,Point}` → 关窗口 | — |
 
 **战斗三件套（5047 / 5035 / 5039，PVE 里出现频率最高的窗口）**的依据（反编译 + 3 局真实回放实测）：
 
@@ -161,6 +169,31 @@ RecentActions[]{AtMs,Tool,Ok,Code,Detail}
   所以 `BattleThrowDice`/`BattleChoice` 按客户端原样带 0 即可。
 - 教学/战役图（`roomInfo.IsCampaign() || MapType == 10`）**不注册倒计时**，且走
   `GameLogicManager.tutorial.Request*` 的本地假回包路径；在这种图上用 `fight.Request*` 无意义。
+
+**地块四件套（5077 加油站/出生点 / 5213 怪物追击 / 5323 商人买卡 / 5067 控移选点）**的依据
+（反编译 `AstralParty.Runtime.dll` + 3 局真实回放实测，逐条证据见 `decomp\四窗口契约.md`）：
+
+- **5077 加油站/出生点**：`StopOrContinueC2S{Info,Stop}`（field2 `Stop`，`true`=停留、`false`=继续走）。
+  offer **零负载**（63 条实测全为 0），客户端从不读 `Data`；超时回调点的是 `btn_Continue` →
+  **不答 = 继续走**。窗口只在我身上（`IsSelf(action.PlayerId)`），信息全在本地（站在哪种地块、
+  星币/等级），所以桥接把 `GameProbe.SelfStandLand()` 读出来的地块名（`born`/`fillingStation`/`other`）
+  一并报给 agent。
+- **5213 怪物追击**：`MonsterPursuitC2S{Info,SelectId}`（`SelectId` = 候选怪物自己的 `playerId`，
+  `0` = 不追）；offer **零负载**（10 条实测全为 0）。**候选不在协议里** —— 客户端走
+  `LandLogic.GetVailPursuitMonster()` 本地过滤：`characterType==Monster && !Property.NotSelect && HP>0 &&
+  CharacterInst!=null && standLand.LandType!=Hospital && TeamId != 自己`。桥接复刻了同一口径
+  （`GameProbe.TrySelfPursuitMonsters`），并且**只接受候选里的 id**（不在候选里的请求服务器不会受理，
+  agent 却会以为追成了）。超时 → `SelectId=0`（不追）。候选 id 是 64 位 `playerId`，
+  走 `AgentCandidate.LongId` 传给 agent（`Id` 仍是 `int`，只作展示）。
+- **5323 商人买卡**：offer 与答案**是同一个消息类** `VendorBuyCardC2S` —— offer 只有 `CardId`（sfixed32）
+  与 `Gold`（价格），**没有 `Info`**；答案是 `{Info, IsBuy}`，**不回填 `CardId`/`Gold`**。
+  所以判别只能靠 `Info.Sn`：`0` → offer，非 0 → 某人的答案。超时 → `IsBuy=false`（不买）；
+  星币不足时客户端**只弹提示、不发包**，所以 `CommandRunner` 也挡下 `buy=true`。
+- **5067 控移卡选点**：offer = `ThrowDiceResultC2S{MaxPoint}`（没有 `Info`、没有 `Point`），
+  答案 = `{Info, Point}`，`Point ∈ 1..MaxPoint`；同一条消息，同样用 `Info.Sn==0` 判别。
+  `ActionListener` 只对 `IsSelf` 开窗口；超时 → `Point=1`。
+- 四者**都用 `Info.Sn` 回传窗口的 sn**、回执一律 `id+1`；教学/战役图上同样
+  `ActionDownTime` 返回 null（没有倒计时、没有自动代答）。
 
 `5037`/`5038`/`5317`/`5318` 的依据（反编译）：
 
@@ -270,9 +303,9 @@ RecentActions[]{AtMs,Tool,Ok,Code,Detail}
 
 | 层 | 项目 | 覆盖 |
 |---|---|---|
-| 纯逻辑 | `tests\AstralParty.AgentMod.Tests`（89 个） | 目录/文件协议（原子写、日志尾部按行截断、轮转、`Sanitize` 防穿越、`{seq:D8}` 排序）、`PendingTracker` 逐窗口（含 `Sn==0` 拒绝、别人的窗口、优先级、倒计时、副本语义、**已应答 sn 的回声防护**、事件选择与战斗骰窗口、**战斗三件套 5047/5035/5039（含"别人的窗口不许顶掉我的"与 `NoDodge` 查询）**）、命令解析与回执序列化、`control.json` 读取（含大小写容错与急停/恢复往返）、**热更 BCL 禁用模式 lint** |
-| 协议 + 集成 | `tests\AstralParty.Mcp.Tests`（61 个） | JSON-RPC 全路径、工具清单与注解、参数校验、开关合并、**真文件往返**（假游戏线程消费 `commands` 写 `results`）、**新工具的参数确实落进命令文件**（含 `ask_battle`/`battle_choice`/`use_card` 的 `pass`）、超时清理、事件尾部截取、`Pending.Kind=None` 的大小写判定 |
-| 端到端冒烟 | `tools\smoke-agent-bridge.ps1`（39 项断言） | **真 server exe** + 临时桥接目录扮演游戏：握手/工具清单（23 个）、state/bridge/control 字段与大小写、命令文件往返与两侧清理（含战斗三件套）、心跳过期拒绝下发 |
+| 纯逻辑 | `tests\AstralParty.AgentMod.Tests`（106 个） | 目录/文件协议（原子写、日志尾部按行截断、轮转、`Sanitize` 防穿越、`{seq:D8}` 排序）、`PendingTracker` 逐窗口（含 `Sn==0` 拒绝、别人的窗口、优先级、倒计时、副本语义、**已应答 sn 的回声防护**、事件选择与战斗骰窗口、**战斗三件套 5047/5035/5039（含"别人的窗口不许顶掉我的"与 `NoDodge` 查询）**、**地块四件套 5077/5213/5323/5067（含 64 位 `LongId`、价格/点数上限查询、回声防护）**）、命令解析与回执序列化、`control.json` 读取（含大小写容错与急停/恢复往返）、**热更 BCL 禁用模式 lint** |
+| 协议 + 集成 | `tests\AstralParty.Mcp.Tests`（66 个） | JSON-RPC 全路径、工具清单与注解、参数校验、开关合并、**真文件往返**（假游戏线程消费 `commands` 写 `results`）、**新工具的参数确实落进命令文件**（含 `ask_battle`/`battle_choice`/`use_card` 的 `pass`、以及地块四件套的 `stop`/`monsterId`/`buy`/`point`）、超时清理、事件尾部截取、`Pending.Kind=None` 的大小写判定 |
+| 端到端冒烟 | `tools\smoke-agent-bridge.ps1`（49 项断言） | **真 server exe** + 临时桥接目录扮演游戏：握手/工具清单（27 个）、state/bridge/control 字段与大小写、命令文件往返与两侧清理（含战斗三件套与地块四件套）、心跳过期拒绝下发 |
 | 真机 | 需要用户配合 | 见下 |
 
 **为什么要"假桥接目录"这种测法**：整条链路的契约就是目录里的文件。测试里真写 `state.json`、
@@ -328,14 +361,16 @@ pwsh -NoProfile -File tools\smoke-agent-bridge.ps1
 5. **最小真实操作**：关掉演练，在**自己房间/练习或单人对局**里先做最无害的一步
    （掷骰 → 移动），确认画面真的动了、`astral_actions` 有回执。
 6. **窗口类操作逐个验**：筹码三选一（含 reroll）→ 奖励卡 → 商店（买/离店）→ 筹码地块买/不买 →
-   事件选择（5317）→ 战斗攻击骰（5037）→ **战斗三件套**（5047 打不打 / 5035 出牌 / 5039 闪避）。
+   事件选择（5317）→ 战斗攻击骰（5037）→ **战斗三件套**（5047 打不打 / 5035 出牌 / 5039 闪避）→
+   **地块四件套**（5077 停留/继续走 / 5213 追不追怪 / 5323 商人买不买 / 5067 选几点移动力）。
    每验一个都去 `docs` 或本文把"未验证"标注改成"已确认"（含日期）。
-   > 事件选择、战斗骰、战斗三件套都是 2026-10-01 按反编译 + 真实回放**协议实测**补进工具的，
+   > 事件选择、战斗骰、战斗三件套、地块四件套都是 2026-10-01 按反编译 + 真实回放**协议实测**补进工具的，
    > **契约与状态机有离线测试，但真机上一个都没验过** —— 真机第一件事是看 `astral_actions` 里
-   > 出现 5317/5037/5047/5035/5039 时 `astral_pending` 是否报出对应 kind（`selectEvent`/`battleDice`/
-   > `askFight`/`fightCard`/`fightChoice`），以及 `astral_use_card` 报的候选是不是我手上真有的牌。
+   > 出现 5317/5037/5047/5035/5039/5077/5213/5323/5067 时 `astral_pending` 是否报出对应 kind（`selectEvent`/
+   > `battleDice`/`askFight`/`fightCard`/`fightChoice`/`stopOrContinue`/`pursueMonster`/`vendorCard`/`selectPoint`），
+   > 以及 `astral_use_card` 报的候选是不是我手上真有的牌、`astral_pursue_monster` 的候选是不是服务器也认。
    > 战斗三件套在 PVE 里出现频率极高（3 局样本里 5035 出现 376 次、5047 205 次、5039 159 次），
-   > 所以这一条是最值得优先验的。
+   > 四件套里 5213/5323 稀少（3 局样本里 5323 只在 `1790736781145194` 那局出现 10 次），所以这一条是最值得优先验的。
 7. **急停**：`astral_emergency_stop` → 再发动作应回 `paused` 且游戏不动；
    `astral_resume` 恢复。
 8. **超时行为**：故意在窗口里不作为，观察客户端是否真的自动选择（这会确认 §5 的"客户端自动替你选"
@@ -366,6 +401,15 @@ pwsh -NoProfile -File tools\smoke-agent-bridge.ps1
   `NoDodge=true` 时客户端直接拒绝 `Dodge=true`（只弹提示 10003）；超时点 `btn_Defend` → `Dodge=false`。
 - **战斗超时时长**：`ChoosingTimeLimit[TimePlan].OtherTimeLimit` = 10/20/40 秒，`ExtraTime` 恒 0；
   超时累计会进 AFK 惩罚。
+- **5077 加油站/出生点**：`StopOrContinueC2S{Info,Stop}`（`true`=停留、`false`=继续走）；Action `Data` 恒空
+  （63/63），窗口只属 `IsSelf`；超时点 `btn_Continue` → `Stop=false`。
+- **5213 怪物追击**：`MonsterPursuitC2S{Info,SelectId}`（`SelectId`=怪物 `playerId`，0=不追）；`Data` 恒空（10/10）；
+  候选 = 客户端 `LandLogic.GetVailPursuitMonster()` 本地过滤（`Monster && !NotSelect && HP>0 && CharacterInst!=null
+  && standLand.LandType!=Hospital && TeamId!=自己`）；超时 `SelectId=0`。
+- **5323 商人买卡**：offer `{CardId,Gold}`（无 `Info`，实测 `CardId` 21014/21015/21016、`Gold`=5）、
+  答案 `{Info,IsBuy}`（不回填 `CardId`/`Gold`），靠 `Info.Sn` 判别；超时 `IsBuy=false`；星币不足客户端不发包。
+- **5067 控移卡选点**：offer `{MaxPoint}`（无 `Info`）、答案 `{Info,Point∈1..MaxPoint}`，靠 `Info.Sn` 判别；
+  只对 `IsSelf` 开窗；超时 `Point=1`。
 - `Select=2` 买、`0` 离开（不是 `Exit`）。
 - `OperationTimer` 有 `operationTime`/`downtime`/`timerDict`，`GetOperateTimer(sn).GetTimeRemaining()`。
 - 客户端在超时后会替玩家自动选择。
@@ -378,10 +422,11 @@ pwsh -NoProfile -File tools\smoke-agent-bridge.ps1
 - `ActionLogic.throwDiceSn` / `CardSN` 足以推断掷骰与卡牌窗口。
 
 **未决（不要当成已确认）**
-- `ActionListener` switch 里其余窗口还没接管：抽奖 5041 / 追击 5033+5213 / 占卜 5069 / 医院 5093 /
-  赌场 5081+5083 / 加油站 5077 / 命运 5071 / 电池 5063 / 再走一次 5043 / 机制选择 5259 /
-  商人买卡 5323 / 复活队友 5233 / 助力投票 5309 / 剧情 5313。
-  （战斗内 5035+5039 与战斗询问 5047 **已接管**，见上。）
+- `ActionListener` switch 里其余窗口还没接管：抽奖 5041 / 追击 5033 / 占卜 5069 / 医院 5093 /
+  赌场 5081+5083 / 命运 5071 / 电池 5063 / 再走一次 5043 / 掷骰得星币 5049 / 事件触发 5053 /
+  炸弹骰 5059 / 机制选择 5259 / 复活队友 5233 / 助力投票 5309 / 剧情 5313。
+  （战斗内 5035+5039 与战斗询问 5047 **已接管**；地块四件套 5077+5213+5323+5067 **已接管**，见上。
+  5029 PVP 商店按"只做 PVE"的范围决定**不做**。）
 - `AskBattleC2S.IsPursuit` / `SkillPlayerId` 的游戏语义（全量反编译里既不读也不写，只有服务器填）。
 - `BattleUseCardS2C.NoCard` 字段（客户端从不读，实测 3 局 376 条全为 `false`；跳过语义是 `CardId==0`）。
 - `ShopBuyS2C` / `PVEShopBuyS2C.AssistPlayer` 的服务端语义。

@@ -197,6 +197,18 @@ namespace AstralParty.AgentMod.Bridge
                     _tracker.SetFightCardCandidates(uids, costs, residue, attacker);
             }
 
+            // 追击窗口(5213): 候选怪物**不在协议里**, 只有本地过滤出来的那一份(GetVailPursuitMonster 同口径)
+            if (_tracker.WindowKind == AgentPendingKind.PursueMonster)
+            {
+                long[] monsters;
+                if (GameProbe.TrySelfPursuitMonsters(out monsters))
+                    _tracker.SetPursuitMonsters(monsters);
+            }
+
+            // 加油站/出生点窗口(5077): offer 零负载, 窗口内容(站在哪种地块)只能从本地读, 供 agent 参考
+            if (_tracker.WindowKind == AgentPendingKind.StopOrContinue)
+                _tracker.SetStandLand(GameProbe.SelfStandLand());
+
             st.Pending = _tracker.Build(SelfId, canThrowDice, sn, now, DeadlineProbe.RemainingMs, ResolveName);
             st.NotMove = notMove;
         }
@@ -234,6 +246,24 @@ namespace AstralParty.AgentMod.Bridge
                             return "手牌#" + id;
                         }
                     case "land": return "#" + id;
+                    // 追击候选的 id 是怪物(也是玩家)的 playerId, 名字从房间花名册里反查
+                    case "monster":
+                        {
+                            try
+                            {
+                                var roster = Players.Roster();
+                                if (roster != null)
+                                {
+                                    for (int i = 0; i < roster.Count; i++)
+                                    {
+                                        var r = roster[i];
+                                        if (r.Id == id && !string.IsNullOrEmpty(r.Name)) return r.Name;
+                                    }
+                                }
+                            }
+                            catch { }
+                            return "#" + id;
+                        }
                     default: return "#" + id;
                 }
             }

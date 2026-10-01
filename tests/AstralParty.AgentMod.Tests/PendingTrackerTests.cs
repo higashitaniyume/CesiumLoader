@@ -673,5 +673,236 @@ namespace AstralParty.AgentMod.Tests
             Assert.Equal(5047, askedSn);
             Assert.Equal(12345, p.RemainingMs);
         }
+
+        // ---------- 加油站/出生点(5077 / 回执 5078) ----------
+
+        [Fact]
+        public void 加油站窗口_给停留与继续两个选项()
+        {
+            var t = new PendingTracker();
+            t.OnStopOrContinueOffer(Self, 5077, 1000);
+            t.SetStandLand("fillingStation");
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Equal(AgentPendingKind.StopOrContinue, p.Kind);
+            Assert.Equal(5077, p.Sn);
+            Assert.True(p.Actionable);
+            Assert.Equal("fillingStation", p.Land);
+            Assert.Contains(p.Options, o => o.Contains("astral_stop_or_continue") && o.Contains("true"));
+            Assert.Contains(p.Options, o => o.Contains("astral_stop_or_continue") && o.Contains("false"));
+            Assert.Contains(p.Notes, n => n.Contains("超时不答 = 继续走"));
+        }
+
+        [Fact]
+        public void 加油站窗口_没读到地块时也照常开窗()
+        {
+            var t = new PendingTracker();
+            t.OnStopOrContinueOffer(Self, 5077, 1000);
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Equal(AgentPendingKind.StopOrContinue, p.Kind);
+            Assert.Contains(p.Notes, n => n.Contains("没读到当前地块"));
+        }
+
+        [Fact]
+        public void 加油站回执_关掉窗口()
+        {
+            var t = new PendingTracker();
+            t.OnStopOrContinueOffer(Self, 5077, 1000);
+            t.OnStopOrContinueDone(Self, 1100);
+
+            Assert.Equal(AgentPendingKind.None, Build(t, false, 0, 1200).Kind);
+        }
+
+        [Fact]
+        public void 加油站窗口_应答后的同sn回声不会重开()
+        {
+            var t = new PendingTracker();
+            t.OnStopOrContinueOffer(Self, 5077, 1000);
+            t.NoteAnswered(5077);                       // 我答了
+            t.OnStopOrContinueDone(Self, 1100);         // 回执关窗
+            t.OnStopOrContinueOffer(Self, 5077, 1200);  // 服务器把我自己的答案当动作回播(同 sn)
+
+            Assert.Equal(AgentPendingKind.None, Build(t, false, 0, 1300).Kind);
+        }
+
+        // ---------- 怪物追击(5213 / 回执 5214) ----------
+
+        [Fact]
+        public void 追击窗口_候选是怪物playerId且带64位id()
+        {
+            var t = new PendingTracker();
+            t.OnPursueMonsterOffer(Self, 5213, 1000);
+            t.SetPursuitMonsters(new[] { 1080857L, 2287364L });
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Equal(AgentPendingKind.PursueMonster, p.Kind);
+            Assert.Equal(5213, p.Sn);
+            Assert.True(p.Actionable);
+            Assert.Equal(2, p.Candidates.Count);
+            Assert.Equal("monster", p.Candidates[0].Kind);
+            Assert.Equal(1080857L, p.Candidates[0].LongId);
+            Assert.Equal(2287364L, p.Candidates[1].LongId);
+            Assert.Contains(p.Options, o => o.Contains("astral_pursue_monster") && o.Contains("monsterId"));
+            Assert.Contains(p.Options, o => o.Contains("pass"));
+            Assert.Contains(p.Notes, n => n.Contains("超时不答 = 不追击"));
+        }
+
+        [Fact]
+        public void 追击候选_名字按monster口径问()
+        {
+            var t = new PendingTracker();
+            t.OnPursueMonsterOffer(Self, 5213, 1000);
+            t.SetPursuitMonsters(new[] { 4242L });
+
+            string kindSeen = null;
+            var p = t.Build(Self, false, 0, 1200, (k, sn) => -1,
+                (k, id) => { kindSeen = k; return "小怪"; });
+
+            Assert.Equal("monster", kindSeen);
+            Assert.Equal("小怪", p.Candidates[0].Name);
+        }
+
+        [Fact]
+        public void 追击窗口_没有可追的怪时说明只能不追()
+        {
+            var t = new PendingTracker();
+            t.OnPursueMonsterOffer(Self, 5213, 1000);
+            t.SetPursuitMonsters(new long[0]);
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Empty(p.Candidates);
+            Assert.Contains(p.Options, o => o.Contains("pass"));
+            Assert.Contains(p.Notes, n => n.Contains("没算出可追的怪"));
+        }
+
+        [Fact]
+        public void 追击窗口_执行器能取到候选怪物用于校验()
+        {
+            var t = new PendingTracker();
+            t.OnPursueMonsterOffer(Self, 5213, 1000);
+            t.SetPursuitMonsters(new[] { 7L, 8L });
+
+            long[] ids;
+            Assert.True(t.TryGetMonsterIds(out ids));
+            Assert.Equal(new[] { 7L, 8L }, ids);
+        }
+
+        [Fact]
+        public void 追击回执_关掉窗口()
+        {
+            var t = new PendingTracker();
+            t.OnPursueMonsterOffer(Self, 5213, 1000);
+            t.OnPursueMonsterDone(Self, 1100);
+
+            Assert.Equal(AgentPendingKind.None, Build(t, false, 0, 1200).Kind);
+        }
+
+        [Fact]
+        public void 别人的追击窗口_既不报给我也不顶掉我的()
+        {
+            var t = new PendingTracker();
+            t.SetSelf(Self);
+
+            t.OnStopOrContinueOffer(Self, 5077, 1000);
+            t.OnPursueMonsterOffer(Other, 5213, 1100);
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Equal(AgentPendingKind.StopOrContinue, p.Kind);
+            Assert.Equal(5077, p.Sn);
+        }
+
+        // ---------- 商人买卡(5323 / 回执 5324) ----------
+
+        [Fact]
+        public void 商人买卡窗口_带上价格与卡牌id()
+        {
+            var t = new PendingTracker();
+            t.OnVendorCardOffer(Self, 21014, 5, 5323, 1000);
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Equal(AgentPendingKind.VendorCard, p.Kind);
+            Assert.Equal(5323, p.Sn);
+            Assert.Equal(5, p.VendorPrice);
+            Assert.Equal(21014, p.VendorCardId);
+            Assert.True(p.Actionable);
+            Assert.Contains(p.Options, o => o.Contains("astral_vendor_buy_card") && o.Contains("true"));
+            Assert.Contains(p.Options, o => o.Contains("astral_vendor_buy_card") && o.Contains("false"));
+            Assert.Contains(p.Notes, n => n.Contains("超时不答 = 不买"));
+        }
+
+        [Fact]
+        public void 商人买卡窗口_执行器能取到价格()
+        {
+            var t = new PendingTracker();
+            t.OnVendorCardOffer(Self, 21015, 7, 5323, 1000);
+
+            int price;
+            Assert.True(t.TryGetVendorPrice(out price));
+            Assert.Equal(7, price);
+        }
+
+        [Fact]
+        public void 商人买卡回执_关掉窗口()
+        {
+            var t = new PendingTracker();
+            t.OnVendorCardOffer(Self, 21016, 5, 5323, 1000);
+            t.OnVendorCardDone(Self, 1100);
+
+            Assert.Equal(AgentPendingKind.None, Build(t, false, 0, 1200).Kind);
+        }
+
+        // ---------- 控制移动卡选点(5067 / 回执 5068) ----------
+
+        [Fact]
+        public void 选点窗口_给出可选上限()
+        {
+            var t = new PendingTracker();
+            t.OnSelectPointOffer(Self, 6, 5067, 1000);
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Equal(AgentPendingKind.SelectPoint, p.Kind);
+            Assert.Equal(5067, p.Sn);
+            Assert.Equal(6, p.MaxPoint);
+            Assert.True(p.Actionable);
+            Assert.Contains(p.Options, o => o.Contains("astral_select_point") && o.Contains("1..6"));
+            Assert.Contains(p.Notes, n => n.Contains("超时不答 = 1 点"));
+        }
+
+        [Fact]
+        public void 选点窗口_执行器能取到上限()
+        {
+            var t = new PendingTracker();
+            t.OnSelectPointOffer(Self, 6, 5067, 1000);
+
+            int max;
+            Assert.True(t.TryGetMaxPoint(out max));
+            Assert.Equal(6, max);
+        }
+
+        [Fact]
+        public void 没有选点窗口时_查不到上限()
+        {
+            var t = new PendingTracker();
+            int max;
+            Assert.False(t.TryGetMaxPoint(out max));
+        }
+
+        [Fact]
+        public void 选点回执_关掉窗口()
+        {
+            var t = new PendingTracker();
+            t.OnSelectPointOffer(Self, 6, 5067, 1000);
+            t.OnSelectPointDone(Self, 1100);
+
+            Assert.Equal(AgentPendingKind.None, Build(t, false, 0, 1200).Kind);
+        }
     }
 }

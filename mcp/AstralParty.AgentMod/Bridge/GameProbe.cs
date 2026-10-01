@@ -279,6 +279,81 @@ namespace AstralParty.AgentMod.Bridge
             catch { return false; }
         }
 
+        /// <summary>
+        /// 追击窗口(5213)的候选怪物 —— 与客户端 <c>LandLogic.GetVailPursuitMonster()</c> 完全同口径:
+        /// <c>CharacterType.Monster &amp;&amp; !Property.NotSelect &amp;&amp; HP &gt; 0 &amp;&amp; CharacterInst != null
+        /// &amp;&amp; standLand.LandType != LandType.Hospital &amp;&amp; 与我不同队伍</c>。
+        /// 候选就是这些单位(怪物也是玩家)的 playerId, 应答时填进 <c>MonsterPursuitC2S.SelectId</c>。
+        /// </summary>
+        /// <remarks>
+        /// 只用 <c>var</c> 不写死类型名: <c>Character</c>/<c>UnitLand</c> 在热更程序集里, 类型名可能带命名空间,
+        /// 而成员访问不受影响(程序集是直接引用的)。
+        /// </remarks>
+        public static bool TrySelfPursuitMonsters(out long[] monsterIds)
+        {
+            monsterIds = null;
+            try
+            {
+                var gm = SimpleSingletonProvider<GameLogicManager>.inst;
+                var battle = gm != null ? gm.battle : null;
+                if (battle == null) return false;
+
+                var self = battle.GetSelfPlayerData();
+                if (self == null) return false;
+
+                var list = battle.PlayerDatas;
+                if (list == null) return false;
+
+                var ids = new List<long>();
+                for (int i = 0; i < list.Count; i++)
+                {
+                    var pd = list[i];
+                    if (pd == null || pd.player == null) continue;
+                    try
+                    {
+                        if (pd.characterType != CharacterType.Monster) continue;
+                        if (pd.Property != null && pd.Property.NotSelect != null && pd.Property.NotSelect.Value) continue;
+                        if (pd.Property == null || pd.Property.HP == null || pd.Property.HP.Value <= 0) continue;
+                        var inst = pd.CharacterInst;
+                        if (inst == null) continue;
+                        var land = inst.standLand;
+                        if (land == null) continue;
+                        if (land.LandType == LandType.Hospital) continue;
+                        if (self.player != null && self.player.TeamId == pd.player.TeamId) continue;
+                    }
+                    catch { continue; }
+                    if (pd.player.Id != 0) ids.Add(pd.player.Id);
+                }
+                monsterIds = ids.ToArray();
+                return true;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>
+        /// 我(或指定玩家)当前站在什么地块上 —— 5077 窗口的全部"信息"都来自本地玩家状态
+        /// (那条动作的 Data 恒为 0 字节, 见 decomp/四窗口契约.md)。
+        /// 返回 "born" / "fillingStation" / "other"; 读不到返回 null。
+        /// </summary>
+        public static string SelfStandLand()
+        {
+            try
+            {
+                var gm = SimpleSingletonProvider<GameLogicManager>.inst;
+                var battle = gm != null ? gm.battle : null;
+                if (battle == null) return null;
+                var self = battle.GetSelfPlayerData();
+                if (self == null || self.CharacterInst == null) return null;
+                var land = self.CharacterInst.standLand;
+                if (land == null) return null;
+                var t = land.LandType;
+                if (t == LandType.Born) return "born";
+                if (t == LandType.FillingStation) return "fillingStation";
+                return "other";
+            }
+            catch { return null; }
+        }
+
         /// <summary>单张战斗牌的消耗: 优先 per-card 逻辑(<c>cardActions[cardId].GetCostValue</c>), 退回手牌自带 BattleCost。</summary>
         private static int SafeCardCost(GameLogicManager gm, long self, HandCardData hc)
         {
