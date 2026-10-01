@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>AstralParty.Mcp</AssemblyName>
+    <RootNamespace>AstralParty.Mcp</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <NuGetAudit>false</NuGetAudit>
+    <!-- 单文件自包含发布时不要把控制台编码搞坏(中文工具输出) -->
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AstralParty.Mcp.Core\AstralParty.Mcp.Core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -206,6 +206,54 @@ jobs:
           ) -join [Environment]::NewLine
           Set-Content -Path "sdk-staging/README.txt" -Value $readme -Encoding UTF8
 
+      - name: Stage AI agent bridge package (optional add-on)
+        shell: pwsh
+        run: |
+          # 这一包**不进** cesium-loader.zip: AI 接管是可选能力, 不默认塞给所有用户。
+          # 游戏内 mod(AstralParty.AgentMod)需要游戏热更 DLL 才能编译, CI 没有 → 用 dist\agent 下
+          # 本地预编译并入库的产物(与 dist\ 里其它托管产物同一约定); MCP server 无游戏依赖, CI 现场构建。
+          $modSrc = "dist/agent/AstralParty.AgentMod"
+          if (-not (Test-Path "$modSrc/AstralParty.AgentMod.dll")) { throw "缺少预编译产物: $modSrc/AstralParty.AgentMod.dll" }
+          if (-not (Test-Path "$modSrc/AstralParty.AgentMod.json")) { throw "缺少 sidecar: $modSrc/AstralParty.AgentMod.json" }
+
+          # 自包含单文件(与 cesium.exe 同样的理由: 目标机不一定装了 .NET 8)
+          dotnet publish mcp\AstralParty.Mcp\AstralParty.Mcp.csproj -c Release -r win-x64 `
+            --self-contained true -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true -o agent-tools --nologo
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path "agent-tools/AstralParty.Mcp.exe")) { throw "AstralParty.Mcp.exe 未生成" }
+
+          New-Item -ItemType Directory -Path "agent-staging/mods/AstralParty.AgentMod", "agent-staging/docs" -Force | Out-Null
+          Copy-Item "agent-tools/AstralParty.Mcp.exe" "agent-staging/AstralParty.Mcp.exe" -Force
+          Copy-Item "$modSrc/AstralParty.AgentMod.dll"  "agent-staging/mods/AstralParty.AgentMod/AstralParty.AgentMod.dll"  -Force
+          Copy-Item "$modSrc/AstralParty.AgentMod.json" "agent-staging/mods/AstralParty.AgentMod/AstralParty.AgentMod.json" -Force
+          # 用通配符而不是中文字面量路径, 免掉 YAML/控制台编码的坑
+          Copy-Item "docs/MCP-*.md" "agent-staging/docs/" -Force
+          Copy-Item "mcp/README.md" "agent-staging/docs/MCP-README.md" -Force
+
+          $readme = @(
+            "cesium-agent-mcp ${{ steps.version.outputs.version }} —— AI agent 接管《吉星派对》对局 (可选组件)",
+            "",
+            "这一包不属于加载器本体, 需要先装好 CesiumLoader(version.dll + AstralParty_ModLoader\)。",
+            "",
+            "安装:",
+            "  1. AstralParty.Mcp.exe                     → 放任意目录(MCP server, 自包含无需 .NET 运行时)",
+            "  2. mods\AstralParty.AgentMod\*.dll/.json   → 整个文件夹复制到 <游戏exe目录>\AstralParty_ModLoader\mods\ 下",
+            "  3. 启动游戏(桥接会自己建 %LocalAppData%\AstralParty_ModLoader\agent\)",
+            "  4. 自检: AstralParty.Mcp.exe --print-config   (看到『心跳: 活着』即通)",
+            "",
+            "在 MCP 客户端(Claude Desktop 等)里配置:",
+            '  { "mcpServers": { "astral-party": { "command": "<AstralParty.Mcp.exe 的完整路径>" } } }',
+            "",
+            "安全开关(control.json, 或用工具的 astral_control / astral_emergency_stop):",
+            "  enableActions=false → 只读; pauseActions=true → 急停; dryRun=true → 只记录不发指令",
+            "",
+            "⚠ 服务器权威: agent 只能替你点合法的客户端操作, 不能改数值。",
+            "   请只在自己的房间/账号上使用; 详见 docs\MCP-Agent桥接.md 的边界说明。",
+            "卸载: 删除 AstralParty_ModLoader\mods\AstralParty.AgentMod\ 目录即可, 不影响加载器与其它 mod。"
+          ) -join [Environment]::NewLine
+          Set-Content -Path "agent-staging/README.txt" -Value $readme -Encoding UTF8
+
       - name: Package zip
         shell: pwsh
         run: |
@@ -217,6 +265,10 @@ jobs:
           $sdkZip = "cesium-sdk-tools-${{ steps.version.outputs.version }}.zip"
           Compress-Archive -Path "sdk-staging/*" -DestinationPath $sdkZip -CompressionLevel Optimal
           Copy-Item $sdkZip "cesium-sdk-tools.zip" -Force
+          # AI 接管桥接(可选组件, 与加载器包分开)
+          $agentZip = "cesium-agent-mcp-${{ steps.version.outputs.version }}.zip"
+          Compress-Archive -Path "agent-staging/*" -DestinationPath $agentZip -CompressionLevel Optimal
+          Copy-Item $agentZip "cesium-agent-mcp.zip" -Force
           Get-ChildItem *.zip | Select-Object Name, Length
 
       - name: Upload build artifact
@@ -228,6 +280,8 @@ jobs:
             cesium-loader.zip
             cesium-sdk-tools-*.zip
             cesium-sdk-tools.zip
+            cesium-agent-mcp-*.zip
+            cesium-agent-mcp.zip
           if-no-files-found: error
           retention-days: 1
 

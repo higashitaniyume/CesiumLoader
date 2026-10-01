@@ -13,7 +13,7 @@
 │   └── 原生加载 sdk\*.dll → mods\{ModId}\{ModId}.dll → 调用 {文件名}.ModEntry.Main()
 └── CesiumLoader.SDK.dll (netstandard2.0, 供 mod 编译期引用)
     ├── ModBase      mod 生命周期基座
-    ├── GameEvents   15 个游戏事件 (RPC 回调 hook)
+    ├── GameEvents   16 个游戏事件 (RPC 回调 hook, 含带 sn 的 RawAction 原始动作流)
     ├── Players      玩家数据访问
     ├── Names        名字解析 (卡牌/遗物/技能/角色)
     ├── GameActions  向服务器发送操作 (投骰/移动/用牌等)
@@ -90,7 +90,7 @@ public static class ModEntry
 | 文档 | 内容 |
 |---|---|
 | [SDK-生命周期与日志.md](SDK-生命周期与日志.md) | ModBase.Run / SdkLog 日志分级 |
-| [SDK-事件.md](SDK-事件.md) | GameEvents 15 个事件 + StartAutoHook (事件驱动) |
+| [SDK-事件.md](SDK-事件.md) | GameEvents 16 个事件 + StartAutoHook (事件驱动) |
 | [SDK-玩家与名字.md](SDK-玩家与名字.md) | Players 玩家数据 / Names 名字解析 |
 | [SDK-操作.md](SDK-操作.md) | GameActions 投骰/移动/用牌/选择 (⚠ 声明后可操作, 工具/加载器会警告) |
 | [SDK-变速.md](SDK-变速.md) | SpeedHack 游戏变速 (加载器内置功能, 也可 mod 编程控制) |

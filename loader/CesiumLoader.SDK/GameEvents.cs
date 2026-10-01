@@ -86,8 +86,23 @@ namespace CesiumLoader.SDK
         /// <summary>手牌变化: (playerId, 原始CardInfo列表)。队友的 CardId 可能是负数(服务器掩码)。</summary>
         public static event Action<long, IReadOnlyList<CardInfo>> HandChanged;
 
+        /// <summary>
+        /// **原始动作流**: 服务器 1002 推送的每一条 Action, 不做过滤也不去重。
+        ///
+        /// 用途: SDK 只把常见的几类动作翻译成上面那些强类型事件(如商店/筹码候选),
+        /// 但有些窗口没有对应事件(筹码地块购买 offer 5249、移动 5027 的目标地块、
+        /// 奖励卡候选等)。需要"看到全部动作"的 mod 用这个事件自己解码
+        /// (Data 是 protobuf payload, 用 <c>Core.Net.ByteBuf.ReadObject&lt;T&gt;</c> 解)。
+        ///
+        /// 注意:
+        ///   - 回调在**网络线程**触发, 订阅方自己保证线程安全(别在里面碰 Unity API);
+        ///   - 只在有订阅者时才拷贝 <see cref="RawActionEvent.Data"/>(没订阅者零分配);
+        ///   - 订阅方抛异常不会影响游戏与其他订阅者(SDK 逐个 try/catch)。
+        /// </summary>
+        public static event Action<RawActionEvent> RawAction;
+
         /// <summary>已定义的事件数量(静态常量)。</summary>
-        public static int EventCount => 15;
+        public static int EventCount => 16;
 
         // ---------- hook 状态 ----------
 
@@ -465,7 +480,9 @@ namespace CesiumLoader.SDK
             if (actions == null) return;
             foreach (var a in actions)
             {
-                if (a == null || a.Data == null || a.Data.Length == 0) continue;
+                if (a == null) continue;
+                EmitRawAction(a);
+                if (a.Data == null || a.Data.Length == 0) continue;
                 try
                 {
                     switch (a.Id)
@@ -499,6 +516,58 @@ namespace CesiumLoader.SDK
                 }
                 catch { }
             }
+        }
+
+        /// <summary>把一条 Action 原样广播给 <see cref="RawAction"/> 订阅者(无订阅者时零分配)。</summary>
+        private static void EmitRawAction(party.model.Action a)
+        {
+            var handler = RawAction;
+            if (handler == null) return;
+            try
+            {
+                byte[] data = null;
+                try
+                {
+                    if (a.Data != null && a.Data.Length > 0) data = a.Data.ToByteArray();
+                }
+                catch { }
+
+                var evt = new RawActionEvent
+                {
+                    Id = a.Id,
+                    Sn = a.Sn,
+                    PlayerId = a.PlayerId,
+                    Data = data
+                };
+
+                // 逐个订阅者 try/catch: 一个 mod 抛异常不能影响其它订阅者, 更不能影响游戏
+                var list = handler.GetInvocationList();
+                for (int i = 0; i < list.Length; i++)
+                {
+                    try { ((Action<RawActionEvent>)list[i])(evt); }
+                    catch { }
+                }
+            }
+            catch { }
+        }
+    }
+
+    /// <summary>服务器 1002 推送的一条原始动作(<see cref="GameEvents.RawAction"/>)。</summary>
+    public sealed class RawActionEvent
+    {
+        /// <summary>动作类型 id(与 cmd 号同空间, 如 5021 掷骰 / 5027 移动 / 5211 筹码候选 / 5249 买筹码 offer)。</summary>
+        public int Id;
+        /// <summary>动作序列号(同一动作会被服务器重复广播, 按它去重)。</summary>
+        public long Sn;
+        /// <summary>动作发起者。</summary>
+        public long PlayerId;
+        /// <summary>protobuf payload(可能为 null); 用 <c>Core.Net.ByteBuf.ReadObject&lt;T&gt;(Data)</c> 解码。</summary>
+        public byte[] Data;
+
+        public override string ToString()
+        {
+            return "Action#" + Id + "(sn=" + Sn + ", pid=" + PlayerId +
+                   ", len=" + (Data == null ? 0 : Data.Length) + ")";
         }
     }
 }
