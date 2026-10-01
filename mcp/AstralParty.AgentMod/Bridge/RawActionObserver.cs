@@ -91,7 +91,19 @@ namespace AstralParty.AgentMod.Bridge
         /// </summary>
         private string Decode(RawActionEvent e, bool isSelf, long now)
         {
-            if (e.Data == null || e.Data.Length == 0) return null;
+            // 空负载必须先处理: protobuf 会把"全部字段都是默认值"的消息序列化成 **0 字节**。
+            // 5027 MoveC2S 的默认值恰好就是 Direction==0, 也就是"服务器在问该你走哪儿了" ——
+            // 如果这里直接 return, "该我移动"的窗口会被整个吞掉(agent 永远等不到 astral_move)。
+            // 反向是安全的: "某人已经决定走哪"必然带 Direction != 0, 不可能是空负载。
+            if (e.Data == null || e.Data.Length == 0)
+            {
+                if (e.Id == 5027) // 空负载 = 全默认 = Direction==0 = 该我选落点
+                {
+                    _tracker.OnMoveAction(e.PlayerId, e.Sn, now);
+                    return "MoveOffer{空负载}";
+                }
+                return null; // 其余 id 的空负载无从判断语义, 只记长度(外层已记)
+            }
             try
             {
                 switch (e.Id)
