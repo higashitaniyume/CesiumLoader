@@ -13,7 +13,7 @@
       7. 打包 zip: cesium-loader-<版本>.zip / cesium-loader.zip
                    cesium-sdk-tools-<版本>.zip / cesium-sdk-tools.zip
 
-    版本号单一来源: src\CesiumLoader.SDK\ModManifest.cs 里的 SdkVersion.Current。
+    版本号单一来源: loader\CesiumLoader.SDK\ModManifest.cs 里的 SdkVersion.Current。
     加载器版本与之一致(加载器横幅同时打印两者, 见 config.h 的 loaderVersion)。
 
 .PARAMETER Version
@@ -55,7 +55,7 @@ function Write-Step([string] $text) { Write-Host "`n=== $text ===" -ForegroundCo
 function Resolve-Version
 {
     if ($Version) { return $Version }
-    $manifest = Join-Path $repo 'src\CesiumLoader.SDK\ModManifest.cs'
+    $manifest = Join-Path $repo 'loader\CesiumLoader.SDK\ModManifest.cs'
     $m = [regex]::Match([System.IO.File]::ReadAllText($manifest), 'Current\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"')
     if (-not $m.Success) { throw "无法从 ModManifest.cs 解析 SdkVersion.Current, 请用 -Version 显式指定" }
     return $m.Groups[1].Value
@@ -94,19 +94,19 @@ if (-not $SkipBuild)
     Write-Step '1. 构建原生加载器 (version.dll, Release x64)'
     $msbuild = Resolve-MSBuild
     Write-Host "  MSBuild: $msbuild"
-    & $msbuild 'src\CesiumLoader\CesiumLoader.vcxproj' /p:Configuration=Release /p:Platform=x64 /m /nologo /v:minimal
+    & $msbuild 'loader\CesiumLoader\CesiumLoader.vcxproj' /p:Configuration=Release /p:Platform=x64 /m /nologo /v:minimal
     if ($LASTEXITCODE -ne 0) { throw "原生加载器构建失败 (exit $LASTEXITCODE)" }
-    $nativeDll = 'src\CesiumLoader\bin\Release\version.dll'
+    $nativeDll = 'loader\CesiumLoader\bin\Release\version.dll'
     if (-not (Test-Path $nativeDll)) { throw "version.dll 未生成: $nativeDll" }
 
     Write-Step '2. 构建托管层 (Bootstrap / SDK / mods / cesium CLI)'
-    dotnet build 'src\CesiumLoader.Bootstrap\CesiumLoader.Bootstrap.csproj' -c Release --nologo
+    dotnet build 'loader\CesiumLoader.Bootstrap\CesiumLoader.Bootstrap.csproj' -c Release --nologo
     if ($LASTEXITCODE -ne 0) { throw 'Bootstrap 构建失败' }
-    dotnet build 'src\CesiumLoader.SDK\CesiumLoader.SDK.csproj' -c Release --nologo
+    dotnet build 'loader\CesiumLoader.SDK\CesiumLoader.SDK.csproj' -c Release --nologo
     if ($LASTEXITCODE -ne 0) { throw 'SDK 构建失败' }
     foreach ($mod in $BuiltInMods)
     {
-        dotnet build "src\$mod\$mod.csproj" -c Release --nologo
+        dotnet build "mods\$mod\$mod.csproj" -c Release --nologo
         if ($LASTEXITCODE -ne 0) { throw "$mod 构建失败" }
     }
 
@@ -114,8 +114,8 @@ if (-not $SkipBuild)
     $dist = 'dist\modloader'
     $layout = @(
         @{ From = $nativeDll;                                                              To = "$dist\version.dll" },
-        @{ From = 'src\CesiumLoader.Bootstrap\bin\Release\netstandard2.0\CesiumLoader.Bootstrap.dll'; To = "$dist\AstralParty_ModLoader\bootstrap\CesiumLoader.Bootstrap.dll" },
-        @{ From = 'src\CesiumLoader.SDK\bin\Release\netstandard2.0\CesiumLoader.SDK.dll';   To = "$dist\AstralParty_ModLoader\sdk\CesiumLoader.SDK.dll" }
+        @{ From = 'loader\CesiumLoader.Bootstrap\bin\Release\netstandard2.0\CesiumLoader.Bootstrap.dll'; To = "$dist\AstralParty_ModLoader\bootstrap\CesiumLoader.Bootstrap.dll" },
+        @{ From = 'loader\CesiumLoader.SDK\bin\Release\netstandard2.0\CesiumLoader.SDK.dll';   To = "$dist\AstralParty_ModLoader\sdk\CesiumLoader.SDK.dll" }
     )
     foreach ($item in $layout)
     {
@@ -127,11 +127,11 @@ if (-not $SkipBuild)
     {
         $modDir = "$dist\AstralParty_ModLoader\mods\$mod"
         New-Item -ItemType Directory -Path $modDir -Force | Out-Null
-        $built = "src\$mod\bin\Release\netstandard2.0\$mod.dll"
+        $built = "mods\$mod\bin\Release\netstandard2.0\$mod.dll"
         if (-not (Test-Path $built)) { throw "缺少 mod 产物: $built" }
         Copy-Item $built "$modDir\$mod.dll" -Force
         # sidecar: 有的 mod 源码里带 .json(如 FreeCameraMod), 有的只在 dist 里维护(如 ActivityLogMod)
-        $sidecarSrc = "src\$mod\$mod.json"
+        $sidecarSrc = "mods\$mod\$mod.json"
         if (Test-Path $sidecarSrc) { Copy-Item $sidecarSrc "$modDir\$mod.json" -Force }
         if (-not (Test-Path "$modDir\$mod.json")) { throw "缺少 mod sidecar: $modDir\$mod.json" }
     }
@@ -221,7 +221,7 @@ New-Item -ItemType Directory -Path 'sdk-staging\docs', 'sdk-staging\examples\Act
 Copy-Item 'sdk-tools\cesium.exe' 'sdk-staging\cesium.exe' -Force
 Copy-Item 'dist\modloader\AstralParty_ModLoader\sdk\CesiumLoader.SDK.dll' 'sdk-staging\CesiumLoader.SDK.dll' -Force
 Copy-Item 'docs\*.md' 'sdk-staging\docs\' -Force
-Copy-Item 'src\ActivityLogMod\ModEntry.cs', 'src\ActivityLogMod\AssemblyInfo.cs', 'src\ActivityLogMod\ActivityLogMod.csproj' 'sdk-staging\examples\ActivityLogMod\' -Force
+Copy-Item 'mods\ActivityLogMod\ModEntry.cs', 'mods\ActivityLogMod\AssemblyInfo.cs', 'mods\ActivityLogMod\ActivityLogMod.csproj' 'sdk-staging\examples\ActivityLogMod\' -Force
 $sdkReadme = @(
     "cesium SDK 工具包 $version",
     "",

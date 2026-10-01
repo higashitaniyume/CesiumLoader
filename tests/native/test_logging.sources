@@ -1,2 +1,2 @@
-src/CesiumLoader/logging.cpp
-src/CesiumLoader/console.cpp
+loader/CesiumLoader/logging.cpp
+loader/CesiumLoader/console.cpp

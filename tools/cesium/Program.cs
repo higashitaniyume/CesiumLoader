@@ -49,7 +49,7 @@ namespace CesiumCli
 
                 // 定位 SDK DLL, 复制到项目 refs\(使项目自包含, 脱离仓库可构建):
                 //   1) cesium.exe 同目录(工具包形态)
-                //   2) 向上遍历目录树, 找仓库 src\CesiumLoader.SDK\bin\{Release|Debug}\ 构建产物(源码形态)
+                //   2) 向上遍历目录树, 找仓库 loader\CesiumLoader.SDK\bin\{Release|Debug}\ 构建产物(源码形态)
                 string sdkDll = FindSdkDll();
                 string refsDir = Path.Combine(dir, "refs");
                 if (sdkDll != null)
@@ -339,7 +339,7 @@ namespace CesiumCli
 
         // 定位 CesiumLoader.SDK.dll:
         //   1) cesium.exe 同目录(工具包形态: cesium.exe 与 SDK DLL 打包在一起)
-        //   2) 从 exe/base 目录向上遍历目录树, 找仓库 src\CesiumLoader.SDK\bin\{Release|Debug}\netstandard2.0\ 构建产物
+        //   2) 从 exe/base 目录向上遍历目录树, 找仓库 loader\CesiumLoader.SDK\bin\{Release|Debug}\netstandard2.0\ 构建产物
         private static string FindSdkDll()
         {
             var starts = new List<string>();
@@ -363,7 +363,7 @@ namespace CesiumCli
                 {
                     foreach (var cfg in new[] { "Release", "Debug" })
                     {
-                        string cand = Path.Combine(dir.FullName, "src", "CesiumLoader.SDK", "bin", cfg,
+                        string cand = Path.Combine(dir.FullName, "loader", "CesiumLoader.SDK", "bin", cfg,
                             "netstandard2.0", "CesiumLoader.SDK.dll");
                         if (File.Exists(cand)) return cand;
                     }

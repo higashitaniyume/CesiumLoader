@@ -4,14 +4,15 @@
     <TargetFramework>netstandard2.0</TargetFramework>
     <Nullable>disable</Nullable>
     <LangVersion>latest</LangVersion>
-    <AssemblyName>DiagnosticsMod</AssemblyName>
-    <RootNamespace>DiagnosticsMod</RootNamespace>
+    <AssemblyName>SpeedHackMod</AssemblyName>
+    <RootNamespace>SpeedHackMod</RootNamespace>
     <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\CesiumLoader.SDK\CesiumLoader.SDK.csproj" />
+    <!-- 只需要 SDK: 变速走 SDK 的 SpeedHack(P/Invoke 加载器 ap_speed_* 导出) -->
+    <ProjectReference Include="..\..\loader\CesiumLoader.SDK\CesiumLoader.SDK.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -22,7 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="DiagnosticsMod.json">
+    <None Update="SpeedHackMod.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

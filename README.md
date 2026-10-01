@@ -2,32 +2,40 @@
 
 Astral Party (Steam appid 2622000, Unity 2021.3.45f2 IL2CPP + HybridCLR) 的 Mod 加载器与 SDK。
 
-全部代码收在一个 Visual Studio 2022 解决方案里：
+全部代码收在一个 Visual Studio 2022 解决方案里，按职责分成三个顶层目录：
+**`loader/`(加载器本体与 SDK)、`mods/`(随加载器分发的 mod)、`mcp/`(供 AI agent 接管对局的 MCP)**。
 
 ```
 CesiumLoader.sln
-├── src\
-│   ├── CesiumLoader\              C++ DLL 加载器 (产出 version.dll, Doorstop 式代理 + 变速引擎)
-│   │   ├── modmeta.cpp/h          mod 元数据(sidecar)解析 + 依赖拓扑排序 (纯标准库, 可单测)
-│   │   └── il2cpp_safe.h          IL2CPP 互操作安全封装 (空检查/异常转译)
-│   ├── CesiumLoader.Bootstrap\    C# 托管引导程序 (netstandard2.0, 零引用, 编排 SDK/mods)
-│   ├── CesiumLoader.SDK\          C# SDK (netstandard2.0, 供 mod 引用)
-│   ├── ActivityLogMod\            C# 示例 mod (行为日志)
-│   ├── FreeCameraMod\             内置 mod (滚轮缩放)
-│   ├── SpeedHackMod\              内置 mod (变速热键)
-├── third_party\                    随仓库入库的第三方依赖 (vendored: 不要包管理器, 克隆即可编译, 见其 README)
-│   ├── minhook\                    MinHook (inline hook 库, 变速引擎使用, BSD-2-Clause)
-│   ├── fmt\                        fmt (字符串格式化, header-only, MIT)
-│   ├── spdlog\                     spdlog (日志, header-only, MIT)
-│   └── nlohmann_json\              nlohmann/json (JSON/JSONC 解析, 单头文件, MIT)
-├── smoke\SpeedCtlSmoke\            冒烟测试宿主 (变速控制文件通道, 不依赖游戏)
-├── dist\modloader\                 预编译托管产物 (SDK + 内置 mod + doorstop_config.json,
-│                                   必须入库 —— CI 只校验不重建, 见「发布」)
+├── loader\                          加载器代码 (部署时产出 version.dll + AstralParty_ModLoader\)
+│   ├── CesiumLoader\                C++ DLL 加载器 (产出 version.dll, Doorstop 式代理 + 变速引擎)
+│   │   ├── modmeta.cpp/h            mod 元数据(sidecar)解析 + 依赖拓扑排序 (纯标准库, 可单测)
+│   │   └── il2cpp_safe.h            IL2CPP 互操作安全封装 (空检查/异常转译)
+│   ├── CesiumLoader.Bootstrap\      C# 托管引导程序 (netstandard2.0, 零引用, 编排 SDK/mods)
+│   └── CesiumLoader.SDK\            C# SDK (netstandard2.0, 供 mod 引用)
+├── mods\                            预置 mod (随加载器发布包一起分发)
+│   ├── ActivityLogMod\              C# 示例 mod (行为日志)
+│   ├── FreeCameraMod\               内置 mod (自由相机 / 滚轮缩放)
+│   ├── SpeedHackMod\                内置 mod (变速热键)
+│   ├── CombatOddsMod\               内置 mod (战斗胜率助手)
+│   ├── CameraProbeMod\              相机探针
+│   ├── DiagnosticsMod\              诊断导出
+│   └── ExtremeDifficultyMod\        极限难度 (未列入 sln)
+├── mcp\                             AI agent 接管对局 (桥接 mod + MCP server)
+├── third_party\                     随仓库入库的第三方依赖 (vendored: 不要包管理器, 克隆即可编译, 见其 README)
+│   ├── minhook\                     MinHook (inline hook 库, 变速引擎使用, BSD-2-Clause)
+│   ├── fmt\                         fmt (字符串格式化, header-only, MIT)
+│   ├── spdlog\                      spdlog (日志, header-only, MIT)
+│   └── nlohmann_json\               nlohmann/json (JSON/JSONC 解析, 单头文件, MIT)
+├── smoke\SpeedCtlSmoke\             冒烟测试宿主 (变速控制文件通道, 不依赖游戏)
+├── tests\                           托管单测 (SDK / mod) + 原生单测 (tests\native)
+├── dist\modloader\                  预编译托管产物 (SDK + 内置 mod + doorstop_config.json,
+│                                    必须入库 —— CI 只校验不重建, 见「发布」)
 └── tools\
-    ├── cesium\                    模组脚手架与包分发 CLI (new/build/package/list/verify)
-    ├── builtin-mods.json          内置 mod 清单的唯一来源 (CI 与打包脚本共用)
-    ├── package-modloader.ps1      构建 + 组装 + 打包 Release 压缩包
-    └── smoke-speedctl.ps1         跑变速控制文件通道冒烟测试
+    ├── cesium\                     模组脚手架与包分发 CLI (new/build/package/list/verify)
+    ├── builtin-mods.json           内置 mod 清单的唯一来源 (CI 与打包脚本共用)
+    ├── package-modloader.ps1       构建 + 组装 + 打包 Release 压缩包
+    └── smoke-speedctl.ps1          跑变速控制文件通道冒烟测试
 ```
 
 ## 原理 (Doorstop 式引导)
@@ -247,11 +255,11 @@ pwsh -NoProfile -File tools\package-modloader.ps1
 
 产物:
 - `bin\Release\version.dll` — C++ 加载器 (Doorstop 代理 + 变速引擎)
-- `src\CesiumLoader.Bootstrap\bin\Release\netstandard2.0\CesiumLoader.Bootstrap.dll`
-- `src\CesiumLoader.SDK\bin\Release\netstandard2.0\CesiumLoader.SDK.dll`
-- `src\ActivityLogMod\bin\Release\netstandard2.0\ActivityLogMod.dll` — 内置 mod (行为日志)
-- `src\FreeCameraMod\bin\Release\netstandard2.0\FreeCameraMod.dll` — 内置 mod (自由相机: 滚轮缩放)
-- `src\SpeedHackMod\bin\Release\netstandard2.0\SpeedHackMod.dll` — 内置 mod (变速热键)
+- `loader\CesiumLoader.Bootstrap\bin\Release\netstandard2.0\CesiumLoader.Bootstrap.dll`
+- `loader\CesiumLoader.SDK\bin\Release\netstandard2.0\CesiumLoader.SDK.dll`
+- `mods\ActivityLogMod\bin\Release\netstandard2.0\ActivityLogMod.dll` — 内置 mod (行为日志)
+- `mods\FreeCameraMod\bin\Release\netstandard2.0\FreeCameraMod.dll` — 内置 mod (自由相机: 滚轮缩放)
+- `mods\SpeedHackMod\bin\Release\netstandard2.0\SpeedHackMod.dll` — 内置 mod (变速热键)
 - `tools\cesium\bin\Release\net8.0\cesium.exe` — mod 脚手架与包分发 CLI
 
 ## SDK 工具包下载
@@ -360,7 +368,7 @@ git push origin modloader-2.2.4
 ```
 
 `release-modloader.yml` 会:
-1. windows-latest 上 MSBuild **只构建原生加载器**（`src\CesiumLoader\CesiumLoader.vcxproj`
+1. windows-latest 上 MSBuild **只构建原生加载器**（`loader\CesiumLoader\CesiumLoader.vcxproj`
    `/p:Configuration=Release /p:Platform=x64`，不是整个 sln），无游戏依赖
 2. dotnet 现场构建 CesiumLoader.Bootstrap (自包含, 零引用) + cesium CLI (SDK 工具包)
 3. 用 `dist\modloader\` 里的预编译 SDK / 内置 mod (游戏热更 DLL 不入库, 故用 dist)；

@@ -95,7 +95,7 @@ mod 通过 `Players.BuffsOf(unitId)` 读到**被击中者**（防守方）身上
 
 ```powershell
 # 构建
-dotnet build modding\msvc\src\CombatOddsMod\CombatOddsMod.csproj -c Release --nologo
+dotnet build modding\msvc\mods\CombatOddsMod\CombatOddsMod.csproj -c Release --nologo
 # 单测（计算核心 + 覆盖层编排状态机）
 dotnet test  modding\msvc\tests\CombatOddsMod.Tests\CombatOddsMod.Tests.csproj -c Release --nologo
 # 回放对拍
