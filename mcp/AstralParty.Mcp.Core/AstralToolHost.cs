@@ -515,10 +515,14 @@ namespace AstralParty.Mcp
         /// <summary>
         /// <c>Pending.Kind</c> 是否为"没有窗口"。
         ///
-        /// **必须忽略大小写**: 游戏侧用 <c>CesiumJson</c> 序列化 <c>AgentPendingKind</c> 枚举,
-        /// 枚举的 <c>ToString()</c> 给的是 PascalCase(<c>"None"</c>/<c>"Move"</c>/<c>"SelectRelic"</c>),
-        /// 而这里是 camelCase 的小写词。若按 Ordinal 比较, 真机上"当前没有窗口"会被当成
-        /// 一个名叫 <c>None</c> 的真窗口报给 agent(sn=0、没有任何候选), agent 会白白空转。
+        /// 真机契约(2026-10-01 从真实 state.json 抄下来): 桥接状态模型里**没有枚举**,
+        /// <c>Kind</c> 是 <c>AgentPendingKind</c> 里的小写 camelCase 字符串常量
+        /// (<c>none</c>/<c>move</c>/<c>selectRelic</c>…), 游戏侧 <c>CesiumJson</c> 原样写出。
+        ///
+        /// 这里仍按 <c>OrdinalIgnoreCase</c> 比较, 是**防御**: 早先按 Ordinal 比 <c>"none"</c>,
+        /// 只要哪一侧把大小写改了(或夹具照着别处的 camelCase/PascalCase 写), "当前没有窗口"就会被
+        /// 当成一个名叫 <c>None</c> 的真窗口报给 agent(sn=0、没有任何候选), agent 会白白空转——
+        /// 这类错法不抛异常, 只是行为诡异, 所以固定成忽略大小写。
         /// </summary>
         private static bool IsNoPending(string kind)
         {

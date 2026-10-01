@@ -87,6 +87,13 @@ RecentActions[]{AtMs,Tool,Ok,Code,Detail}
 
 `Pending` 是核心 —— 见下节。
 
+> **字段名 PascalCase，但 `Kind` 的取值是小写 camelCase 字符串常量**（`AgentPendingKind`:
+> `none` / `throwDice` / `battleDice` / `selectRelic` / `rewardCard` / `shop` / `move` /
+> `cardChoice` / `buyRelic`；候选的 `Kind` 是 `card` / `land`）。桥接状态模型里**没有枚举**，
+> 这些就是 2026-10-01 真机 `state.json` 的实测值（无窗口时是 `"Kind": "none"`）。
+> MCP server 侧读 `Kind` 一律**忽略大小写**（`IsNoPending`）——那只是防御，
+> 不代表契约允许两种写法，写文档/夹具请用小写那一套。
+
 ---
 
 ## 5. 待响应窗口（PendingTracker）：整件事最容易错的地方
@@ -214,14 +221,37 @@ pwsh -NoProfile -File tools\smoke-agent-bridge.ps1
 
 ## 10. 真机验证清单（需要游戏在跑）
 
+### 10.1 已完成：只读连通性（2026-10-01，游戏 PID 27504）
+
+结论：**桥接链路已打通**（mod → 桥接文件 → MCP server → MCP client），全程**未下发任何操作**
+（`control.json` 里 `EnableActions=false`，`state.json` 的 `Control.ControlSource` 实测为 `control.json`）。
+
+| 验证项 | 实测结果 |
+|---|---|
+| mod 加载 | 加载器日志 `✔ [2/5] AstralParty.AgentMod 加载成功`（22:02:58）；此后**没有** `[ERR]`/`MethodNotFind` |
+| `bridge.json` | `ProcessId=27504` 与游戏进程一致；`TickCount` 持续推进（3445 → 35453）、`StateSeq` 同步增长 |
+| `state.json` | 959 B，`StateWrites` 稳定增长（107 → 1064+），`UpdatedAtUtc` 是 ISO `"o"` 格式 |
+| MCP 握手 | `initialize` → `astral-party-mcp 1.0.0` / protocol `2025-06-18`；`tools/list` → **20** 个工具 |
+| `astral_status` | `✅ 桥接活着 (心跳 116ms 前, 进程 27504)`；场景/房间/战斗/待响应窗口全部正确（主界面：无房间、无窗口） |
+| `astral_state` | 原样回状态 JSON（见 §4 字段表；`"Kind": "none"` 是实测值） |
+| `astral_pending` | `当前没有需要你响应的窗口(可能在等别的玩家, 或不在对局里)` —— 主界面下的正确结论 |
+| `astral_events` | `events.jsonl 还没有内容` —— 不在对局，本来就没有事件 |
+| 命令计数 | `CommandsExecuted=0 / CommandsRejected=0` —— 只读阶段一单未发 |
+
+> 这轮抓到并修掉了一个**只有真机才会暴露**的 bug：第一版 `WriteAtomic` 用了 `fs.Flush(true)`，
+> 而热更侧 BCL 缺 `FileStream.Flush(bool)` → `state.json` 一条都写不出来（当时桥接目录里只有
+> `control.json`）。修法与预防见 §12 与 `agents.md §12.1`。
+
+### 10.2 待做：从"只读"到"能动手"
+
 按顺序做，任何一步不对就停在那一步排查：
 
 1. **加载器在位**：游戏 exe 同目录有 `version.dll` + `AstralParty_ModLoader\`；
-   `logs\` 里有 mod 加载记录。
+   `logs\` 里有 mod 加载记录。（✅ 本轮已完成）
 2. **mod 起来了**：`%LocalAppData%\AstralParty_ModLoader\agent\bridge.json` 存在且
-   `LastTickMs` 每秒在动；`AstralParty.Mcp.exe --print-config` 显示"心跳: 活着"。
+   `LastTickMs` 每秒在动；`AstralParty.Mcp.exe --print-config` 显示"心跳: 活着"。（✅ 本轮已完成，见 §10.1）
 3. **只读状态**：进房间后 `astral_state` 能看到自己、队友、手牌；`astral_pending` 在轮到人操作时
-   报出窗口与候选。
+   报出窗口与候选。（主界面部分 ✅；**进对局那部分还没做**）
 4. **演练模式**：`astral_control {"dryRun":true}` → 发一次 `astral_throw_dice`，应回 `dry_run`
    且游戏无反应（验证闸门与流水）。
 5. **最小真实操作**：关掉演练，在**自己房间/练习或单人对局**里先做最无害的一步
