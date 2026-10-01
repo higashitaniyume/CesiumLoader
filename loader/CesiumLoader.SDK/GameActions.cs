@@ -239,5 +239,52 @@ namespace CesiumLoader.SDK
         /// <summary>单张遗物便捷重载: 直接按遗物 id 选择。返回是否成功发出。</summary>
         public static bool SelectRelic(int relicId, long? sn = null)
             => SelectRelic(new[] { relicId }, 0, sn);
+
+        /// <summary>重摇筹码候选(等价于客户端 RelicLogic.RequestResetRelic)。返回是否成功发出。</summary>
+        /// <remarks>
+        /// 与 <see cref="SelectRelic(IEnumerable{int}, int, long?)"/> 是**同一条消息**, 唯一区别是
+        /// <c>IsReroll=true</c>。反编译 <c>RelicLogic.RequestResetRelic</c> 证实: 它只填 Info 与 IsReroll,
+        /// **不填** <c>Relics</c>/<c>Idx</c>(保持默认值)。
+        ///
+        /// 语义注意: 重摇**不会**结束这个窗口 —— 服务器回 <c>SelectRelicS2C{IsReroll=true}</c> 后
+        /// 会另推一组新的 5211 候选(新 Sn), 由那一组决定后续。所以别在重摇后把窗口当成已完成。
+        /// </remarks>
+        public static bool RerollRelic(long? sn = null)
+        {
+            try
+            {
+                if (!Ready(out long targetSn, sn)) return false;
+                Net!.RPC.SelectRelicC2S.SelectRelicC2SCall(new SelectRelicC2S
+                {
+                    Info = MakeInfo(targetSn),
+                    IsReroll = true
+                });
+                return true;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>
+        /// 事件选择(棋盘事件弹窗, cmd 5317): <paramref name="events"/> = 服务器给的候选事件 id 列表(必须原样回传),
+        /// <paramref name="selectedIndex"/> = 选中下标。返回是否成功发出。
+        /// </summary>
+        /// <remarks>
+        /// 反编译 <c>UI.LandEventWindow.ShowSkill10202</c> 证实: 客户端是把**服务器那条消息原样**改两个字段后发回
+        /// (<c>Idx</c>=选中下标, <c>Info.Sn</c>=action.Sn), <c>Events</c> 列表保持不变 —— 所以这里也必须把
+        /// <paramref name="events"/> 带回去, 不能只发一个下标。
+        /// 该窗口的超时回调会把 <c>Idx</c> 兜成 0(界面上 selectedIndex 是 -1), 即"不选就默认第一项"。
+        /// </remarks>
+        public static bool SelectEvent(IEnumerable<int> events, int selectedIndex, long? sn = null)
+        {
+            try
+            {
+                if (!Ready(out long targetSn, sn)) return false;
+                var req = new SelectEventC2S { Info = MakeInfo(targetSn), Idx = selectedIndex };
+                if (events != null) req.Events.AddRange(events);
+                Net!.RPC.SelectEventC2S.SelectEventC2SCall(req);
+                return true;
+            }
+            catch { return false; }
+        }
     }
 }

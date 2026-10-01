@@ -32,6 +32,17 @@ namespace AstralParty.AgentMod.Bridge
         private int[] _usableCards;
         private int[] _moveLands;
 
+        /// <summary>
+        /// 已经应答过的窗口 sn(有界, 见 <see cref="AnsweredCap"/>)。
+        ///
+        /// 为什么需要: 服务器把我自己的"决定"也当成一条动作广播回来(复现: 5029 商店的购买、5037 战斗投骰),
+        /// 那条动作的 sn 与我应答的窗口 sn **相同**。若不管它, 刚回完的窗口会被自己的回声重新打开,
+        /// agent 就会对同一个窗口反复出招。sn 在一次对局里单调唯一, 所以"同 sn 已应答就忽略"是安全的。
+        /// </summary>
+        private readonly HashSet<long> _answeredSn = new HashSet<long>();
+        private readonly Queue<long> _answeredOrder = new Queue<long>();
+        private const int AnsweredCap = 128;
+
         /// <summary>一个候选窗口。</summary>
         private sealed class Window
         {
@@ -104,7 +115,26 @@ namespace AstralParty.AgentMod.Bridge
                 _cardSn = 0;
                 _throwDiceSn = 0;
                 _canThrowDice = false;
+                _answeredSn.Clear();
+                _answeredOrder.Clear();
             }
+        }
+
+        /// <summary>记下"这个 sn 的窗口已经被我们应答过了"(由 CommandRunner 在真正发出请求后调用)。</summary>
+        public void NoteAnswered(long sn)
+        {
+            if (sn == 0) return;
+            lock (_lock)
+            {
+                if (_answeredSn.Add(sn)) _answeredOrder.Enqueue(sn);
+                while (_answeredOrder.Count > AnsweredCap) _answeredSn.Remove(_answeredOrder.Dequeue());
+            }
+        }
+
+        private bool IsAnswered(long sn)
+        {
+            if (sn == 0) return false;
+            lock (_lock) { return _answeredSn.Contains(sn); }
         }
 
         // ============================== 事件入口(可能来自网络线程) ==============================
@@ -170,6 +200,48 @@ namespace AstralParty.AgentMod.Bridge
 
         /// <summary>筹码地块回执(5250): 窗口关闭。</summary>
         public void OnBuyRelicDone(long playerId, long nowMs) { ClearIf(AgentPendingKind.BuyRelic, playerId); }
+
+        // ---------- 战斗攻击骰窗口(5037 / 回执 5038) ----------
+
+        /// <summary>
+        /// 战斗攻击骰窗口(5037 = ReadyFightThrowDice)。
+        ///
+        /// 依据(反编译 FightLogic.ReadyFightThrowDice / RequestBattleThrowDiceC2S):
+        /// 窗口归属 = action.PlayerId, 要回传的 sn = action.Sn, 应答消息 = BattleThrowDiceC2S。
+        /// 这条动作**没有可解码的业务负载**(客户端自己也不解 Data), 所以判"是不是新窗口"只能靠 sn —— 交给
+        /// <see cref="SetWindow"/> 的"已应答 sn"挡板处理(服务器会把我自己的决定回播成同 sn 的动作)。
+        /// </summary>
+        public void OnBattleDiceOffer(long playerId, long sn, long nowMs)
+        {
+            SetWindow(new Window { Kind = AgentPendingKind.BattleDice, PlayerId = playerId, Sn = sn, SinceMs = nowMs });
+        }
+
+        /// <summary>战斗掷骰回执(5038 = BattleThrowDiceS2C): 窗口关闭。</summary>
+        public void OnBattleDiceDone(long playerId, long nowMs) { ClearIf(AgentPendingKind.BattleDice, playerId); }
+
+        // ---------- 事件选择窗口(5317 / 回执 5318) ----------
+
+        /// <summary>
+        /// 事件选择候选(5317)。候选 = <c>SelectEventC2S.Events</c>, sn = action.Sn。
+        ///
+        /// 依据(反编译 UI.LandEventWindow.ShowSkill10202): 客户端把服务器那条消息**原样**改
+        /// <c>Idx</c> 与 <c>Info.Sn</c> 后发回, 所以候选 id 列表必须留着(应答时要回传)。
+        /// 该窗口超时会被服务器代选第 0 项。
+        /// </summary>
+        public void OnEventCandidates(long playerId, IReadOnlyList<int> eventIds, long sn, long nowMs)
+        {
+            SetWindow(new Window
+            {
+                Kind = AgentPendingKind.SelectEvent,
+                PlayerId = playerId,
+                Ids = ToArray(eventIds),
+                Sn = sn,
+                SinceMs = nowMs
+            });
+        }
+
+        /// <summary>事件选择回执(5318 = SelectEventS2C): 窗口关闭。</summary>
+        public void OnEventSelected(long playerId, long nowMs) { ClearIf(AgentPendingKind.SelectEvent, playerId); }
 
         // ============================== 主线程提示 ==============================
 
@@ -318,6 +390,8 @@ namespace AstralParty.AgentMod.Bridge
                     p.Actionable = p.Candidates.Count > 0;
                     p.Options.Add("astral_select_relic {\"index\":0..N-1}          选第 index 个候选");
                     p.Options.Add("astral_select_relic {}                     默认选第 0 个");
+                    p.Options.Add("astral_select_relic {\"reroll\":true}        重摇这组候选(不结束窗口, 服务器会推新的一组)");
+                    p.Notes.Add("重摇后窗口不会关闭: 会来一组新的候选(新 sn), 届时重新决策。");
                     break;
 
                 case AgentPendingKind.RewardCard:
@@ -356,6 +430,20 @@ namespace AstralParty.AgentMod.Bridge
                     p.Options.Add("astral_use_effect_card {\"cardId\":<候选里的 id>}");
                     p.Options.Add("astral_use_quick_card {\"cardId\":<候选里的 id>, \"targetId\":<被跟玩家>}");
                     p.Options.Add("astral_abandon_card {\"cardId\":<候选里的 id>}");
+                    break;
+
+                case AgentPendingKind.BattleDice:
+                    p.Actionable = true;
+                    p.Options.Add("astral_throw_dice {\"battle\":true}        投战斗攻击骰(用本窗口的 sn)");
+                    p.Notes.Add("战斗攻击判定(5037)。sn 用本窗口的, 不能用普通回合的投骰 sn。");
+                    break;
+
+                case AgentPendingKind.SelectEvent:
+                    p.Actionable = p.Candidates.Count > 0;
+                    p.Options.Add("astral_select_event {\"index\":0..N-1}     选第 index 个事件");
+                    p.Options.Add("astral_select_event {\"eventId\":<候选里的 id>}   按事件 id 选");
+                    p.Options.Add("astral_select_event {}                    默认选第 0 个");
+                    p.Notes.Add("超时服务器会代选第 0 项; 候选 id 会原样回传给服务器。");
                     break;
             }
 
@@ -401,6 +489,7 @@ namespace AstralParty.AgentMod.Bridge
                 case AgentPendingKind.RewardCard: return "rewardCard";
                 case AgentPendingKind.Shop: return "shopCard";
                 case AgentPendingKind.Move: return "land";
+                case AgentPendingKind.SelectEvent: return "event";
                 default: return "unknown";
             }
         }
@@ -410,6 +499,8 @@ namespace AstralParty.AgentMod.Bridge
             if (w.PlayerId == 0) return;
             // 没有 sn 的窗口无法应答(SDK 的 Info.Sn 必须填对): 宁可不上报, 也不给 agent 一个点了没用的窗口
             if (w.Sn == 0) return;
+            // 已经应答过的 sn 又冒出来 = 服务器在回播我自己的决定, 不是新窗口(见 _answeredSn 的注释)
+            if (IsAnswered(w.Sn)) return;
             lock (_lock)
             {
                 // 同一个窗口被服务器重复广播(同 Sn): 保留最早的出现时刻, 便于算"已经等了多久"

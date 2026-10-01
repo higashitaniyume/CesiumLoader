@@ -72,6 +72,8 @@ namespace AstralParty.Agent
             public const string AbandonCard = "abandon_card";
             public const string SelectRelic = "select_relic";
             public const string SelectRewardCard = "select_reward_card";
+            /// <summary>棋盘事件弹窗的候选选择(cmd 5317, 候选 = SelectEventC2S.Events)。</summary>
+            public const string SelectEvent = "select_event";
             public const string ShopBuy = "shop_buy";
             public const string AtmTransfer = "atm_transfer";
             public const string BuyRelic = "buy_relic";

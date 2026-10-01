@@ -44,6 +44,9 @@ namespace AstralParty.AgentMod.Bridge
             try
             {
                 GameEvents.RawAction += OnRawAction;
+                // 双保险: 战斗掷骰的窗口也可能只以 RPC 回执(5038)的形式到达 —— 那条回执在 SDK 里已经
+                // 包装成强类型事件, 直接订阅它比"赌 5038 一定会出现在 1002 动作流里"更可靠。
+                GameEvents.BattleDice += OnBattleDiceEvent;
                 _subscribed = true;
             }
             catch { }
@@ -53,7 +56,14 @@ namespace AstralParty.AgentMod.Bridge
         {
             if (!_subscribed) return;
             try { GameEvents.RawAction -= OnRawAction; } catch { }
+            try { GameEvents.BattleDice -= OnBattleDiceEvent; } catch { }
             _subscribed = false;
+        }
+
+        /// <summary>战斗掷骰回执(强类型事件, Action&lt;playerId, val&gt;): 关掉战斗骰窗口。</summary>
+        private void OnBattleDiceEvent(long playerId, int val)
+        {
+            try { _tracker.OnBattleDiceDone(playerId, AgentBridgeLayout.NowMs()); } catch { }
         }
 
         private void OnRawAction(RawActionEvent e)
@@ -229,6 +239,40 @@ namespace AstralParty.AgentMod.Bridge
                             if (d == null) return null;
                             _tracker.OnShopDone(e.PlayerId, now);
                             return "PVEShopResult{buyIndexes=[" + Join(ToList(d.BuyCards)) + "], close=" + d.IsClose + "}";
+                        }
+
+                    // ---------- 战斗攻击骰(5037 / 回执 5038) ----------
+                    // 反编译 FightLogic.ReadyFightThrowDice: 客户端**不解 Data**, 只用 action.PlayerId/action.Sn 开窗口,
+                    // 所以这里也不解码 —— 有负载反而说明是我自己的决定被回播(那个由"已应答 sn"挡板处理)。
+                    case 5037:
+                        _tracker.OnBattleDiceOffer(e.PlayerId, e.Sn, now);
+                        return "BattleDiceOffer{len=" + e.Data.Length + "}";
+
+                    case 5038:
+                        {
+                            var d = ByteBuf.ReadObject<BattleThrowDiceS2C>(e.Data);
+                            if (d == null) return null;
+                            _tracker.OnBattleDiceDone(e.PlayerId, now);
+                            return "BattleDiceResult{playerId=" + d.PlayerId + ", val=" + d.Val + "}";
+                        }
+
+                    // ---------- 事件选择(5317 / 回执 5318) ----------
+                    // 候选 = SelectEventC2S.Events(应答时必须原样回传), sn = action.Sn。
+                    case 5317:
+                        {
+                            var d = ByteBuf.ReadObject<SelectEventC2S>(e.Data);
+                            if (d == null) return null;
+                            var events = ToList(d.Events);
+                            if (events.Count > 0) _tracker.OnEventCandidates(e.PlayerId, events, e.Sn, now);
+                            return "EventCandidates{idx=" + d.Idx + ", events=[" + Join(events) + "]}";
+                        }
+
+                    case 5318:
+                        {
+                            var d = ByteBuf.ReadObject<SelectEventS2C>(e.Data);
+                            if (d == null) return null;
+                            _tracker.OnEventSelected(e.PlayerId, now);
+                            return "EventResult{playerId=" + d.PlayerId + ", eventId=" + d.EventId + "}";
                         }
 
                     default:

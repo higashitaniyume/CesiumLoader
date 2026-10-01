@@ -89,7 +89,7 @@ RecentActions[]{AtMs,Tool,Ok,Code,Detail}
 
 > **字段名 PascalCase，但 `Kind` 的取值是小写 camelCase 字符串常量**（`AgentPendingKind`:
 > `none` / `throwDice` / `battleDice` / `selectRelic` / `rewardCard` / `shop` / `move` /
-> `cardChoice` / `buyRelic`；候选的 `Kind` 是 `card` / `land`）。桥接状态模型里**没有枚举**，
+> `cardChoice` / `buyRelic` / `selectEvent`；候选的 `Kind` 是 `card` / `land` / `event`）。桥接状态模型里**没有枚举**，
 > 这些就是 2026-10-01 真机 `state.json` 的实测值（无窗口时是 `"Kind": "none"`）。
 > MCP server 侧读 `Kind` 一律**忽略大小写**（`IsNoPending`）——那只是防御，
 > 不代表契约允许两种写法，写文档/夹具请用小写那一套。
@@ -120,7 +120,24 @@ RecentActions[]{AtMs,Tool,Ok,Code,Detail}
 | 5211 | `SelectRelicC2S`（`Relics` 非空才算窗口） | SelectRelic |
 | **5249** | `BuyRelicC2S{RelicGold,DivinationGold}` | BuyRelic |
 | **5377** | `SelectRewardCardC2S{CardIds,Idx}` | RewardCard |
+| **5317** | `SelectEventC2S{Events,Idx}`（`Events` 非空才算窗口） | SelectEvent |
+| **5037** | 不解负载（客户端也不解）：窗口归属 `PlayerId`、`sn`=自带 `Sn` | BattleDice |
 | 5030 / 5216 / 5250 | 各回执 → 关窗口 | — |
+| 5212 | `SelectRelicS2C`（`IsReroll` 时 SDK 事件被过滤） | — |
+| **5318** | `SelectEventS2C{PlayerId,EventId}` → 关窗口 | — |
+| **5038** | `BattleThrowDiceS2C{PlayerId,Val}` → 关窗口 | — |
+
+`5037`/`5038`/`5317`/`5318` 的依据（反编译）：
+
+- `FightLogic.ReadyFightThrowDice(action)` → `ShowWin().RefreshThrowDice(action.PlayerId, action.Sn)`：
+  窗口归属 `action.PlayerId`，要回传的 `sn` 就是 `action.Sn`，**不读 `action.Data`**。
+  应答是 `RequestBattleThrowDiceC2S(sn)` → `BattleThrowDiceC2S{Info={Sn,UseTime}, DevPoint=GMConfig.dev_AttackerPoint}`。
+  **注意**：战斗攻击骰的 `sn` 与普通回合投骰（`ActionLogic.throwDiceSn`）**不是同一个来源**，
+  拿错会被服务器当非法 sn 拒掉 —— 所以 `astral_throw_dice{"battle":true}` 只认 BattleDice 窗口的 sn，
+  没有窗口就直接报错（不去猜 SDK 默认 sn）。
+- `UI.LandEventWindow.ShowSkill10202(action)`：候选 = `SelectEventC2S.Events`，应答时把**服务器那条消息原样**
+  改 `Idx`（选中下标）与 `Info.Sn`（`=action.Sn`）后发回 —— 所以 `Events` 列表必须回传，不能只发下标。
+  超时回调把 `Idx` 兜成 `0`（界面上 `selectedIndex` 是 `-1`），即**不选就默认第一个**。
 
 **两条关键设计决定（都是踩过的坑）**：
 
@@ -130,6 +147,10 @@ RecentActions[]{AtMs,Tool,Ok,Code,Detail}
 2. **一次只报一个窗口**（`Kind` 是单值）。真人 UI 也不会同时弹两个；多报会让 agent 发错招。
    优先级：我的窗口 → 掷骰 → 卡牌选择（`cardSn>0 && usable.Length>0`）；别人的窗口报 `none` 并在
    `Notes` 里说明"在等其他玩家"。
+3. **已应答的 sn 不会再开窗**（`_answeredSn`，有界 128）。服务器会把**我自己的决定**当成一条**同 sn** 的
+   动作广播回来（5029 的购买、5037 的战斗投骰都是这样）。`CommandRunner.OnSent()` 在真正发出请求后
+   调 `NoteAnswered(sn)`，`SetWindow` 见到已应答的 sn 直接忽略 —— 否则刚回完的窗口会被自己的回声重新打开，
+   agent 就会对着同一个窗口反复出招。sn 在一次对局里单调唯一，所以这条不会误伤新窗口。
 
 `RemainingMs` 来自 `GameProbe.RemainingMs(sn)`：反射
 `GameLogic.OperationTimer`（在 `MoveC2S` 所在程序集里找类型）拿 `GetOperateTimer(sn).GetTimeRemaining()`，
@@ -154,10 +175,15 @@ RecentActions[]{AtMs,Tool,Ok,Code,Detail}
 - **`sn` 解析**：显式 `sn` → 当前窗口的 `sn` → 都没有就 `bad_args`。
   `ActionInfo{Sn, UseTime = OperationTimer.GetExtraTime()}`（与 SDK 内部一致的构造）。
 - **窗口校验**：每个工具声明它属于哪种窗口（`shop_buy`→Shop、`select_relic`→SelectRelic、
-  `buy_relic`→BuyRelic、`move`→Move、`use_effect_card`/`use_quick_card`/`abandon_card`→CardChoice…），
+  `buy_relic`→BuyRelic、`move`→Move、`select_event`→SelectEvent、`throw_dice{"battle":true}`→BattleDice、
+  `use_effect_card`/`use_quick_card`/`abandon_card`→CardChoice…），
   类型不匹配直接拒绝。拿不到窗口信息时宁可不发。
+- **战斗骰的 sn 单独解析**：`astral_throw_dice{"battle":true}` 只认 BattleDice 窗口的 sn
+  （普通回合投骰用的是 `ActionLogic.throwDiceSn`，两者不同源）；没有窗口就 `bad_args`，不去猜默认 sn。
+- **reroll**：`astral_select_relic{"reroll":true}` → `SelectRelicC2S{Info, IsReroll=true}`；
+  窗口**不关闭**（服务器随后推新的一组候选），所以这一条不调 `OnRelicSelected`，只记已应答 sn。
 - **`sn` 主动清理**：发出后 `CancelOperationTimer(sn)`，让客户端自己的超时逻辑别再触发一次
-  （否则可能出现"agent 已经点了、客户端又替我点一次"）。
+  （否则可能出现"agent 已经点了、客户端又替我点一次"）；同时 `NoteAnswered(sn)` 挡住回声重开窗口。
 - 商店分 PVE/PVP 两条消息类；ATM 复用 PVE 售卖消息且 `BuyCards` 为空、`AssistPlayer=目标玩家 id`；
   筹码地块购买用 `Select=2` 表示买、`0` 表示离开（**判别依据是 `Select`，不是 `Exit`**，
   旧文档把这两个弄反过）。
@@ -199,9 +225,9 @@ RecentActions[]{AtMs,Tool,Ok,Code,Detail}
 
 | 层 | 项目 | 覆盖 |
 |---|---|---|
-| 纯逻辑 | `tests\AstralParty.AgentMod.Tests`（65 个） | 目录/文件协议（原子写、日志尾部按行截断、轮转、`Sanitize` 防穿越、`{seq:D8}` 排序）、`PendingTracker` 逐窗口（含 `Sn==0` 拒绝、别人的窗口、优先级、倒计时、副本语义）、命令解析与回执序列化、`control.json` 读取（含大小写容错与急停/恢复往返） |
-| 协议 + 集成 | `tests\AstralParty.Mcp.Tests`（50 个） | JSON-RPC 全路径、工具清单与注解、参数校验、开关合并、**真文件往返**（假游戏线程消费 `commands` 写 `results`）、超时清理、事件尾部截取、`Pending.Kind=None` 的大小写判定 |
-| 端到端冒烟 | `tools\smoke-agent-bridge.ps1`（30 项断言） | **真 server exe** + 临时桥接目录扮演游戏：握手/工具清单、state/bridge/control 字段与大小写、命令文件往返与两侧清理、心跳过期拒绝下发 |
+| 纯逻辑 | `tests\AstralParty.AgentMod.Tests`（75 个） | 目录/文件协议（原子写、日志尾部按行截断、轮转、`Sanitize` 防穿越、`{seq:D8}` 排序）、`PendingTracker` 逐窗口（含 `Sn==0` 拒绝、别人的窗口、优先级、倒计时、副本语义、**已应答 sn 的回声防护**、事件选择与战斗骰窗口）、命令解析与回执序列化、`control.json` 读取（含大小写容错与急停/恢复往返）、**热更 BCL 禁用模式 lint** |
+| 协议 + 集成 | `tests\AstralParty.Mcp.Tests`（58 个） | JSON-RPC 全路径、工具清单与注解、参数校验、开关合并、**真文件往返**（假游戏线程消费 `commands` 写 `results`）、**新工具的参数确实落进命令文件**、超时清理、事件尾部截取、`Pending.Kind=None` 的大小写判定 |
+| 端到端冒烟 | `tools\smoke-agent-bridge.ps1`（31 项断言） | **真 server exe** + 临时桥接目录扮演游戏：握手/工具清单、state/bridge/control 字段与大小写、命令文件往返与两侧清理、心跳过期拒绝下发 |
 | 真机 | 需要用户配合 | 见下 |
 
 **为什么要"假桥接目录"这种测法**：整条链路的契约就是目录里的文件。测试里真写 `state.json`、
@@ -231,7 +257,7 @@ pwsh -NoProfile -File tools\smoke-agent-bridge.ps1
 | mod 加载 | 加载器日志 `✔ [2/5] AstralParty.AgentMod 加载成功`（22:02:58）；此后**没有** `[ERR]`/`MethodNotFind` |
 | `bridge.json` | `ProcessId=27504` 与游戏进程一致；`TickCount` 持续推进（3445 → 35453）、`StateSeq` 同步增长 |
 | `state.json` | 959 B，`StateWrites` 稳定增长（107 → 1064+），`UpdatedAtUtc` 是 ISO `"o"` 格式 |
-| MCP 握手 | `initialize` → `astral-party-mcp 1.0.0` / protocol `2025-06-18`；`tools/list` → **20** 个工具 |
+| MCP 握手 | `initialize` → `astral-party-mcp 1.0.0` / protocol `2025-06-18`；`tools/list` → **21** 个工具 |
 | `astral_status` | `✅ 桥接活着 (心跳 116ms 前, 进程 27504)`；场景/房间/战斗/待响应窗口全部正确（主界面：无房间、无窗口） |
 | `astral_state` | 原样回状态 JSON（见 §4 字段表；`"Kind": "none"` 是实测值） |
 | `astral_pending` | `当前没有需要你响应的窗口(可能在等别的玩家, 或不在对局里)` —— 主界面下的正确结论 |
@@ -256,8 +282,12 @@ pwsh -NoProfile -File tools\smoke-agent-bridge.ps1
    且游戏无反应（验证闸门与流水）。
 5. **最小真实操作**：关掉演练，在**自己房间/练习或单人对局**里先做最无害的一步
    （掷骰 → 移动），确认画面真的动了、`astral_actions` 有回执。
-6. **窗口类操作逐个验**：筹码三选一 → 奖励卡 → 商店（买/离店）→ 筹码地块买/不买。
+6. **窗口类操作逐个验**：筹码三选一（含 reroll）→ 奖励卡 → 商店（买/离店）→ 筹码地块买/不买 →
+   事件选择（5317）→ 战斗攻击骰（5037）。
    每验一个都去 `docs` 或本文把"未验证"标注改成"已确认"（含日期）。
+   > 事件选择与战斗骰这两条是 2026-10-01 按反编译补进工具的（`astral_select_event` /
+   > `astral_throw_dice{"battle":true}`），**契约与状态机有离线测试，但真机上一个都没验过** ——
+   > 真机第一件事是看 `astral_actions` 里出现 5317/5037 时 `astral_pending` 是否报出对应 kind。
 7. **急停**：`astral_emergency_stop` → 再发动作应回 `paused` 且游戏不动；
    `astral_resume` 恢复。
 8. **超时行为**：故意在窗口里不作为，观察客户端是否真的自动选择（这会确认 §5 的"客户端自动替你选"
@@ -271,7 +301,12 @@ pwsh -NoProfile -File tools\smoke-agent-bridge.ps1
 - 热更程序集不能 P/Invoke；文件+环境变量是唯一可行通道。
 - 1002 `PredictActionS2C` 是动作广播信道，`Action.Id` 决定语义；`sn` 来自动作本身。
 - 5027 移动、5029/5215 商店、5211 选筹码、5249 买筹码、5377 奖励卡的消息类与字段。
-- 回执命令：5030 / 5216 / 5250 / 5212 / 5378。
+- 回执命令：5030 / 5216 / 5250 / 5212 / 5378 / 5318 / 5038。
+- **5037 战斗攻击骰窗口**：`FightLogic.ReadyFightThrowDice` 只读 `action.PlayerId`/`action.Sn`（不解 `Data`），
+  应答 `BattleThrowDiceC2S{Info, DevPoint=GMConfig.dev_AttackerPoint}`（SDK 的 `GameActions.BattleThrowDice` 已经一致）。
+- **5317 事件选择**：候选 = `SelectEventC2S.Events`，应答要把候选列表原样回传（只改 `Idx` 与 `Info.Sn`）。
+- **reroll**：`RelicLogic.RequestResetRelic` = `SelectRelicC2S{Info, IsReroll=true}`（`Relics`/`Idx` 保持默认），
+  选与重摇是同一条消息。
 - `Select=2` 买、`0` 离开（不是 `Exit`）。
 - `OperationTimer` 有 `operationTime`/`downtime`/`timerDict`，`GetOperateTimer(sn).GetTimeRemaining()`。
 - 客户端在超时后会替玩家自动选择。
@@ -284,12 +319,13 @@ pwsh -NoProfile -File tools\smoke-agent-bridge.ps1
 - `ActionLogic.throwDiceSn` / `CardSN` 足以推断掷骰与卡牌窗口。
 
 **未决（不要当成已确认）**
-- 事件三选一 `5317 SelectEventC2S`、抽奖/追击/占卜/医院/赌场地块等窗口。
-- 战斗内掷骰是否有独立窗口（目前靠 SDK 事件+倒计时推断）。
+- `ActionListener` switch 里其余窗口还没接管：抽奖 5041 / 追击 5033+5213 / 占卜 5069 / 医院 5093 /
+  赌场 5081+5083 / 加油站 5077 / 命运 5071 / 电池 5063 / 再走一次 5043 / 机制选择 5259 /
+  商人买卡 5323 / 复活队友 5233 / 助力投票 5309 / 剧情 5313 / 战斗内 5035+5039（准备阶段用牌与闪避选择）。
 - `ShopBuyS2C` / `PVEShopBuyS2C.AssistPlayer` 的服务端语义。
 - 服务器 1097 超时踢人机制。
 - 战役图（`MapType==10`）无倒计时（`RemainingMs=-1`）。
-- 刷新（reroll）请求未接管（`SelectRelicC2S.IsReroll=true` 这条路还没做成工具）。
+- 5037 的 `Data` 里到底有没有可区分的业务负载（当前靠"已应答 sn"挡回声，不解析负载）。
 
 ---
 

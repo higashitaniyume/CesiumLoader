@@ -421,6 +421,73 @@ namespace AstralParty.Mcp.Tests
             }
         }
 
+        /// <summary>扮演游戏内 mod: 把收到的命令 JSON 原样记下来, 再回一个成功回执。</summary>
+        private CancellationTokenSource StartCapturingGame(List<string> captured)
+        {
+            var cts = new CancellationTokenSource();
+            Task.Run(() =>
+            {
+                while (!cts.IsCancellationRequested)
+                {
+                    try
+                    {
+                        foreach (var file in Directory.GetFiles(AgentBridgeLayout.CommandsDir(_root), "*.json"))
+                        {
+                            long seq;
+                            string id;
+                            if (!AgentBridgeLayout.TryParseCommandFileName(Path.GetFileName(file), out seq, out id)) continue;
+
+                            string body;
+                            try { body = File.ReadAllText(file); }
+                            catch { continue; }   // 可能已被清掉, 下一轮再看
+
+                            lock (captured) captured.Add(body);
+                            AgentBridgeLayout.WriteAtomic(AgentBridgeLayout.ResultPath(_root, id),
+                                "{\"Schema\":1,\"Id\":\"" + id + "\",\"Ok\":true,\"Code\":\"ok\",\"Detail\":\"captured\",\"LatencyMs\":1}");
+                            File.Delete(file);
+                            break;
+                        }
+                    }
+                    catch { }
+                    Thread.Sleep(5);
+                }
+            }, cts.Token);
+            return cts;
+        }
+
+        [Fact]
+        public void 事件选择工具_把index送进命令文件()
+        {
+            WriteHeartbeat();
+            var captured = new List<string>();
+            using (var game = StartCapturingGame(captured))
+            {
+                var r = _host.CallTool("astral_select_event", Args("{\"index\":1}"));
+                Assert.False(r.IsError);
+            }
+
+            Assert.Single(captured);
+            Assert.Contains(AgentBridgeLayout.Tool.SelectEvent, captured[0]);
+            Assert.Contains("index", captured[0]);
+        }
+
+        [Fact]
+        public void 重摇筹码_命令里带reroll标记()
+        {
+            WriteHeartbeat();
+            var captured = new List<string>();
+            using (var game = StartCapturingGame(captured))
+            {
+                var r = _host.CallTool("astral_select_relic", Args("{\"reroll\":true}"));
+                Assert.False(r.IsError);
+            }
+
+            Assert.Single(captured);
+            Assert.Contains(AgentBridgeLayout.Tool.SelectRelic, captured[0]);
+            Assert.Contains("reroll", captured[0]);
+            Assert.Contains("true", captured[0]);
+        }
+
         [Fact]
         public void 命令被游戏侧拒绝_回isError并带错误码()
         {
@@ -509,6 +576,7 @@ namespace AstralParty.Mcp.Tests
             Assert.Contains("astral_abandon_card", names);
             Assert.Contains("astral_select_relic", names);
             Assert.Contains("astral_select_reward_card", names);
+            Assert.Contains("astral_select_event", names);
             Assert.Contains("astral_shop_buy", names);
             Assert.Contains("astral_atm_transfer", names);
             Assert.Contains("astral_buy_relic", names);
@@ -538,6 +606,23 @@ namespace AstralParty.Mcp.Tests
         {
             Assert.Contains("astral_status", _host.Instructions);
             Assert.Contains("astral_emergency_stop", _host.Instructions);
+        }
+
+        [Fact]
+        public void 新工具的入参说明_带上重摇与事件选择()
+        {
+            string relicSchema = null, eventSchema = null;
+            foreach (var t in _host.ListTools())
+            {
+                if (t.Name == "astral_select_relic") relicSchema = t.InputSchema?.ToJsonString();
+                if (t.Name == "astral_select_event") eventSchema = t.InputSchema?.ToJsonString();
+            }
+
+            Assert.NotNull(relicSchema);
+            Assert.Contains("reroll", relicSchema);   // 重摇是筹码窗口的一个动作
+            Assert.NotNull(eventSchema);
+            Assert.Contains("eventId", eventSchema);   // 可按事件 id 选
+            Assert.Contains("index", eventSchema);
         }
     }
 }

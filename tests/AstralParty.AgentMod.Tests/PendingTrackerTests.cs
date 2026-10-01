@@ -366,5 +366,109 @@ namespace AstralParty.AgentMod.Tests
             var p = Build(t, false, 0, 1200);
             Assert.Equal(AgentPendingKind.RewardCard, p.Kind);
         }
+
+        // ---------- 事件选择(5317 / 回执 5318) ----------
+        // 依据: 反编译 UI.LandEventWindow.ShowSkill10202 —— 候选 = SelectEventC2S.Events, sn = action.Sn。
+
+        [Fact]
+        public void 事件选择窗口_列出候选与可用操作()
+        {
+            var t = new PendingTracker();
+            t.OnEventCandidates(Self, new List<int> { 7001, 7002, 7003 }, 5317, 1000);
+
+            var p = Build(t, false, 0, 1200);
+            Assert.Equal(AgentPendingKind.SelectEvent, p.Kind);
+            Assert.Equal(5317, p.Sn);
+            Assert.True(p.Actionable);
+            Assert.Equal(3, p.Candidates.Count);
+            Assert.Equal(7001, p.Candidates[0].Id);
+            Assert.Equal("event", p.Candidates[0].Kind);
+            Assert.Contains(p.Options, o => o.Contains("astral_select_event"));
+        }
+
+        [Fact]
+        public void 事件选择回执_关掉窗口()
+        {
+            var t = new PendingTracker();
+            t.OnEventCandidates(Self, new List<int> { 7001 }, 5317, 1000);
+            t.OnEventSelected(Self, 1100);
+
+            Assert.Equal(AgentPendingKind.None, Build(t, false, 0, 1200).Kind);
+        }
+
+        [Fact]
+        public void 事件候选窗口_能把候选原样取出来应答()
+        {
+            var t = new PendingTracker();
+            t.OnEventCandidates(Self, new List<int> { 7001, 7002 }, 5317, 1000);
+
+            int[] ids;
+            Assert.True(t.TryGetWindowIds(AgentPendingKind.SelectEvent, out ids));
+            Assert.Equal(new[] { 7001, 7002 }, ids);
+        }
+
+        // ---------- 战斗攻击骰(5037 / 回执 5038) ----------
+        // 依据: 反编译 FightLogic.ReadyFightThrowDice(窗口归属 action.PlayerId, sn = action.Sn)。
+
+        [Fact]
+        public void 战斗掷骰窗口_给出battle投骰选项()
+        {
+            var t = new PendingTracker();
+            t.OnBattleDiceOffer(Self, 5037, 1000);
+
+            var p = Build(t, false, 0, 1200);
+            Assert.Equal(AgentPendingKind.BattleDice, p.Kind);
+            Assert.Equal(5037, p.Sn);
+            Assert.True(p.Actionable);
+            Assert.Contains(p.Options, o => o.Contains("battle"));
+        }
+
+        [Fact]
+        public void 战斗掷骰回执_关掉窗口()
+        {
+            var t = new PendingTracker();
+            t.OnBattleDiceOffer(Self, 5037, 1000);
+            t.OnBattleDiceDone(Self, 1100);
+
+            Assert.Equal(AgentPendingKind.None, Build(t, false, 0, 1200).Kind);
+        }
+
+        // ---------- 回声防护 ----------
+        // 服务器会把我自己的决定当成一条同 sn 的动作广播回来; 若不管, 刚回完的窗口会被自己的回声重新打开。
+
+        [Fact]
+        public void 已应答的sn回声_不会把窗口重新打开()
+        {
+            var t = new PendingTracker();
+            t.OnRelicCandidates(Self, new List<int> { 1, 2 }, 5211, 1000);
+            t.NoteAnswered(5211);            // 我们应答了这个窗口
+            t.OnRelicSelected(Self, 1, 1100); // 回执关窗
+            t.OnRelicCandidates(Self, new List<int> { 1, 2 }, 5211, 1200); // 服务器回播我自己的决定
+
+            Assert.Equal(AgentPendingKind.None, Build(t, false, 0, 1300).Kind);
+        }
+
+        [Fact]
+        public void 应答过旧sn之后_新的sn照常开窗()
+        {
+            var t = new PendingTracker();
+            t.NoteAnswered(5211);
+            t.OnRelicCandidates(Self, new List<int> { 1, 2 }, 5212, 1200);
+
+            var p = Build(t, false, 0, 1300);
+            Assert.Equal(AgentPendingKind.SelectRelic, p.Kind);
+            Assert.Equal(5212, p.Sn);
+        }
+
+        [Fact]
+        public void 筹码窗口_列出重摇选项()
+        {
+            var t = new PendingTracker();
+            t.OnRelicCandidates(Self, new List<int> { 1, 2 }, 5211, 1000);
+
+            var p = Build(t, false, 0, 1200);
+            Assert.Contains(p.Options, o => o.Contains("reroll"));
+            Assert.Contains(p.Notes, n => n.Contains("窗口不会关闭") || n.Contains("新的候选"));
+        }
     }
 }

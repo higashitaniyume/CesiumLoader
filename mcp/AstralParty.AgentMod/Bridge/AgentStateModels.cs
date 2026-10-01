@@ -148,6 +148,8 @@ namespace AstralParty.AgentMod.Bridge
         public const string CardChoice = "cardChoice";
         /// <summary>筹码地块: 要不要花星币买这个筹码(5249)。</summary>
         public const string BuyRelic = "buyRelic";
+        /// <summary>棋盘事件弹窗: 从若干个事件里选一个(5317, 候选 = SelectEventC2S.Events)。</summary>
+        public const string SelectEvent = "selectEvent";
     }
 
     public sealed class AgentCounters
