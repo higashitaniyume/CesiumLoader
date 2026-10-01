@@ -27,7 +27,7 @@ public static float GetDeltaTime()
 
 ## 2. 解法：`UnityCall` 两层结构
 
-`src/CesiumLoader.SDK/Unity/UnityCall.cs` 是**整个 SDK 里唯一允许直接触碰 Unity ECall 的文件**。
+`loader/CesiumLoader.SDK/Unity/UnityCall.cs` 是**整个 SDK 里唯一允许直接触碰 Unity ECall 的文件**。
 
 ```csharp
 // 第一层: Raw —— 方法体里只有一个 Unity ECall, 必须 NoInlining, 不能有 try/catch

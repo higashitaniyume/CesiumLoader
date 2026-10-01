@@ -2,7 +2,7 @@
 //
 // 把 config.cpp / modmeta.cpp 里手写的 JSON 扫描器换成 nlohmann/json 之后, 行为必须保持一致。
 // 做法: 把 **旧实现原样** 抄进本文件(oldcfg / oldmeta 命名空间), 与 **真实的新实现**
-// (链接 src\CesiumLoader\config.cpp + modmeta.cpp) 在同一批输入上逐字段比对。
+// (链接 loader\CesiumLoader\config.cpp + modmeta.cpp) 在同一批输入上逐字段比对。
 //
 // 语料分三类:
 //   A. 规范输入(全部真实文件 + 规范合成用例) → 必须**逐字段完全一致**;
@@ -16,10 +16,10 @@
 #endif
 #include <windows.h>   // GetTempPathW / DeleteFileW / MAX_PATH
 
-#include "../../src/CesiumLoader/config.h"
-#include "../../src/CesiumLoader/jsonc.h"
-#include "../../src/CesiumLoader/modmeta.h"
-#include "../../src/CesiumLoader/speedhack.h"   // kSpeedMin / kSpeedMax(旧 json_double 用到)
+#include "../../loader/CesiumLoader/config.h"
+#include "../../loader/CesiumLoader/jsonc.h"
+#include "../../loader/CesiumLoader/modmeta.h"
+#include "../../loader/CesiumLoader/speedhack.h"   // kSpeedMin / kSpeedMax(旧 json_double 用到)
 
 #include <algorithm>
 #include <cstdint>
@@ -60,7 +60,7 @@ void fail(const std::string& caseName, const std::string& msg)
 }
 
 // ===================================================================================
-// 旧实现(原样抄自 git HEAD: src\CesiumLoader\config.cpp 与 modmeta.cpp)
+// 旧实现(原样抄自 git HEAD: loader\CesiumLoader\config.cpp 与 modmeta.cpp)
 // ===================================================================================
 namespace oldcfg
 {

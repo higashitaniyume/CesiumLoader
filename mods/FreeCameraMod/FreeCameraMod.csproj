@@ -12,7 +12,7 @@
 
   <ItemGroup>
     <!-- 只需要 SDK: Cinemachine 通过 SDK 的反射适配层访问, 不在这里硬引用 -->
-    <ProjectReference Include="..\CesiumLoader.SDK\CesiumLoader.SDK.csproj" />
+    <ProjectReference Include="..\..\loader\CesiumLoader.SDK\CesiumLoader.SDK.csproj" />
   </ItemGroup>
 
   <ItemGroup>

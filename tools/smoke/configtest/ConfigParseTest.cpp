@@ -1,5 +1,5 @@
 // ConfigParseTest - 验证 config.cpp 的 doorstop_config.json 极简解析器
-// 编译: cl /EHsc /std:c++17 /I src\CesiumLoader ConfigParseTest.cpp src\CesiumLoader\config.cpp src\CesiumLoader\console.cpp
+// 编译: cl /EHsc /std:c++17 /I loader\CesiumLoader ConfigParseTest.cpp loader\CesiumLoader\config.cpp loader\CesiumLoader\console.cpp
 // (需要 loader.cpp 的符号, 但 config.cpp 只依赖 log_line —— 用最小桩代替)
 #include <cstdio>
 #include <string>

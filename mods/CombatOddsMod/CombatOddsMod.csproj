@@ -12,7 +12,7 @@
 
   <ItemGroup>
     <!-- SDK: 事件系统 / 数据访问 / 名字解析 / UI 登记 / 生命周期 -->
-    <ProjectReference Include="..\CesiumLoader.SDK\CesiumLoader.SDK.csproj" />
+    <ProjectReference Include="..\..\loader\CesiumLoader.SDK\CesiumLoader.SDK.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,6 +1,6 @@
 # mod：FreeCameraMod（滚轮缩放）
 
-> 源码：`src/FreeCameraMod/ModEntry.cs`。纯 SDK 用户，不使用任何反射或内部 API。
+> 源码：`mods/FreeCameraMod/ModEntry.cs`。纯 SDK 用户，不使用任何反射或内部 API。
 > **2.2.1 起整体重写**：旧版的「F1 开关俯瞰视角 / 滚轮调高度」已经删掉，这一页描述的是新行为。
 
 ## 1. 它做什么

@@ -34,13 +34,13 @@ try
     if (-not $SkipBuild)
     {
         Write-Host '[smoke] 1/3 构建原生加载器 + 宿主'
-        & $msbuild 'src\CesiumLoader\CesiumLoader.vcxproj' /p:Configuration=$Configuration /p:Platform=x64 /m /nologo /v:minimal
+        & $msbuild 'loader\CesiumLoader\CesiumLoader.vcxproj' /p:Configuration=$Configuration /p:Platform=x64 /m /nologo /v:minimal
         if ($LASTEXITCODE -ne 0) { throw "原生加载器构建失败 (exit $LASTEXITCODE)" }
         dotnet build 'smoke\SpeedCtlSmoke\SpeedCtlSmoke.csproj' -c $Configuration --nologo
         if ($LASTEXITCODE -ne 0) { throw '冒烟宿主构建失败' }
     }
 
-    $nativeDll = "src\CesiumLoader\bin\$Configuration\version.dll"
+    $nativeDll = "loader\CesiumLoader\bin\$Configuration\version.dll"
     if (-not (Test-Path $nativeDll)) { throw "缺少 $nativeDll" }
 
     # 宿主输出目录: bin\<Configuration>\net8.0
@@ -56,7 +56,7 @@ try
     Copy-Item $nativeDll (Join-Path $hostDir 'version.dll') -Force
 
     # 真实的 SDK(宿主要反射加载它, 端到端验证 mod 侧路径)
-    $sdkDll = "src\CesiumLoader.SDK\bin\$Configuration\netstandard2.0\CesiumLoader.SDK.dll"
+    $sdkDll = "loader\CesiumLoader.SDK\bin\$Configuration\netstandard2.0\CesiumLoader.SDK.dll"
     if (-not (Test-Path $sdkDll)) { throw "缺少 $sdkDll (先构建 SDK)" }
     Copy-Item $sdkDll (Join-Path $loaderDir 'sdk\CesiumLoader.SDK.dll') -Force
 

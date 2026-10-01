@@ -49,9 +49,9 @@ jobs:
         shell: pwsh
         run: |
           # 只构建 C++ 加载器(vcxproj), 不构建 sln —— sln 里还有 C# 项目(需 restore)
-          & msbuild src\CesiumLoader\CesiumLoader.vcxproj /p:Configuration=Release /p:Platform=x64 /m /nologo /v:minimal
+          & msbuild loader\CesiumLoader\CesiumLoader.vcxproj /p:Configuration=Release /p:Platform=x64 /m /nologo /v:minimal
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $vdbin = "src/CesiumLoader/bin/Release/version.dll"
+          $vdbin = "loader/CesiumLoader/bin/Release/version.dll"
           if (-not (Test-Path $vdbin)) { throw "version.dll 未生成" }
           New-Item -ItemType Directory -Path "bin/Release" -Force | Out-Null
           Copy-Item $vdbin "bin/Release/version.dll" -Force   # 统一到仓库根, 供后续步骤引用
@@ -60,9 +60,9 @@ jobs:
       - name: Build managed bootstrap
         shell: pwsh
         run: |
-          dotnet build src\CesiumLoader.Bootstrap\CesiumLoader.Bootstrap.csproj -c Release --nologo
+          dotnet build loader\CesiumLoader.Bootstrap\CesiumLoader.Bootstrap.csproj -c Release --nologo
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $bootstrap = "src/CesiumLoader.Bootstrap/bin/Release/netstandard2.0/CesiumLoader.Bootstrap.dll"
+          $bootstrap = "loader/CesiumLoader.Bootstrap/bin/Release/netstandard2.0/CesiumLoader.Bootstrap.dll"
           if (-not (Test-Path $bootstrap)) { throw "CesiumLoader.Bootstrap.dll 未生成" }
           New-Item -ItemType Directory -Path "dist/modloader/AstralParty_ModLoader/bootstrap" -Force | Out-Null
           Copy-Item $bootstrap "dist/modloader/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll" -Force
@@ -183,7 +183,7 @@ jobs:
           Copy-Item "sdk-tools/cesium.exe" "sdk-staging/cesium.exe" -Force
           Copy-Item "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll" "sdk-staging/CesiumLoader.SDK.dll" -Force
           Copy-Item "docs/*.md" "sdk-staging/docs/" -Force
-          Copy-Item "src/ActivityLogMod/ModEntry.cs", "src/ActivityLogMod/AssemblyInfo.cs", "src/ActivityLogMod/ActivityLogMod.csproj" "sdk-staging/examples/ActivityLogMod/" -Force
+          Copy-Item "mods/ActivityLogMod/ModEntry.cs", "mods/ActivityLogMod/AssemblyInfo.cs", "mods/ActivityLogMod/ActivityLogMod.csproj" "sdk-staging/examples/ActivityLogMod/" -Force
           # SDK 工具包说明
           $readme = @(
             "cesium SDK 工具包 ${{ steps.version.outputs.version }}",

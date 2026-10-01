@@ -8,7 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <!-- 直接引用 Bootstrap 源码, 验证真实实现 -->
-    <Compile Include="..\..\..\src\CesiumLoader.Bootstrap\Bootstrap.cs" />
+    <Compile Include="..\..\..\loader\CesiumLoader.Bootstrap\Bootstrap.cs" />
   </ItemGroup>
   <PropertyGroup>
     <StartupObject>Program</StartupObject>

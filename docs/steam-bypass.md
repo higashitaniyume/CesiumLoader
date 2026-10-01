@@ -3,7 +3,7 @@
 > 面向"以后的我 / 别的维护者"。**先读第 3 节「四个非显然的实机结论」,再看代码** ——
 > 这一节是本文档最有价值的部分,它能省掉你重新踩一遍坑。
 >
-> 实现位置: `modding\msvc\src\CesiumLoader\steamhack.{h,cpp}`(主体)、
+> 实现位置: `modding\msvc\loader\CesiumLoader\steamhack.{h,cpp}`(主体)、
 > `config.{h,cpp}`(配置)、`loader.cpp`(调用点)。
 > **哪些是实机验证过的、哪些还没跑过,第 5 节逐条标注**(阶段5 目前只做到"构建通过 + 安装期探针设计",
 > 实机回归待做)。
@@ -304,7 +304,7 @@
 
 定版 `version.dll`(阶段1-3 + 方案C,**5 个 hook**):**343552 字节**,
 `SHA256 = EE84C27556C3E3D1E753751EFCE1A30D62F53D03A5760F9BC12D436FD98ADE36`
-(Release x64,MSVC;`src\CesiumLoader\bin\Release\version.dll`)。
+(Release x64,MSVC;`loader\CesiumLoader\bin\Release\version.dll`)。
 
 ### 5.1 阶段1-3 + 方案C 的历史记录(已实机验证)
 
@@ -322,7 +322,7 @@
 ### 5.2 阶段5 版本(**6 个 hook**)—— 构建通过,**实机回归待做**
 
 当前 `version.dll`:**381440 字节**,`SHA256 = 6BB537E13C2A1180F9AA95F1BDE8F4A5952B70563B393EB117FC62261B8C05D9`
-(Release x64,MSVC;`src\CesiumLoader\bin\Release\version.dll`;改动含阶段5)。
+(Release x64,MSVC;`loader\CesiumLoader\bin\Release\version.dll`;改动含阶段5)。
 
 发布包:`dist\release\cesium-loader-2.2.0.zip` = `cesium-loader.zip`,**312171 字节**,
 `SHA256 = 48A8D531225C193F71DE8195FE27302FA84FC61E86235F252722B9E6B0C0D22F`
@@ -497,12 +497,12 @@
 
 | 文件 | 内容 |
 |------|------|
-| `modding\msvc\src\CesiumLoader\steamhack.h` | 原理总述 + 接口签名与每个参数的语义 |
-| `modding\msvc\src\CesiumLoader\steamhack.cpp` | 全部实现;文件头注释有每个 hook 的编号与说明 |
-| `modding\msvc\src\CesiumLoader\config.h` | 各 `steamBypass*` 字段的默认值与理由(**含 `steamBypassLobbyMethods=false` 与阶段5 `steamBypassLobbyQuery=true` 的完整说明**) |
-| `modding\msvc\src\CesiumLoader\config.cpp` | 默认值落点 |
-| `modding\msvc\src\CesiumLoader\il2cpp_safe.h` | IL2CPP 导出函数表(`array_length` / `gchandle_new` 是阶段5 新增的**可选**项) |
-| `modding\msvc\src\CesiumLoader\loader.cpp`(约 `:621-655`) | 安装调用点与时机说明(含"三个开关都关才跳过 Steam 绕过"的判断) |
+| `modding\msvc\loader\CesiumLoader\steamhack.h` | 原理总述 + 接口签名与每个参数的语义 |
+| `modding\msvc\loader\CesiumLoader\steamhack.cpp` | 全部实现;文件头注释有每个 hook 的编号与说明 |
+| `modding\msvc\loader\CesiumLoader\config.h` | 各 `steamBypass*` 字段的默认值与理由(**含 `steamBypassLobbyMethods=false` 与阶段5 `steamBypassLobbyQuery=true` 的完整说明**) |
+| `modding\msvc\loader\CesiumLoader\config.cpp` | 默认值落点 |
+| `modding\msvc\loader\CesiumLoader\il2cpp_safe.h` | IL2CPP 导出函数表(`array_length` / `gchandle_new` 是阶段5 新增的**可选**项) |
+| `modding\msvc\loader\CesiumLoader\loader.cpp`(约 `:621-655`) | 安装调用点与时机说明(含"三个开关都关才跳过 Steam 绕过"的判断) |
 | `modding\msvc\dist\modloader\AstralParty_ModLoader\doorstop_config.json` | **分发用配置模板(单一来源)**;`staging\` 是打包脚本从它复制的 |
 | `modding\msvc\tools\package-modloader.ps1` | 打包脚本 |
 | `outputs\backup-before-steambypass\` | 回退用备份 |

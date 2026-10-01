@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     步骤:
-      1. dotnet build src\CombatOddsMod (Release)
+      1. dotnet build mods\CombatOddsMod (Release)
       2. 校验游戏目录已装加载器(version.dll + AstralParty_ModLoader\)
       3. 复制 CombatOddsMod.dll + CombatOddsMod.json 到
          <游戏exe目录>\AstralParty_ModLoader\mods\CombatOddsMod\
@@ -22,11 +22,11 @@ $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot   # modding\msvc
 
 Write-Host "== 构建 CombatOddsMod (Release) =="
-dotnet build (Join-Path $repo 'src\CombatOddsMod\CombatOddsMod.csproj') -c Release --nologo | Out-Null
+dotnet build (Join-Path $repo 'mods\CombatOddsMod\CombatOddsMod.csproj') -c Release --nologo | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "构建失败" }
 
-$dll = Join-Path $repo 'src\CombatOddsMod\bin\Release\netstandard2.0\CombatOddsMod.dll'
-$json = Join-Path $repo 'src\CombatOddsMod\CombatOddsMod.json'
+$dll = Join-Path $repo 'mods\CombatOddsMod\bin\Release\netstandard2.0\CombatOddsMod.dll'
+$json = Join-Path $repo 'mods\CombatOddsMod\CombatOddsMod.json'
 if (-not (Test-Path $dll)) { throw "找不到产物: $dll" }
 if (-not (Test-Path $json)) { throw "找不到 sidecar: $json" }
 
@@ -48,7 +48,7 @@ Copy-Item $json (Join-Path $modDir 'CombatOddsMod.json') -Force
 
 # 若 mod 用到了 SDK 里的新 API(如 Players.Roster), 部署里的 sdk\CesiumLoader.SDK.dll 也必须同步,
 # 否则运行时会 MissingMethodException。构建 mod 时已连带构建 SDK, 这里把它一并覆盖过去。
-$sdkDll = Join-Path $repo 'src\CesiumLoader.SDK\bin\Release\netstandard2.0\CesiumLoader.SDK.dll'
+$sdkDll = Join-Path $repo 'loader\CesiumLoader.SDK\bin\Release\netstandard2.0\CesiumLoader.SDK.dll'
 $sdkDestDir = Join-Path $loaderDir 'sdk'
 if ((Test-Path $sdkDll) -and (Test-Path $sdkDestDir)) {
     Copy-Item $sdkDll (Join-Path $sdkDestDir 'CesiumLoader.SDK.dll') -Force

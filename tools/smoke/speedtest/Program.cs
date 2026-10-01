@@ -48,7 +48,7 @@ internal static class Program
 
     private static int Main(string[] args)
     {
-        string dll = args.Length > 0 ? args[0] : @"..\..\..\..\..\src\CesiumLoader\bin\Release\version.dll";
+        string dll = args.Length > 0 ? args[0] : @"..\..\..\..\..\loader\CesiumLoader\bin\Release\version.dll";
         Console.WriteLine("加载: " + System.IO.Path.GetFullPath(dll));
         IntPtr h = LoadLibrary(System.IO.Path.GetFullPath(dll));
         if (h == IntPtr.Zero)
