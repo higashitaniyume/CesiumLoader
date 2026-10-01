@@ -184,6 +184,12 @@ namespace AstralParty.AgentMod.Bridge
         public const string VendorCard = "vendorCard";
         /// <summary>控制移动卡选点 5067(ThrowDiceResult): 用几点移动力(1..MaxPoint)。超时 = 1 点。</summary>
         public const string SelectPoint = "selectPoint";
+        /// <summary>复活队友 5233(AskReviveTeammate): 救不救倒下的队友。超时 = 不复活。</summary>
+        public const string ReviveTeammate = "reviveTeammate";
+        /// <summary>机制选择 5259(SelectMechanism): 启不启动地块机制。超时 = 不启动。</summary>
+        public const string SelectMechanism = "selectMechanism";
+        /// <summary>医院 5093(TriggerHospital): 接受检查(唯一合法上行)。超时 = 同样发检查。</summary>
+        public const string HospitalCheck = "hospitalCheck";
     }
 
     public sealed class AgentCounters

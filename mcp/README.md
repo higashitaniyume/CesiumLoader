@@ -19,7 +19,7 @@ mcp\
 │   └── AstralParty.AgentMod.json         ← sidecar(id/版本/权限)
 ├── AstralParty.Mcp.Core\                ← MCP 协议 + 工具面(net8.0 类库, 零 NuGet 依赖)
 │   ├── McpServer.cs                      ← 手写 JSON-RPC 2.0 / stdio(initialize/tools/list/tools/call…)
-│   ├── AstralToolHost.cs                 ← 27 个 astral_* 工具(name/title/schema/annotations/dispatch)
+│   ├── AstralToolHost.cs                 ← 30 个 astral_* 工具(name/title/schema/annotations/dispatch)
 │   └── AgentBridgeClient.cs              ← 读写桥接目录 + 命令往返 + 开关控制
 └── AstralParty.Mcp\                     ← stdio 可执行入口(AstralParty.Mcp.exe)
 ```
@@ -107,7 +107,7 @@ dotnet build mcp\AstralParty.Mcp\AstralParty.Mcp.csproj -c Release
 
 一键部署脚本：`tools\deploy-agentmod.ps1`（构建 → 拷贝到游戏目录 → 打印 MCP 客户端配置片段）。
 
-## 工具一览（27 个）
+## 工具一览（30 个）
 
 读（只读，不改游戏）：
 
@@ -141,6 +141,9 @@ dotnet build mcp\AstralParty.Mcp\AstralParty.Mcp.csproj -c Release
 | `astral_pursue_monster` | `monsterId`(取候选 `LongId`) / `pass` | `MonsterPursuitC2S`(5213) |
 | `astral_vendor_buy_card` | `buy` | `VendorBuyCardC2S`(5323) |
 | `astral_select_point` | `point`(1..`pending.MaxPoint`) | `ThrowDiceResultC2S`(5067) |
+| `astral_revive_teammate` | `revive` | `AskReviveTeammateC2S`(5233) |
+| `astral_select_mechanism` | `select` | `SelectMechanismC2S`(5259) |
+| `astral_hospital_check` | 无(该窗口只有一个合法上行) | `TriggerHospitalC2S`(5093) |
 | `astral_speed` | `speed` | 变速(1.0–100.0) |
 | `astral_control` | `enableActions`/`dryRun`/`pause`/`reason` | 写 `control.json` |
 | `astral_emergency_stop` | `reason` | 急停 |
@@ -176,8 +179,8 @@ dotnet build mcp\AstralParty.Mcp\AstralParty.Mcp.csproj -c Release
 ## 测试
 
 ```powershell
-dotnet test tests\AstralParty.AgentMod.Tests\AstralParty.AgentMod.Tests.csproj -c Release   # 106 个
-dotnet test tests\AstralParty.Mcp.Tests\AstralParty.Mcp.Tests.csproj -c Release             # 66 个
+dotnet test tests\AstralParty.AgentMod.Tests\AstralParty.AgentMod.Tests.csproj -c Release   # 113 个
+dotnet test tests\AstralParty.Mcp.Tests\AstralParty.Mcp.Tests.csproj -c Release             # 67 个
 ```
 
 不需要开游戏：`AstralParty.Mcp.Tests` 用假桥接目录（真写 `state.json`、扮演游戏侧消费 `commands` 并回
@@ -191,7 +194,7 @@ pwsh -NoProfile -File tools\smoke-agent-bridge.ps1        # 成功时最后一�
 pwsh -NoProfile -File tools\smoke-agent-bridge.ps1 -Keep  # 失败时保留现场目录排查
 ```
 
-它覆盖 49 项断言：MCP 握手与工具清单、state/bridge/control 的字段名与大小写、`commands\*.json` 的
+它覆盖 56 项断言：MCP 握手与工具清单、state/bridge/control 的字段名与大小写、`commands\*.json` 的
 往返与两侧清理、`Kind=None` 的判定、以及**心跳过期时动作工具必须拒绝下发**（且不留垃圾命令文件）。
 
 ### 时间戳纪元（容易踩）

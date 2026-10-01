@@ -43,7 +43,8 @@ namespace AstralParty.Mcp
                     "  3) 看清 pending.kind 后出招: astral_throw_dice / astral_move / astral_use_card /\n" +
                     "     astral_ask_battle / astral_battle_choice / astral_select_relic / astral_select_reward_card /\n" +
                     "     astral_select_event / astral_use_quick_card / astral_stop_or_continue / astral_pursue_monster /\n" +
-                    "     astral_vendor_buy_card / astral_select_point /\n" +
+                    "     astral_vendor_buy_card / astral_select_point / astral_revive_teammate /\n" +
+                    "     astral_select_mechanism / astral_hospital_check /\n" +
                     "     astral_shop_buy / astral_buy_relic / astral_atm_transfer …(pending.Options 里会列出本窗口可用的操作);\n" +
                     "  4) 重复 2-3。需要手牌/场上数值时用 astral_state; 想复盘刚发生了什么用 astral_events / astral_actions。\n" +
                     "注意:\n" +
@@ -164,6 +165,22 @@ namespace AstralParty.Mcp
                 "**超时代答 = 1 点**。",
                 "{\"type\":\"object\",\"properties\":{\"point\":{\"type\":\"integer\",\"description\":\"用几点移动力(1..pending.MaxPoint), 默认 1\"},\"sn\":{\"type\":\"integer\"}},\"additionalProperties\":false}");
 
+            Add("astral_revive_teammate", "复活队友: 救不救", false, true,
+                "队友倒下后服务器问要不要花星币复活(5233)。revive=true 复活, false 不复活。 " +
+                "**超时代答 = 不复活**; 救谁、花多少星币由服务器决定(这条上行只有 Info 与 IsRevive 两个字段), " +
+                "筹码/星币现状看 astral_state。",
+                "{\"type\":\"object\",\"properties\":{\"revive\":{\"type\":\"boolean\",\"description\":\"true=复活(花星币), false=不复活(默认)\"},\"sn\":{\"type\":\"integer\"}},\"additionalProperties\":false}");
+
+            Add("astral_select_mechanism", "机制选择: 启不启动", false, true,
+                "地块机制问要不要启动(5259)。select=true 启动, false 不启动。 **超时代答 = 不启动**。",
+                "{\"type\":\"object\",\"properties\":{\"select\":{\"type\":\"boolean\",\"description\":\"true=启动, false=不启动(默认)\"},\"sn\":{\"type\":\"integer\"}},\"additionalProperties\":false}");
+
+            Add("astral_hospital_check", "医院: 接受检查", false, true,
+                "走到医院时服务器问要不要接受检查(5093)。这条窗口**只有一个合法上行**" +
+                "(TriggerHospitalC2S 里没有\"拒绝\"字段), 所以工具不带选项; 不答的话客户端倒计时结束也会自己发这条。 " +
+                "是否住院由服务器在回执里告知。",
+                "{\"type\":\"object\",\"properties\":{\"sn\":{\"type\":\"integer\"}},\"additionalProperties\":false}");
+
             Add("astral_speed", "设置游戏倍速", false, true,
                 "通过加载器的变速通道调整游戏时间流速(加速等待动画/演出)。下限 1.0, 上限 100。别调太高(会影响网络超时与演出)。",
                 "{\"type\":\"object\",\"properties\":{\"speed\":{\"type\":\"number\",\"description\":\"倍率, 1.0 - 100\"}},\"required\":[\"speed\"],\"additionalProperties\":false}");
@@ -224,6 +241,9 @@ namespace AstralParty.Mcp
                 case "astral_pursue_monster": return PursueMonster(args);
                 case "astral_vendor_buy_card": return VendorBuyCard(args);
                 case "astral_select_point": return SelectPoint(args);
+                case "astral_revive_teammate": return ReviveTeammate(args);
+                case "astral_select_mechanism": return SelectMechanism(args);
+                case "astral_hospital_check": return HospitalCheck(args);
                 case "astral_speed": return Speed(args);
 
                 case "astral_control": return Control(args);
@@ -456,6 +476,28 @@ namespace AstralParty.Mcp
             var dict = new Dictionary<string, object> { { "point", Int(args, "point", 1) } };
             PutSn(args, dict);
             return Send(AgentBridgeLayout.Tool.SelectPoint, dict);
+        }
+
+        private McpToolResult ReviveTeammate(JsonElement args)
+        {
+            var dict = new Dictionary<string, object> { { "revive", Bool(args, "revive", false) } };
+            PutSn(args, dict);
+            return Send(AgentBridgeLayout.Tool.ReviveTeammate, dict);
+        }
+
+        private McpToolResult SelectMechanism(JsonElement args)
+        {
+            var dict = new Dictionary<string, object> { { "select", Bool(args, "select", false) } };
+            PutSn(args, dict);
+            return Send(AgentBridgeLayout.Tool.SelectMechanism, dict);
+        }
+
+        /// <summary>医院(5093): 唯一合法上行, 没有可选参数(所以不传布尔值, 免得给 agent 错觉)。</summary>
+        private McpToolResult HospitalCheck(JsonElement args)
+        {
+            var dict = new Dictionary<string, object>();
+            PutSn(args, dict);
+            return Send(AgentBridgeLayout.Tool.HospitalCheck, dict);
         }
 
         private McpToolResult UseEffectCard(JsonElement args)

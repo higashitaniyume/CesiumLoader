@@ -723,10 +723,61 @@ namespace AstralParty.Mcp.Tests
             Assert.Contains("astral_pursue_monster", names);
             Assert.Contains("astral_vendor_buy_card", names);
             Assert.Contains("astral_select_point", names);
+            Assert.Contains("astral_revive_teammate", names);
+            Assert.Contains("astral_select_mechanism", names);
+            Assert.Contains("astral_hospital_check", names);
             Assert.Contains("astral_speed", names);
             Assert.Contains("astral_control", names);
             Assert.Contains("astral_emergency_stop", names);
             Assert.Contains("astral_resume", names);
+        }
+
+        /// <summary>
+        /// 漂移守卫: <see cref="AgentBridgeLayout.Tool"/> 是"游戏侧工具名"的唯一出处, 宿主必须为每个
+        /// 常量暴露 <c>astral_&lt;工具名&gt;</c>。加了新窗口却忘了在 AstralToolHost 里暴露(或反过来把
+        /// 名字拼错)时, 这条会失败 —— 比上面逐个手写名字的清单更能防漏。
+        /// </summary>
+        [Fact]
+        public void 工具清单_与桥接契约的Tool常量双向一致()
+        {
+            // 宿主自有工具: 它们不经过"命令文件"这条通道, 所以不在 AgentBridgeLayout.Tool 里。
+            var hostOnly = new HashSet<string>(StringComparer.Ordinal)
+            {
+                "astral_status", "astral_state", "astral_pending", "astral_events",
+                "astral_actions", "astral_control", "astral_emergency_stop", "astral_resume"
+            };
+
+            // Tool.Prefix 是前缀不是工具名; Tool.Ping 是桥接自检用的原生命令, 故意不暴露成 MCP 工具。
+            var toolNames = new List<string>();
+            foreach (var f in typeof(AgentBridgeLayout.Tool).GetFields(
+                         System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static))
+            {
+                if (!f.IsLiteral || f.IsInitOnly || f.FieldType != typeof(string)) continue;
+                var v = (string)f.GetRawConstantValue();
+                if (v == AgentBridgeLayout.Tool.Prefix || v == AgentBridgeLayout.Tool.Ping) continue;
+                Assert.False(toolNames.Contains(v), "AgentBridgeLayout.Tool 里有重名常量: " + v);
+                toolNames.Add(v);
+            }
+            Assert.NotEmpty(toolNames);
+
+            var exposed = new List<string>();
+            foreach (var t in _host.ListTools()) exposed.Add(t.Name);
+
+            // 1) 契约声明的每个游戏侧工具都要有对应的 MCP 工具
+            foreach (var v in toolNames)
+            {
+                var name = AgentBridgeLayout.ExternalToolName(v);
+                Assert.True(exposed.Contains(name), "桥接契约声明了 " + name + ", 但宿主没有暴露它");
+            }
+
+            // 2) 反向: 宿主暴露的每个 astral_* 都要有出处(宿主自有, 或契约常量)
+            foreach (var name in exposed)
+            {
+                if (!name.StartsWith(AgentBridgeLayout.Tool.Prefix, StringComparison.Ordinal)) continue;
+                if (hostOnly.Contains(name)) continue;
+                Assert.True(toolNames.Contains(name.Substring(AgentBridgeLayout.Tool.Prefix.Length)),
+                    "宿主暴露了 " + name + ", 但它既不是宿主自有工具, 也不是 AgentBridgeLayout.Tool 里的常量(拼错了?)");
+            }
         }
 
         [Fact]

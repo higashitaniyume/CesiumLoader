@@ -232,7 +232,7 @@ try {
 
     $list = Invoke-Mcp -Method 'tools/list' -Params ([ordered]@{})
     $tools = @($list.result.tools)
-    Assert-That 'tools/list 返回 27 个工具' ($tools.Count -eq 27) "实际 $($tools.Count)"
+    Assert-That 'tools/list 返回 30 个工具' ($tools.Count -eq 30) "实际 $($tools.Count)"
     Assert-That '工具名统一 astral_ 前缀' (@($tools | Where-Object { $_.name -notlike 'astral_*' }).Count -eq 0) ''
     Assert-That '包含 astral_move 与 astral_emergency_stop' `
         ((@($tools.name) -contains 'astral_move') -and (@($tools.name) -contains 'astral_emergency_stop')) ''
@@ -242,6 +242,9 @@ try {
     Assert-That '包含地块/选点四件套(加油站/追击/商人/选点)' `
         (((@($tools.name) -contains 'astral_stop_or_continue') -and (@($tools.name) -contains 'astral_pursue_monster') -and
           (@($tools.name) -contains 'astral_vendor_buy_card') -and (@($tools.name) -contains 'astral_select_point'))) ''
+    Assert-That '包含地块应答三件套(复活队友/机制选择/医院)' `
+        (((@($tools.name) -contains 'astral_revive_teammate') -and (@($tools.name) -contains 'astral_select_mechanism') -and
+          (@($tools.name) -contains 'astral_hospital_check'))) ''
 
     # ------------------------------ 2. 只读工具读假状态 ------------------------------
     Write-Host '[smoke] --- 只读工具 ---'
@@ -333,6 +336,25 @@ try {
 
     $purNoArg = Invoke-Tool 'astral_pursue_monster' '{}'
     Assert-That 'astral_pursue_monster 缺 monsterId/pass 时报错(不下发)' ($purNoArg.IsError -eq $true) $purNoArg.Text
+
+    # 地块应答三件套(5233 复活队友 / 5259 机制选择 / 5093 医院)也各走一次真往返
+    $rev = Invoke-Tool 'astral_revive_teammate' '{"revive":true,"sn":5233}'
+    Assert-That 'astral_revive_teammate 往返成功' ((-not $rev.IsError) -and ($rev.Text -match '已发送\(假游戏\)')) $rev.Text
+    $logged = Get-Content -LiteralPath $cmdLog -Raw -Encoding UTF8
+    Assert-That '命令文件里 tool=revive_teammate 且 revive=true' `
+        (($logged -match '"tool"\s*:\s*"revive_teammate"') -and ($logged -match '"revive"\s*:\s*true')) $logged
+
+    $mech = Invoke-Tool 'astral_select_mechanism' '{"select":true,"sn":5259}'
+    Assert-That 'astral_select_mechanism 往返成功' ((-not $mech.IsError) -and ($mech.Text -match '已发送\(假游戏\)')) $mech.Text
+    $logged = Get-Content -LiteralPath $cmdLog -Raw -Encoding UTF8
+    Assert-That '命令文件里 tool=select_mechanism 且 select=true' `
+        (($logged -match '"tool"\s*:\s*"select_mechanism"') -and ($logged -match '"select"\s*:\s*true')) $logged
+
+    $hos = Invoke-Tool 'astral_hospital_check' '{"sn":5093}'
+    Assert-That 'astral_hospital_check 往返成功' ((-not $hos.IsError) -and ($hos.Text -match '已发送\(假游戏\)')) $hos.Text
+    $logged = Get-Content -LiteralPath $cmdLog -Raw -Encoding UTF8
+    Assert-That '命令文件里 tool=hospital_check 且不带业务参数(唯一合法上行)' `
+        (($logged -match '"tool"\s*:\s*"hospital_check"') -and ($logged -notmatch '"check"')) $logged
 
     # ------------------------------ 4. 开关闸门 ------------------------------
     Write-Host '[smoke] --- 安全开关(control.json) ---'

@@ -728,6 +728,102 @@ namespace AstralParty.AgentMod.Tests
             Assert.Equal(AgentPendingKind.None, Build(t, false, 0, 1300).Kind);
         }
 
+        // ---------- 复活队友(5233 / 回执 5234) ----------
+
+        [Fact]
+        public void 复活队友窗口_给复活与不复活两个选项()
+        {
+            var t = new PendingTracker();
+            t.OnReviveTeammateOffer(Self, 5233, 1000);
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Equal(AgentPendingKind.ReviveTeammate, p.Kind);
+            Assert.Equal(5233, p.Sn);
+            Assert.True(p.Actionable);
+            Assert.Contains(p.Options, o => o.Contains("astral_revive_teammate") && o.Contains("true"));
+            Assert.Contains(p.Options, o => o.Contains("astral_revive_teammate") && o.Contains("false"));
+            Assert.Contains(p.Notes, n => n.Contains("超时不答 = 不复活"));
+        }
+
+        [Fact]
+        public void 复活队友回执_关掉窗口()
+        {
+            var t = new PendingTracker();
+            t.OnReviveTeammateOffer(Self, 5233, 1000);
+            t.OnReviveTeammateDone(Self, 1100);
+
+            Assert.Equal(AgentPendingKind.None, Build(t, false, 0, 1200).Kind);
+        }
+
+        [Fact]
+        public void 复活队友窗口_别人的窗口不当作我的()
+        {
+            var t = new PendingTracker();
+            t.OnReviveTeammateOffer(Other, 5233, 1000);
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Equal(AgentPendingKind.None, p.Kind);
+            Assert.Contains(p.Notes, n => n.Contains("其他玩家"));
+        }
+
+        // ---------- 机制选择(5259 / 回执 5260) ----------
+
+        [Fact]
+        public void 机制选择窗口_给启动与不启动两个选项()
+        {
+            var t = new PendingTracker();
+            t.OnSelectMechanismOffer(Self, 5259, 1000);
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Equal(AgentPendingKind.SelectMechanism, p.Kind);
+            Assert.Equal(5259, p.Sn);
+            Assert.True(p.Actionable);
+            Assert.Contains(p.Options, o => o.Contains("astral_select_mechanism") && o.Contains("true"));
+            Assert.Contains(p.Options, o => o.Contains("astral_select_mechanism") && o.Contains("false"));
+            Assert.Contains(p.Notes, n => n.Contains("超时不答 = 不启动"));
+        }
+
+        [Fact]
+        public void 机制选择回执_关掉窗口()
+        {
+            var t = new PendingTracker();
+            t.OnSelectMechanismOffer(Self, 5259, 1000);
+            t.OnSelectMechanismDone(Self, 1100);
+
+            Assert.Equal(AgentPendingKind.None, Build(t, false, 0, 1200).Kind);
+        }
+
+        // ---------- 医院(5093 / 回执 5094) ----------
+
+        [Fact]
+        public void 医院窗口_只有一个检查选项且写明没有拒绝()
+        {
+            var t = new PendingTracker();
+            t.OnHospitalOffer(Self, 5093, 1000);
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Equal(AgentPendingKind.HospitalCheck, p.Kind);
+            Assert.Equal(5093, p.Sn);
+            Assert.True(p.Actionable);
+            Assert.Single(p.Options);
+            Assert.Contains("astral_hospital_check", p.Options[0]);
+            Assert.Contains(p.Notes, n => n.Contains("只有\"检查\"一个合法上行"));
+        }
+
+        [Fact]
+        public void 医院回执_关掉窗口()
+        {
+            var t = new PendingTracker();
+            t.OnHospitalOffer(Self, 5093, 1000);
+            t.OnHospitalDone(Self, 1100);
+
+            Assert.Equal(AgentPendingKind.None, Build(t, false, 0, 1200).Kind);
+        }
+
         // ---------- 怪物追击(5213 / 回执 5214) ----------
 
         [Fact]

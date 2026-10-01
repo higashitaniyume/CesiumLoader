@@ -406,6 +406,60 @@ namespace AstralParty.AgentMod.Bridge
         /// <summary>加油站/出生点回执(5078 = StopOrContinueS2C): 窗口关闭。</summary>
         public void OnStopOrContinueDone(long playerId, long nowMs) { ClearIf(AgentPendingKind.StopOrContinue, playerId); }
 
+        // ---------- 复活队友窗口(5233 / 回执 5234) ----------
+
+        /// <summary>
+        /// 服务器问"要不要复活倒下的队友"(5233 = <c>LandLogic.DealAskReviveTeammate</c>)。
+        ///
+        /// 依据(反编译): 这条动作**没有业务负载** —— 窗口 <c>ShowAskReviveTeammate(action)</c> 只读
+        /// <c>action.Sn</c> 与 <c>action.PlayerId</c>, 从不 <c>ReadObject</c>; 该显示什么(谁倒下了、
+        /// 要花多少星币)全在本地玩家状态里。窗口只在本人这边弹出, 其他人只看到"思考中"(11000)。
+        /// 两个按钮: <c>btn_Stop</c> → <c>IsRevive=true</c>、<c>btn_Continue</c> → <c>IsRevive=false</c>;
+        /// 超时回调点的是 <c>btn_Continue</c> → **不答 = 不复活**(<c>IsRevive=false</c>)。
+        /// </summary>
+        public void OnReviveTeammateOffer(long playerId, long sn, long nowMs)
+        {
+            SetWindow(new Window { Kind = AgentPendingKind.ReviveTeammate, PlayerId = playerId, Sn = sn, SinceMs = nowMs });
+        }
+
+        /// <summary>复活队友回执(5234 = AskReviveTeammateS2C): 窗口关闭。</summary>
+        public void OnReviveTeammateDone(long playerId, long nowMs) { ClearIf(AgentPendingKind.ReviveTeammate, playerId); }
+
+        // ---------- 机制选择窗口(5259 / 回执 5260) ----------
+
+        /// <summary>
+        /// 服务器问"要不要启动这个地块机制"(5259 = <c>LandLogic.DealAskSelectMechanism</c>)。
+        ///
+        /// 依据(反编译): **没有业务负载** —— 窗口 <c>ShowSelectMechanism(action)</c> 只读 <c>action.Sn</c>。
+        /// <c>btn_Stop</c>("启动") → <c>Select=true</c>、<c>btn_Continue</c> → <c>Select=false</c>;
+        /// 超时回调点的是 <c>btn_Continue</c> → **不答 = 不启动**(<c>Select=false</c>)。
+        /// </summary>
+        public void OnSelectMechanismOffer(long playerId, long sn, long nowMs)
+        {
+            SetWindow(new Window { Kind = AgentPendingKind.SelectMechanism, PlayerId = playerId, Sn = sn, SinceMs = nowMs });
+        }
+
+        /// <summary>机制选择回执(5260 = SelectMechanismS2C): 窗口关闭。</summary>
+        public void OnSelectMechanismDone(long playerId, long nowMs) { ClearIf(AgentPendingKind.SelectMechanism, playerId); }
+
+        // ---------- 医院窗口(5093 / 回执 5094) ----------
+
+        /// <summary>
+        /// 服务器问"要不要接受医院检查"(5093 = <c>UI.LandHospitalWindow.DealLand_TriggerHospital</c>)。
+        ///
+        /// 依据(反编译): **没有业务负载**(窗口只读 <c>_action.Sn</c>)。窗口里两个按钮, 但只有
+        /// <c>btn_check</c> 会发包(<c>RequestTriggerHospitalC2S(sn)</c> → <c>TriggerHospitalC2S{Info}</c>),
+        /// <c>btn_noSick</c> 只切本地视图、不上行。倒计时结束点的是 <c>btn_check</c> →
+        /// **超时同样发"检查"**, 所以这条窗口没有"拒绝"这个语义。
+        /// </summary>
+        public void OnHospitalOffer(long playerId, long sn, long nowMs)
+        {
+            SetWindow(new Window { Kind = AgentPendingKind.HospitalCheck, PlayerId = playerId, Sn = sn, SinceMs = nowMs });
+        }
+
+        /// <summary>医院回执(5094 = TriggerHospitalS2C): 窗口关闭。</summary>
+        public void OnHospitalDone(long playerId, long nowMs) { ClearIf(AgentPendingKind.HospitalCheck, playerId); }
+
         // ---------- 怪物追击窗口(5213 / 回执 5214) ----------
 
         /// <summary>
@@ -811,6 +865,30 @@ namespace AstralParty.AgentMod.Bridge
                                 (string.IsNullOrEmpty(w.Land) ? "没读到当前地块" : "当前地块=" + w.Land) +
                                 "; 其余看 astral_state 里的星币/等级/分数。");
                     p.Notes.Add("★ 超时不答 = 继续走(客户端超时回调点的是\"继续\"按钮)。");
+                    break;
+
+                case AgentPendingKind.ReviveTeammate:
+                    p.Actionable = true;
+                    p.Options.Add("astral_revive_teammate {\"revive\":true}     复活队友(花星币)");
+                    p.Options.Add("astral_revive_teammate {\"revive\":false}    不复活");
+                    p.Notes.Add("复活队友(5233)。要花多少星币、谁倒下了看 astral_state 的 Gold 与全体单位血量。");
+                    p.Notes.Add("★ 超时不答 = 不复活(客户端超时回调点的是\"继续\"按钮)。");
+                    break;
+
+                case AgentPendingKind.SelectMechanism:
+                    p.Actionable = true;
+                    p.Options.Add("astral_select_mechanism {\"select\":true}    启动");
+                    p.Options.Add("astral_select_mechanism {\"select\":false}   不启动");
+                    p.Notes.Add("机制选择(5259)。");
+                    p.Notes.Add("★ 超时不答 = 不启动(客户端超时回调点的是\"继续\"按钮)。");
+                    break;
+
+                case AgentPendingKind.HospitalCheck:
+                    p.Actionable = true;
+                    p.Options.Add("astral_hospital_check {}                    接受检查");
+                    p.Notes.Add("医院(5093): 这条窗口**只有\"检查\"一个合法上行** —— 客户端另一个按钮(\"没病\")" +
+                                "只切本地视图、不发包; 倒计时结束点的是\"检查\"。");
+                    p.Notes.Add("★ 超时不答 = 客户端自己发\"检查\", 所以答与不答的效果一样。");
                     break;
 
                 case AgentPendingKind.PursueMonster:

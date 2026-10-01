@@ -189,6 +189,77 @@ namespace CesiumLoader.SDK
         }
 
         /// <summary>
+        /// 复活队友(服务器动作 5233 = <c>LandLogic.DealAskReviveTeammate</c>):
+        /// <paramref name="revive"/>=true 复活(花星币), false 不复活。返回是否成功发出。
+        /// </summary>
+        /// <remarks>
+        /// 复刻 <c>LandLogic.RequestAskReviveTeammateC2S</c> —— 客户端只填 <c>Info</c> 与 <c>IsRevive</c>,
+        /// <c>AskPlayerId</c>/<c>Gold</c> 一律留默认值 <c>0</c>(救谁由服务器决定)。这条动作**没有业务负载**,
+        /// 窗口只读 <c>action.Sn</c>。超时回调点的是"继续"按钮 → **不答 = 不复活**(<c>IsRevive=false</c>)。
+        /// </remarks>
+        public static bool ReviveTeammate(bool revive, long? sn = null)
+        {
+            try
+            {
+                if (!Ready(out long targetSn, sn)) return false;
+                Net!.RPC.AskReviveTeammateC2S.AskReviveTeammateC2SCall(new AskReviveTeammateC2S
+                {
+                    Info = MakeInfo(targetSn),
+                    IsRevive = revive
+                });
+                return true;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>
+        /// 机制选择(服务器动作 5259 = <c>LandLogic.DealAskSelectMechanism</c>):
+        /// <paramref name="select"/>=true 启动, false 不启动。返回是否成功发出。
+        /// </summary>
+        /// <remarks>
+        /// 复刻 <c>LandLogic.RequestSelectMechanismC2S</c>。动作**没有业务负载**(窗口只读 <c>action.Sn</c>)。
+        /// 超时回调点的是"继续"按钮 → **不答 = 不启动**(<c>Select=false</c>)。
+        /// </remarks>
+        public static bool SelectMechanism(bool select, long? sn = null)
+        {
+            try
+            {
+                if (!Ready(out long targetSn, sn)) return false;
+                Net!.RPC.SelectMechanismC2S.SelectMechanismC2SCall(new SelectMechanismC2S
+                {
+                    Info = MakeInfo(targetSn),
+                    Select = select
+                });
+                return true;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>
+        /// 医院检查(服务器动作 5093 = <c>UI.LandHospitalWindow.DealLand_TriggerHospital</c>):
+        /// 接受检查。返回是否成功发出。
+        /// </summary>
+        /// <remarks>
+        /// 复刻 <c>LandLogic.RequestTriggerHospitalC2S</c>。这是该窗口**唯一**的合法上行 ——
+        /// <c>TriggerHospitalC2S</c> 只有一个 <c>Info</c> 字段, 没有"拒绝"的表达方式; 客户端另一个按钮
+        /// ("没病")只切本地视图、不上行, 倒计时结束发的也是这一条。是否住院由服务器在回执
+        /// <c>TriggerHospitalS2C.InHospital</c> 里告知。
+        /// </remarks>
+        public static bool HospitalCheck(long? sn = null)
+        {
+            try
+            {
+                if (!Ready(out long targetSn, sn)) return false;
+                Net!.RPC.TriggerHospitalC2S.TriggerHospitalC2SCall(new TriggerHospitalC2S
+                {
+                    Info = MakeInfo(targetSn)
+                });
+                return true;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>
         /// 怪物追击(服务器动作 5213 = <c>LandLogic.DealMonsterPursuit</c>):
         /// <paramref name="monsterId"/> = 要追击的怪物(怪物也是玩家, 填它的 playerId); <c>0</c> = 不追击。
         /// 返回是否成功发出。
