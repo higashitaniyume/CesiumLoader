@@ -55,14 +55,18 @@ MCP host（Claude Desktop、自研 agent、脚本），而不用把 agent 塞进
 命令/回执格式：
 
 ```jsonc
-// commands\00000007-c1727000000000-ab12cd34.json
+// commands\00000007-c1727000000000-ab12cd34.json   ← 键名 = AgentBridgeLayout.Field.*(小写)
 { "schema":1, "id":"c1727000000000-ab12cd34", "seq":7, "tool":"throw_dice",
-  "issuedAtMs":1727000000000, "args":{"noOper":true} }
+  "issuedAtMs":63900000000000, "args":{"noOper":true} }
 
-// results\c1727000000000-ab12cd34.json
+// results\c1727000000000-ab12cd34.json           ← 键名 = CesiumJson 的公共字段(PascalCase)
 { "Schema":1, "Id":"c1727000000000-ab12cd34", "Tool":"throw_dice", "Ok":true,
-  "Code":"ok", "Detail":"已发送 掷骰", "ExecutedAtMs":1727000000104, "LatencyMs":104 }
+  "Code":"ok", "Detail":"已发送 掷骰", "ExecutedAtMs":63900000000104, "LatencyMs":104 }
 ```
+
+> 两侧读对方写的文件都**忽略大小写**（`AgentBridgeClient` 与 `CesiumJson` 的字典查找都是
+> `OrdinalIgnoreCase`），所以命令用小写、回执用 PascalCase 是历史选择而非契约要求；
+> 时间戳纪元见文末「时间戳纪元」。
 
 错误码 `Code`：`ok` / `bad_args` / `unknown_tool` / `rejected`(动作总开关关) / `paused`(急停) /
 `dry_run`(演练) / `expired`(超过 `commandTtlMs`) / `exception`。
@@ -164,10 +168,29 @@ dotnet build mcp\AstralParty.Mcp\AstralParty.Mcp.csproj -c Release
 ## 测试
 
 ```powershell
-dotnet test tests\AstralParty.AgentMod.Tests\AstralParty.AgentMod.Tests.csproj -c Release   # 59 个
-dotnet test tests\AstralParty.Mcp.Tests\AstralParty.Mcp.Tests.csproj -c Release             # 46 个
+dotnet test tests\AstralParty.AgentMod.Tests\AstralParty.AgentMod.Tests.csproj -c Release   # 65 个
+dotnet test tests\AstralParty.Mcp.Tests\AstralParty.Mcp.Tests.csproj -c Release             # 50 个
 ```
 
 不需要开游戏：`AstralParty.Mcp.Tests` 用假桥接目录（真写 `state.json`、扮演游戏侧消费 `commands` 并回
 `results`）覆盖了整条命令往返链路；`AstralParty.AgentMod.Tests` 直接编译桥接里的纯逻辑
-（布局/状态机/命令解析）离线跑。
+（布局/状态机/命令解析/control.json 读取）离线跑。
+
+端到端冒烟（拿**真正发布出来的 server exe** + 一个临时桥接目录扮演游戏，不需要游戏/加载器）：
+
+```powershell
+pwsh -NoProfile -File tools\smoke-agent-bridge.ps1        # 成功时最后一行是 [smoke] === 全部通过 ===
+pwsh -NoProfile -File tools\smoke-agent-bridge.ps1 -Keep  # 失败时保留现场目录排查
+```
+
+它覆盖 30 项断言：MCP 握手与工具清单、state/bridge/control 的字段名与大小写、`commands\*.json` 的
+往返与两侧清理、`Kind=None` 的判定、以及**心跳过期时动作工具必须拒绝下发**（且不留垃圾命令文件）。
+
+### 时间戳纪元（容易踩）
+
+`state.json` / `bridge.json` / `commands\*.json` 里的所有绝对时间戳
+（`LastTickMs` / `SinceMs` / `issuedAtMs` / `ExecutedAtMs` / `UpdatedAtMs` …）都来自
+`AgentBridgeLayout.NowMs()`，它等于 **`DateTime.UtcNow.Ticks / 10000`（自 0001-01-01 起的毫秒）**，
+**不是 Unix 毫秒**（今天前者约 `6.39e13`，后者约 `1.79e12`，差 3 万多倍）。
+两者混用会让心跳年龄算出天文数字、被判成"没有心跳"（离线冒烟脚本第一版就这么翻过车）。
+自己写夹具或外部解析时请照抄 `NowMs()` 的算法；纯相对量（`RemainingMs` / `LatencyMs`）不受影响。

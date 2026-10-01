@@ -321,12 +321,19 @@ namespace AstralParty.Agent
             }
         }
 
-        /// <summary>当前 UTC 毫秒时间戳。</summary>
+        /// <summary>当前 UTC 毫秒时间戳(**纪元是 0001-01-01, 不是 Unix 纪元**)。</summary>
         /// <remarks>
         /// 必须用 <see cref="DateTime.UtcNow"/>: 加载器的变速引擎 hook 了
         /// <c>GetTickCount/GetTickCount64/timeGetTime/QueryPerformanceCounter</c>,
         /// 所以在游戏进程里 <c>Stopwatch</c> / <c>Environment.TickCount</c> 走的是**虚拟时间**,
         /// 拿来当"现实时间"会随倍率漂移(加载器的冒烟工程也踩过同一个坑)。
+        ///
+        /// ⚠ 这个值等于 <c>DateTime.UtcNow.Ticks / 10000</c>, 也就是"自 0001-01-01 起的毫秒",
+        /// **不是** <c>DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()</c>(Unix 纪元, 今天约 1.7e12)。
+        /// 两者相差约 3.5 万倍, 混用会让心跳年龄算出天文数字(离线冒烟脚本就这么翻过一次车)。
+        /// 之所以不换成 Unix 纪元: 两侧共用本文件, 且所有相对量(RemainingMs 等)都是本函数差分,
+        /// 改纪元只会制造"新 server + 旧 mod"的混装风险, 没有任何功能收益。
+        /// 外部写夹具/解析 state.json 时请一律用这个函数(或照抄它的算法)。
         /// </remarks>
         public static long NowMs()
         {

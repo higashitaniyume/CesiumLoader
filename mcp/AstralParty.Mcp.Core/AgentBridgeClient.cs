@@ -266,14 +266,16 @@ namespace AstralParty.Mcp
 
         private static string BuildCommandJson(string id, long seq, string tool, IDictionary<string, object> args)
         {
+            // 键名一律取共享常量: 游戏侧 BridgeCommandParser 读的是同一批常量(字典是 Ordinal 比较),
+            // 这里若写字面量, 哪天改了常量就会变成"命令写出去、mod 说缺少 tool 字段"的静默故障。
             var sb = new StringBuilder(256);
             sb.Append('{');
-            sb.Append("\"schema\":").Append(AgentBridgeLayout.SchemaVersion);
-            sb.Append(",\"id\":").Append(JsonSerializer.Serialize(id));
-            sb.Append(",\"seq\":").Append(seq);
-            sb.Append(",\"tool\":").Append(JsonSerializer.Serialize(tool));
-            sb.Append(",\"issuedAtMs\":").Append(AgentBridgeLayout.NowMs());
-            sb.Append(",\"args\":");
+            sb.Append('"').Append(AgentBridgeLayout.Field.Schema).Append("\":").Append(AgentBridgeLayout.SchemaVersion);
+            sb.Append(",\"").Append(AgentBridgeLayout.Field.Id).Append("\":").Append(JsonSerializer.Serialize(id));
+            sb.Append(",\"").Append(AgentBridgeLayout.Field.Seq).Append("\":").Append(seq);
+            sb.Append(",\"").Append(AgentBridgeLayout.Field.Tool).Append("\":").Append(JsonSerializer.Serialize(tool));
+            sb.Append(",\"").Append(AgentBridgeLayout.Field.IssuedAtMs).Append("\":").Append(AgentBridgeLayout.NowMs());
+            sb.Append(",\"").Append(AgentBridgeLayout.Field.Args).Append("\":");
             sb.Append(args == null ? "{}" : JsonSerializer.Serialize(args));
             sb.Append('}');
             return sb.ToString();

@@ -62,6 +62,9 @@ server 用 `System.Text.Json`），所以字段名/文件名/工具名**没有�
 - 时间统一用 **`DateTime.UtcNow`**（`AgentBridgeLayout.NowMs()`）：变速 hook 会改
   `GetTickCount/GetTickCount64/timeGetTime/QueryPerformanceCounter`，`Stopwatch` 与
   `Environment.TickCount` 是虚拟时间，用它算 TTL/超时会随倍速漂移。
+  ⚠ `NowMs()` = `DateTime.UtcNow.Ticks / 10000`，纪元是 **0001-01-01**，**不是 Unix 毫秒**
+  （今天前者约 `6.39e13`、后者 `1.79e12`）。所有绝对时间戳字段都用这个纪元；混用会算出天文数字的
+  年龄，把活着的桥接判成"没有心跳"。相对量（`RemainingMs` / `LatencyMs`）不受影响。
 
 ---
 
@@ -189,13 +192,23 @@ RecentActions[]{AtMs,Tool,Ok,Code,Detail}
 
 | 层 | 项目 | 覆盖 |
 |---|---|---|
-| 纯逻辑 | `tests\AstralParty.AgentMod.Tests`（59 个） | 目录/文件协议（原子写、日志尾部按行截断、轮转、`Sanitize` 防穿越、`{seq:D8}` 排序）、`PendingTracker` 逐窗口（含 `Sn==0` 拒绝、别人的窗口、优先级、倒计时、副本语义）、命令解析与回执序列化 |
-| 协议 + 集成 | `tests\AstralParty.Mcp.Tests`（46 个） | JSON-RPC 全路径、工具清单与注解、参数校验、开关合并、**真文件往返**（假游戏线程消费 `commands` 写 `results`）、超时清理、事件尾部截取 |
+| 纯逻辑 | `tests\AstralParty.AgentMod.Tests`（65 个） | 目录/文件协议（原子写、日志尾部按行截断、轮转、`Sanitize` 防穿越、`{seq:D8}` 排序）、`PendingTracker` 逐窗口（含 `Sn==0` 拒绝、别人的窗口、优先级、倒计时、副本语义）、命令解析与回执序列化、`control.json` 读取（含大小写容错与急停/恢复往返） |
+| 协议 + 集成 | `tests\AstralParty.Mcp.Tests`（50 个） | JSON-RPC 全路径、工具清单与注解、参数校验、开关合并、**真文件往返**（假游戏线程消费 `commands` 写 `results`）、超时清理、事件尾部截取、`Pending.Kind=None` 的大小写判定 |
+| 端到端冒烟 | `tools\smoke-agent-bridge.ps1`（30 项断言） | **真 server exe** + 临时桥接目录扮演游戏：握手/工具清单、state/bridge/control 字段与大小写、命令文件往返与两侧清理、心跳过期拒绝下发 |
 | 真机 | 需要用户配合 | 见下 |
 
 **为什么要"假桥接目录"这种测法**：整条链路的契约就是目录里的文件。测试里真写 `state.json`、
 真起一个线程扮演游戏侧消费 `commands\` 并回 `results\`，就能在不装游戏的情况下验证
 命名规则、TTL、原子写、回执解析、超时清理是否互相吻合 —— 这是最容易悄悄坏掉的一层。
+
+冒烟脚本（`-Keep` 保留现场）：
+
+```powershell
+pwsh -NoProfile -File tools\smoke-agent-bridge.ps1
+```
+
+它跑的是**真正发布出来的 exe**（缺了就现场 `dotnet publish`），所以能抓到"单元测试绿、exe 是旧的"
+这类问题 —— 本轮 `Kind=None` 的判定就是这么发现旧 exe 还没重发布的。
 
 ---
 

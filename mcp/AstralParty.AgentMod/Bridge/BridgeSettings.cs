@@ -106,6 +106,12 @@ namespace AstralParty.AgentMod.Bridge
             {
                 var map = CesiumJson.Deserialize(text) as IDictionary<string, object>;
                 if (map == null) return;
+
+                // 大小写容错: MCP 侧写的是 PascalCase(EnableActions), 而隔壁 config.json 用的是
+                // camelCase(enableActions) —— 用户手改 control.json 时很容易照着 config.json 写。
+                // CesiumJson 解出来的字典是 Ordinal 比较, 不兜这一层就会"改了没反应"。
+                map = CaseInsensitive(map);
+
                 EnableActions = CesiumJson.GetBool(map, AgentBridgeLayout.ControlField.EnableActions, EnableActions);
                 PauseActions = CesiumJson.GetBool(map, AgentBridgeLayout.ControlField.PauseActions, PauseActions);
                 DryRun = CesiumJson.GetBool(map, AgentBridgeLayout.ControlField.DryRun, DryRun);
@@ -114,6 +120,15 @@ namespace AstralParty.AgentMod.Bridge
                 ControlFileApplied = true;
             }
             catch { }
+        }
+
+        /// <summary>把字典重建成忽略大小写的键表(仅在读 control.json 时用, 文件很小)。</summary>
+        private static IDictionary<string, object> CaseInsensitive(IDictionary<string, object> map)
+        {
+            if (map == null) return null;
+            var copy = new Dictionary<string, object>(map.Count, StringComparer.OrdinalIgnoreCase);
+            foreach (var kv in map) copy[kv.Key] = kv.Value;
+            return copy;
         }
 
         private static int ClampInt(int v, int min, int max)

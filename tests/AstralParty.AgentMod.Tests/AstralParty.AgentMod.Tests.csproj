@@ -29,6 +29,7 @@
     <Compile Include="..\..\mcp\AstralParty.AgentMod\Bridge\AgentStateModels.cs" Link="Bridge\AgentStateModels.cs" />
     <Compile Include="..\..\mcp\AstralParty.AgentMod\Bridge\PendingTracker.cs" Link="Bridge\PendingTracker.cs" />
     <Compile Include="..\..\mcp\AstralParty.AgentMod\Bridge\CommandParser.cs" Link="Bridge\CommandParser.cs" />
+    <Compile Include="..\..\mcp\AstralParty.AgentMod\Bridge\BridgeSettings.cs" Link="Bridge\BridgeSettings.cs" />
   </ItemGroup>
 
   <ItemGroup>
