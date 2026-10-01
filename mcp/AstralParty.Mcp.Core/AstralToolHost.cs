@@ -252,7 +252,7 @@ namespace AstralParty.Mcp
                 {
                     Thread.Sleep(120);
                     var now = ReadPendingSignature();
-                    if (now != null && now != before && now.Kind != "none") break;
+                    if (now != null && now != before && !IsNoPending(now.Kind)) break;
                 }
             }
             return PendingResult();
@@ -273,7 +273,7 @@ namespace AstralParty.Mcp
                 if (!AgentBridgeClient.TryGetObject(doc.RootElement, "Pending", out var pending))
                     return McpToolResult.Error("状态里没有 Pending 字段(状态结构不兼容?)");
 
-                string kind = AgentBridgeClient.GetString(pending, "Kind") ?? "none";
+                string kind = AgentBridgeClient.GetString(pending, "Kind");
                 long sn = AgentBridgeClient.GetLong(pending, "Sn");
                 long since = AgentBridgeClient.GetLong(pending, "SinceMs");
                 long remaining = AgentBridgeClient.GetLong(pending, "RemainingMs");
@@ -281,7 +281,7 @@ namespace AstralParty.Mcp
                 string source = AgentBridgeClient.GetString(pending, "Source");
 
                 var sb = new StringBuilder();
-                if (kind == "none")
+                if (IsNoPending(kind))
                 {
                     sb.AppendLine("当前没有需要你响应的窗口(可能在等别的玩家, 或不在对局里)。");
                     string notes = JoinStringArray(pending, "Notes");
@@ -508,8 +508,22 @@ namespace AstralParty.Mcp
         private string DescribePending()
         {
             var sig = ReadPendingSignature();
-            if (sig == null || sig.Kind == "none") return "待响应窗口: 无";
+            if (sig == null || IsNoPending(sig.Kind)) return "待响应窗口: 无";
             return "待响应窗口: " + sig.Kind + " (sn=" + sig.Sn + (sig.Actionable ? ", 可直接应答" : ", 暂不可应答") + ")";
+        }
+
+        /// <summary>
+        /// <c>Pending.Kind</c> 是否为"没有窗口"。
+        ///
+        /// **必须忽略大小写**: 游戏侧用 <c>CesiumJson</c> 序列化 <c>AgentPendingKind</c> 枚举,
+        /// 枚举的 <c>ToString()</c> 给的是 PascalCase(<c>"None"</c>/<c>"Move"</c>/<c>"SelectRelic"</c>),
+        /// 而这里是 camelCase 的小写词。若按 Ordinal 比较, 真机上"当前没有窗口"会被当成
+        /// 一个名叫 <c>None</c> 的真窗口报给 agent(sn=0、没有任何候选), agent 会白白空转。
+        /// </summary>
+        private static bool IsNoPending(string kind)
+        {
+            if (string.IsNullOrEmpty(kind)) return true;
+            return string.Equals(kind.Trim(), "none", StringComparison.OrdinalIgnoreCase);
         }
 
         private sealed class PendingSignature
@@ -529,7 +543,7 @@ namespace AstralParty.Mcp
                 if (!AgentBridgeClient.TryGetObject(doc.RootElement, "Pending", out var p)) return null;
                 return new PendingSignature
                 {
-                    Kind = AgentBridgeClient.GetString(p, "Kind") ?? "none",
+                    Kind = AgentBridgeClient.GetString(p, "Kind"),
                     Sn = AgentBridgeClient.GetLong(p, "Sn"),
                     Actionable = AgentBridgeClient.GetBool(p, "Actionable"),
                     StateSeq = AgentBridgeClient.GetLong(doc.RootElement, "StateSeq")
