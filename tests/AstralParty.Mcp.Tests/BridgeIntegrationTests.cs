@@ -107,7 +107,7 @@ namespace AstralParty.Mcp.Tests
         public void 活着时_status汇总开关与待响应()
         {
             WriteHeartbeat();
-            WriteState("SelectRelic", 5211);
+            WriteState("selectRelic", 5211);
             _client.WriteControl(false, true, true, "测试", "test");
 
             var r = _host.CallTool("astral_status", Args("{}"));
@@ -118,14 +118,14 @@ namespace AstralParty.Mcp.Tests
             Assert.Contains("发送操作=只读", r.Text);
             Assert.Contains("急停=开", r.Text);
             Assert.Contains("演练=开", r.Text);
-            Assert.Contains("SelectRelic", r.Text);
+            Assert.Contains("selectRelic", r.Text);
         }
 
         [Fact]
         public void state_原样回状态JSON()
         {
             WriteHeartbeat();
-            WriteState("SelectRelic", 5211);
+            WriteState("selectRelic", 5211);
 
             var r = _host.CallTool("astral_state", Args("{}"));
 
@@ -138,7 +138,7 @@ namespace AstralParty.Mcp.Tests
         public void pending_没有窗口时说明在等别人()
         {
             WriteHeartbeat();
-            WriteState("None", 0, actionable: false);
+            WriteState("none", 0, actionable: false);
 
             var r = _host.CallTool("astral_pending", Args("{}"));
 
@@ -147,14 +147,16 @@ namespace AstralParty.Mcp.Tests
         }
 
         /// <summary>
-        /// 契约回归: 游戏侧用 CesiumJson 序列化枚举 → "None"(PascalCase), 而 MCP 侧写的是 "none"。
-        /// 早先这里是 Ordinal 比较, 于是真机的"没有窗口"会被当成一个名叫 None 的真窗口报给 agent
-        /// (sn=0 且没有任何候选), agent 会白白空转。两种写法都必须判成"没有窗口"。
+        /// 契约: 真机 state.json 里没有窗口时 <c>Kind</c> = <c>"none"</c>(小写 camelCase 常量,
+        /// 见 <c>AgentPendingKind</c> —— 桥接模型里没有枚举)。
+        /// 这里额外覆盖大小写变体: 早先按 Ordinal 比较, 一旦哪一侧改了大小写,
+        /// "没有窗口"就会被当成一个名叫 None 的真窗口报给 agent(sn=0 且没有候选), agent 会空转。
         /// </summary>
         [Theory]
-        [InlineData("None")]
         [InlineData("none")]
+        [InlineData("None")]
         [InlineData("NONE")]
+        [InlineData(" none ")]
         [InlineData("")]
         public void pending_没有窗口的判定忽略大小写(string kind)
         {
@@ -172,12 +174,12 @@ namespace AstralParty.Mcp.Tests
         public void pending_列出候选价格与可用操作()
         {
             WriteHeartbeat();
-            WriteState("SelectRelic", 5211);
+            WriteState("selectRelic", 5211);
 
             var r = _host.CallTool("astral_pending", Args("{}"));
 
             Assert.False(r.IsError);
-            Assert.Contains("待响应: SelectRelic", r.Text);
+            Assert.Contains("待响应: selectRelic", r.Text);
             Assert.Contains("sn=5211", r.Text);
             Assert.Contains("[0] 50001  幸运硬币", r.Text);
             Assert.Contains("价格 3", r.Text);

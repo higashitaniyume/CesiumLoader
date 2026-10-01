@@ -15,7 +15,7 @@
     - 桥接目录解析(环境变量 CESIUM_AGENT_DIR)
     - state.json / bridge.json 的字段名与大小写
     - 命令文件名 {seq:D8}-{id}.json、结果文件名 {id}.json、两侧文件都要被清掉
-    - Pending.Kind 是 CesiumJson 写的 PascalCase(枚举 ToString()), 不能被当成 camelCase
+    - Pending.Kind 是游戏侧的小写 camelCase 常量('none'/'move'/'selectRelic'…), 且两侧大小写不敏感
     - 心跳过期时 server 必须拒绝下发命令(并且不留下垃圾命令文件)
 
   跑法: pwsh -NoProfile -File tools\smoke-agent-bridge.ps1
@@ -148,8 +148,10 @@ function Write-Heartbeat {
 }
 
 function Write-State {
-    # Kind 故意用 PascalCase: 游戏侧 CesiumJson 写枚举就是 value.ToString() = "Move"/"None"
-    param([string]$Kind = 'Move', [long]$Sn = 5027)
+    # Kind 用真机契约里的小写 camelCase 常量('move'/'none'/'selectRelic'…, 见 AgentPendingKind)。
+    # 真机证据: 2026-10-01 抓到的 state.json 里就是 "Kind": "none" —— 桥接模型里没有枚举,
+    # 全是 string 常量, 所以不存在"CesiumJson 把枚举写成 PascalCase"这回事。
+    param([string]$Kind = 'move', [long]$Sn = 5027)
     $now = Get-BridgeNowMs
     $st = [ordered]@{
         Schema = 1; StateSeq = 7; Scene = 'RoomScene'; InRoom = $true; InBattle = $false
@@ -246,16 +248,21 @@ try {
     Assert-That 'astral_state 带出玩家昵称' ($state.Text -match '冒烟夹具') ''
 
     $pending = Invoke-Tool 'astral_pending'
-    Assert-That 'astral_pending 识别出移动窗口' ($pending.Text -match '待响应:\s*Move') $pending.Text
+    Assert-That 'astral_pending 识别出移动窗口' ($pending.Text -match '待响应:\s*move') $pending.Text
     Assert-That 'astral_pending 列出候选与价格' (($pending.Text -match '\[0\] 3') -and ($pending.Text -match '价格 3')) ''
     Assert-That 'astral_pending 标出售罄' ($pending.Text -match '已售罄') ''
     Assert-That 'astral_pending 给出可用操作' ($pending.Text -match 'astral_move') ''
 
-    # Kind 写成 "None" 时必须报"没有窗口"(PascalCase 契约)
-    Write-State -Kind 'None' -Sn 0
+    # 真机契约: 没有窗口时 Kind = 'none'(小写, 实测值)
+    Write-State -Kind 'none' -Sn 0
     $none = Invoke-Tool 'astral_pending'
-    Assert-That 'Kind=None(PascalCase) 判为没有窗口' ($none.Text -match '没有需要你响应') $none.Text
-    Write-State -Kind 'Move' -Sn 5027
+    Assert-That 'Kind=none 判为没有窗口' ($none.Text -match '没有需要你响应') $none.Text
+
+    # 大小写容错(防御): 哪一侧哪天写成 PascalCase, 也不该被当成一个名叫 None 的真窗口
+    Write-State -Kind 'None' -Sn 0
+    $nonePc = Invoke-Tool 'astral_pending'
+    Assert-That 'Kind=None(大小写容错) 同样判为没有窗口' ($nonePc.Text -match '没有需要你响应') $nonePc.Text
+    Write-State -Kind 'move' -Sn 5027
 
     # ------------------------------ 3. 动作工具真往返 ------------------------------
     Write-Host '[smoke] --- 命令通道往返 ---'
