@@ -33,6 +33,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- BCL 兼容性 lint 要知道"哪些源码会被编进 mod"(路径与 Compile 项一致) -->
+    <AssemblyMetadata Include="BridgeSourceRoot" Value="$(MSBuildThisFileDirectory)..\..\mcp" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- 与 CesiumLoader.SDK.Tests 同样的补齐: SDK 程序集里有引用 UniTask / UnityEngine 的类型,
          测试进程加载 SDK 程序集时需要能解析它们。 -->
     <Reference Include="UnityEngine.CoreModule">
