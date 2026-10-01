@@ -21,7 +21,11 @@ CesiumLoader.sln
 │   ├── CameraProbeMod\              相机探针
 │   ├── DiagnosticsMod\              诊断导出
 │   └── ExtremeDifficultyMod\        极限难度 (未列入 sln)
-├── mcp\                             AI agent 接管对局 (桥接 mod + MCP server)
+├── mcp\                             AI agent 接管对局 (桥接 mod + MCP server, 详见 mcp\README.md)
+│   ├── Shared\AgentBridgeLayout.cs   mod 与 server 共用的文件通道契约 (唯一来源)
+│   ├── AstralParty.AgentMod\         游戏内桥接 mod (状态快照 / 待响应窗口 / 动作下发)
+│   ├── AstralParty.Mcp.Core\         MCP 协议 + 工具面 (net8.0, 零 NuGet 依赖)
+│   └── AstralParty.Mcp\              stdio MCP server (AstralParty.Mcp.exe)
 ├── third_party\                     随仓库入库的第三方依赖 (vendored: 不要包管理器, 克隆即可编译, 见其 README)
 │   ├── minhook\                     MinHook (inline hook 库, 变速引擎使用, BSD-2-Clause)
 │   ├── fmt\                         fmt (字符串格式化, header-only, MIT)
@@ -35,6 +39,7 @@ CesiumLoader.sln
     ├── cesium\                     模组脚手架与包分发 CLI (new/build/package/list/verify)
     ├── builtin-mods.json           内置 mod 清单的唯一来源 (CI 与打包脚本共用)
     ├── package-modloader.ps1       构建 + 组装 + 打包 Release 压缩包
+    ├── deploy-agentmod.ps1         部署 AI 接管桥接 mod + MCP server (可选安装, 不进 builtin-mods.json)
     └── smoke-speedctl.ps1          跑变速控制文件通道冒烟测试
 ```
 
@@ -150,6 +155,7 @@ version.dll (C++ 薄代理, 15 个导出转发到系统 version.dll)
 | [平台约束-第三方库与AOT裁剪](docs/平台约束-第三方库与AOT裁剪.md) | **引第三方库前必读**：托管第三方库为何加载不起来、游戏内置 Newtonsoft 的裁剪面、存在性权威判定方法 |
 | [steam-bypass](docs/steam-bypass.md) | **脱离 Steam 运行**：加载器原生绕过（6 hook）的四阶段原理、配置全表、已验证测试矩阵、已知损失与回退方法 |
 | [mod-FreeCameraMod](docs/mod-FreeCameraMod.md) | 滚轮缩放 mod 的配置与原理（进游戏不接管；F1 恢复原视角）|
+| [MCP-Agent桥接](docs/MCP-Agent桥接.md) | **AI agent 接管对局**：文件通道设计、待响应窗口的反编译依据、动作下发、真机验证清单与已知缺口（用前通读）|
 | [mod-SpeedHackMod](docs/mod-SpeedHackMod.md) | 变速 mod 的热键、配置与风险 |
 | [工具-cesium-CLI](docs/工具-cesium-CLI.md) | 脚手架 CLI |
 
@@ -241,8 +247,12 @@ dotnet restore CesiumLoader.sln
 # 2. 命令行构建 (或直接用 VS2022 打开 sln 按 F7)
 MSBuild CesiumLoader.sln /p:Configuration=Release /p:Platform=x64
 
-# 3. 单元测试 (SDK, 不依赖游戏; 覆盖控制文件通道 / 倍率下限 / 时间连续性, 当前 313 个用例)
+# 3. 单元测试 (SDK, 不依赖游戏; 覆盖控制文件通道 / 倍率下限 / 时间连续性)
 dotnet test tests\CesiumLoader.SDK.Tests\CesiumLoader.SDK.Tests.csproj -c Release
+
+# 3b. AI 接管桥接的测试 (不开游戏; MCP 侧用假桥接目录跑完整命令往返)
+dotnet test tests\AstralParty.AgentMod.Tests\AstralParty.AgentMod.Tests.csproj -c Release
+dotnet test tests\AstralParty.Mcp.Tests\AstralParty.Mcp.Tests.csproj -c Release
 
 # 4. 冒烟测试: 变速控制文件通道 (真实 version.dll + 宿主进程, 不依赖游戏 ——
 #    控制文件通道在"等 GameAssembly.dll"之前就已就绪, 所以不需要游戏)
@@ -274,8 +284,7 @@ https://github.com/higashitaniyume/CesiumLoader/releases/latest/download/cesium-
 包含:
 - `cesium.exe` — mod 脚手架与包分发 CLI (自包含, 无需本机 .NET)
 - `CesiumLoader.SDK.dll` — mod 开发引用 (编译期绑定, 需配合游戏热更程序集)
-- `docs\` — SDK 文档 (概览/事件/玩家/操作/变速/生命周期/配置/能力声明)
-- `examples\ActivityLogMod\` — 示例 mod 源码 (行为日志)
+- `docs\` — SDK 文档 (概览/事件/玩家/操作/变速/生命周期/配置/能力声明)- `examples\ActivityLogMod\` — 示例 mod 源码 (行为日志)
 
 快速开始:
 
@@ -339,7 +348,7 @@ public static class ModEntry
 
 SDK API 一览:
 - `ModBase.Run(init, tick=null, delayMs=30000, tag)` — 生命周期 (不传 tick 不轮询)
-- `GameEvents.*` — 15 个事件 + `StartAutoHook()` (SDK 内部维持挂钩, 事件驱动)
+- `GameEvents.*` — 16 个事件 + `StartAutoHook()` (SDK 内部维持挂钩, 事件驱动)
 - `Permissions.Has/Require` — 恒返回 true (权限门控已取消, 仅保留 API 兼容)
 - `SdkVersion.Accepts/Current` — API 版本协商
 - `SdkLog.ReportCrash/CrashGuard` — 故障报告 (完整堆栈写 mod-errors.log)

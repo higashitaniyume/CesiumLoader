@@ -1,0 +1,384 @@
+using System;
+using System.IO;
+using System.Text;
+using System.Threading;
+
+namespace AstralParty.Agent
+{
+    /// <summary>
+    /// 桥接目录与文件约定的**唯一出处**。
+    ///
+    /// 同一份源码被两边编译(见 mcp\README.md):
+    ///   - 游戏内: <c>mcp\AstralParty.AgentMod</c>  (netstandard2.0, HybridCLR 热更)
+    ///   - 进程外: <c>mcp\AstralParty.Mcp.Core</c>  (net8.0, MCP server)
+    ///
+    /// 硬约束(与加载器一致, 别在这里破坏):
+    ///   - 热更程序集**不能 P/Invoke**, 所以只能靠"文件 + 环境变量"通信;
+    ///   - 这里只允许用 netstandard2.0 的 BCL, 且**不得**引用 SDK / 游戏 / Unity 类型;
+    ///   - 写文件一律"先写 .tmp 再原子替换", 避免对端读到写了一半的内容。
+    /// </summary>
+    public static class AgentBridgeLayout
+    {
+        /// <summary>协议版本。字段含义变化时 +1, 两边都校验。</summary>
+        public const int SchemaVersion = 1;
+
+        /// <summary>可覆盖桥接目录的环境变量(**两边都读**, 用来把桥接目录挪到别处做隔离测试)。</summary>
+        public const string EnvAgentDir = "CESIUM_AGENT_DIR";
+
+        /// <summary>加载器在游戏目录下用的文件夹名。</summary>
+        public const string LoaderFolderName = "AstralParty_ModLoader";
+
+        /// <summary>加载器文件夹下放桥接文件的子目录名。</summary>
+        public const string AgentFolderName = "agent";
+
+        public const string StateFileName = "state.json";
+        public const string EventsFileName = "events.jsonl";
+        public const string ActionsFileName = "actions.jsonl";
+        public const string BridgeFileName = "bridge.json";
+        public const string ControlFileName = "control.json";
+        public const string CommandsFolderName = "commands";
+        public const string ResultsFolderName = "results";
+
+        /// <summary>命令信封字段名(两边共用, 避免拼写漂移)。</summary>
+        public static class Field
+        {
+            public const string Schema = "schema";
+            public const string Id = "id";
+            public const string Seq = "seq";
+            public const string Tool = "tool";
+            public const string Args = "args";
+            public const string IssuedAtMs = "issuedAtMs";
+            public const string ExecutedAtMs = "executedAtMs";
+            public const string Ok = "ok";
+            public const string Code = "code";
+            public const string Error = "error";
+            public const string Detail = "detail";
+            public const string Sn = "sn";
+        }
+
+        /// <summary>
+        /// 命令工具名(game 侧执行)。外部 MCP 工具名是 <c>astral_&lt;tool&gt;</c>, 例如
+        /// <c>astral_throw_dice</c> → <see cref="ThrowDice"/>。
+        /// </summary>
+        public static class Tool
+        {
+            public const string Prefix = "astral_";
+            public const string Ping = "ping";
+            public const string ThrowDice = "throw_dice";
+            public const string Move = "move";
+            public const string UseCard = "use_card";
+            public const string UseEffectCard = "use_effect_card";
+            public const string UseQuickCard = "use_quick_card";
+            public const string AbandonCard = "abandon_card";
+            public const string SelectRelic = "select_relic";
+            public const string SelectRewardCard = "select_reward_card";
+            public const string ShopBuy = "shop_buy";
+            public const string AtmTransfer = "atm_transfer";
+            public const string BuyRelic = "buy_relic";
+            public const string Speed = "speed";
+        }
+
+        /// <summary>把这些名字拼成外部工具名(<c>astral_xxx</c>)。</summary>
+        public static string ExternalToolName(string tool)
+        {
+            return Tool.Prefix + tool;
+        }
+
+        /// <summary>结果码。ok 之外都表示命令没有真正作用到对局。</summary>
+        public static class Code
+        {
+            public const string Ok = "ok";
+            public const string BadArgs = "bad_args";
+            public const string UnknownTool = "unknown_tool";
+            public const string Rejected = "rejected";          // 游戏侧拒绝(权限/不在对局/没轮到)
+            public const string Paused = "paused";              // 急停开关生效
+            public const string DryRun = "dry_run";             // 演练模式: 只记录不发送
+            public const string Expired = "expired";            // 命令过期(游戏侧清理)
+            public const string Exception = "exception";
+        }
+
+        /// <summary>control.json 的字段名(外部写, 游戏内读)。</summary>
+        public static class ControlField
+        {
+            public const string EnableActions = "EnableActions";
+            public const string PauseActions = "PauseActions";
+            public const string DryRun = "DryRun";
+            public const string UpdatedAtMs = "UpdatedAtMs";
+            public const string UpdatedBy = "UpdatedBy";
+            public const string Note = "Note";
+        }
+
+        /// <summary>bridge.json(心跳)的字段名(游戏内写, 外部读)。</summary>
+        public static class BridgeField
+        {
+            public const string Schema = "Schema";
+            public const string ModVersion = "ModVersion";
+            public const string SdkVersion = "SdkVersion";
+            public const string ProcessId = "ProcessId";
+            public const string StartedAtMs = "StartedAtMs";
+            public const string LastTickMs = "LastTickMs";
+            public const string TickCount = "TickCount";
+            public const string StateSeq = "StateSeq";
+            public const string AgentDir = "AgentDir";
+            public const string Scene = "Scene";
+            public const string InRoom = "InRoom";
+            public const string InBattle = "InBattle";
+            public const string CommandsExecuted = "CommandsExecuted";
+            public const string CommandsRejected = "CommandsRejected";
+        }
+
+        /// <summary>
+        /// 解析桥接根目录。**两边必须得到同一个值**, 否则永远连不上。
+        ///
+        /// 优先级:
+        ///   1) 环境变量 <see cref="EnvAgentDir"/>
+        ///   2) <c>%LocalAppData%\AstralParty_ModLoader\agent</c>
+        ///
+        /// 为什么用 LocalAppData 而不是游戏目录: 游戏装在 <c>Program Files (x86)</c> 下,
+        /// 不保证普通权限可写; LocalAppData 一定可写, 且外部进程能算出同一个路径。
+        /// </summary>
+        public static string ResolveRoot()
+        {
+            string env = null;
+            try { env = Environment.GetEnvironmentVariable(EnvAgentDir); } catch { }
+            if (!string.IsNullOrEmpty(env)) return env.Trim();
+
+            string local = null;
+            try { local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData); } catch { }
+            if (string.IsNullOrEmpty(local))
+            {
+                try { local = Path.GetTempPath(); } catch { local = "."; }
+            }
+            return Path.Combine(Path.Combine(local, LoaderFolderName), AgentFolderName);
+        }
+
+        public static string StatePath(string root) { return Path.Combine(root, StateFileName); }
+        public static string EventsPath(string root) { return Path.Combine(root, EventsFileName); }
+        public static string ActionsPath(string root) { return Path.Combine(root, ActionsFileName); }
+        public static string BridgePath(string root) { return Path.Combine(root, BridgeFileName); }
+        public static string ControlPath(string root) { return Path.Combine(root, ControlFileName); }
+        public static string CommandsDir(string root) { return Path.Combine(root, CommandsFolderName); }
+        public static string ResultsDir(string root) { return Path.Combine(root, ResultsFolderName); }
+
+        /// <summary>命令文件名: <c>{seq:D8}-{id}.json</c>。零填充的 seq 保证按文件名排序 = 按下发顺序。</summary>
+        public static string CommandFileName(long seq, string id)
+        {
+            return seq.ToString("D8") + "-" + Sanitize(id) + ".json";
+        }
+
+        public static string CommandPath(string root, long seq, string id)
+        {
+            return Path.Combine(CommandsDir(root), CommandFileName(seq, id));
+        }
+
+        /// <summary>结果文件名: <c>{id}.json</c>。</summary>
+        public static string ResultPath(string root, string id)
+        {
+            return Path.Combine(ResultsDir(root), Sanitize(id) + ".json");
+        }
+
+        /// <summary>从命令文件名解出 (seq, id); 名字不合规返回 false。</summary>
+        public static bool TryParseCommandFileName(string fileName, out long seq, out string id)
+        {
+            seq = 0;
+            id = null;
+            if (string.IsNullOrEmpty(fileName)) return false;
+            if (!fileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase)) return false;
+
+            string stem = fileName.Substring(0, fileName.Length - 5);
+            int dash = stem.IndexOf('-');
+            if (dash <= 0 || dash >= stem.Length - 1) return false;
+
+            if (!long.TryParse(stem.Substring(0, dash), out seq)) return false;
+            id = stem.Substring(dash + 1);
+            return id.Length > 0;
+        }
+
+        /// <summary>把 id 清洗成合法文件名(只留字母数字和 - _), 防止外部输入穿越目录。</summary>
+        public static string Sanitize(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return "unnamed";
+            var sb = new StringBuilder(name.Length);
+            foreach (char c in name)
+            {
+                if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_')
+                    sb.Append(c);
+            }
+            return sb.Length == 0 ? "unnamed" : sb.ToString();
+        }
+
+        /// <summary>建齐目录(幂等)。</summary>
+        public static void EnsureDirectories(string root)
+        {
+            Directory.CreateDirectory(root);
+            Directory.CreateDirectory(CommandsDir(root));
+            Directory.CreateDirectory(ResultsDir(root));
+        }
+
+        /// <summary>
+        /// 原子写: 先写 <c>{path}.tmp</c>, 再替换目标。
+        /// 优先 <see cref="File.Replace"/> (NTFS 上原子, 读者要么看到旧内容要么看到新内容);
+        /// 不支持时退化成 delete+move (会有一个目标短暂不存在的窗口, 但绝不会读到半截内容)。
+        /// </summary>
+        public static bool WriteAtomic(string path, string content)
+        {
+            try
+            {
+                string dir = Path.GetDirectoryName(path);
+                if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+
+                string tmp = path + ".tmp";
+                var utf8NoBom = new UTF8Encoding(false);
+                // 显式用 FileShare.Read, 让对端在我们写 tmp 的瞬间也能读它(不会, 但保持一致性)
+                using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.Read))
+                using (var w = new StreamWriter(fs, utf8NoBom))
+                {
+                    w.Write(content);
+                    w.Flush();
+                    fs.Flush(true);
+                }
+
+                if (File.Exists(path))
+                {
+                    try
+                    {
+                        File.Replace(tmp, path, null);
+                        return true;
+                    }
+                    catch
+                    {
+                        // 有些文件系统/BCL 不支持 Replace, 退化处理
+                    }
+                }
+                try { File.Delete(path); } catch { }
+                File.Move(tmp, path);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>读文件; 不存在/被占用/内容非法一律返回 null(带几次重试)。</summary>
+        public static string ReadAllTextOrNull(string path, int retries = 3)
+        {
+            for (int i = 0; i <= retries; i++)
+            {
+                try
+                {
+                    if (!File.Exists(path)) return null;
+                    using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                    using (var r = new StreamReader(fs, Encoding.UTF8, true))
+                    {
+                        return r.ReadToEnd();
+                    }
+                }
+                catch
+                {
+                    if (i == retries) return null;
+                    try { Thread.Sleep(10); } catch { }
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// 读文本文件的**末尾**最多 maxBytes 字节(jsonl 追加流的读取口)。
+        /// 从第一个换行之后开始返回, 保证不会给出半行 JSON。
+        /// </summary>
+        public static string ReadTail(string path, int maxBytes)
+        {
+            try
+            {
+                if (!File.Exists(path)) return null;
+                using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                {
+                    if (fs.Length == 0) return string.Empty;
+                    long start = fs.Length > maxBytes ? fs.Length - maxBytes : 0;
+                    bool truncated = start > 0;
+                    fs.Seek(start, SeekOrigin.Begin);
+                    var buf = new byte[fs.Length - start];
+                    int read = 0;
+                    while (read < buf.Length)
+                    {
+                        int n = fs.Read(buf, read, buf.Length - read);
+                        if (n <= 0) break;
+                        read += n;
+                    }
+                    string text = Encoding.UTF8.GetString(buf, 0, read);
+                    if (truncated)
+                    {
+                        int nl = text.IndexOf('\n');
+                        text = nl >= 0 ? text.Substring(nl + 1) : string.Empty;
+                    }
+                    return text;
+                }
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>当前 UTC 毫秒时间戳。</summary>
+        /// <remarks>
+        /// 必须用 <see cref="DateTime.UtcNow"/>: 加载器的变速引擎 hook 了
+        /// <c>GetTickCount/GetTickCount64/timeGetTime/QueryPerformanceCounter</c>,
+        /// 所以在游戏进程里 <c>Stopwatch</c> / <c>Environment.TickCount</c> 走的是**虚拟时间**,
+        /// 拿来当"现实时间"会随倍率漂移(加载器的冒烟工程也踩过同一个坑)。
+        /// </remarks>
+        public static long NowMs()
+        {
+            return DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond;
+        }
+
+        /// <summary>当前 UTC 时间的 ISO 字符串。</summary>
+        public static string NowUtcIso()
+        {
+            return DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>追加一段文本(一次打开写完, 适合批量刷 jsonl)。</summary>
+        public static bool AppendText(string path, string text)
+        {
+            if (string.IsNullOrEmpty(text)) return true;
+            try
+            {
+                string dir = Path.GetDirectoryName(path);
+                if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                using (var fs = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite))
+                {
+                    var bytes = Encoding.UTF8.GetBytes(text);
+                    fs.Write(bytes, 0, bytes.Length);
+                }
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>追加一行(jsonl)。文件保持"写完即关", 让外部进程随时能读。</summary>
+        public static bool AppendLine(string path, string line)
+        {
+            return AppendText(path, line + "\n");
+        }
+
+        /// <summary>文件超过 limitBytes 就改名成 <c>{name}.1{ext}</c>(覆盖旧的), 保持单文件有界。</summary>
+        public static void RotateIfLarge(string path, long limitBytes)
+        {
+            try
+            {
+                if (!File.Exists(path)) return;
+                var fi = new FileInfo(path);
+                if (fi.Length < limitBytes) return;
+                string rotated = path + ".1";
+                try { if (File.Exists(rotated)) File.Delete(rotated); } catch { }
+                try { File.Move(path, rotated); } catch { }
+            }
+            catch { }
+        }
+    }
+}

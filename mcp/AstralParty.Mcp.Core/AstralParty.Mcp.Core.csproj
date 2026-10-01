@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>AstralParty.Mcp.Core</AssemblyName>
+    <RootNamespace>AstralParty.Mcp</RootNamespace>
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+    <!-- 零 NuGet 依赖: 只用 BCL(System.Text.Json), 保证离线可还原、单文件可分发 -->
+    <NuGetAudit>false</NuGetAudit>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 桥接目录/命令协议: 与游戏内 mod 共用同一份源码 -->
+    <Compile Include="..\Shared\AgentBridgeLayout.cs" Link="Shared\AgentBridgeLayout.cs" />
+  </ItemGroup>
+
+</Project>

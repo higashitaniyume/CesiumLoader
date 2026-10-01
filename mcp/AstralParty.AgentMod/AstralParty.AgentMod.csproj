@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>AstralParty.AgentMod</AssemblyName>
+    <RootNamespace>AstralParty.AgentMod</RootNamespace>
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- SDK: 生命周期 / 事件 / 数据访问 / 操作 / 名字解析 / 变速 -->
+    <ProjectReference Include="..\..\loader\CesiumLoader.SDK\CesiumLoader.SDK.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 桥接目录与命令协议: 与 MCP server 共用同一份源码(零依赖, 只用 netstandard2.0 BCL) -->
+    <Compile Include="..\Shared\AgentBridgeLayout.cs" Link="Shared\AgentBridgeLayout.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 游戏热更程序集: 手牌模型(HandCardData)、原始 Action 推送(1002)、protobuf 集合 -->
+    <Reference Include="AstralParty.Runtime">
+      <HintPath>..\..\..\..\extracted_dlls\AstralParty.Runtime.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Google.Protobuf.Runtime">
+      <HintPath>..\..\..\..\extracted_dlls\Google.Protobuf.Runtime.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UniTask">
+      <HintPath>..\..\..\..\extracted_dlls\UniTask.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>..\..\..\..\extracted_dlls\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- sidecar: 随 dll 一起进构建输出, 便于部署/打包 -->
+    <None Update="AstralParty.AgentMod.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
