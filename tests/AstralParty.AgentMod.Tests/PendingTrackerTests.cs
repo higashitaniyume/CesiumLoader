@@ -470,5 +470,208 @@ namespace AstralParty.AgentMod.Tests
             Assert.Contains(p.Options, o => o.Contains("reroll"));
             Assert.Contains(p.Notes, n => n.Contains("窗口不会关闭") || n.Contains("新的候选"));
         }
+
+        // ---------- 战斗三件套(5047 打不打 / 5035 出牌 / 5039 闪避) ----------
+        // 反编译依据: 三者的超时代答分别是"不打""不出牌""不闪避"(见 docs/MCP-Agent桥接.md §5)。
+
+        [Fact]
+        public void 战斗询问窗口_给出打与不打并说明超时默认()
+        {
+            var t = new PendingTracker();
+            t.OnAskFightOffer(Self, Other, 5047, 1000);
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Equal(AgentPendingKind.AskFight, p.Kind);
+            Assert.Equal(5047, p.Sn);
+            Assert.Equal(Other, p.AskPlayerId);
+            Assert.True(p.Actionable);
+            Assert.Contains(p.Options, o => o.Contains("astral_ask_battle") && o.Contains("true"));
+            Assert.Contains(p.Options, o => o.Contains("astral_ask_battle") && o.Contains("false"));
+            Assert.Contains(p.Notes, n => n.Contains("超时不答 = 不打"));
+        }
+
+        [Fact]
+        public void 战斗询问回执_关掉窗口()
+        {
+            var t = new PendingTracker();
+            t.OnAskFightOffer(Self, Other, 5047, 1000);
+            t.OnAskFightDone(Self, 1500);
+
+            Assert.Equal(AgentPendingKind.None, Build(t, false, 0, 1600).Kind);
+        }
+
+        [Fact]
+        public void 战斗出牌窗口_候选是手牌Guid并带各自消耗()
+        {
+            var t = new PendingTracker();
+            t.OnFightCardOffer(Self, 5035, 1000);
+            t.SetFightCardCandidates(new[] { 11, 22 }, new[] { 1, 3 }, 2, true);
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Equal(AgentPendingKind.FightCard, p.Kind);
+            Assert.Equal(5035, p.Sn);
+            Assert.True(p.Actionable);
+            Assert.Equal(2, p.Candidates.Count);
+            Assert.Equal(11, p.Candidates[0].Id);
+            Assert.Equal(1, p.Candidates[0].Cost);
+            Assert.Equal(3, p.Candidates[1].Cost);
+            Assert.True(p.IsAttacker);
+            Assert.Equal(2, p.ResidueCost);
+            Assert.Contains(p.Options, o => o.Contains("astral_use_card") && o.Contains("pass"));
+            Assert.Contains(p.Notes, n => n.Contains("攻击方"));
+            Assert.Contains(p.Notes, n => n.Contains("超时不答 = 不出牌"));
+        }
+
+        [Fact]
+        public void 战斗出牌候选_按handCard口径问名字()
+        {
+            var t = new PendingTracker();
+            t.OnFightCardOffer(Self, 5035, 1000);
+            t.SetFightCardCandidates(new[] { 77 }, new[] { 2 }, 5, false);
+
+            string kindSeen = null;
+            long idSeen = 0;
+            var p = t.Build(Self, false, 0, 1200, (k, sn) => -1,
+                (k, id) => { kindSeen = k; idSeen = id; return "名甲"; });
+
+            Assert.Equal("handCard", kindSeen);
+            Assert.Equal(77, idSeen);
+            Assert.Equal("名甲", p.Candidates[0].Name);
+            Assert.False(p.IsAttacker);
+            Assert.Equal(5, p.ResidueCost);
+            Assert.Contains(p.Notes, n => n.Contains("防守方"));
+        }
+
+        [Fact]
+        public void 战斗出牌候选_没有可出的牌时说明原因()
+        {
+            var t = new PendingTracker();
+            t.OnFightCardOffer(Self, 5035, 1000);
+            t.SetFightCardCandidates(new int[0], new int[0], 0, false);
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Empty(p.Candidates);
+            Assert.Contains(p.Notes, n => n.Contains("没有可出的战斗牌"));
+        }
+
+        [Fact]
+        public void 战斗出牌回执_关掉窗口()
+        {
+            var t = new PendingTracker();
+            t.OnFightCardOffer(Self, 5035, 1000);
+            t.OnFightCardDone(Self, 1500);
+
+            Assert.Equal(AgentPendingKind.None, Build(t, false, 0, 1600).Kind);
+        }
+
+        [Fact]
+        public void 闪避窗口_noDodge时只给硬吃()
+        {
+            var t = new PendingTracker();
+            t.OnFightChoiceOffer(Self, true, 5039, 1000);
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Equal(AgentPendingKind.FightChoice, p.Kind);
+            Assert.Equal(5039, p.Sn);
+            Assert.True(p.NoDodge);
+            Assert.DoesNotContain(p.Options, o => o.Contains("dodge\":true"));
+            Assert.Contains(p.Options, o => o.Contains("dodge\":false"));
+            Assert.Contains(p.Notes, n => n.Contains("超时不答 = 不闪避"));
+        }
+
+        [Fact]
+        public void 闪避窗口_可以闪避时给两个选项()
+        {
+            var t = new PendingTracker();
+            t.OnFightChoiceOffer(Self, false, 5039, 1000);
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.False(p.NoDodge);
+            Assert.Contains(p.Options, o => o.Contains("dodge\":true"));
+            Assert.Contains(p.Options, o => o.Contains("dodge\":false"));
+        }
+
+        [Fact]
+        public void 闪避窗口_执行器能查到NoDodge好拦下非法闪避()
+        {
+            var t = new PendingTracker();
+            t.OnFightChoiceOffer(Self, true, 5039, 1000);
+
+            bool noDodge;
+            Assert.True(t.TryGetNoDodge(out noDodge));
+            Assert.True(noDodge);
+        }
+
+        [Fact]
+        public void 没有闪避窗口时_查不到NoDodge()
+        {
+            var t = new PendingTracker();
+            t.OnFightCardOffer(Self, 5035, 1000);
+
+            bool noDodge;
+            Assert.False(t.TryGetNoDodge(out noDodge));
+            Assert.False(noDodge);
+        }
+
+        [Fact]
+        public void 闪避回执_关掉窗口()
+        {
+            var t = new PendingTracker();
+            t.OnFightChoiceOffer(Self, false, 5039, 1000);
+            t.OnFightChoiceDone(Self, 1500);
+
+            Assert.Equal(AgentPendingKind.None, Build(t, false, 0, 1600).Kind);
+        }
+
+        [Fact]
+        public void 四个人同时被问_别人的窗口既不报给我也不顶掉我的()
+        {
+            var t = new PendingTracker();
+            t.SetSelf(Self);
+            t.OnFightCardOffer(Self, 5035, 1000);
+
+            // 其他三个玩家同时各自有窗口(4 人局同一条 5047 会广播给所有人)
+            t.OnAskFightOffer(Other, Self, 5047, 1100);
+            t.OnFightChoiceOffer(3003, false, 5039, 1100);
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Equal(AgentPendingKind.FightCard, p.Kind);
+            Assert.Equal(5035, p.Sn);
+            Assert.True(p.Actionable);
+        }
+
+        [Fact]
+        public void 轮到别人时_不报成我的窗口()
+        {
+            var t = new PendingTracker();
+            t.SetSelf(Self);
+            t.OnAskFightOffer(Other, Self, 5047, 1000);
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Equal(AgentPendingKind.None, p.Kind);
+            Assert.False(p.Actionable);
+            Assert.Equal(0, p.Sn);
+        }
+
+        [Fact]
+        public void 战斗窗口_剩余时间用该窗口的sn去问()
+        {
+            var t = new PendingTracker();
+            t.OnAskFightOffer(Self, Other, 5047, 1000);
+
+            long askedSn = 0;
+            var p = t.Build(Self, false, 0, 1200, (k, sn) => { askedSn = sn; return 12345; },
+                (k, id) => "名" + id);
+
+            Assert.Equal(5047, askedSn);
+            Assert.Equal(12345, p.RemainingMs);
+        }
     }
 }

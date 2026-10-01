@@ -67,6 +67,10 @@ namespace AstralParty.Agent
             public const string ThrowDice = "throw_dice";
             public const string Move = "move";
             public const string UseCard = "use_card";
+            /// <summary>战斗询问(动作 5047): 接受/拒绝这场战斗。</summary>
+            public const string AskBattle = "ask_battle";
+            /// <summary>战斗内闪避选择(动作 5039)。</summary>
+            public const string BattleChoice = "battle_choice";
             public const string UseEffectCard = "use_effect_card";
             public const string UseQuickCard = "use_quick_card";
             public const string AbandonCard = "abandon_card";

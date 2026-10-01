@@ -212,5 +212,85 @@ namespace AstralParty.AgentMod.Bridge
             }
             catch { return null; }
         }
+
+        /// <summary>
+        /// 战斗出牌窗口(5035)的候选牌 —— 复刻客户端 <c>UI.FightWindow.GetVailCard()</c>:
+        /// 取我方手牌里 <c>Config.EffectType</c> 等于"我方角色对应的效果类型"的那些牌
+        /// (我是攻击方 → <c>EffectType.Attack</c>, 我是防守方 → <c>EffectType.Defense</c>),
+        /// 并给出每张牌的战斗消耗与"我方剩余战斗点数"(<c>fightData.attackerInfo.Cost</c> /
+        /// <c>defenderInfo.Cost</c>, 对应 UI 的 <c>AttackerResidueCost</c>/<c>DefenderResidueCost</c>)。
+        ///
+        /// 候选 id 用**手牌 Guid**(战斗用牌发的是 Guid, 不是卡牌配置 CardId)。
+        /// 只在轮到我出牌时调用。
+        /// </summary>
+        public static bool TrySelfFightCards(out int[] cardUids, out int[] costs, out int residueCost, out bool isAttacker)
+        {
+            cardUids = null;
+            costs = null;
+            residueCost = -1;
+            isAttacker = false;
+            try
+            {
+                var gm = SimpleSingletonProvider<GameLogicManager>.inst;
+                var fight = gm != null ? gm.fight : null;
+                if (fight == null) return false;
+
+                var attacker = fight.attackData;
+                var defender = fight.defendData;
+                if (attacker == null || defender == null) return false;
+
+                long self = 0;
+                try { self = gm.account.GetPlayerID(); } catch { }
+                if (self == 0) return false;
+
+                bool iAmAttacker = attacker.PlayerId == self;
+                bool iAmDefender = defender.PlayerId == self;
+                if (!iAmAttacker && !iAmDefender) return false;
+                isAttacker = iAmAttacker;
+                residueCost = iAmAttacker ? attacker.Cost : defender.Cost;
+
+                var hand = Players.MyHandCards();
+                if (hand == null) return false;
+
+                // 全局枚举 EffectType(见 CardInfoConfigure.EffectType): 攻击方只能用 Attack 类牌, 防守方只能用 Defense 类牌
+                EffectType want = iAmAttacker ? EffectType.Attack : EffectType.Defense;
+
+                var uids = new List<int>();
+                var cs = new List<int>();
+                for (int i = 0; i < hand.Count; i++)
+                {
+                    var hc = hand[i];
+                    if (hc == null) continue;
+                    try
+                    {
+                        var cfg = hc.Config;
+                        if (cfg == null) continue;
+                        if (cfg.EffectType != want) continue;
+                    }
+                    catch { continue; }
+                    if (hc.Guid == 0) continue;
+                    uids.Add(hc.Guid);
+                    cs.Add(SafeCardCost(gm, self, hc));
+                }
+                cardUids = uids.ToArray();
+                costs = cs.ToArray();
+                return true;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>单张战斗牌的消耗: 优先 per-card 逻辑(<c>cardActions[cardId].GetCostValue</c>), 退回手牌自带 BattleCost。</summary>
+        private static int SafeCardCost(GameLogicManager gm, long self, HandCardData hc)
+        {
+            try
+            {
+                var card = gm != null ? gm.card : null;
+                var actions = card != null ? card.cardActions : null;
+                if (actions != null && actions.TryGetValue(hc.CardId, out var act) && act != null)
+                    return act.GetCostValue(self, hc);
+            }
+            catch { }
+            try { return hc.BattleCost; } catch { return 0; }
+        }
     }
 }

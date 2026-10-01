@@ -41,11 +41,14 @@ namespace AstralParty.Mcp
                     "  1) astral_status —— 确认游戏内桥接活着(心跳 < 5s)以及三个开关的状态;\n" +
                     "  2) astral_pending {\"waitMs\":15000} —— 等你需要响应的窗口(轮到你投骰/选筹码/选奖励卡…);\n" +
                     "  3) 看清 pending.kind 后出招: astral_throw_dice / astral_move / astral_use_card /\n" +
-                    "     astral_select_relic / astral_select_reward_card / astral_select_event / astral_use_quick_card /\n" +
+                    "     astral_ask_battle / astral_battle_choice / astral_select_relic / astral_select_reward_card /\n" +
+                    "     astral_select_event / astral_use_quick_card /\n" +
                     "     astral_shop_buy / astral_buy_relic / astral_atm_transfer …(pending.Options 里会列出本窗口可用的操作);\n" +
                     "  4) 重复 2-3。需要手牌/场上数值时用 astral_state; 想复盘刚发生了什么用 astral_events / astral_actions。\n" +
                     "注意:\n" +
                     "  - 桥接只发\"和玩家手动点 UI 完全相同\"的 C2S 请求, 不修改内存、不伪造结果, 服务器照常校验;\n" +
+                    "  - 战斗类窗口都有倒计时(10/20/40 秒), **超时会被服务器按默认值代答**: 战斗询问=不打、\n" +
+                    "    出牌=不出牌、闪避=不闪避 —— 别拖到超时, 而且反复超时会被判挂机(AFK)惩罚;\n" +
                     "  - 动作失败会返回 isError, 先读 error/notes(常见原因: 不在对局、没轮到你、窗口已过、开关没开);\n" +
                     "  - 不确定就先用只读工具(`astral_state`/`astral_pending`), 别盲目连发动作;\n" +
                     "  - 要立刻停手用 astral_emergency_stop。";
@@ -86,9 +89,21 @@ namespace AstralParty.Mcp
                 "投骰后选择移动目标。landId 从 pending(kind=move)的候选里取 —— 候选是客户端按棋盘拓扑算出来的合法落点。",
                 "{\"type\":\"object\",\"properties\":{\"landId\":{\"type\":\"integer\",\"description\":\"目标地块 id(取 pending 候选)\"},\"sn\":{\"type\":\"integer\"}},\"required\":[\"landId\"],\"additionalProperties\":false}");
 
-            Add("astral_use_card", "战斗用牌", false, true,
-                "战斗中使用一张手牌。cardId 用手牌 CardId(astral_state 的 Hand[].CardId); 也可以给 cardGuid 让桥接反查。",
-                "{\"type\":\"object\",\"properties\":{\"cardId\":{\"type\":\"integer\"},\"cardGuid\":{\"type\":\"integer\",\"description\":\"手牌 Guid(会反查成 CardId)\"},\"sn\":{\"type\":\"integer\"}},\"additionalProperties\":false}");
+            Add("astral_use_card", "战斗出牌", false, true,
+                "战斗出牌窗口(5035)里出一张手牌, 或不出牌。cardId 取 pending(kind=fightCard)候选里的 id —— " +
+                "**那个 id 就是手牌 Guid**(服务器这条链路上用的就是 Guid, 不是卡牌配置 CardId, 别拿 astral_state 的 Hand[].CardId 来填); " +
+                "pass=true 表示这一轮不出牌(与客户端点\"结束出牌\"/超时同一条路径)。候选已按客户端口径过滤: 我是攻方只能出攻击牌、守方只能出防御牌, Cost 是这张牌的战斗消耗。",
+                "{\"type\":\"object\",\"properties\":{\"cardId\":{\"type\":\"integer\",\"description\":\"要出的手牌 id(取 pending 候选, 就是手牌 Guid)\"},\"cardUid\":{\"type\":\"integer\",\"description\":\"同上, 显式给手牌 Guid\"},\"pass\":{\"type\":\"boolean\",\"description\":\"true=这一轮不出牌(CardUid=0)\"},\"sn\":{\"type\":\"integer\"}},\"additionalProperties\":false}");
+
+            Add("astral_ask_battle", "战斗询问: 打不打", false, true,
+                "别人对你发起战斗时的询问(5047)。accept=true 接受这场战斗, false 拒绝。注意**服务器超时代答 = 拒绝(不打)**, " +
+                "而且反击(服务器下发 FightBack)那一次是客户端自动接受、不会开窗口, 桥接也不会给你这个窗口。",
+                "{\"type\":\"object\",\"properties\":{\"accept\":{\"type\":\"boolean\",\"description\":\"true=接受战斗, false=不打\"},\"sn\":{\"type\":\"integer\"}},\"required\":[\"accept\"],\"additionalProperties\":false}");
+
+            Add("astral_battle_choice", "战斗闪避选择", false, true,
+                "战斗结算前问你要不要闪避(5039)。dodge=true 闪避(消耗防守点), false 硬吃。**超时代答 = 不闪避**; " +
+                "若 pending 里 noDodge=true 则这一击不能闪避, 只能 dodge=false。",
+                "{\"type\":\"object\",\"properties\":{\"dodge\":{\"type\":\"boolean\",\"description\":\"true=闪避, false=不闪避\"},\"sn\":{\"type\":\"integer\"}},\"additionalProperties\":false}");
 
             Add("astral_use_effect_card", "使用棋盘效果牌", false, true,
                 "使用一张棋盘效果牌(可能带目标玩家/目标地块/效果项下标)。",
@@ -171,6 +186,8 @@ namespace AstralParty.Mcp
                 case "astral_throw_dice": return ThrowDice(args);
                 case "astral_move": return Move(args);
                 case "astral_use_card": return UseCard(args);
+                case "astral_ask_battle": return AskBattle(args);
+                case "astral_battle_choice": return BattleChoice(args);
                 case "astral_use_effect_card": return UseEffectCard(args);
                 case "astral_use_quick_card": return UseQuickCard(args);
                 case "astral_abandon_card": return AbandonCard(args);
@@ -350,10 +367,29 @@ namespace AstralParty.Mcp
 
         private McpToolResult UseCard(JsonElement args)
         {
-            var dict = CardArgs(args);
-            if (dict == null) return McpToolResult.Error("需要 cardId 或 cardGuid");
+            var dict = new Dictionary<string, object>();
+            if (Bool(args, "pass", false)) dict["pass"] = true;
+            else if (Has(args, "cardUid")) dict["cardUid"] = Int(args, "cardUid", 0);
+            else if (Has(args, "cardId")) dict["cardId"] = Int(args, "cardId", 0);
+            else if (Has(args, "cardGuid")) dict["cardGuid"] = Int(args, "cardGuid", 0);
+            else return McpToolResult.Error("需要 cardId(取 pending 候选里那个手牌 id)或 pass=true(不出牌)");
             PutSn(args, dict);
             return Send(AgentBridgeLayout.Tool.UseCard, dict);
+        }
+
+        private McpToolResult AskBattle(JsonElement args)
+        {
+            if (!Has(args, "accept")) return McpToolResult.Error("缺少 accept(true=接受战斗 / false=不打)");
+            var dict = new Dictionary<string, object> { { "accept", Bool(args, "accept", true) } };
+            PutSn(args, dict);
+            return Send(AgentBridgeLayout.Tool.AskBattle, dict);
+        }
+
+        private McpToolResult BattleChoice(JsonElement args)
+        {
+            var dict = new Dictionary<string, object> { { "dodge", Bool(args, "dodge", false) } };
+            PutSn(args, dict);
+            return Send(AgentBridgeLayout.Tool.BattleChoice, dict);
         }
 
         private McpToolResult UseEffectCard(JsonElement args)

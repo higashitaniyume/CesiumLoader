@@ -39,6 +39,7 @@ namespace AstralParty.AgentMod.Bridge
             CaptureSelf(st);
             CaptureHand(st);
             CaptureBuffs(st);
+            if (SelfId != 0) _tracker.SetSelf(SelfId);
             CaptureTurn(st, now);
             return st;
         }
@@ -184,6 +185,18 @@ namespace AstralParty.AgentMod.Bridge
                 if (lands != null) _tracker.SetMoveCandidates(lands);
             }
 
+            // 战斗出牌窗口(5035): 候选牌过滤口径与客户端 GetVailCard() 一致
+            // (手牌里 EffectType 匹配我方角色的牌; 我是攻击方用 Attack 类, 防守方用 Defense 类)。
+            // 只要还挂着这个窗口就刷新一次, 这样出过一张牌之后候选会自动少一张。
+            if (_tracker.WindowKind == AgentPendingKind.FightCard)
+            {
+                int[] uids, costs;
+                int residue;
+                bool attacker;
+                if (GameProbe.TrySelfFightCards(out uids, out costs, out residue, out attacker))
+                    _tracker.SetFightCardCandidates(uids, costs, residue, attacker);
+            }
+
             st.Pending = _tracker.Build(SelfId, canThrowDice, sn, now, DeadlineProbe.RemainingMs, ResolveName);
             st.NotMove = notMove;
         }
@@ -199,6 +212,27 @@ namespace AstralParty.AgentMod.Bridge
                     case "shopCard":
                     case "rewardCard":
                     case "card": return Fallback(Names.Card(id), id);
+                    // 战斗用牌的候选 id 是手牌 Guid(不是卡牌配置 id), 名字要拿我方手牌反查 CardId
+                    case "handCard":
+                        {
+                            try
+                            {
+                                var hand = Players.MyHandCards();
+                                if (hand != null)
+                                {
+                                    for (int i = 0; i < hand.Count; i++)
+                                    {
+                                        if (hand[i] != null && hand[i].Guid == id)
+                                        {
+                                            string n = Names.Card(hand[i].CardId);
+                                            return string.IsNullOrEmpty(n) ? "手牌#" + id : n;
+                                        }
+                                    }
+                                }
+                            }
+                            catch { }
+                            return "手牌#" + id;
+                        }
                     case "land": return "#" + id;
                     default: return "#" + id;
                 }

@@ -106,6 +106,8 @@ namespace AstralParty.AgentMod.Bridge
         public string Kind;
         /// <summary>商店卡价格(其他类型为 0)。</summary>
         public int Price;
+        /// <summary>战斗用牌的消耗(战斗点数; 非战斗候选为 0)。</summary>
+        public int Cost;
         /// <summary>商店卡是否已售罄。</summary>
         public bool SoldOut;
         /// <summary>商店卡是否免费(天赋免费格/免费卡位)。</summary>
@@ -129,6 +131,14 @@ namespace AstralParty.AgentMod.Bridge
         /// <summary>剩余毫秒(-1 = 未知)。到点游戏会自己代打(选第一项/空购买离店), 所以别拖。</summary>
         public long RemainingMs = -1;
         public List<AgentCandidate> Candidates = new List<AgentCandidate>();
+        /// <summary>5047 战斗询问: 是谁在挑战我(AskBattleC2S.AskPlayerId); 其它窗口为 0。</summary>
+        public long AskPlayerId;
+        /// <summary>5039 闪避窗口: true = 这一击不能闪避(反编译 FightWindow.ChooseActive 里会直接拒绝闪避请求)。</summary>
+        public bool NoDodge;
+        /// <summary>5035 战斗用牌: 我方剩余战斗点数(超额的牌服务器会拒)。-1 = 未读到。</summary>
+        public int ResidueCost = -1;
+        /// <summary>5035 战斗用牌: 我在这场战斗里是攻击方(true)还是防守方; 决定哪些手牌可用。only 该窗口有意义。</summary>
+        public bool IsAttacker;
         /// <summary>可用来应答它的工具名(自解释, 让 agent 不必猜)。</summary>
         public List<string> Options = new List<string>();
         public List<string> Notes = new List<string>();
@@ -150,6 +160,12 @@ namespace AstralParty.AgentMod.Bridge
         public const string BuyRelic = "buyRelic";
         /// <summary>棋盘事件弹窗: 从若干个事件里选一个(5317, 候选 = SelectEventC2S.Events)。</summary>
         public const string SelectEvent = "selectEvent";
+        /// <summary>战斗询问 5047(AskFight): 要不要接这一场。超时不答 = 不打。</summary>
+        public const string AskFight = "askFight";
+        /// <summary>战斗准备阶段用牌 5035(ReadyFightUseCard)。候选 = 手牌里 EffectType 匹配我方角色的牌; 超时 = 不出牌。</summary>
+        public const string FightCard = "fightCard";
+        /// <summary>战斗内闪避 5039(ReadyFightChoice)。超时 = 不闪避。</summary>
+        public const string FightChoice = "fightChoice";
     }
 
     public sealed class AgentCounters
