@@ -21,6 +21,8 @@
     <Compile Include="..\..\src\CombatOddsMod\CombatMath.cs" Link="CombatMath.cs" />
     <!-- 覆盖层编排逻辑(纯 System, 用假反射器单测状态机)。 -->
     <Compile Include="..\..\src\CombatOddsMod\FightOverlay.cs" Link="FightOverlay.cs" />
+    <!-- 星币锤/手电筒/美工刀 的攻击力加成计算(纯逻辑, 零游戏依赖)。 -->
+    <Compile Include="..\..\src\CombatOddsMod\RelicAtkBonus.cs" Link="RelicAtkBonus.cs" />
   </ItemGroup>
 
 </Project>
