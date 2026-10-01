@@ -88,6 +88,8 @@ namespace AstralParty.AgentMod.Bridge
 
                     case AgentBridgeLayout.Tool.SelectRewardCard:
                         return SelectRewardCard(cmd, started);
+                    case AgentBridgeLayout.Tool.SelectEvent:
+                        return SelectEvent(cmd, started);
 
                     case AgentBridgeLayout.Tool.ShopBuy:
                         return ShopBuy(cmd, started);
@@ -121,14 +123,22 @@ namespace AstralParty.AgentMod.Bridge
             bool noOper = cmd.GetBool("noOper", false);
             bool moveNow = cmd.GetBool("moveNow", false);
 
-            long? sn = ResolveSn(cmd, null);
+            // 战斗攻击骰(5037)与普通回合投骰(5021)的 sn **不是同一个来源**:
+            //   普通投骰 → SDK 默认的 ActionLogic.throwDiceSn
+            //   战斗攻击 → 5037 那条 action 自己的 Sn(桥接里的 battleDice 窗口)
+            // 拿错会被服务器当成过期/非法 sn 拒掉, 所以这里按窗口类型分开解析。
+            long? sn = battle ? ResolveSn(cmd, AgentPendingKind.BattleDice) : ResolveSn(cmd, null);
+            if (battle && !sn.HasValue)
+                return BadArgs(cmd, "现在没有战斗掷骰窗口(5037): 战斗攻击骰的 sn 只有服务器推 5037 时才有。" +
+                                    "先用 astral_pending 看有没有 kind=battleDice");
+
             long usedSn = sn.HasValue ? sn.Value : SafeCurrentSn();
 
             bool ok = battle
                 ? GameActions.BattleThrowDice(sn)
                 : GameActions.ThrowDice(noOper, moveNow, sn);
 
-            if (!ok) return NotSent(cmd, "投骰子");
+            if (!ok) return NotSent(cmd, battle ? "战斗投骰" : "投骰子");
             OnSent(usedSn);
             return Done(cmd, started, battle
                 ? "已发送 战斗投骰 BattleThrowDice(sn=" + usedSn + ")"
@@ -213,6 +223,19 @@ namespace AstralParty.AgentMod.Bridge
         {
             var ids = cmd.GetIntList("relicIds");
             int index = cmd.GetInt("index", -1);
+            bool reroll = cmd.GetBool("reroll", false);
+
+            // 重摇: 与选择同一条消息(SelectRelicC2S.IsReroll=true), 不需要候选, 也不该带 index。
+            // 反编译 RelicLogic.RequestResetRelic 证实客户端只填 Info + IsReroll。
+            // 注意窗口**不会**因此关闭: 服务器随后会推一组新候选(新 sn)。
+            if (reroll)
+            {
+                long? rerollSn = ResolveSn(cmd, AgentPendingKind.SelectRelic);
+                if (!GameActions.RerollRelic(rerollSn)) return NotSent(cmd, "重摇筹码");
+                OnSent(rerollSn);
+                return Done(cmd, started, "已发送 重摇筹码 RerollRelic(IsReroll=true, sn=" + Show(rerollSn) + "); " +
+                    "窗口未结束, 等服务器推新的一组候选");
+            }
 
             if (ids.Count == 0 && cmd.Has("relicId"))
             {
@@ -266,6 +289,42 @@ namespace AstralParty.AgentMod.Bridge
             OnSent(sn);
             return Done(cmd, started, "已发送 选奖励卡 SelectRewardCard(cards=[" + Join(ids) + "], index=" + index +
                 ", cardId=" + ids[index] + ", sn=" + Show(sn) + ")");
+        }
+
+        /// <summary>
+        /// 棋盘事件选择(cmd 5317)。候选来自服务器那条 SelectEventC2S.Events —— 反编译
+        /// UI.LandEventWindow.ShowSkill10202 证实客户端会把候选列表**原样回传**, 只改 Idx 与 Info.Sn,
+        /// 所以这里必须带完整候选(不能只发下标)。
+        /// 不选的话服务器超时会代选第 0 项。
+        /// </summary>
+        private BridgeResult SelectEvent(BridgeCommand cmd, long started)
+        {
+            int index = cmd.GetInt("index", -1);
+            int eventId = cmd.GetInt("eventId", 0);
+
+            int[] window;
+            if (!_tracker.TryGetWindowIds(AgentPendingKind.SelectEvent, out window) || window == null || window.Length == 0)
+                return BadArgs(cmd, "当前没有事件选择窗口(5317): 候选只有服务器推 5317 时才有。" +
+                                    "先用 astral_pending 看有没有 kind=selectEvent");
+
+            if (index < 0 && eventId != 0)
+            {
+                for (int i = 0; i < window.Length; i++)
+                {
+                    if (window[i] == eventId) { index = i; break; }
+                }
+                if (index < 0)
+                    return BadArgs(cmd, "eventId=" + eventId + " 不在本次候选里: [" + Join(window) + "]");
+            }
+            if (index < 0) index = 0; // 与游戏一致: 没选就是第 0 项
+            if (index >= window.Length)
+                return BadArgs(cmd, "index=" + index + " 超出候选范围(共 " + window.Length + " 个)");
+
+            long? sn = ResolveSn(cmd, AgentPendingKind.SelectEvent);
+            if (!GameActions.SelectEvent(window, index, sn)) return NotSent(cmd, "事件选择");
+            OnSent(sn);
+            return Done(cmd, started, "已发送 事件选择 SelectEvent(events=[" + Join(window) + "], index=" + index +
+                ", eventId=" + window[index] + ", sn=" + Show(sn) + ")");
         }
 
         // ============================== 商店 / ATM / 筹码地块(GameActions 未封装, 直接走 RPC) ==============================
@@ -414,10 +473,15 @@ namespace AstralParty.AgentMod.Bridge
             return null;
         }
 
-        /// <summary>动作已经发出去了 → 取消该 sn 的倒计时, 免得超时回调再自动代打一次。</summary>
-        private static void OnSent(long? sn)
+        /// <summary>
+        /// 动作已经发出去了 → 取消该 sn 的倒计时(免得超时回调再自动代打一次), 并把这个 sn 记成"已应答":
+        /// 服务器会把我自己的决定也当动作回播, 不记的话刚回完的窗口会被自己的回声重新打开。
+        /// </summary>
+        private void OnSent(long? sn)
         {
-            if (sn.HasValue && sn.Value > 0) GameProbe.CancelOperationTimer(sn.Value);
+            if (!sn.HasValue || sn.Value <= 0) return;
+            GameProbe.CancelOperationTimer(sn.Value);
+            _tracker.NoteAnswered(sn.Value);
         }
 
         private static long SafeCurrentSn()

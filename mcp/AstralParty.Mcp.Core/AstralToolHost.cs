@@ -41,7 +41,7 @@ namespace AstralParty.Mcp
                     "  1) astral_status —— 确认游戏内桥接活着(心跳 < 5s)以及三个开关的状态;\n" +
                     "  2) astral_pending {\"waitMs\":15000} —— 等你需要响应的窗口(轮到你投骰/选筹码/选奖励卡…);\n" +
                     "  3) 看清 pending.kind 后出招: astral_throw_dice / astral_move / astral_use_card /\n" +
-                    "     astral_select_relic / astral_select_reward_card / astral_use_quick_card /\n" +
+                    "     astral_select_relic / astral_select_reward_card / astral_select_event / astral_use_quick_card /\n" +
                     "     astral_shop_buy / astral_buy_relic / astral_atm_transfer …(pending.Options 里会列出本窗口可用的操作);\n" +
                     "  4) 重复 2-3。需要手牌/场上数值时用 astral_state; 想复盘刚发生了什么用 astral_events / astral_actions。\n" +
                     "注意:\n" +
@@ -103,12 +103,16 @@ namespace AstralParty.Mcp
                 "{\"type\":\"object\",\"properties\":{\"cardIds\":{\"type\":\"array\",\"items\":{\"type\":\"integer\"}},\"cardId\":{\"type\":\"integer\"},\"sn\":{\"type\":\"integer\"}},\"additionalProperties\":false}");
 
             Add("astral_select_relic", "选择筹码(三选一)", false, true,
-                "筹码三选一窗口选一个。只给 index 即可(桥接会带上当前候选列表); 也可显式给 relicIds+index 或单个 relicId。",
-                "{\"type\":\"object\",\"properties\":{\"index\":{\"type\":\"integer\",\"description\":\"候选下标 0..N-1\"},\"relicIds\":{\"type\":\"array\",\"items\":{\"type\":\"integer\"},\"description\":\"候选筹码 id 列表(通常不用给)\"},\"relicId\":{\"type\":\"integer\",\"description\":\"直接指定要选的筹码 id\"},\"sn\":{\"type\":\"integer\"}},\"additionalProperties\":false}");
+                "筹码三选一窗口选一个。只给 index 即可(桥接会带上当前候选列表); 也可显式给 relicIds+index 或单个 relicId。reroll=true 是重摇这组候选(不结束窗口, 服务器会推新的一组)。",
+                "{\"type\":\"object\",\"properties\":{\"index\":{\"type\":\"integer\",\"description\":\"候选下标 0..N-1\"},\"relicIds\":{\"type\":\"array\",\"items\":{\"type\":\"integer\"},\"description\":\"候选筹码 id 列表(通常不用给)\"},\"relicId\":{\"type\":\"integer\",\"description\":\"直接指定要选的筹码 id\"},\"reroll\":{\"type\":\"boolean\",\"description\":\"true=重摇候选(SelectRelicC2S.IsReroll=true), 与 index 互斥\"},\"sn\":{\"type\":\"integer\"}},\"additionalProperties\":false}");
 
             Add("astral_select_reward_card", "选择奖励卡", false, true,
                 "回合结束的奖励卡选择(cmd 5377)。只给 index 即可(桥接会带候选列表), 也可显式给 cardIds+index。",
                 "{\"type\":\"object\",\"properties\":{\"index\":{\"type\":\"integer\"},\"cardIds\":{\"type\":\"array\",\"items\":{\"type\":\"integer\"}},\"sn\":{\"type\":\"integer\"}},\"additionalProperties\":false}");
+
+            Add("astral_select_event", "选择棋盘事件", false, true,
+                "棋盘事件弹窗(cmd 5317)从若干事件里选一个。候选见 pending(kind=selectEvent)的 candidates。不选的话服务器超时会代选第 0 项。",
+                "{\"type\":\"object\",\"properties\":{\"index\":{\"type\":\"integer\",\"description\":\"候选下标 0..N-1(默认 0)\"},\"eventId\":{\"type\":\"integer\",\"description\":\"直接按事件 id 选(桥接会在候选里查下标)\"},\"sn\":{\"type\":\"integer\"}},\"additionalProperties\":false}");
 
             Add("astral_shop_buy", "卡牌商店购买/离店", false, true,
                 "在商店里买卡或空手离店。indexes 是**槽位下标**(见 pending 的候选序号), 不是卡牌 id; 不传 indexes 就是离店。桥接会自动按 PVE(5215)/PVP(5029) 选对消息类。",
@@ -172,6 +176,7 @@ namespace AstralParty.Mcp
                 case "astral_abandon_card": return AbandonCard(args);
                 case "astral_select_relic": return SelectRelic(args);
                 case "astral_select_reward_card": return SelectRewardCard(args);
+                case "astral_select_event": return SelectEvent(args);
                 case "astral_shop_buy": return ShopBuy(args);
                 case "astral_atm_transfer": return AtmTransfer(args);
                 case "astral_buy_relic": return BuyRelic(args);
@@ -388,9 +393,22 @@ namespace AstralParty.Mcp
             if (Has(args, "index")) dict["index"] = Int(args, "index", 0);
             if (Has(args, "relicIds")) dict["relicIds"] = IntList(args, "relicIds");
             if (Has(args, "relicId")) dict["relicId"] = Int(args, "relicId", 0);
-            if (dict.Count == 0) dict["index"] = 0; // 默认选第 0 个(桥接会带候选)
+            bool reroll = Bool(args, "reroll", false);
+            if (reroll) dict["reroll"] = true;
+            // 重摇不带 index(客户端也只填 Info+IsReroll); 其余情况默认选第 0 个
+            if (dict.Count == 0) dict["index"] = 0;
             PutSn(args, dict);
             return Send(AgentBridgeLayout.Tool.SelectRelic, dict);
+        }
+
+        private McpToolResult SelectEvent(JsonElement args)
+        {
+            var dict = new Dictionary<string, object>();
+            if (Has(args, "index")) dict["index"] = Int(args, "index", 0);
+            if (Has(args, "eventId")) dict["eventId"] = Int(args, "eventId", 0);
+            if (dict.Count == 0) dict["index"] = 0; // 与游戏一致: 不选=第 0 项
+            PutSn(args, dict);
+            return Send(AgentBridgeLayout.Tool.SelectEvent, dict);
         }
 
         private McpToolResult SelectRewardCard(JsonElement args)
