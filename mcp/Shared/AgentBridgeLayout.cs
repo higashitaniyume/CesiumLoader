@@ -17,7 +17,7 @@ namespace AstralParty.Agent
     ///   - 这里只允许用 netstandard2.0 的 BCL, 且**不得**引用 SDK / 游戏 / Unity 类型;
     ///   - 写文件一律"先写 .tmp 再原子替换", 避免对端读到写了一半的内容。
     /// </summary>
-    public static class AgentBridgeLayout
+    public static partial class AgentBridgeLayout
     {
         /// <summary>协议版本。字段含义变化时 +1, 两边都校验。</summary>
         public const int SchemaVersion = 1;
@@ -228,15 +228,11 @@ namespace AstralParty.Agent
                 if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
 
                 string tmp = path + ".tmp";
-                var utf8NoBom = new UTF8Encoding(false);
-                // 显式用 FileShare.Read, 让对端在我们写 tmp 的瞬间也能读它(不会, 但保持一致性)
-                using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.Read))
-                using (var w = new StreamWriter(fs, utf8NoBom))
-                {
-                    w.Write(content);
-                    w.Flush();
-                    fs.Flush(true);
-                }
+                // ⚠ 这里**不能**用 FileStream + Flush: 热更程序集(HybridCLR/IL2CPP)的 BCL 是残缺的,
+                // 真机实测 `fs.Flush(true)` 直接报 `MethodNotFind System.IO.FileStream::Flush`
+                // (整个 state.json 一条都写不出来, 而离线 net8.0 测试永远绿)。
+                // File.WriteAllText 是 AOT 侧实现, 且默认就是 UTF-8 **无 BOM** —— 正是我们要的。
+                File.WriteAllText(tmp, content ?? string.Empty);
 
                 if (File.Exists(path))
                 {
@@ -261,6 +257,10 @@ namespace AstralParty.Agent
         }
 
         /// <summary>读文件; 不存在/被占用/内容非法一律返回 null(带几次重试)。</summary>
+        /// <remarks>
+        /// 用 1 参数的 <see cref="File.ReadAllText(string)"/>(游戏内其它 mod 读 config.json 走的就是它);
+        /// 不要换成带 <c>Encoding</c> 的重载 —— AGENTS.md §12.1 记的那批"热更侧缺失重载"。
+        /// </remarks>
         public static string ReadAllTextOrNull(string path, int retries = 3)
         {
             for (int i = 0; i <= retries; i++)
@@ -268,11 +268,7 @@ namespace AstralParty.Agent
                 try
                 {
                     if (!File.Exists(path)) return null;
-                    using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-                    using (var r = new StreamReader(fs, Encoding.UTF8, true))
-                    {
-                        return r.ReadToEnd();
-                    }
+                    return File.ReadAllText(path);
                 }
                 catch
                 {
@@ -283,43 +279,9 @@ namespace AstralParty.Agent
             return null;
         }
 
-        /// <summary>
-        /// 读文本文件的**末尾**最多 maxBytes 字节(jsonl 追加流的读取口)。
-        /// 从第一个换行之后开始返回, 保证不会给出半行 JSON。
-        /// </summary>
-        public static string ReadTail(string path, int maxBytes)
-        {
-            try
-            {
-                if (!File.Exists(path)) return null;
-                using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-                {
-                    if (fs.Length == 0) return string.Empty;
-                    long start = fs.Length > maxBytes ? fs.Length - maxBytes : 0;
-                    bool truncated = start > 0;
-                    fs.Seek(start, SeekOrigin.Begin);
-                    var buf = new byte[fs.Length - start];
-                    int read = 0;
-                    while (read < buf.Length)
-                    {
-                        int n = fs.Read(buf, read, buf.Length - read);
-                        if (n <= 0) break;
-                        read += n;
-                    }
-                    string text = Encoding.UTF8.GetString(buf, 0, read);
-                    if (truncated)
-                    {
-                        int nl = text.IndexOf('\n');
-                        text = nl >= 0 ? text.Substring(nl + 1) : string.Empty;
-                    }
-                    return text;
-                }
-            }
-            catch
-            {
-                return null;
-            }
-        }
+        // ReadTail(读 jsonl 末尾, 用了游戏内没验证过的 FileStream.Seek)不在这里:
+        // 它被拆到只编进 MCP server 的 partial 文件 `AgentBridgeReadTail.cs` 里,
+        // 让 mod 侧既看不到也调不到 —— 见那个文件顶部说明。
 
         /// <summary>当前 UTC 毫秒时间戳(**纪元是 0001-01-01, 不是 Unix 纪元**)。</summary>
         /// <remarks>
@@ -340,10 +302,16 @@ namespace AstralParty.Agent
             return DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond;
         }
 
-        /// <summary>当前 UTC 时间的 ISO 字符串。</summary>
+        /// <summary>当前 UTC 时间的 ISO 字符串(human-readable, 只给人看)。</summary>
+        /// <remarks>
+        /// 用 1 参数的 <c>ToString("o")</c> —— SDK 的相机快照/诊断转储在游戏内跑的就是这一条。
+        /// (double 的 <c>ToString("0.###", CultureInfo.InvariantCulture)</c> 已在游戏内验证可用,
+        /// 但 <c>DateTime.ToString(format, provider)</c> 这个组合没有实证, 所以这里不冒险。)
+        /// 机器可读的时间请用 <see cref="NowMs"/>。
+        /// </remarks>
         public static string NowUtcIso()
         {
-            return DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ", System.Globalization.CultureInfo.InvariantCulture);
+            return DateTime.UtcNow.ToString("o");
         }
 
         /// <summary>追加一段文本(一次打开写完, 适合批量刷 jsonl)。</summary>
@@ -354,11 +322,8 @@ namespace AstralParty.Agent
             {
                 string dir = Path.GetDirectoryName(path);
                 if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-                using (var fs = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite))
-                {
-                    var bytes = Encoding.UTF8.GetBytes(text);
-                    fs.Write(bytes, 0, bytes.Length);
-                }
+                // 同样避开 FileStream: 用 SDK 日志(SdkLog)在游戏里跑通的那条路。
+                File.AppendAllText(path, text);
                 return true;
             }
             catch

@@ -126,29 +126,8 @@ namespace AstralParty.AgentMod.Tests
             Assert.Null(AgentBridgeLayout.ReadAllTextOrNull(Path.Combine(Path.GetTempPath(), "definitely-missing-" + Guid.NewGuid().ToString("N"))));
         }
 
-        [Fact]
-        public void ReadTail_截断时从整行开始_不返回半行()
-        {
-            string root = NewTempRoot();
-            string path = Path.Combine(root, "events.jsonl");
-            var sb = new StringBuilder();
-            for (int i = 0; i < 200; i++) sb.Append("{\"i\":").Append(i).Append("}\n");
-            File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
-
-            string tail = AgentBridgeLayout.ReadTail(path, 64);
-            Assert.NotNull(tail);
-            Assert.True(tail.Length > 0);
-            // 不能有半行: 每一行都必须是完整 JSON
-            foreach (var line in tail.Split('\n'))
-            {
-                if (line.Length == 0) continue;
-                Assert.StartsWith("{", line);
-                Assert.EndsWith("}", line);
-            }
-            // 尾部一定包含最后一条
-            Assert.Contains("{\"i\":199}", tail);
-            Directory.Delete(root, true);
-        }
+        // ReadTail 的用例搬去了 AstralParty.Mcp.Tests(ReadTail 只编进 MCP server,
+        // 用了游戏内没验证过的 FileStream.Seek, 故意不给 mod 侧编 —— 见 BclCompatibilityTests)。
 
         [Fact]
         public void AppendLine_累加且可读回()
@@ -192,10 +171,19 @@ namespace AstralParty.AgentMod.Tests
         public void NowUtcIso_格式正确()
         {
             string iso = AgentBridgeLayout.NowUtcIso();
+
+            // 用 "o"(round-trip) 而不是固定字面量: SDK 的相机/诊断在游戏内跑的就是 "o",
+            // 这里只断言语义(ISO-8601 + UTC 标记 + 能解析回来 + 时间和现在对得上)。
             Assert.EndsWith("Z", iso);
-            Assert.Equal(24, iso.Length);
             DateTime parsed;
-            Assert.True(DateTime.TryParse(iso, out parsed));
+            Assert.True(DateTime.TryParse(iso, null, System.Globalization.DateTimeStyles.RoundtripKind, out parsed));
+            Assert.Equal(DateTimeKind.Utc, parsed.Kind);
+            Assert.True(Math.Abs((DateTime.UtcNow - parsed).TotalMinutes) < 5, "NowUtcIso 应该就是当前 UTC 时间");
+
+            // 机器可读的时间一律走 NowMs(同一纪元), 别让人误用 ISO 字符串去算差值
+            long ms = AgentBridgeLayout.NowMs();
+            Assert.True(ms > 0);
+            Assert.Contains(parsed.Year.ToString(), iso);
         }
 
         [Fact]

@@ -15,6 +15,8 @@
   <ItemGroup>
     <!-- 桥接目录/命令协议: 与游戏内 mod 共用同一份源码 -->
     <Compile Include="..\Shared\AgentBridgeLayout.cs" Link="Shared\AgentBridgeLayout.cs" />
+    <!-- server-only 分片(用了游戏内未验证的 BCL 成员, 故意不给 mod 编) -->
+    <Compile Include="..\Shared\AgentBridgeReadTail.cs" Link="Shared\AgentBridgeReadTail.cs" />
   </ItemGroup>
 
 </Project>
