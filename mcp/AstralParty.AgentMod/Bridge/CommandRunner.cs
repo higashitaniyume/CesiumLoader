@@ -109,6 +109,18 @@ namespace AstralParty.AgentMod.Bridge
                     case AgentBridgeLayout.Tool.Speed:
                         return Speed(cmd, started);
 
+                    case AgentBridgeLayout.Tool.StopOrContinue:
+                        return StopOrContinue(cmd, started);
+
+                    case AgentBridgeLayout.Tool.PursueMonster:
+                        return PursueMonster(cmd, started);
+
+                    case AgentBridgeLayout.Tool.VendorBuyCard:
+                        return VendorBuyCard(cmd, started);
+
+                    case AgentBridgeLayout.Tool.SelectPoint:
+                        return SelectPoint(cmd, started);
+
                     default:
                         return BridgeResult.Failure(cmd.Id, cmd.Tool, AgentBridgeLayout.Code.UnknownTool,
                             "未知工具: " + cmd.Tool);
@@ -527,6 +539,123 @@ namespace AstralParty.AgentMod.Bridge
             return Done(cmd, started, confirm
                 ? "已发送 买下筹码 BuyRelic(Select=2), sn=" + useSn
                 : "已发送 放弃筹码(离开) BuyRelic(Select=0), sn=" + useSn);
+        }
+
+        /// <summary>
+        /// 加油站/出生点(5077 窗口): stop=true 就地停留, false 继续走。
+        /// 反编译证据: 客户端"继续走"= <c>btn_Continue</c> → <c>Stop=false</c>, "停留"= <c>btn_Stop</c> → <c>Stop=true</c>,
+        /// 且超时回调点的就是 <c>btn_Continue</c> —— 所以**不答 = 继续走**。
+        /// </summary>
+        private BridgeResult StopOrContinue(BridgeCommand cmd, long started)
+        {
+            bool stop = cmd.GetBool("stop", false);
+
+            long? sn = ResolveSn(cmd, AgentPendingKind.StopOrContinue);
+            if (!sn.HasValue || sn.Value <= 0)
+                return BadArgs(cmd, "现在没有加油站/出生点窗口(5077): sn 只有服务器推 5077 时才有。" +
+                                    "先用 astral_pending 看有没有 kind=stopOrContinue");
+
+            if (!GameActions.StopOrContinue(stop, sn)) return NotSent(cmd, "停留/继续走应答");
+            OnSent(sn);
+            return Done(cmd, started, "已发送 停留/继续走 StopOrContinue(stop=" + stop + ", sn=" + Show(sn) + ")");
+        }
+
+        /// <summary>
+        /// 怪物追击(5213 窗口): monsterId = 追这只怪(候选里的 playerId), 或 pass=true = 不追。
+        /// 候选**不在协议里**(本地过滤出来的), 所以这里要挡住"追一只不在候选里的怪" ——
+        /// 那种请求服务器不会接受, agent 却会以为已经追了。
+        /// </summary>
+        private BridgeResult PursueMonster(BridgeCommand cmd, long started)
+        {
+            long monsterId = cmd.GetLong("monsterId", 0);
+            if (monsterId == 0) monsterId = cmd.GetLong("id", 0);
+            bool pass = cmd.GetBool("pass", false);
+
+            long? sn = ResolveSn(cmd, AgentPendingKind.PursueMonster);
+            if (!sn.HasValue || sn.Value <= 0)
+                return BadArgs(cmd, "现在没有追击窗口(5213): sn 只有服务器推 5213 时才有。" +
+                                    "先用 astral_pending 看有没有 kind=pursueMonster");
+
+            if (!pass && monsterId != 0)
+            {
+                long[] cands;
+                if (!_tracker.TryGetMonsterIds(out cands))
+                    return BadArgs(cmd, "本地还没算出可追的怪物(候选不在协议里, 是本地按 GetVailPursuitMonster 过滤的); " +
+                                        "现在只能 pass=true(不追)");
+                bool found = false;
+                if (cands != null)
+                    for (int i = 0; i < cands.Length; i++) if (cands[i] == monsterId) { found = true; break; }
+                if (!found)
+                    return BadArgs(cmd, "monsterId=" + monsterId + " 不在候选里(只能追 astral_pending 列出的怪; 候选数=" +
+                                        (cands == null ? 0 : cands.Length) + ")");
+            }
+
+            long selectId = pass ? 0 : monsterId;
+            if (!GameActions.PursueMonster(selectId, sn)) return NotSent(cmd, "怪物追击应答");
+            OnSent(sn);
+            return Done(cmd, started, "已发送 怪物追击 PursueMonster(selectId=" + selectId + ", sn=" + Show(sn) + ")");
+        }
+
+        /// <summary>
+        /// 商人买卡(5323 窗口): buy=true 花星币买下, false 不买。
+        /// 客户端在星币不足时**只弹提示、不发包**, 所以这里也挡住 —— 否则 agent 会以为买到了。
+        /// </summary>
+        private BridgeResult VendorBuyCard(BridgeCommand cmd, long started)
+        {
+            bool buy = cmd.GetBool("buy", false);
+
+            long? sn = ResolveSn(cmd, AgentPendingKind.VendorCard);
+            if (!sn.HasValue || sn.Value <= 0)
+                return BadArgs(cmd, "现在没有商人买卡窗口(5323): sn 只有服务器推 5323 时才有。" +
+                                    "先用 astral_pending 看有没有 kind=vendorCard");
+
+            if (buy)
+            {
+                int price;
+                if (_tracker.TryGetVendorPrice(out price) && price > 0)
+                {
+                    int gold = 0;
+                    try
+                    {
+                        long self = _selfId != null ? _selfId() : 0;
+                        if (self != 0) gold = Players.Gold(self);
+                    }
+                    catch { }
+                    if (gold < price)
+                        return BadArgs(cmd, "星币不够(有 " + gold + ", 需要 " + price + "): " +
+                                            "客户端在这种情况会直接拒绝购买请求, 桥接也不发。");
+                }
+            }
+
+            if (!GameActions.VendorBuyCard(buy, sn)) return NotSent(cmd, "商人买卡应答");
+            OnSent(sn);
+            return Done(cmd, started, "已发送 商人买卡 VendorBuyCard(isBuy=" + buy + ", sn=" + Show(sn) + ")");
+        }
+
+        /// <summary>控制移动卡选点(5067 窗口): point 必须落在服务器给的 1..MaxPoint。</summary>
+        private BridgeResult SelectPoint(BridgeCommand cmd, long started)
+        {
+            int point = cmd.GetInt("point", 1);
+
+            long? sn = ResolveSn(cmd, AgentPendingKind.SelectPoint);
+            if (!sn.HasValue || sn.Value <= 0)
+                return BadArgs(cmd, "现在没有控移卡选点窗口(5067): sn 只有服务器推 5067 时才有。" +
+                                    "先用 astral_pending 看有没有 kind=selectPoint");
+
+            int max;
+            if (_tracker.TryGetMaxPoint(out max) && max > 0)
+            {
+                if (point < 1 || point > max)
+                    return BadArgs(cmd, "point 必须落在 1.." + max + "(服务器给的 MaxPoint), 收到 " + point);
+            }
+            else if (point < 1)
+            {
+                return BadArgs(cmd, "point 必须 >= 1");
+            }
+
+            if (!GameActions.SelectPoint(point, sn)) return NotSent(cmd, "选点应答");
+            OnSent(sn);
+            return Done(cmd, started, "已发送 选点 SelectPoint(point=" + point + ", sn=" + Show(sn) + ")");
         }
 
         private BridgeResult Speed(BridgeCommand cmd, long started)

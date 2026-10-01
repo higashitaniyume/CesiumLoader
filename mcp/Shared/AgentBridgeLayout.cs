@@ -82,6 +82,14 @@ namespace AstralParty.Agent
             public const string AtmTransfer = "atm_transfer";
             public const string BuyRelic = "buy_relic";
             public const string Speed = "speed";
+            /// <summary>加油站/出生点(动作 5077): 停留(true)还是继续走(false)。</summary>
+            public const string StopOrContinue = "stop_or_continue";
+            /// <summary>怪物追击(动作 5213): 追哪只怪(monsterId), 或 0 = 不追。</summary>
+            public const string PursueMonster = "pursue_monster";
+            /// <summary>商人买卡(动作 5323): 花 Gold 星币买下/不买。</summary>
+            public const string VendorBuyCard = "vendor_buy_card";
+            /// <summary>控制移动卡选点(动作 5067): 用 1..MaxPoint 点移动力。</summary>
+            public const string SelectPoint = "select_point";
         }
 
         /// <summary>把这些名字拼成外部工具名(<c>astral_xxx</c>)。</summary>

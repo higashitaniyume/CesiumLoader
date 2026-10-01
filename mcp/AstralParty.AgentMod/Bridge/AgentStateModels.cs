@@ -97,10 +97,12 @@ namespace AstralParty.AgentMod.Bridge
         public int KeepRound;
     }
 
-    /// <summary>一个候选项(筹码 / 奖励卡 / 商店卡 / 地块 / 可出的牌)。</summary>
+    /// <summary>一个候选项(筹码 / 奖励卡 / 商店卡 / 地块 / 可出的牌 / 怪物)。</summary>
     public sealed class AgentCandidate
     {
         public int Id;
+        /// <summary>候选 id 的 64 位版本(怪物/玩家 id 走这个; 其余为 0)。</summary>
+        public long LongId;
         public string Name;
         /// <summary>relic | rewardCard | shopCard | card | land | player</summary>
         public string Kind;
@@ -139,6 +141,14 @@ namespace AstralParty.AgentMod.Bridge
         public int ResidueCost = -1;
         /// <summary>5035 战斗用牌: 我在这场战斗里是攻击方(true)还是防守方; 决定哪些手牌可用。only 该窗口有意义。</summary>
         public bool IsAttacker;
+        /// <summary>5077 加油站/出生点: 我站在哪种地块上(born/fillingStation/other; 空 = 没读到)。</summary>
+        public string Land;
+        /// <summary>5323 商人买卡: 要买的卡牌配置 id(客户端窗口其实不展示, 只给 agent 做参考)。</summary>
+        public long VendorCardId;
+        /// <summary>5323 商人买卡: 价格(星币)。</summary>
+        public int VendorPrice;
+        /// <summary>5067 控制移动卡选点: 可选点数上限(应答 Point ∈ 1..MaxPoint)。</summary>
+        public int MaxPoint;
         /// <summary>可用来应答它的工具名(自解释, 让 agent 不必猜)。</summary>
         public List<string> Options = new List<string>();
         public List<string> Notes = new List<string>();
@@ -166,6 +176,14 @@ namespace AstralParty.AgentMod.Bridge
         public const string FightCard = "fightCard";
         /// <summary>战斗内闪避 5039(ReadyFightChoice)。超时 = 不闪避。</summary>
         public const string FightChoice = "fightChoice";
+        /// <summary>加油站/出生点 5077(StopOrContinue): 停留还是继续走。超时 = 继续走。</summary>
+        public const string StopOrContinue = "stopOrContinue";
+        /// <summary>怪物追击 5213(MonsterPursuit): 追哪只怪。候选由客户端本地算; 超时 = 不追击。</summary>
+        public const string PursueMonster = "pursueMonster";
+        /// <summary>商人买卡 5323(VendorBuyCard): 花 N 星币买下这张卡。超时 = 不买。</summary>
+        public const string VendorCard = "vendorCard";
+        /// <summary>控制移动卡选点 5067(ThrowDiceResult): 用几点移动力(1..MaxPoint)。超时 = 1 点。</summary>
+        public const string SelectPoint = "selectPoint";
     }
 
     public sealed class AgentCounters

@@ -42,13 +42,15 @@ namespace AstralParty.Mcp
                     "  2) astral_pending {\"waitMs\":15000} —— 等你需要响应的窗口(轮到你投骰/选筹码/选奖励卡…);\n" +
                     "  3) 看清 pending.kind 后出招: astral_throw_dice / astral_move / astral_use_card /\n" +
                     "     astral_ask_battle / astral_battle_choice / astral_select_relic / astral_select_reward_card /\n" +
-                    "     astral_select_event / astral_use_quick_card /\n" +
+                    "     astral_select_event / astral_use_quick_card / astral_stop_or_continue / astral_pursue_monster /\n" +
+                    "     astral_vendor_buy_card / astral_select_point /\n" +
                     "     astral_shop_buy / astral_buy_relic / astral_atm_transfer …(pending.Options 里会列出本窗口可用的操作);\n" +
                     "  4) 重复 2-3。需要手牌/场上数值时用 astral_state; 想复盘刚发生了什么用 astral_events / astral_actions。\n" +
                     "注意:\n" +
                     "  - 桥接只发\"和玩家手动点 UI 完全相同\"的 C2S 请求, 不修改内存、不伪造结果, 服务器照常校验;\n" +
                     "  - 战斗类窗口都有倒计时(10/20/40 秒), **超时会被服务器按默认值代答**: 战斗询问=不打、\n" +
-                    "    出牌=不出牌、闪避=不闪避 —— 别拖到超时, 而且反复超时会被判挂机(AFK)惩罚;\n" +
+                    "    出牌=不出牌、闪避=不闪避、加油站/出生点=继续走、怪物追击=不追、商人买卡=不买、控移选点=1 点\n" +
+                    "    —— 别拖到超时, 而且反复超时会被判挂机(AFK)惩罚;\n" +
                     "  - 动作失败会返回 isError, 先读 error/notes(常见原因: 不在对局、没轮到你、窗口已过、开关没开);\n" +
                     "  - 不确定就先用只读工具(`astral_state`/`astral_pending`), 别盲目连发动作;\n" +
                     "  - 要立刻停手用 astral_emergency_stop。";
@@ -141,6 +143,27 @@ namespace AstralParty.Mcp
                 "筹码地块问你要不要花星币买下这个筹码(cmd 5249)。confirm=true 买(Select=2), false 不买离开(Select=0)。",
                 "{\"type\":\"object\",\"properties\":{\"confirm\":{\"type\":\"boolean\",\"description\":\"true=买下, false=放弃离开(默认 true)\"},\"sn\":{\"type\":\"integer\"}},\"additionalProperties\":false}");
 
+            Add("astral_stop_or_continue", "加油站/出生点: 停留还是继续走", false, true,
+                "走到加油站/出生点时服务器问\"停下还是继续走\"(5077)。stop=true 就地停留(拿地块收益/买东西), false 继续走。 " +
+                "**超时代答 = 继续走**; 窗口的信息(站在哪种地块、星币、等级)全在本地, 见 pending 的 land 与 astral_state。",
+                "{\"type\":\"object\",\"properties\":{\"stop\":{\"type\":\"boolean\",\"description\":\"true=停留, false=继续走(默认)\"},\"sn\":{\"type\":\"integer\"}},\"additionalProperties\":false}");
+
+            Add("astral_pursue_monster", "怪物追击: 追哪只怪", false, true,
+                "服务器问要不要追击怪物(5213)。monsterId 取 pending(kind=pursueMonster)候选里的 LongId(怪物也是玩家, 用它的 playerId); " +
+                "pass=true 表示不追击(SelectId=0)。候选**不在协议里**, 是本地按客户端同口径过滤出来的(血量>0、非医院地块、不同队伍), " +
+                "所以桥接只接受候选里的 id。**超时代答 = 不追**。",
+                "{\"type\":\"object\",\"properties\":{\"monsterId\":{\"type\":\"integer\",\"description\":\"要追的怪物 playerId(取 pending 候选的 LongId)\"},\"pass\":{\"type\":\"boolean\",\"description\":\"true=不追击\"},\"sn\":{\"type\":\"integer\"}},\"additionalProperties\":false}");
+
+            Add("astral_vendor_buy_card", "商人买卡", false, true,
+                "商人问要不要花 N 星币买下这张卡(5323)。buy=true 买下, false 不买。价格见 pending 的 vendorPrice。 " +
+                "**超时代答 = 不买**; 星币不足时客户端会拒绝购买请求, 桥接同样不发。",
+                "{\"type\":\"object\",\"properties\":{\"buy\":{\"type\":\"boolean\",\"description\":\"true=买下, false=不买(默认)\"},\"sn\":{\"type\":\"integer\"}},\"additionalProperties\":false}");
+
+            Add("astral_select_point", "控移卡: 选移动点数", false, true,
+                "控制移动卡要你选这次用几点移动力(5067)。point 必须落在 1..pending.maxPoint。 " +
+                "**超时代答 = 1 点**。",
+                "{\"type\":\"object\",\"properties\":{\"point\":{\"type\":\"integer\",\"description\":\"用几点移动力(1..pending.MaxPoint), 默认 1\"},\"sn\":{\"type\":\"integer\"}},\"additionalProperties\":false}");
+
             Add("astral_speed", "设置游戏倍速", false, true,
                 "通过加载器的变速通道调整游戏时间流速(加速等待动画/演出)。下限 1.0, 上限 100。别调太高(会影响网络超时与演出)。",
                 "{\"type\":\"object\",\"properties\":{\"speed\":{\"type\":\"number\",\"description\":\"倍率, 1.0 - 100\"}},\"required\":[\"speed\"],\"additionalProperties\":false}");
@@ -197,6 +220,10 @@ namespace AstralParty.Mcp
                 case "astral_shop_buy": return ShopBuy(args);
                 case "astral_atm_transfer": return AtmTransfer(args);
                 case "astral_buy_relic": return BuyRelic(args);
+                case "astral_stop_or_continue": return StopOrContinue(args);
+                case "astral_pursue_monster": return PursueMonster(args);
+                case "astral_vendor_buy_card": return VendorBuyCard(args);
+                case "astral_select_point": return SelectPoint(args);
                 case "astral_speed": return Speed(args);
 
                 case "astral_control": return Control(args);
@@ -316,6 +343,14 @@ namespace AstralParty.Mcp
                 if (remaining >= 0) sb.AppendLine("剩余时间: " + remaining + "ms");
                 sb.AppendLine("是否可直接应答: " + (actionable ? "是" : "否"));
 
+                // 窗口自带的标量参数(商人价格/选点上限/加油站地块)单独列一行, 免得 agent 去翻 astral_state
+                long vendorPrice = AgentBridgeClient.GetLong(pending, "VendorPrice");
+                if (vendorPrice > 0) sb.AppendLine("价格: " + vendorPrice + " 星币");
+                long maxPoint = AgentBridgeClient.GetLong(pending, "MaxPoint");
+                if (maxPoint > 0) sb.AppendLine("可选点数: 1.." + maxPoint);
+                string land = AgentBridgeClient.GetString(pending, "Land");
+                if (!string.IsNullOrEmpty(land)) sb.AppendLine("当前地块: " + land);
+
                 string candidates = DescribeCandidates(pending);
                 if (candidates != null) sb.Append(candidates);
 
@@ -390,6 +425,37 @@ namespace AstralParty.Mcp
             var dict = new Dictionary<string, object> { { "dodge", Bool(args, "dodge", false) } };
             PutSn(args, dict);
             return Send(AgentBridgeLayout.Tool.BattleChoice, dict);
+        }
+
+        private McpToolResult StopOrContinue(JsonElement args)
+        {
+            var dict = new Dictionary<string, object> { { "stop", Bool(args, "stop", false) } };
+            PutSn(args, dict);
+            return Send(AgentBridgeLayout.Tool.StopOrContinue, dict);
+        }
+
+        private McpToolResult PursueMonster(JsonElement args)
+        {
+            var dict = new Dictionary<string, object>();
+            if (Bool(args, "pass", false)) dict["pass"] = true;
+            else if (Has(args, "monsterId")) dict["monsterId"] = Long(args, "monsterId", 0);
+            else return McpToolResult.Error("需要 monsterId(取 pending 候选的 LongId)或 pass=true(不追)");
+            PutSn(args, dict);
+            return Send(AgentBridgeLayout.Tool.PursueMonster, dict);
+        }
+
+        private McpToolResult VendorBuyCard(JsonElement args)
+        {
+            var dict = new Dictionary<string, object> { { "buy", Bool(args, "buy", false) } };
+            PutSn(args, dict);
+            return Send(AgentBridgeLayout.Tool.VendorBuyCard, dict);
+        }
+
+        private McpToolResult SelectPoint(JsonElement args)
+        {
+            var dict = new Dictionary<string, object> { { "point", Int(args, "point", 1) } };
+            PutSn(args, dict);
+            return Send(AgentBridgeLayout.Tool.SelectPoint, dict);
         }
 
         private McpToolResult UseEffectCard(JsonElement args)
@@ -620,11 +686,16 @@ namespace AstralParty.Mcp
             {
                 string name = AgentBridgeClient.GetString(c, "Name");
                 var line = new StringBuilder();
-                line.Append("  [").Append(i).Append("] ").Append(AgentBridgeClient.GetLong(c, "Id"));
+                // 怪物候选的 id 是 playerId(64 位, 放在 LongId 里); 其余候选只有 Id
+                long cid = AgentBridgeClient.GetLong(c, "LongId");
+                if (cid == 0) cid = AgentBridgeClient.GetLong(c, "Id");
+                line.Append("  [").Append(i).Append("] ").Append(cid);
                 if (!string.IsNullOrEmpty(name)) line.Append("  ").Append(name);
 
                 long price = AgentBridgeClient.GetLong(c, "Price");
                 if (price > 0) line.Append("  价格 ").Append(price);
+                long cost = AgentBridgeClient.GetLong(c, "Cost");
+                if (cost > 0) line.Append("  消耗 ").Append(cost);
                 if (AgentBridgeClient.GetBool(c, "Free")) line.Append("  (免费)");
                 if (AgentBridgeClient.GetBool(c, "SoldOut")) line.Append("  (已售罄)");
 

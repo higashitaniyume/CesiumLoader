@@ -19,7 +19,7 @@ mcp\
 │   └── AstralParty.AgentMod.json         ← sidecar(id/版本/权限)
 ├── AstralParty.Mcp.Core\                ← MCP 协议 + 工具面(net8.0 类库, 零 NuGet 依赖)
 │   ├── McpServer.cs                      ← 手写 JSON-RPC 2.0 / stdio(initialize/tools/list/tools/call…)
-│   ├── AstralToolHost.cs                 ← 20 个 astral_* 工具(name/title/schema/annotations/dispatch)
+│   ├── AstralToolHost.cs                 ← 27 个 astral_* 工具(name/title/schema/annotations/dispatch)
 │   └── AgentBridgeClient.cs              ← 读写桥接目录 + 命令往返 + 开关控制
 └── AstralParty.Mcp\                     ← stdio 可执行入口(AstralParty.Mcp.exe)
 ```
@@ -107,7 +107,7 @@ dotnet build mcp\AstralParty.Mcp\AstralParty.Mcp.csproj -c Release
 
 一键部署脚本：`tools\deploy-agentmod.ps1`（构建 → 拷贝到游戏目录 → 打印 MCP 客户端配置片段）。
 
-## 工具一览（20 个）
+## 工具一览（27 个）
 
 读（只读，不改游戏）：
 
@@ -125,15 +125,22 @@ dotnet build mcp\AstralParty.Mcp\AstralParty.Mcp.csproj -c Release
 |---|---|---|
 | `astral_throw_dice` | `battle` / `noOper` / `moveNow` / `sn` | 掷骰动作 |
 | `astral_move` | `landId`(取 `pending` 候选) | `MoveC2S`(5027) |
-| `astral_use_card` | `cardId` 或 `cardGuid` | 手牌使用 |
+| `astral_use_card` | `cardId` 或 `cardGuid`(手牌 Guid!)/`pass` | `BattleUseCardC2S`(5035) |
+| `astral_ask_battle` | `accept` | `AskBattleC2S`(5047) |
+| `astral_battle_choice` | `dodge` | `BattleChoiceC2S`(5039) |
 | `astral_use_effect_card` | `cardId`,`targetIds`,`landIds`,`effectIndex` | 效果牌 |
 | `astral_use_quick_card` | `cardId`,`targetId` | 快速牌 |
 | `astral_abandon_card` | `cardIds` | 弃牌 |
 | `astral_select_relic` | `index` 或 `relicId` | `SelectRelicC2S`(5211) |
 | `astral_select_reward_card` | `index` | `SelectRewardCardC2S`(5377) |
+| `astral_select_event` | `index` | `SelectEventC2S`(5317) |
 | `astral_shop_buy` | `indexes`(槽位下标; 不传=离店) | `ShopBuyC2S`(5029, PVP) / `PVEShopBuyC2S`(5215, PVE) |
 | `astral_atm_transfer` | `targetId` | `PVEShopBuyC2S{AssistPlayer=targetId}` |
 | `astral_buy_relic` | `confirm` | `BuyRelicC2S`(5249, `Select=2` 买 / `0` 离开) |
+| `astral_stop_or_continue` | `stop` | `StopOrContinueC2S`(5077) |
+| `astral_pursue_monster` | `monsterId`(取候选 `LongId`) / `pass` | `MonsterPursuitC2S`(5213) |
+| `astral_vendor_buy_card` | `buy` | `VendorBuyCardC2S`(5323) |
+| `astral_select_point` | `point`(1..`pending.MaxPoint`) | `ThrowDiceResultC2S`(5067) |
 | `astral_speed` | `speed` | 变速(1.0–100.0) |
 | `astral_control` | `enableActions`/`dryRun`/`pause`/`reason` | 写 `control.json` |
 | `astral_emergency_stop` | `reason` | 急停 |
@@ -157,7 +164,8 @@ dotnet build mcp\AstralParty.Mcp\AstralParty.Mcp.csproj -c Release
 
 ## 已知缺口（诚实清单）
 
-- 事件三选一 `5317 SelectEventC2S`、抽奖/追击/占卜/医院/赌场地块等窗口尚未接管。
+- 抽奖/占卜/医院/赌场/命运/电池/再走一次等地块窗口尚未接管（PVP 商店 5029 按"只做 PVE"的范围**不做**）。
+  已接管的地块窗口：加油站/出生点 `5077`、怪物追击 `5213`、商人买卡 `5323`、控移卡选点 `5067`。
 - 战斗内掷骰靠 SDK 事件 + 倒计时推断，没有独立窗口类型。
 - `ShopBuyS2C` / `PVEShopBuyS2C.AssistPlayer` 的服务端语义未验证（只按客户端反编译结论用）。
 - 服务器 1097 超时踢人未验证。
@@ -168,8 +176,8 @@ dotnet build mcp\AstralParty.Mcp\AstralParty.Mcp.csproj -c Release
 ## 测试
 
 ```powershell
-dotnet test tests\AstralParty.AgentMod.Tests\AstralParty.AgentMod.Tests.csproj -c Release   # 65 个
-dotnet test tests\AstralParty.Mcp.Tests\AstralParty.Mcp.Tests.csproj -c Release             # 50 个
+dotnet test tests\AstralParty.AgentMod.Tests\AstralParty.AgentMod.Tests.csproj -c Release   # 106 个
+dotnet test tests\AstralParty.Mcp.Tests\AstralParty.Mcp.Tests.csproj -c Release             # 66 个
 ```
 
 不需要开游戏：`AstralParty.Mcp.Tests` 用假桥接目录（真写 `state.json`、扮演游戏侧消费 `commands` 并回
@@ -183,7 +191,7 @@ pwsh -NoProfile -File tools\smoke-agent-bridge.ps1        # 成功时最后一�
 pwsh -NoProfile -File tools\smoke-agent-bridge.ps1 -Keep  # 失败时保留现场目录排查
 ```
 
-它覆盖 30 项断言：MCP 握手与工具清单、state/bridge/control 的字段名与大小写、`commands\*.json` 的
+它覆盖 49 项断言：MCP 握手与工具清单、state/bridge/control 的字段名与大小写、`commands\*.json` 的
 往返与两侧清理、`Kind=None` 的判定、以及**心跳过期时动作工具必须拒绝下发**（且不留垃圾命令文件）。
 
 ### 时间戳纪元（容易踩）

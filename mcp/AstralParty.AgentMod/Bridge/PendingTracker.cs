@@ -72,6 +72,16 @@ namespace AstralParty.AgentMod.Bridge
             public int ResidueCost = -1;
             /// <summary>5035: 我是攻击方(true)还是防守方。</summary>
             public bool IsAttacker;
+            /// <summary>5213 追击窗口: 本地算出的候选怪物 playerId(应答时填 SelectId; 0 = 不追)。</summary>
+            public long[] MonsterIds;
+            /// <summary>5077 窗口: 我站在什么地块上("born"/"fillingStation"/"other"; 纯展示)。</summary>
+            public string Land;
+            /// <summary>5323 商人买卡: 要买的卡牌配置 id。</summary>
+            public long VendorCardId;
+            /// <summary>5323 商人买卡: 价格(星币)。</summary>
+            public int VendorPrice;
+            /// <summary>5067 控制移动卡: 可选点数上限(1..MaxPoint)。</summary>
+            public int MaxPoint;
         }
 
         public string WindowKind { get { lock (_lock) { return _window == null ? AgentPendingKind.None : _window.Kind; } } }
@@ -97,6 +107,43 @@ namespace AstralParty.AgentMod.Bridge
             {
                 if (_window == null || _window.Kind != AgentPendingKind.FightChoice) return false;
                 noDodge = _window.NoDodge;
+                return true;
+            }
+        }
+
+        /// <summary>5213 追击窗口: 取本地算出的候选怪物 playerId。用于"agent 只能追候选里的怪"这条校验。</summary>
+        public bool TryGetMonsterIds(out long[] ids)
+        {
+            ids = null;
+            lock (_lock)
+            {
+                if (_window == null || _window.Kind != AgentPendingKind.PursueMonster) return false;
+                if (_window.MonsterIds == null) return false;
+                ids = (long[])_window.MonsterIds.Clone();
+                return true;
+            }
+        }
+
+        /// <summary>5067 控制移动卡: 取可选点数上限。没有该窗口时返回 false。</summary>
+        public bool TryGetMaxPoint(out int maxPoint)
+        {
+            maxPoint = 0;
+            lock (_lock)
+            {
+                if (_window == null || _window.Kind != AgentPendingKind.SelectPoint) return false;
+                maxPoint = _window.MaxPoint;
+                return true;
+            }
+        }
+
+        /// <summary>5323 商人买卡: 取价格(星币)。没有该窗口时返回 false。</summary>
+        public bool TryGetVendorPrice(out int price)
+        {
+            price = 0;
+            lock (_lock)
+            {
+                if (_window == null || _window.Kind != AgentPendingKind.VendorCard) return false;
+                price = _window.VendorPrice;
                 return true;
             }
         }
@@ -341,6 +388,88 @@ namespace AstralParty.AgentMod.Bridge
         /// <summary>闪避选择回执(5040 = BattleChoiceS2C): 窗口关闭。</summary>
         public void OnFightChoiceDone(long playerId, long nowMs) { ClearIf(AgentPendingKind.FightChoice, playerId); }
 
+        // ---------- 加油站/出生点窗口(5077 / 回执 5078) ----------
+
+        /// <summary>
+        /// 服务器问"走到这里要停下还是继续走"(5077 = <c>UI.LandFillingStationWindow.DealLand_StopOrContinue</c>)。
+        ///
+        /// 依据(反编译 + decomp/四窗口契约.md): 这条动作**完全没有业务负载** —— 客户端从来不
+        /// <c>ReadObject</c>, 3 局真实回放里 <c>Data</c> 长度恒为 0; 窗口要显示的东西全在本地玩家状态里
+        /// (<c>standLand.LandType</c>、星币、等级…), 由 <see cref="SetStandLand"/> 从主线程喂进来。
+        /// 只有本人弹双按钮窗口; 超时回调点的是"继续走" → **不答 = 继续走**(<c>Stop=false</c>)。
+        /// </summary>
+        public void OnStopOrContinueOffer(long playerId, long sn, long nowMs)
+        {
+            SetWindow(new Window { Kind = AgentPendingKind.StopOrContinue, PlayerId = playerId, Sn = sn, SinceMs = nowMs });
+        }
+
+        /// <summary>加油站/出生点回执(5078 = StopOrContinueS2C): 窗口关闭。</summary>
+        public void OnStopOrContinueDone(long playerId, long nowMs) { ClearIf(AgentPendingKind.StopOrContinue, playerId); }
+
+        // ---------- 怪物追击窗口(5213 / 回执 5214) ----------
+
+        /// <summary>
+        /// 服务器问"要不要追击怪物、追哪一只"(5213 = <c>LandLogic.DealMonsterPursuit</c>)。
+        ///
+        /// 依据(反编译): 候选怪物**不在协议里**(<c>Data</c> 恒为 0 字节), 由客户端本地按
+        /// <c>CharacterType.Monster &amp;&amp; !NotSelect &amp;&amp; HP&gt;0 &amp;&amp; 非医院地块 &amp;&amp; 不同队伍</c> 过滤 —— 桥接在
+        /// <see cref="SetPursuitMonsters"/> 里复刻同一口径(来自 <c>GameProbe.TrySelfPursuitMonsters</c>)。
+        /// 超时回调点的是"不追击" → **不答 = 不追击**(<c>SelectId=0</c>)。
+        /// </summary>
+        public void OnPursueMonsterOffer(long playerId, long sn, long nowMs)
+        {
+            SetWindow(new Window { Kind = AgentPendingKind.PursueMonster, PlayerId = playerId, Sn = sn, SinceMs = nowMs });
+        }
+
+        /// <summary>怪物追击回执(5214 = MonsterPursuitS2C): 窗口关闭。</summary>
+        public void OnPursueMonsterDone(long playerId, long nowMs) { ClearIf(AgentPendingKind.PursueMonster, playerId); }
+
+        // ---------- 商人买卡窗口(5323 / 回执 5324) ----------
+
+        /// <summary>
+        /// 服务器问"要不要花 N 星币买下商人这张卡"(5323 = <c>LandLogic.DealAskVendorBuyCard</c>)。
+        /// offer = <c>VendorBuyCardC2S{CardId, Gold}</c>(**没有 Info 字段**, 所以"Info.Sn==0"是用来区分
+        /// offer 与"我的答案被回播"的依据)。客户端在星币不足时只弹提示、不发包。
+        /// 超时回调点的是"取消" → **不答 = 不买**(<c>IsBuy=false</c>)。
+        /// </summary>
+        public void OnVendorCardOffer(long playerId, long cardId, int gold, long sn, long nowMs)
+        {
+            SetWindow(new Window
+            {
+                Kind = AgentPendingKind.VendorCard,
+                PlayerId = playerId,
+                VendorCardId = cardId,
+                VendorPrice = gold,
+                Sn = sn,
+                SinceMs = nowMs
+            });
+        }
+
+        /// <summary>商人买卡回执(5324 = VendorBuyCardS2C): 窗口关闭。</summary>
+        public void OnVendorCardDone(long playerId, long nowMs) { ClearIf(AgentPendingKind.VendorCard, playerId); }
+
+        // ---------- 控制移动卡选点窗口(5067 / 回执 5068) ----------
+
+        /// <summary>
+        /// 服务器问"这张控制移动卡要用几点移动力"(5067 = <c>CardWindow.RefreshCardInfo_ControlMoveCard</c>)。
+        /// offer = <c>ThrowDiceResultC2S{MaxPoint}</c>(没有 Info), 应答 <c>Point ∈ 1..MaxPoint</c>。
+        /// 只有本人开窗(<c>ActionListener</c> 里先判 <c>IsSelf</c>); 超时会把点数兜成 <c>1</c> → **不答 = 1 点**。
+        /// </summary>
+        public void OnSelectPointOffer(long playerId, int maxPoint, long sn, long nowMs)
+        {
+            SetWindow(new Window
+            {
+                Kind = AgentPendingKind.SelectPoint,
+                PlayerId = playerId,
+                MaxPoint = maxPoint,
+                Sn = sn,
+                SinceMs = nowMs
+            });
+        }
+
+        /// <summary>选点回执(5068 = ThrowDiceResultS2C): 窗口关闭。</summary>
+        public void OnSelectPointDone(long playerId, long nowMs) { ClearIf(AgentPendingKind.SelectPoint, playerId); }
+
         // ============================== 主线程提示 ==============================
 
         /// <summary>刷新运行时提示(每 tick 由 StateProbe 调用)。</summary>
@@ -391,6 +520,30 @@ namespace AstralParty.AgentMod.Bridge
             }
         }
 
+        /// <summary>
+        /// 5213 追击候选怪物(本地按 <c>GetVailPursuitMonster()</c> 的口径算出), 直接写在当前那个
+        /// pursueMonster 窗口上。候选为空数组是合法结果("现在没有可追的怪"), 与"没算出来"不同:
+        /// 后者不调用本方法, agent 会看到"候选未知"的提示而不是"没有目标"。
+        /// </summary>
+        public void SetPursuitMonsters(long[] monsterIds)
+        {
+            lock (_lock)
+            {
+                if (_window == null || _window.Kind != AgentPendingKind.PursueMonster) return;
+                _window.MonsterIds = monsterIds;
+            }
+        }
+
+        /// <summary>5077 窗口: 把"我站在什么地块上"写到当前窗口(纯展示, 不参与应答)。</summary>
+        public void SetStandLand(string land)
+        {
+            lock (_lock)
+            {
+                if (_window == null || _window.Kind != AgentPendingKind.StopOrContinue) return;
+                _window.Land = land;
+            }
+        }
+
         // ============================== 状态构建(主线程) ==============================
 
         public AgentPending Build(
@@ -427,6 +580,10 @@ namespace AstralParty.AgentMod.Bridge
                 p.NoDodge = w.NoDodge;
                 p.ResidueCost = w.ResidueCost;
                 p.IsAttacker = w.IsAttacker;
+                p.Land = w.Land;
+                p.VendorCardId = w.VendorCardId;
+                p.VendorPrice = w.VendorPrice;
+                p.MaxPoint = w.MaxPoint;
                 FillCandidates(p, w, nameOf);
                 FillOptions(p, w, moveLands, usable, currentSn);
                 FillDeadline(p, nowMs, remainingOf, w.Sn);
@@ -505,6 +662,24 @@ namespace AstralParty.AgentMod.Bridge
                     if (nameOf != null) fc.Name = nameOf("handCard", fc.Id);
                     if (w.Costs != null && i < w.Costs.Length) fc.Cost = w.Costs[i];
                     p.Candidates.Add(fc);
+                }
+                return;
+            }
+
+            if (w.Kind == AgentPendingKind.PursueMonster)
+            {
+                if (w.MonsterIds == null) return;
+                foreach (long id in w.MonsterIds)
+                {
+                    if (id == 0) continue;
+                    // 怪物 id 是 playerId(64 位), 所以两个字段都填: LongId 给工具用, Id 只作显示/兼容
+                    p.Candidates.Add(new AgentCandidate
+                    {
+                        Id = (int)id,
+                        LongId = id,
+                        Kind = "monster",
+                        Name = nameOf != null ? nameOf("monster", (int)id) : null
+                    });
                 }
                 return;
             }
@@ -627,6 +802,43 @@ namespace AstralParty.AgentMod.Bridge
                     }
                     p.Notes.Add("★ 超时不答 = 不闪避。");
                     break;
+
+                case AgentPendingKind.StopOrContinue:
+                    p.Actionable = true;
+                    p.Options.Add("astral_stop_or_continue {\"stop\":false}      继续走");
+                    p.Options.Add("astral_stop_or_continue {\"stop\":true}       就地停留");
+                    p.Notes.Add("加油站/出生点(5077)。信息全在本地: " +
+                                (string.IsNullOrEmpty(w.Land) ? "没读到当前地块" : "当前地块=" + w.Land) +
+                                "; 其余看 astral_state 里的星币/等级/分数。");
+                    p.Notes.Add("★ 超时不答 = 继续走(客户端超时回调点的是\"继续\"按钮)。");
+                    break;
+
+                case AgentPendingKind.PursueMonster:
+                    p.Actionable = true;
+                    if (p.Candidates.Count > 0)
+                        p.Options.Add("astral_pursue_monster {\"monsterId\":<候选里的 LongId>}   追击这只怪");
+                    p.Options.Add("astral_pursue_monster {\"pass\":true}                         不追击");
+                    if (p.Candidates.Count == 0)
+                        p.Notes.Add("本地没算出可追的怪(怪物要么已被选走、要么在医院地块、要么同队)。此时只能不追。");
+                    p.Notes.Add("★ 超时不答 = 不追击(SelectId=0)。");
+                    break;
+
+                case AgentPendingKind.VendorCard:
+                    p.Actionable = true;
+                    p.Options.Add("astral_vendor_buy_card {\"buy\":true}      花 " + w.VendorPrice + " 星币买下");
+                    p.Options.Add("astral_vendor_buy_card {\"buy\":false}     不买");
+                    p.Notes.Add("商人买卡(5323): 价格=" + w.VendorPrice + " 星币" +
+                                (w.VendorCardId != 0 ? ", 卡牌 id=" + w.VendorCardId : "") +
+                                "; 星币不足时客户端会拒绝购买请求。");
+                    p.Notes.Add("★ 超时不答 = 不买(客户端超时回调点的是\"取消\"按钮)。");
+                    break;
+
+                case AgentPendingKind.SelectPoint:
+                    p.Actionable = true;
+                    p.Options.Add("astral_select_point {\"point\":1.." + w.MaxPoint + "}     用几点移动力");
+                    p.Notes.Add("控制移动卡(5067): 可选点数 1.." + w.MaxPoint + "。");
+                    p.Notes.Add("★ 超时不答 = 1 点(客户端超时会把点数兜成 1 再确定)。");
+                    break;
             }
 
             if (usable != null && usable.Length > 0 && w.Kind != AgentPendingKind.CardChoice)
@@ -672,6 +884,7 @@ namespace AstralParty.AgentMod.Bridge
                 case AgentPendingKind.Shop: return "shopCard";
                 case AgentPendingKind.Move: return "land";
                 case AgentPendingKind.SelectEvent: return "event";
+                case AgentPendingKind.PursueMonster: return "monster";
                 default: return "unknown";
             }
         }

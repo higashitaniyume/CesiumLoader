@@ -163,6 +163,102 @@ namespace CesiumLoader.SDK
             catch { return false; }
         }
 
+        // ============================== 地块/选点类应答 ==============================
+
+        /// <summary>
+        /// 加油站/出生点(服务器动作 5077 = <c>LandFillingStationWindow.DealLand_StopOrContinue</c>):
+        /// <paramref name="stop"/>=true 停留, false 继续走。返回是否成功发出。
+        /// </summary>
+        /// <remarks>
+        /// 复刻 <c>LandLogic.RequestStopOrContinueC2S</c>。这条动作**没有业务负载**(客户端也从不读 Data),
+        /// 窗口归属与 sn 全看 action 本身。超时回调点的是"继续走"按钮 → **不答 = 继续走**。
+        /// </remarks>
+        public static bool StopOrContinue(bool stop, long? sn = null)
+        {
+            try
+            {
+                if (!Ready(out long targetSn, sn)) return false;
+                Net!.RPC.StopOrContinueC2S.StopOrContinueC2SCall(new StopOrContinueC2S
+                {
+                    Info = MakeInfo(targetSn),
+                    Stop = stop
+                });
+                return true;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>
+        /// 怪物追击(服务器动作 5213 = <c>LandLogic.DealMonsterPursuit</c>):
+        /// <paramref name="monsterId"/> = 要追击的怪物(怪物也是玩家, 填它的 playerId); <c>0</c> = 不追击。
+        /// 返回是否成功发出。
+        /// </summary>
+        /// <remarks>
+        /// 复刻 <c>LandLogic.RequestMonsterPursuitC2S</c>。候选怪物**不在协议里**, 由客户端本地按
+        /// <c>CharacterType.Monster &amp;&amp; !NotSelect &amp;&amp; HP&gt;0 &amp;&amp; 非医院地块 &amp;&amp; 不同队伍</c> 过滤
+        /// (见 <c>GameProbe.TrySelfPursuitMonsters</c>)。超时回调点的是"不追击" → **不答 = 不追击**。
+        /// </remarks>
+        public static bool PursueMonster(long monsterId, long? sn = null)
+        {
+            try
+            {
+                if (!Ready(out long targetSn, sn)) return false;
+                Net!.RPC.MonsterPursuitC2S.MonsterPursuitC2SCall(new MonsterPursuitC2S
+                {
+                    Info = MakeInfo(targetSn),
+                    SelectId = monsterId
+                });
+                return true;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>
+        /// 商人买卡(服务器动作 5323 = <c>LandLogic.DealAskVendorBuyCard</c>): <paramref name="buy"/>=true 买下, false 不买。
+        /// 返回是否成功发出。
+        /// </summary>
+        /// <remarks>
+        /// 复刻 <c>LandLogic.RequestVendorBuyCardC2S</c>(只回 <c>Info</c> + <c>IsBuy</c>, 不回填 CardId/Gold)。
+        /// 客户端在星币不足时只弹提示、不发包, 所以这里也由调用方保证足够。超时 = 不买。
+        /// </remarks>
+        public static bool VendorBuyCard(bool buy, long? sn = null)
+        {
+            try
+            {
+                if (!Ready(out long targetSn, sn)) return false;
+                Net!.RPC.VendorBuyCardC2S.VendorBuyCardC2SCall(new VendorBuyCardC2S
+                {
+                    Info = MakeInfo(targetSn),
+                    IsBuy = buy
+                });
+                return true;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>
+        /// 控制移动卡选点(服务器动作 5067 = <c>CardWindow.RefreshCardInfo_ControlMoveCard</c>):
+        /// <paramref name="point"/> = 要用几点移动力(<c>1..MaxPoint</c>, 上限来自 offer 的 <c>MaxPoint</c>)。
+        /// 返回是否成功发出。
+        /// </summary>
+        /// <remarks>
+        /// 复刻 <c>CardLogic.RequestThrowDiceResultC2S</c>。超时回调会把点数兜成 <c>1</c> → **不答 = 1 点**。
+        /// </remarks>
+        public static bool SelectPoint(int point, long? sn = null)
+        {
+            try
+            {
+                if (!Ready(out long targetSn, sn)) return false;
+                Net!.RPC.ThrowDiceResultC2S.ThrowDiceResultC2SCall(new ThrowDiceResultC2S
+                {
+                    Info = MakeInfo(targetSn),
+                    Point = point
+                });
+                return true;
+            }
+            catch { return false; }
+        }
+
         // ============================== 移动 ==============================
 
         /// <summary>移动到目标地块(targetLandId = 目标地块 ID, 即方向箭头指向的格)。返回是否成功发出。</summary>

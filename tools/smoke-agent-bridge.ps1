@@ -232,13 +232,16 @@ try {
 
     $list = Invoke-Mcp -Method 'tools/list' -Params ([ordered]@{})
     $tools = @($list.result.tools)
-    Assert-That 'tools/list 返回 23 个工具' ($tools.Count -eq 23) "实际 $($tools.Count)"
+    Assert-That 'tools/list 返回 27 个工具' ($tools.Count -eq 27) "实际 $($tools.Count)"
     Assert-That '工具名统一 astral_ 前缀' (@($tools | Where-Object { $_.name -notlike 'astral_*' }).Count -eq 0) ''
     Assert-That '包含 astral_move 与 astral_emergency_stop' `
         ((@($tools.name) -contains 'astral_move') -and (@($tools.name) -contains 'astral_emergency_stop')) ''
     Assert-That '包含战斗三件套(询问/出牌/闪避)' `
         (((@($tools.name) -contains 'astral_ask_battle') -and (@($tools.name) -contains 'astral_use_card') -and
           (@($tools.name) -contains 'astral_battle_choice'))) ''
+    Assert-That '包含地块/选点四件套(加油站/追击/商人/选点)' `
+        (((@($tools.name) -contains 'astral_stop_or_continue') -and (@($tools.name) -contains 'astral_pursue_monster') -and
+          (@($tools.name) -contains 'astral_vendor_buy_card') -and (@($tools.name) -contains 'astral_select_point'))) ''
 
     # ------------------------------ 2. 只读工具读假状态 ------------------------------
     Write-Host '[smoke] --- 只读工具 ---'
@@ -302,6 +305,34 @@ try {
 
     $noArg = Invoke-Tool 'astral_ask_battle' '{}'
     Assert-That 'astral_ask_battle 缺 accept 时直接报错(不下发)' ($noArg.IsError -eq $true) $noArg.Text
+
+    # 地块/选点四件套(5077 加油站 / 5213 追击 / 5323 商人买卡 / 5067 控移选点)也各走一次真往返
+    $soc = Invoke-Tool 'astral_stop_or_continue' '{"stop":true,"sn":5077}'
+    Assert-That 'astral_stop_or_continue 往返成功' ((-not $soc.IsError) -and ($soc.Text -match '已发送\(假游戏\)')) $soc.Text
+    $logged = Get-Content -LiteralPath $cmdLog -Raw -Encoding UTF8
+    Assert-That '命令文件里 tool=stop_or_continue 且 stop=true' `
+        (($logged -match '"tool"\s*:\s*"stop_or_continue"') -and ($logged -match '"stop"\s*:\s*true')) $logged
+
+    $pur = Invoke-Tool 'astral_pursue_monster' '{"monsterId":1080857,"sn":5213}'
+    Assert-That 'astral_pursue_monster 往返成功' ((-not $pur.IsError) -and ($pur.Text -match '已发送\(假游戏\)')) $pur.Text
+    $logged = Get-Content -LiteralPath $cmdLog -Raw -Encoding UTF8
+    Assert-That '命令文件里 tool=pursue_monster 且 monsterId 原样(64 位)' `
+        (($logged -match '"tool"\s*:\s*"pursue_monster"') -and ($logged -match '"monsterId"\s*:\s*1080857')) $logged
+
+    $ven = Invoke-Tool 'astral_vendor_buy_card' '{"buy":true,"sn":5323}'
+    Assert-That 'astral_vendor_buy_card 往返成功' ((-not $ven.IsError) -and ($ven.Text -match '已发送\(假游戏\)')) $ven.Text
+    $logged = Get-Content -LiteralPath $cmdLog -Raw -Encoding UTF8
+    Assert-That '命令文件里 tool=vendor_buy_card 且 buy=true' `
+        (($logged -match '"tool"\s*:\s*"vendor_buy_card"') -and ($logged -match '"buy"\s*:\s*true')) $logged
+
+    $pt = Invoke-Tool 'astral_select_point' '{"point":4,"sn":5067}'
+    Assert-That 'astral_select_point 往返成功' ((-not $pt.IsError) -and ($pt.Text -match '已发送\(假游戏\)')) $pt.Text
+    $logged = Get-Content -LiteralPath $cmdLog -Raw -Encoding UTF8
+    Assert-That '命令文件里 tool=select_point 且 point=4' `
+        (($logged -match '"tool"\s*:\s*"select_point"') -and ($logged -match '"point"\s*:\s*4')) $logged
+
+    $purNoArg = Invoke-Tool 'astral_pursue_monster' '{}'
+    Assert-That 'astral_pursue_monster 缺 monsterId/pass 时报错(不下发)' ($purNoArg.IsError -eq $true) $purNoArg.Text
 
     # ------------------------------ 4. 开关闸门 ------------------------------
     Write-Host '[smoke] --- 安全开关(control.json) ---'

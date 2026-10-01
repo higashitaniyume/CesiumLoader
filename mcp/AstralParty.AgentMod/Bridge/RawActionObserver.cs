@@ -112,6 +112,20 @@ namespace AstralParty.AgentMod.Bridge
                     _tracker.OnMoveAction(e.PlayerId, e.Sn, now);
                     return "MoveOffer{空负载}";
                 }
+                // 5077 加油站/出生点 与 5213 怪物追击: offer **本身就是零负载**(客户端从不读 Data,
+                // 3 局真实回放里 Data 长度恒为 0)。所以"空负载 = 服务器在问要不要/要不要追",
+                // 而"有负载 = 某人的答案(Info.Sn 非 0)被回播", 两者必须分开处理, 否则要么漏窗口,
+                // 要么把自己的答案当成新窗口重开(回声)。
+                if (e.Id == 5077)
+                {
+                    _tracker.OnStopOrContinueOffer(e.PlayerId, e.Sn, now);
+                    return "StopOrContinueOffer{空负载}";
+                }
+                if (e.Id == 5213)
+                {
+                    _tracker.OnPursueMonsterOffer(e.PlayerId, e.Sn, now);
+                    return "PursueMonsterOffer{空负载}";
+                }
                 return null; // 其余 id 的空负载无从判断语义, 只记长度(外层已记)
             }
             try
@@ -330,6 +344,91 @@ namespace AstralParty.AgentMod.Bridge
                             _tracker.OnFightChoiceDone(e.PlayerId, now);
                             return "FightChoiceResult{playerId=" + d.PlayerId + ", val=" + d.Val +
                                    ", dodge=" + d.Dodge + ", existFightBack=" + d.ExistFightBack + "}";
+                        }
+
+                    // ---------- 加油站/出生点(5077 / 回执 5078) ----------
+                    // 空负载的 5077 是 offer(见上面); 走到这里说明有负载 = 某人的答案(Info.Sn 非 0)被回播。
+                    // 这条动作没有独立的消息类型可区分双方, 只能用 Info.Sn 判断 —— 有 sn 就不是新窗口。
+                    case 5077:
+                        {
+                            var d = ByteBuf.ReadObject<StopOrContinueC2S>(e.Data);
+                            if (d == null) return null;
+                            long answerSn = d.Info != null ? d.Info.Sn : 0;
+                            if (answerSn != 0) return "StopOrContinueAnswer{sn=" + answerSn + ", stop=" + d.Stop + "}";
+                            // 理论上到不了(offer 是空负载), 但真出现"带负载却没有 sn"就按 offer 处理, 免得漏窗口
+                            _tracker.OnStopOrContinueOffer(e.PlayerId, e.Sn, now);
+                            return "StopOrContinueOffer{len=" + e.Data.Length + "}";
+                        }
+
+                    case 5078:
+                        {
+                            var d = ByteBuf.ReadObject<StopOrContinueS2C>(e.Data);
+                            if (d == null) return null;
+                            _tracker.OnStopOrContinueDone(e.PlayerId, now);
+                            return "StopOrContinueResult{playerId=" + d.PlayerId + ", stop=" + d.Stop + "}";
+                        }
+
+                    // ---------- 怪物追击(5213 / 回执 5214) ----------
+                    case 5213:
+                        {
+                            var d = ByteBuf.ReadObject<MonsterPursuitC2S>(e.Data);
+                            if (d == null) return null;
+                            long answerSn = d.Info != null ? d.Info.Sn : 0;
+                            if (answerSn != 0) return "PursueMonsterAnswer{sn=" + answerSn + ", selectId=" + d.SelectId + "}";
+                            _tracker.OnPursueMonsterOffer(e.PlayerId, e.Sn, now);
+                            return "PursueMonsterOffer{len=" + e.Data.Length + "}";
+                        }
+
+                    case 5214:
+                        {
+                            var d = ByteBuf.ReadObject<MonsterPursuitS2C>(e.Data);
+                            if (d == null) return null;
+                            _tracker.OnPursueMonsterDone(e.PlayerId, now);
+                            return "PursueMonsterResult{playerId=" + d.PlayerId + ", nodeId=" + d.NodeId +
+                                   ", exit=" + d.Exit + "}";
+                        }
+
+                    // ---------- 商人买卡(5323 / 回执 5324) ----------
+                    // offer 与答案**是同一个消息类**: offer 只有 CardId+Gold(没有 Info),
+                    // 答案是 Info.Sn + IsBuy(不回填 CardId/Gold) —— 所以用 Info.Sn 是否为 0 区分。
+                    case 5323:
+                        {
+                            var d = ByteBuf.ReadObject<VendorBuyCardC2S>(e.Data);
+                            if (d == null) return null;
+                            long offerSn = d.Info != null ? d.Info.Sn : 0;
+                            if (offerSn != 0)
+                                return "VendorBuyAnswer{sn=" + offerSn + ", isBuy=" + d.IsBuy + "}";
+                            _tracker.OnVendorCardOffer(e.PlayerId, d.CardId, d.Gold, e.Sn, now);
+                            return "VendorBuyOffer{cardId=" + d.CardId + ", gold=" + d.Gold + "}";
+                        }
+
+                    case 5324:
+                        {
+                            var d = ByteBuf.ReadObject<VendorBuyCardS2C>(e.Data);
+                            if (d == null) return null;
+                            _tracker.OnVendorCardDone(e.PlayerId, now);
+                            return "VendorBuyResult{playerId=" + d.PlayerId + ", isBuy=" + d.IsBuy + "}";
+                        }
+
+                    // ---------- 控制移动卡选点(5067 / 回执 5068) ----------
+                    case 5067:
+                        {
+                            var d = ByteBuf.ReadObject<ThrowDiceResultC2S>(e.Data);
+                            if (d == null) return null;
+                            long offerSn = d.Info != null ? d.Info.Sn : 0;
+                            if (offerSn != 0)
+                                return "SelectPointAnswer{sn=" + offerSn + ", point=" + d.Point + "}";
+                            _tracker.OnSelectPointOffer(e.PlayerId, d.MaxPoint, e.Sn, now);
+                            return "SelectPointOffer{maxPoint=" + d.MaxPoint + "}";
+                        }
+
+                    case 5068:
+                        {
+                            var d = ByteBuf.ReadObject<ThrowDiceResultS2C>(e.Data);
+                            if (d == null) return null;
+                            _tracker.OnSelectPointDone(e.PlayerId, now);
+                            return "SelectPointResult{playerId=" + d.PlayerId + ", maxPoint=" + d.MaxPoint +
+                                   ", point=" + d.Point + "}";
                         }
 
                     default:
