@@ -71,6 +71,10 @@ namespace CesiumLoader.SDK
                 sn = overrideSn ?? logic.action.throwDiceSn;
                 if (sn <= 0) return false;
                 logic.battle?.RecordFinishSn(sn);
+                // 与游戏自己的 Request*C2S 一致: 取消这个 sn 的操作倒计时。
+                // 不取消的话, 客户端挂着的超时回调到点会**再发一条结论相反**的请求
+                // (5047 超时→不打, 5035 超时→不出牌, 5039 超时→不闪避), 覆盖我们刚发出的决定。
+                try { OperationTimer.CancelOperatTimer(sn); } catch { }
                 return true;
             }
             catch { return false; }
@@ -112,6 +116,53 @@ namespace CesiumLoader.SDK
             catch { return false; }
         }
 
+        // ============================== 战斗询问 / 闪避 ==============================
+
+        /// <summary>
+        /// 应答"要不要打这一场"(服务器动作 5047 = <c>FightLogic.AskFight</c>):
+        /// <paramref name="isBattle"/>=true 接受进入战斗, false 不接。返回是否成功发出。
+        /// </summary>
+        /// <remarks>
+        /// 复刻 <c>FightLogic.RequestAskBattleC2S</c>。**注意不要在这种窗口里乱抢答**:
+        /// 反编译 <c>AskFight</c> 证实, 当服务器下发的 <c>AskBattleC2S.FightBack == true</c> 时,
+        /// 客户端自己会立刻以 <c>IsBattle=true</c> 自动应答(真人玩家根本没有选择机会), 桥接不该再发一条。
+        /// </remarks>
+        public static bool AskBattle(bool isBattle, long? sn = null)
+        {
+            try
+            {
+                if (!Ready(out long targetSn, sn)) return false;
+                Net!.RPC.AskBattleC2S.AskBattleC2SCall(new AskBattleC2S
+                {
+                    Info = MakeInfo(targetSn),
+                    IsBattle = isBattle
+                });
+                return true;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>
+        /// 战斗内闪避选择(服务器动作 5039 = <c>FightLogic.ReadyFightChoice</c>):
+        /// <paramref name="dodge"/>=true 闪避, false 硬吃。返回是否成功发出。
+        /// </summary>
+        /// <remarks>复刻 <c>FightLogic.RequestBattleChoiceC2S</c>(<c>DevPoint</c> 用 <c>GMConfig.dev_DefenderPoint</c>)。</remarks>
+        public static bool BattleChoice(bool dodge, long? sn = null)
+        {
+            try
+            {
+                if (!Ready(out long targetSn, sn)) return false;
+                Net!.RPC.BattleChoiceC2S.BattleChoiceC2SCall(new BattleChoiceC2S
+                {
+                    Info = MakeInfo(targetSn),
+                    DevPoint = GMConfig.dev_DefenderPoint,
+                    Dodge = dodge
+                });
+                return true;
+            }
+            catch { return false; }
+        }
+
         // ============================== 移动 ==============================
 
         /// <summary>移动到目标地块(targetLandId = 目标地块 ID, 即方向箭头指向的格)。返回是否成功发出。</summary>
@@ -132,8 +183,19 @@ namespace CesiumLoader.SDK
 
         // ============================== 用牌 ==============================
 
-        /// <summary>战斗中使用卡牌(cardId = 手牌里卡牌的 CardId)。返回是否成功发出。</summary>
-        public static bool UseCard(int cardId, long? sn = null)
+        /// <summary>
+        /// 战斗中使用卡牌(<paramref name="cardUid"/> = **手牌的唯一实例号 Guid**, 不是卡牌配置 CardId;
+        /// 传 0 = 这一轮不出牌)。返回是否成功发出。
+        /// </summary>
+        /// <remarks>
+        /// 依据(反编译 <c>UI.FightWindow.DragEndEvent</c>): 客户端出牌发的是
+        /// <c>RequestBattleUseCardC2S(useBattleCardSn, item.CardData.Guid)</c>, 而
+        /// <c>RequestBattleUseCardC2S</c> 把它填进 <c>BattleUseCardC2S.CardUid</c>;
+        /// 超时/点"结束出牌"按钮时发的也是同一个字段, 值为 0。
+        /// 反证: <c>GameEvents.cs</c> 里要把 S2C 的 <c>CardId</c> 用 <c>Players.ResolveCardGuid</c>
+        /// 反查回真实 CardId —— 说明这条链路上的"CardId"字段装的其实是 Guid。
+        /// </remarks>
+        public static bool UseCard(int cardUid, long? sn = null)
         {
             try
             {
@@ -141,7 +203,7 @@ namespace CesiumLoader.SDK
                 Net!.RPC.BattleUseCardC2S.BattleUseCardC2SCall(new BattleUseCardC2S
                 {
                     Info = MakeInfo(targetSn),
-                    CardUid = cardId
+                    CardUid = cardUid
                 });
                 return true;
             }

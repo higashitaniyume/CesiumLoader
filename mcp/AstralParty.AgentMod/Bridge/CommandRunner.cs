@@ -74,6 +74,12 @@ namespace AstralParty.AgentMod.Bridge
                     case AgentBridgeLayout.Tool.UseCard:
                         return UseCard(cmd, started);
 
+                    case AgentBridgeLayout.Tool.AskBattle:
+                        return AskBattle(cmd, started);
+
+                    case AgentBridgeLayout.Tool.BattleChoice:
+                        return BattleChoice(cmd, started);
+
                     case AgentBridgeLayout.Tool.UseEffectCard:
                         return UseEffectCard(cmd, started);
 
@@ -156,15 +162,106 @@ namespace AstralParty.AgentMod.Bridge
             return Done(cmd, started, "已发送 移动 Move(landId=" + landId + ", sn=" + Show(sn) + ")");
         }
 
+        /// <summary>
+        /// 战斗出牌(5035 窗口)。两种用法:
+        ///   cardId = astral_pending 里 kind=fightCard 的候选 id(**就是手牌 Guid**), 或
+        ///   pass:true = 这一轮不出牌(与客户端点"结束出牌"/超时同一条路径, CardUid=0)。
+        /// 反编译证据: 客户端拖牌出的是 <c>RequestBattleUseCardC2S(sn, item.CardData.Guid)</c>,
+        /// 而 <c>BattleUseCardC2S.CardUid</c> 收的就是它 —— 填卡牌配置 CardId 无效。
+        /// </summary>
         private BridgeResult UseCard(BridgeCommand cmd, long started)
         {
-            int cardId;
-            if (!ResolveCard(cmd, out cardId)) return BadArgs(cmd, "缺少 cardId(手牌 CardId; 也可给 cardGuid)");
+            long? sn = ResolveSn(cmd, AgentPendingKind.FightCard);
+            if (!sn.HasValue || sn.Value <= 0)
+                return BadArgs(cmd, "现在没有战斗出牌窗口(5035): sn 只有服务器推 5035 时才有。" +
+                                    "先用 astral_pending 看有没有 kind=fightCard");
 
-            long? sn = ResolveSn(cmd, null);
-            if (!GameActions.UseCard(cardId, sn)) return NotSent(cmd, "战斗用牌");
+            if (cmd.GetBool("pass", false))
+            {
+                if (!GameActions.UseCard(0, sn)) return NotSent(cmd, "战斗出牌(不出牌)");
+                OnSent(sn);
+                return Done(cmd, started, "已发送 战斗出牌 UseCard(cardUid=0 不出牌, sn=" + Show(sn) + ")");
+            }
+
+            int cardUid;
+            if (!ResolveCardUid(cmd, out cardUid))
+                return BadArgs(cmd, "缺少 cardId(战斗出牌要的是**手牌 Guid**, 也就是 astral_pending 候选里的 id," +
+                                    "不是卡牌配置 id; 想不出牌就给 pass:true)");
+
+            if (!GameActions.UseCard(cardUid, sn)) return NotSent(cmd, "战斗出牌");
             OnSent(sn);
-            return Done(cmd, started, "已发送 战斗用牌 UseCard(cardId=" + cardId + ", sn=" + Show(sn) + ")");
+            return Done(cmd, started, "已发送 战斗出牌 UseCard(cardUid=" + cardUid + ", sn=" + Show(sn) + ")");
+        }
+
+        /// <summary>
+        /// 战斗询问(5047 窗口): accept=true 打, false 不打。
+        /// 反编译证据: 客户端"打"= btn_PK → IsBattle=true, "不打"= btn_Leave → IsBattle=false,
+        /// 且超时回调点的就是 btn_Leave —— 所以**不答 = 不打**。
+        /// </summary>
+        private BridgeResult AskBattle(BridgeCommand cmd, long started)
+        {
+            if (!cmd.Has("accept"))
+                return BadArgs(cmd, "缺少 accept(true=接受战斗 / false=不打)");
+
+            long? sn = ResolveSn(cmd, AgentPendingKind.AskFight);
+            if (!sn.HasValue || sn.Value <= 0)
+                return BadArgs(cmd, "现在没有战斗询问窗口(5047): sn 只有服务器推 5047 时才有。" +
+                                    "先用 astral_pending 看有没有 kind=askFight");
+
+            bool accept = cmd.GetBool("accept", true);
+            if (!GameActions.AskBattle(accept, sn)) return NotSent(cmd, "战斗询问应答");
+            OnSent(sn);
+            return Done(cmd, started, "已发送 战斗询问 AskBattle(isBattle=" + accept + ", sn=" + Show(sn) + ")");
+        }
+
+        /// <summary>
+        /// 战斗闪避选择(5039 窗口): dodge=true 闪避, false 硬吃。
+        /// <c>NoDodge=true</c> 时客户端会**直接拒绝**闪避请求(只弹提示、不发包), 所以这里也挡住,
+        /// 免得 agent 以为闪了其实什么都没发生。
+        /// </summary>
+        private BridgeResult BattleChoice(BridgeCommand cmd, long started)
+        {
+            bool dodge = cmd.GetBool("dodge", false);
+
+            long? sn = ResolveSn(cmd, AgentPendingKind.FightChoice);
+            if (!sn.HasValue || sn.Value <= 0)
+                return BadArgs(cmd, "现在没有闪避选择窗口(5039): sn 只有服务器推 5039 时才有。" +
+                                    "先用 astral_pending 看有没有 kind=fightChoice");
+
+            bool noDodge;
+            if (dodge && _tracker.TryGetNoDodge(out noDodge) && noDodge)
+                return BadArgs(cmd, "这一击不能闪避(服务器下发 NoDodge=true, 客户端会直接拒绝闪避请求); 只能 dodge=false");
+
+            if (!GameActions.BattleChoice(dodge, sn)) return NotSent(cmd, "闪避选择");
+            OnSent(sn);
+            return Done(cmd, started, "已发送 闪避选择 BattleChoice(dodge=" + dodge + ", sn=" + Show(sn) + ")");
+        }
+
+        /// <summary>
+        /// 战斗出牌的目标值是**手牌 Guid**。允许三种给法:
+        ///   cardUid/guid/cardGuid = 直接就是 Guid; cardId = 候选里的 id(先按 Guid 认, 认不出再当配置 id 反查第一张同配置手牌)。
+        /// </summary>
+        private bool ResolveCardUid(BridgeCommand cmd, out int cardUid)
+        {
+            cardUid = 0;
+            if (cmd.Has("cardUid")) { cardUid = cmd.GetInt("cardUid", 0); if (cardUid != 0) return true; }
+            if (cmd.Has("guid")) { cardUid = cmd.GetInt("guid", 0); if (cardUid != 0) return true; }
+            if (cmd.Has("cardGuid")) { cardUid = cmd.GetInt("cardGuid", 0); if (cardUid != 0) return true; }
+
+            int given = cmd.GetInt("cardId", 0);
+            if (given == 0) return false;
+
+            long self = 0;
+            try { self = _selfId != null ? _selfId() : 0; } catch { }
+
+            // 候选里的 id 就是 Guid: 只要这张牌确实在我手上, 直接用它
+            try { if (Players.HandHasGuid(self, given)) { cardUid = given; return true; } } catch { }
+
+            // 退路: 给的是卡牌配置 id → 反查第一张同配置手牌
+            int guid = 0;
+            try { guid = Players.ResolveCardIdToGuid(self, given); } catch { }
+            if (guid != 0) { cardUid = guid; return true; }
+            return false;
         }
 
         private BridgeResult UseEffectCard(BridgeCommand cmd, long started)

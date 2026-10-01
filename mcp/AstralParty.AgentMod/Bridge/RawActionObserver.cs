@@ -275,6 +275,63 @@ namespace AstralParty.AgentMod.Bridge
                             return "EventResult{playerId=" + d.PlayerId + ", eventId=" + d.EventId + "}";
                         }
 
+                    // ---------- 战斗询问(5047 / 回执 5048) ----------
+                    // 反编译 FightLogic.AskFight: Data = AskBattleC2S{AskPlayerId, FightBack}。
+                    // FightBack=true = 反击成立, 客户端**自己会立刻以 IsBattle=true 自动应答**(真人没机会选),
+                    // 所以这时桥接**绝不能开窗口**(会和客户端抢答同一条 sn)。
+                    case 5047:
+                        {
+                            var d = ByteBuf.ReadObject<AskBattleC2S>(e.Data);
+                            if (d == null) return null;
+                            if (d.FightBack)
+                                return "AskFightAutoAccept{askPlayerId=" + d.AskPlayerId + "}";
+                            _tracker.OnAskFightOffer(e.PlayerId, d.AskPlayerId, e.Sn, now);
+                            return "AskFight{askPlayerId=" + d.AskPlayerId + "}";
+                        }
+
+                    case 5048:
+                        {
+                            var d = ByteBuf.ReadObject<AskBattleS2C>(e.Data);
+                            if (d == null) return null;
+                            _tracker.OnAskFightDone(e.PlayerId, now);
+                            return "AskFightResult{playerId=" + d.PlayerId + ", isBattle=" + d.IsBattle + "}";
+                        }
+
+                    // ---------- 战斗用牌(5035 / 回执 5036) ----------
+                    // 反编译 FightWindow.RefreshPKCard: 客户端只用 action.PlayerId + action.Sn 开窗口, 不读 Data。
+                    // 候选由客户端本地算(GetVailCard: 手牌里 EffectType 匹配我方角色的牌), 桥接在 StateProbe 里复刻。
+                    case 5035:
+                        _tracker.OnFightCardOffer(e.PlayerId, e.Sn, now);
+                        return "FightCardOffer{len=" + e.Data.Length + "}";
+
+                    case 5036:
+                        {
+                            var d = ByteBuf.ReadObject<BattleUseCardS2C>(e.Data);
+                            if (d == null) return null;
+                            _tracker.OnFightCardDone(e.PlayerId, now);
+                            // 注意: 这条消息里名叫 CardId 的字段装的其实是手牌 Guid(CardId==0 表示"没出牌")
+                            return "FightCardResult{playerId=" + d.PlayerId + ", cardUid=" + d.CardId + "}";
+                        }
+
+                    // ---------- 战斗闪避选择(5039 / 回执 5040) ----------
+                    // 反编译 FightWindow.RefreshDefendReadyChoice: Data = BattleChoiceC2S{NoDodge}。
+                    case 5039:
+                        {
+                            var d = ByteBuf.ReadObject<BattleChoiceC2S>(e.Data);
+                            if (d == null) return null;
+                            _tracker.OnFightChoiceOffer(e.PlayerId, d.NoDodge, e.Sn, now);
+                            return "FightChoice{noDodge=" + d.NoDodge + "}";
+                        }
+
+                    case 5040:
+                        {
+                            var d = ByteBuf.ReadObject<BattleChoiceS2C>(e.Data);
+                            if (d == null) return null;
+                            _tracker.OnFightChoiceDone(e.PlayerId, now);
+                            return "FightChoiceResult{playerId=" + d.PlayerId + ", val=" + d.Val +
+                                   ", dodge=" + d.Dodge + ", existFightBack=" + d.ExistFightBack + "}";
+                        }
+
                     default:
                         return null; // 未知动作: 只记 id/sn/pid/长度, 保留原始可见性
                 }

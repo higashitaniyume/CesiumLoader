@@ -31,6 +31,8 @@ namespace AstralParty.AgentMod.Bridge
         private long _cardSn;
         private int[] _usableCards;
         private int[] _moveLands;
+        /// <summary>我方 playerId(由 StateProbe 喂)。用于"别人的窗口不许顶掉我的窗口"。</summary>
+        private long _selfId;
 
         /// <summary>
         /// 已经应答过的窗口 sn(有界, 见 <see cref="AnsweredCap"/>)。
@@ -60,6 +62,16 @@ namespace AstralParty.AgentMod.Bridge
             public int DivinationGold;
             /// <summary>商店类窗口: true=PVE(5215), false=PVP(5029)。</summary>
             public bool PveShop;
+            /// <summary>5047 战斗询问: 挑战者 id(AskBattleC2S.AskPlayerId)。</summary>
+            public long AskPlayerId;
+            /// <summary>5039 闪避窗口: true = 这一击不能闪避。</summary>
+            public bool NoDodge;
+            /// <summary>战斗用牌候选的消耗(与 Ids 同序; 可能为 null)。</summary>
+            public int[] Costs;
+            /// <summary>5035: 我方剩余战斗点数(-1 = 没读到)。</summary>
+            public int ResidueCost = -1;
+            /// <summary>5035: 我是攻击方(true)还是防守方。</summary>
+            public bool IsAttacker;
         }
 
         public string WindowKind { get { lock (_lock) { return _window == null ? AgentPendingKind.None : _window.Kind; } } }
@@ -73,6 +85,18 @@ namespace AstralParty.AgentMod.Bridge
                 if (_window == null || _window.Kind != kind) return false;
                 if (_window.Ids == null || _window.Ids.Length == 0) return false;
                 ids = (int[])_window.Ids.Clone();
+                return true;
+            }
+        }
+
+        /// <summary>5039 闪避窗口: 取"这一击能不能闪避"。当前没有该窗口时返回 false(调用方应自己判窗口存在)。</summary>
+        public bool TryGetNoDodge(out bool noDodge)
+        {
+            noDodge = false;
+            lock (_lock)
+            {
+                if (_window == null || _window.Kind != AgentPendingKind.FightChoice) return false;
+                noDodge = _window.NoDodge;
                 return true;
             }
         }
@@ -243,6 +267,80 @@ namespace AstralParty.AgentMod.Bridge
         /// <summary>事件选择回执(5318 = SelectEventS2C): 窗口关闭。</summary>
         public void OnEventSelected(long playerId, long nowMs) { ClearIf(AgentPendingKind.SelectEvent, playerId); }
 
+        // ---------- 战斗询问窗口(5047 / 回执 5048) ----------
+
+        /// <summary>
+        /// "要不要打这一场"(5047 = <c>FightLogic.AskFight</c>)。offer = <c>AskBattleC2S</c>,
+        /// 其中 <c>AskPlayerId</c> = 挑战者, <c>FightBack</c> = 服务器已经知道答案(客户端会自己以
+        /// <c>IsBattle=true</c> 自动应答, 真人玩家根本没有选择机会) —— **FightBack=true 时不要开这个窗口**,
+        /// 否则桥接会跟客户端抢答同一条 sn。
+        ///
+        /// 依据(反编译 <c>UI.FightWindow.OpenChallengeWin/SureLaunch/RequestClosePKWin</c>):
+        /// 归属 = <c>action.PlayerId</c>(只对本人注册超时); 超时回调点的是 <c>btn_Leave</c> →
+        /// <c>IsBattle=false</c>, 即**不答 = 不打**。
+        /// </summary>
+        public void OnAskFightOffer(long playerId, long askPlayerId, long sn, long nowMs)
+        {
+            SetWindow(new Window
+            {
+                Kind = AgentPendingKind.AskFight,
+                PlayerId = playerId,
+                AskPlayerId = askPlayerId,
+                Sn = sn,
+                SinceMs = nowMs
+            });
+        }
+
+        /// <summary>战斗询问回执(5048 = AskBattleS2C): 窗口关闭。</summary>
+        public void OnAskFightDone(long playerId, long nowMs) { ClearIf(AgentPendingKind.AskFight, playerId); }
+
+        // ---------- 战斗用牌窗口(5035 / 回执 5036) ----------
+
+        /// <summary>
+        /// 战斗准备阶段轮到我出牌(5035 = <c>FightLogic.ReadyFightUseCard</c>)。
+        ///
+        /// 这条动作**没有可解码的负载**(反编译 <c>UI.FightWindow.RefreshPKCard</c> 只用了 action.PlayerId 与 action.Sn)。
+        /// 候选牌由客户端本地算: <c>GetVailCard()</c> = 我方手牌里 <c>Config.EffectType</c> 匹配我方角色的那些
+        /// (我是攻击方 → <c>EffectType.Attack</c>, 我是防守方 → <c>EffectType.Defense</c>),
+        /// 再由 <c>RefreshCardUsability</c> 按剩余战斗点数把买不起的牌置灰 —— 这两步由
+        /// <see cref="SetFightCardCandidates"/> 从主线程喂进来。
+        ///
+        /// 超时回调点的是 <c>btn_FinishPkCard</c> → <c>CardUid = 0</c>, 即**不答 = 不出牌**。
+        /// </summary>
+        public void OnFightCardOffer(long playerId, long sn, long nowMs)
+        {
+            SetWindow(new Window { Kind = AgentPendingKind.FightCard, PlayerId = playerId, Sn = sn, SinceMs = nowMs });
+        }
+
+        /// <summary>战斗用牌回执(5036 = BattleUseCardS2C): 窗口关闭。</summary>
+        public void OnFightCardDone(long playerId, long nowMs) { ClearIf(AgentPendingKind.FightCard, playerId); }
+
+        // ---------- 战斗闪避窗口(5039 / 回执 5040) ----------
+
+        /// <summary>
+        /// 防守方选"闪避 / 硬吃"(5039 = <c>FightLogic.ReadyFightChoice</c>)。offer = <c>BattleChoiceC2S</c>,
+        /// 只需要读它的 <c>NoDodge</c>。
+        ///
+        /// 依据(反编译 <c>UI.FightWindow.RefreshDefendReadyChoice/ChooseActive</c>):
+        /// 归属 = <c>action.PlayerId</c>; <c>NoDodge=true</c> 时客户端**直接拒绝闪避请求**(只弹个提示、不发包),
+        /// 所以这时 agent 只能回 <c>dodge=false</c>; 超时回调点的是 <c>btn_Defend</c> → <c>Dodge=false</c>,
+        /// 即**不答 = 不闪避**。
+        /// </summary>
+        public void OnFightChoiceOffer(long playerId, bool noDodge, long sn, long nowMs)
+        {
+            SetWindow(new Window
+            {
+                Kind = AgentPendingKind.FightChoice,
+                PlayerId = playerId,
+                NoDodge = noDodge,
+                Sn = sn,
+                SinceMs = nowMs
+            });
+        }
+
+        /// <summary>闪避选择回执(5040 = BattleChoiceS2C): 窗口关闭。</summary>
+        public void OnFightChoiceDone(long playerId, long nowMs) { ClearIf(AgentPendingKind.FightChoice, playerId); }
+
         // ============================== 主线程提示 ==============================
 
         /// <summary>刷新运行时提示(每 tick 由 StateProbe 调用)。</summary>
@@ -261,6 +359,36 @@ namespace AstralParty.AgentMod.Bridge
         public void SetMoveCandidates(int[] lands)
         {
             lock (_lock) { _moveLands = lands; }
+        }
+
+        /// <summary>
+        /// 我方 playerId(主线程读到后喂一次即可)。
+        ///
+        /// 用途: 服务器经常**同时**给 4 个玩家各推一条候选动作(反编译证据: 任务奖励的筹码候选是同一时刻
+        /// 给四名玩家分别广播的)。只有一个活跃窗口时, "后到的那条"会把"我的那条"顶掉 —— 我的窗口一丢,
+        /// agent 就永远看不到该它表态的那件事, 只能等服务器超时代打。所以: 只要我手上还有一个属于我的窗口,
+        /// 别人的窗口就不许覆盖它。
+        /// </summary>
+        public void SetSelf(long selfId)
+        {
+            lock (_lock) { _selfId = selfId; }
+        }
+
+        /// <summary>
+        /// 5035 战斗用牌候选(手牌 Guid + 各自战斗消耗 + 我方剩余点数 + 我是攻方还是守方)。
+        /// 由主线程每 tick 按 <c>GetVailCard()</c> 的口径算好后喂进来; 直接写在**当前那个 fightCard 窗口**上,
+        /// 所以出过一张牌之后候选会自动少一张。
+        /// </summary>
+        public void SetFightCardCandidates(int[] cardUids, int[] costs, int residueCost, bool isAttacker)
+        {
+            lock (_lock)
+            {
+                if (_window == null || _window.Kind != AgentPendingKind.FightCard) return;
+                _window.Ids = cardUids;
+                _window.Costs = costs;
+                _window.ResidueCost = residueCost;
+                _window.IsAttacker = isAttacker;
+            }
         }
 
         // ============================== 状态构建(主线程) ==============================
@@ -295,6 +423,10 @@ namespace AstralParty.AgentMod.Bridge
                 p.Sn = w.Sn;
                 p.Source = "event";
                 p.SinceMs = w.SinceMs;
+                p.AskPlayerId = w.AskPlayerId;
+                p.NoDodge = w.NoDodge;
+                p.ResidueCost = w.ResidueCost;
+                p.IsAttacker = w.IsAttacker;
                 FillCandidates(p, w, nameOf);
                 FillOptions(p, w, moveLands, usable, currentSn);
                 FillDeadline(p, nowMs, remainingOf, w.Sn);
@@ -359,6 +491,20 @@ namespace AstralParty.AgentMod.Bridge
                         if (id == 0) continue;
                         p.Candidates.Add(new AgentCandidate { Id = id, Kind = "land", Name = nameOf != null ? nameOf("land", id) : null });
                     }
+                }
+                return;
+            }
+
+            if (w.Kind == AgentPendingKind.FightCard)
+            {
+                if (w.Ids == null) return;
+                for (int i = 0; i < w.Ids.Length; i++)
+                {
+                    if (w.Ids[i] == 0) continue;
+                    var fc = new AgentCandidate { Id = w.Ids[i], Kind = "card" };
+                    if (nameOf != null) fc.Name = nameOf("handCard", fc.Id);
+                    if (w.Costs != null && i < w.Costs.Length) fc.Cost = w.Costs[i];
+                    p.Candidates.Add(fc);
                 }
                 return;
             }
@@ -445,6 +591,42 @@ namespace AstralParty.AgentMod.Bridge
                     p.Options.Add("astral_select_event {}                    默认选第 0 个");
                     p.Notes.Add("超时服务器会代选第 0 项; 候选 id 会原样回传给服务器。");
                     break;
+
+                case AgentPendingKind.AskFight:
+                    p.Actionable = true;
+                    p.Options.Add("astral_ask_battle {\"accept\":true}          接受这场战斗");
+                    p.Options.Add("astral_ask_battle {\"accept\":false}         不打");
+                    if (w.AskPlayerId != 0)
+                        p.Notes.Add("挑战者(AskPlayerId)=" + w.AskPlayerId + "; 要不要打由你判断(可参考 astral_state 里双方 HP/ATK/DEF)。");
+                    p.Notes.Add("★ 超时不答 = 不打(客户端超时回调点的是\"离开\"按钮), 所以想打就得主动答。");
+                    break;
+
+                case AgentPendingKind.FightCard:
+                    p.Actionable = true;
+                    p.Options.Add("astral_use_card {\"cardId\":<候选里的 id>}     出这张战斗牌(候选 id 就是手牌 Guid)");
+                    p.Options.Add("astral_use_card {\"pass\":true}              不出牌, 直接过");
+                    if (p.Candidates.Count == 0)
+                        p.Notes.Add("没有可出的战斗牌(手牌里没有匹配我方角色的牌, 或都买不起)。");
+                    p.Notes.Add("我方角色: " + (w.IsAttacker ? "攻击方(只能用攻击类牌)" : "防守方(只能用防御类牌)") +
+                                (w.ResidueCost >= 0 ? "; 剩余战斗点数=" + w.ResidueCost : "") +
+                                "; 候选的 Cost 就是这张牌要花的点数, 超过剩余点数服务器会拒。");
+                    p.Notes.Add("★ 超时不答 = 不出牌(CardUid=0)。");
+                    break;
+
+                case AgentPendingKind.FightChoice:
+                    p.Actionable = true;
+                    if (w.NoDodge)
+                    {
+                        p.Options.Add("astral_battle_choice {\"dodge\":false}      硬吃(本回合不能闪避)");
+                        p.Notes.Add("★ NoDodge=true: 客户端会直接拒绝闪避请求, 只能回 dodge=false。");
+                    }
+                    else
+                    {
+                        p.Options.Add("astral_battle_choice {\"dodge\":true}       闪避");
+                        p.Options.Add("astral_battle_choice {\"dodge\":false}      硬吃");
+                    }
+                    p.Notes.Add("★ 超时不答 = 不闪避。");
+                    break;
             }
 
             if (usable != null && usable.Length > 0 && w.Kind != AgentPendingKind.CardChoice)
@@ -505,6 +687,12 @@ namespace AstralParty.AgentMod.Bridge
             {
                 // 同一个窗口被服务器重复广播(同 Sn): 保留最早的出现时刻, 便于算"已经等了多久"
                 if (_window != null && _window.Kind == w.Kind && w.Sn != 0 && _window.Sn == w.Sn) return;
+                // 别人的窗口不许顶掉我的窗口(服务器会同时给 4 个玩家各推一条, 见 SetSelf 的注释)
+                if (_selfId != 0 && _window != null && _window.PlayerId == _selfId &&
+                    w.PlayerId != _selfId)
+                {
+                    return;
+                }
                 if (w.Kind != AgentPendingKind.Move) _moveLands = null;
                 _window = w;
             }

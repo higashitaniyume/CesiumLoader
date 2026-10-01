@@ -200,6 +200,46 @@ namespace CesiumLoader.SDK
             return cardGuid;
         }
 
+        /// <summary>这张手牌 Guid 是否在我手上(战斗出牌发的是 Guid, 用它挡住"给了别的玩家/过期的手牌号")。</summary>
+        public static bool HandHasGuid(long playerId, int cardGuid)
+        {
+            if (cardGuid == 0) return false;
+            try
+            {
+                var pd = Get(playerId);
+                if (pd?.cardContainer?._HandCards != null)
+                {
+                    foreach (var hc in pd.cardContainer._HandCards)
+                    {
+                        if (hc != null && hc.Guid == cardGuid) return true;
+                    }
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        /// <summary>
+        /// 把卡牌配置 id 反查成手牌的唯一实例号 Guid(战斗用牌走 Guid, 见 <c>GameActions.UseCard</c>)。
+        /// 同一张配置可能有多张实例, 返回第一张。查不到返回 0。
+        /// </summary>
+        public static int ResolveCardIdToGuid(long playerId, int cardId)
+        {
+            try
+            {
+                var pd = Get(playerId);
+                if (pd?.cardContainer?._HandCards != null)
+                {
+                    foreach (var hc in pd.cardContainer._HandCards)
+                    {
+                        if (hc != null && hc.CardId == cardId && hc.Guid > 0) return hc.Guid;
+                    }
+                }
+            }
+            catch { }
+            return 0;
+        }
+
         /// <summary>一个单位身上的一条激活 buff。</summary>
         public struct BuffOnUnit
         {

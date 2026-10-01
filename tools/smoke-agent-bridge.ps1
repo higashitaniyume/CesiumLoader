@@ -232,10 +232,13 @@ try {
 
     $list = Invoke-Mcp -Method 'tools/list' -Params ([ordered]@{})
     $tools = @($list.result.tools)
-    Assert-That 'tools/list 返回 21 个工具' ($tools.Count -eq 21) "实际 $($tools.Count)"
+    Assert-That 'tools/list 返回 23 个工具' ($tools.Count -eq 23) "实际 $($tools.Count)"
     Assert-That '工具名统一 astral_ 前缀' (@($tools | Where-Object { $_.name -notlike 'astral_*' }).Count -eq 0) ''
     Assert-That '包含 astral_move 与 astral_emergency_stop' `
         ((@($tools.name) -contains 'astral_move') -and (@($tools.name) -contains 'astral_emergency_stop')) ''
+    Assert-That '包含战斗三件套(询问/出牌/闪避)' `
+        (((@($tools.name) -contains 'astral_ask_battle') -and (@($tools.name) -contains 'astral_use_card') -and
+          (@($tools.name) -contains 'astral_battle_choice'))) ''
 
     # ------------------------------ 2. 只读工具读假状态 ------------------------------
     Write-Host '[smoke] --- 只读工具 ---'
@@ -277,6 +280,28 @@ try {
     Assert-That '命令文件带 seq 与 issuedAtMs' (($logged -match '"seq"') -and ($logged -match '"issuedAtMs"')) ''
     Assert-That '命令文件已被清掉' (@(Get-ChildItem $commands -Filter '*.json' -ErrorAction SilentlyContinue).Count -eq 0) ''
     Assert-That '结果文件也被接走(不残留)' (@(Get-ChildItem $results -Filter '*.json' -ErrorAction SilentlyContinue).Count -eq 0) ''
+
+    # 战斗三件套也各走一次真往返(参数必须原样落到命令文件里)
+    $ask = Invoke-Tool 'astral_ask_battle' '{"accept":true,"sn":5047}'
+    Assert-That 'astral_ask_battle 往返成功' ((-not $ask.IsError) -and ($ask.Text -match '已发送\(假游戏\)')) $ask.Text
+    $logged = Get-Content -LiteralPath $cmdLog -Raw -Encoding UTF8
+    Assert-That '命令文件里 tool=ask_battle 且 accept=true' `
+        (($logged -match '"tool"\s*:\s*"ask_battle"') -and ($logged -match '"accept"\s*:\s*true')) $logged
+
+    $choice = Invoke-Tool 'astral_battle_choice' '{"dodge":false,"sn":5039}'
+    Assert-That 'astral_battle_choice 往返成功' ((-not $choice.IsError) -and ($choice.Text -match '已发送\(假游戏\)')) $choice.Text
+    $logged = Get-Content -LiteralPath $cmdLog -Raw -Encoding UTF8
+    Assert-That '命令文件里 tool=battle_choice 且 dodge=false' `
+        (($logged -match '"tool"\s*:\s*"battle_choice"') -and ($logged -match '"dodge"\s*:\s*false')) $logged
+
+    $pass = Invoke-Tool 'astral_use_card' '{"pass":true,"sn":5035}'
+    Assert-That 'astral_use_card pass 往返成功' ((-not $pass.IsError) -and ($pass.Text -match '已发送\(假游戏\)')) $pass.Text
+    $logged = Get-Content -LiteralPath $cmdLog -Raw -Encoding UTF8
+    Assert-That '命令文件里 tool=use_card 且 pass=true' `
+        (($logged -match '"tool"\s*:\s*"use_card"') -and ($logged -match '"pass"\s*:\s*true')) $logged
+
+    $noArg = Invoke-Tool 'astral_ask_battle' '{}'
+    Assert-That 'astral_ask_battle 缺 accept 时直接报错(不下发)' ($noArg.IsError -eq $true) $noArg.Text
 
     # ------------------------------ 4. 开关闸门 ------------------------------
     Write-Host '[smoke] --- 安全开关(control.json) ---'

@@ -456,6 +456,58 @@ namespace AstralParty.Mcp.Tests
         }
 
         [Fact]
+        public void 战斗询问与闪避工具_把布尔值送进命令文件()
+        {
+            WriteHeartbeat();
+            var captured = new List<string>();
+            using (var game = StartCapturingGame(captured))
+            {
+                Assert.False(_host.CallTool("astral_ask_battle", Args("{\"accept\":true}")).IsError);
+                Assert.False(_host.CallTool("astral_battle_choice", Args("{\"dodge\":false}")).IsError);
+            }
+
+            Assert.Equal(2, captured.Count);
+            Assert.Contains(AgentBridgeLayout.Tool.AskBattle, captured[0]);
+            Assert.Contains("accept", captured[0]);
+            Assert.Contains("true", captured[0]);
+            Assert.Contains(AgentBridgeLayout.Tool.BattleChoice, captured[1]);
+            Assert.Contains("dodge", captured[1]);
+            Assert.Contains("false", captured[1]);
+        }
+
+        [Fact]
+        public void 战斗出牌_支持出牌与不出牌两种给法()
+        {
+            WriteHeartbeat();
+            var captured = new List<string>();
+            using (var game = StartCapturingGame(captured))
+            {
+                Assert.False(_host.CallTool("astral_use_card", Args("{\"cardId\":42}")).IsError);
+                Assert.False(_host.CallTool("astral_use_card", Args("{\"pass\":true}")).IsError);
+            }
+
+            Assert.Equal(2, captured.Count);
+            Assert.Contains(AgentBridgeLayout.Tool.UseCard, captured[0]);
+            Assert.Contains("cardId", captured[0]);
+            Assert.Contains("42", captured[0]);
+            Assert.Contains("pass", captured[1]);
+            Assert.Contains("true", captured[1]);
+        }
+
+        [Fact]
+        public void 战斗询问_缺少accept直接报错且不落命令()
+        {
+            WriteHeartbeat();
+            var captured = new List<string>();
+            using (var game = StartCapturingGame(captured))
+            {
+                var r = _host.CallTool("astral_ask_battle", Args("{}"));
+                Assert.True(r.IsError);
+            }
+            Assert.Empty(captured);
+        }
+
+        [Fact]
         public void 事件选择工具_把index送进命令文件()
         {
             WriteHeartbeat();
@@ -571,6 +623,8 @@ namespace AstralParty.Mcp.Tests
             Assert.Contains("astral_throw_dice", names);
             Assert.Contains("astral_move", names);
             Assert.Contains("astral_use_card", names);
+            Assert.Contains("astral_ask_battle", names);
+            Assert.Contains("astral_battle_choice", names);
             Assert.Contains("astral_use_effect_card", names);
             Assert.Contains("astral_use_quick_card", names);
             Assert.Contains("astral_abandon_card", names);
