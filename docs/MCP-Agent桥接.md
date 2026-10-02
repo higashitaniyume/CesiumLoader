@@ -281,6 +281,19 @@ RecentActions[]{AtMs,Tool,Ok,Code,Detail}
 - 工具：`astral_gamble_guess`（`guessCode` 1/2 或 `guess` `"odd"`/`"even"`，**必须明确选** —— 要花星币，
   所以不像选点那样给默认值）与 `astral_gamble_dice`（无参数）。两者在 `canAct=false` 时都拒答。
 
+**5041 抽奖选号**（`decomp\UI\LandLotteryWindow.cs` / `LandLogic.RequsetLotteryChoiceC2S`（原方法名就是这个拼写）；
+回执 5042 `LotteryChoiceS2C`）：
+
+- `DealLand_Lottery` **只给本人**（其他人只弹"思考中"并 return）。offer = `LotteryChoiceC2S{Num}`（`Num` = 这次能选几个），
+  答案是同一个消息类的 `{Info, Vals}`（`Vals` = 选中的号码）—— 同样靠 `Info.Sn` 区分。
+- 候选**不在协议里**：号码范围是 `StaticGlobalData.GAME_LAND_LOTTERY_NUMB_LIMIT`（该类型在**全局命名空间**），
+  还要刨掉自己已经占了的 `player.Hero.Lotterys`（值为 true 的号码，客户端会把它们置为不可选）。
+  所以桥接用 `GameProbe.TrySelfLottery` 复刻这段，只把**剩下的**号码作为候选给 agent。
+- 两条路径的语义不同，都要复刻：**手点确定**时客户端要求选中个数**正好等于** `Num`（否则只弹提示、不发包）；
+  **超时**回调 `OnCompleteSelectLottery` 则从**最小的可用号码**开始补满 `Num` 个 → **不答 = 最小的那几个**。
+  桥接因此：给了 `numbers` 就校验"都是候选 + 不重复 + 个数 == min(Num, 候选数)"；不给就按超时口径补。
+- 工具 `astral_lottery_pick {"numbers":[n1,n2,...]}`（可省）；回执 5042 关窗。
+
 `5037`/`5038`/`5317`/`5318` 的依据（反编译）：
 
 - `FightLogic.ReadyFightThrowDice(action)` → `ShowWin().RefreshThrowDice(action.PlayerId, action.Sn)`：
@@ -389,9 +402,9 @@ RecentActions[]{AtMs,Tool,Ok,Code,Detail}
 
 | 层 | 项目 | 覆盖 |
 |---|---|---|
-| 纯逻辑 | `tests\AstralParty.AgentMod.Tests`（130 个） | 目录/文件协议（原子写、日志尾部按行截断、轮转、`Sanitize` 防穿越、`{seq:D8}` 排序）、`PendingTracker` 逐窗口（含 `Sn==0` 拒绝、别人的窗口、优先级、倒计时、副本语义、**已应答 sn 的回声防护**、事件选择与战斗骰窗口、**战斗三件套 5047/5035/5039（含"别人的窗口不许顶掉我的"与 `NoDodge` 查询）**、**地块四件套 5077/5213/5323/5067（含 64 位 `LongId`、价格/点数上限查询、回声防护）**、**地块应答三件套 5233/5259/5093（含"别人的窗口不当作我的"、"医院窗口只有一个选项"）**、**炮台选目标 5063（含候选数量上限、"候选未知 ≠ 没有候选"）**、**占卜 5069（含两张候选与"超时 = 第 1 张"）**、**赌场 5081/5083（含"按钮置灰不可操作"、"不能参与就不开窗"、"状态变化只关窗不开窗"）**）、命令解析与回执序列化、`control.json` 读取（含大小写容错与急停/恢复往返）、**热更 BCL 禁用模式 lint** |
+| 纯逻辑 | `tests\AstralParty.AgentMod.Tests`（134 个） | 目录/文件协议（原子写、日志尾部按行截断、轮转、`Sanitize` 防穿越、`{seq:D8}` 排序）、`PendingTracker` 逐窗口（含 `Sn==0` 拒绝、别人的窗口、优先级、倒计时、副本语义、**已应答 sn 的回声防护**、事件选择与战斗骰窗口、**战斗三件套 5047/5035/5039（含"别人的窗口不许顶掉我的"与 `NoDodge` 查询）**、**地块四件套 5077/5213/5323/5067（含 64 位 `LongId`、价格/点数上限查询、回声防护）**、**地块应答三件套 5233/5259/5093（含"别人的窗口不当作我的"、"医院窗口只有一个选项"）**、**炮台选目标 5063（含候选数量上限、"候选未知 ≠ 没有候选"）**、**占卜 5069（含两张候选与"超时 = 第 1 张"）**、**赌场 5081/5083（含"按钮置灰不可操作"、"不能参与就不开窗"、"状态变化只关窗不开窗"）**、**抽奖 5041（含"号码全占满就不可操作"与"超时 = 最小的可用号码"）**）、命令解析与回执序列化、`control.json` 读取（含大小写容错与急停/恢复往返）、**热更 BCL 禁用模式 lint** |
 | 协议 + 集成 | `tests\AstralParty.Mcp.Tests`（67 个） | JSON-RPC 全路径、工具清单与注解、参数校验、开关合并、**真文件往返**（假游戏线程消费 `commands` 写 `results`）、**新工具的参数确实落进命令文件**（含 `ask_battle`/`battle_choice`/`use_card` 的 `pass`、以及地块四件套的 `stop`/`monsterId`/`buy`/`point`）、**工具清单与 `AgentBridgeLayout.Tool` 的双向一致性守卫**（加了契约常量却忘了暴露 MCP 工具、或名字拼错都会挂）、超时清理、事件尾部截取、`Pending.Kind=None` 的大小写判定 |
-| 端到端冒烟 | `tools\smoke-agent-bridge.ps1`（72 项断言） | **真 server exe** + 临时桥接目录扮演游戏：握手/工具清单（34 个）、state/bridge/control 字段与大小写、命令文件往返与两侧清理（含战斗三件套、地块四件套、地块应答三件套、炮台选目标、占卜与赌场）、心跳过期拒绝下发 |
+| 端到端冒烟 | `tools\smoke-agent-bridge.ps1`（76 项断言） | **真 server exe** + 临时桥接目录扮演游戏：握手/工具清单（35 个）、state/bridge/control 字段与大小写、命令文件往返与两侧清理（含战斗三件套、地块四件套、地块应答三件套、炮台选目标、占卜、赌场与抽奖）、心跳过期拒绝下发 |
 | 真机 | 需要用户配合 | 见下 |
 
 **为什么要"假桥接目录"这种测法**：整条链路的契约就是目录里的文件。测试里真写 `state.json`、
@@ -450,13 +463,13 @@ pwsh -NoProfile -File tools\smoke-agent-bridge.ps1
    事件选择（5317）→ 战斗攻击骰（5037）→ **战斗三件套**（5047 打不打 / 5035 出牌 / 5039 闪避）→
    **地块四件套**（5077 停留/继续走 / 5213 追不追怪 / 5323 商人买不买 / 5067 选几点移动力）→
    **地块应答三件套**（5233 复活队友 / 5259 机制选择 / 5093 医院）→ **炮台选目标**（5063）→
-   **占卜**（5069 两张牌选一张）→ **赌场**（5081 押奇偶 / 5083 掷骰）。
+   **占卜**（5069 两张牌选一张）→ **赌场**（5081 押奇偶 / 5083 掷骰）→ **抽奖**（5041 选号）。
    每验一个都去 `docs` 或本文把"未验证"标注改成"已确认"（含日期）。
-   > 事件选择、战斗骰、战斗三件套、地块四件套、地块应答三件套、炮台选目标、占卜、赌场都是 2026-10-01 按反编译（+ 前两批有 3 局真实回放）
+   > 事件选择、战斗骰、战斗三件套、地块四件套、地块应答三件套、炮台选目标、占卜、赌场、抽奖都是 2026-10-01 按反编译（+ 前两批有 3 局真实回放）
    > **协议实测**补进工具的，**契约与状态机有离线测试，但真机上一个都没验过** —— 真机第一件事是看
-   > `astral_actions` 里出现 5317/5037/5047/5035/5039/5077/5213/5323/5067/5233/5259/5093/5063/5069/5081/5083 时
+   > `astral_actions` 里出现 5317/5037/5047/5035/5039/5077/5213/5323/5067/5233/5259/5093/5063/5069/5081/5083/5041 时
    > `astral_pending` 是否报出对应 kind（`selectEvent`/`battleDice`/`askFight`/`fightCard`/`fightChoice`/
-   > `stopOrContinue`/`pursueMonster`/`vendorCard`/`selectPoint`/`reviveTeammate`/`selectMechanism`/`hospitalCheck`/`batteryTarget`/`divination`/`gambleGuess`/`gambleDice`），
+   > `stopOrContinue`/`pursueMonster`/`vendorCard`/`selectPoint`/`reviveTeammate`/`selectMechanism`/`hospitalCheck`/`batteryTarget`/`divination`/`gambleGuess`/`gambleDice`/`lotteryPick`），
    > 以及 `astral_use_card` 报的候选是不是我手上真有的牌、`astral_pursue_monster`/`astral_battery_pick` 的候选是不是服务器也认。
    > 战斗三件套在 PVE 里出现频率极高（3 局样本里 5035 出现 376 次、5047 205 次、5039 159 次），
    > 四件套里 5213/5323 稀少（3 局样本里 5323 只在 `1790736781145194` 那局出现 10 次），所以这一条是最值得优先验的。
@@ -514,7 +527,7 @@ pwsh -NoProfile -File tools\smoke-agent-bridge.ps1
 - `ActionListener` switch 里**还需要玩家点击、但还没接管**的窗口：抽奖 5041 / 追击地块 5033 /
   命运 5071 / 助力投票 5309。
   （战斗内 5035+5039 与战斗询问 5047 **已接管**；地块四件套 5077+5213+5323+5067、
-  地块应答三件套 5233+5259+5093、炮台选目标 5063、占卜 5069、赌场 5081+5083 **已接管**，见上。
+  地块应答三件套 5233+5259+5093、炮台选目标 5063、占卜 5069、赌场 5081+5083、抽奖 5041 **已接管**，见上。
   5029 PVP 商店按"只做 PVE"的范围决定**不做**。）
 - **已确认不需要工具的动作**（客户端自己会发上行，玩家没有点击机会）：再走一次 5043
   （`DealMoveAgain` 在 `IsSelf` 时直接发 `MoveAgainC2S`）、炸弹骰 5059

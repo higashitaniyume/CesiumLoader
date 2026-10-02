@@ -142,6 +142,9 @@ namespace AstralParty.AgentMod.Bridge
                     case AgentBridgeLayout.Tool.GambleDice:
                         return GambleDice(cmd, started);
 
+                    case AgentBridgeLayout.Tool.LotteryPick:
+                        return LotteryPick(cmd, started);
+
                     default:
                         return BridgeResult.Failure(cmd.Id, cmd.Tool, AgentBridgeLayout.Code.UnknownTool,
                             "未知工具: " + cmd.Tool);
@@ -879,6 +882,52 @@ namespace AstralParty.AgentMod.Bridge
             if (!GameActions.GambleThrowDice(sn)) return NotSent(cmd, "赌场掷骰");
             OnSent(sn);
             return Done(cmd, started, "已发送 赌场掷骰 GambleThrowDice(sn=" + Show(sn) + ")");
+        }
+
+        /// <summary>
+        /// 抽奖选号(5041 窗口): numbers = 选中的号码(必须都是候选里的、且正好 <c>Num</c> 个)。
+        /// 不传 numbers 时按**客户端超时的口径**补: 从最小的可用号码开始凑满。
+        /// </summary>
+        private BridgeResult LotteryPick(BridgeCommand cmd, long started)
+        {
+            int[] cands;
+            int chooseNum;
+            if (!_tracker.TryGetLottery(out cands, out chooseNum) || cands == null)
+                return BadArgs(cmd, "现在没有抽奖窗口(5041): 先用 astral_pending 看有没有 kind=lotteryPick");
+
+            int need = Math.Min(chooseNum, cands.Length);
+            if (need <= 0)
+                return BadArgs(cmd, "可选的号码一个都没有(可能 1..上限 已经全被你占了), 只能等服务器超时");
+
+            var picks = cmd.GetIntList("numbers");
+            if (picks.Count == 0) picks = cmd.GetIntList("vals");
+
+            if (picks.Count == 0)
+            {
+                // 与客户端 OnCompleteSelectLottery 一致: 从最小的可用号码开始补满
+                for (int i = 0; i < need; i++) picks.Add(cands[i]);
+            }
+            else
+            {
+                if (picks.Count != need)
+                    return BadArgs(cmd, "要选 " + need + " 个号码(offer 的 Num=" + chooseNum +
+                                        ", 可选 " + cands.Length + " 个), 收到 " + picks.Count + " 个");
+                for (int i = 0; i < picks.Count; i++)
+                {
+                    bool ok = false;
+                    for (int j = 0; j < cands.Length; j++) if (cands[j] == picks[i]) { ok = true; break; }
+                    if (!ok)
+                        return BadArgs(cmd, "号码 " + picks[i] + " 不在可选范围里(可选: [" + Join(cands) + "])");
+                    for (int j = i + 1; j < picks.Count; j++)
+                        if (picks[j] == picks[i]) return BadArgs(cmd, "号码 " + picks[i] + " 重复了");
+                }
+            }
+
+            long? sn = ResolveSn(cmd, AgentPendingKind.LotteryPick);
+            if (!GameActions.LotteryChoice(picks.ToArray(), sn)) return NotSent(cmd, "抽奖选号");
+            OnSent(sn);
+            return Done(cmd, started, "已发送 抽奖选号 LotteryChoice(numbers=[" + Join(picks.ToArray()) +
+                                      "], sn=" + Show(sn) + ")");
         }
 
         private BridgeResult Speed(BridgeCommand cmd, long started)

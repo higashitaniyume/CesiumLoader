@@ -45,7 +45,7 @@ namespace AstralParty.Mcp
                     "     astral_select_event / astral_use_quick_card / astral_stop_or_continue / astral_pursue_monster /\n" +
                     "     astral_vendor_buy_card / astral_select_point / astral_revive_teammate /\n" +
                     "     astral_select_mechanism / astral_hospital_check / astral_battery_pick /\n" +
-                    "     astral_divination_pick / astral_gamble_guess / astral_gamble_dice /\n" +
+                    "     astral_divination_pick / astral_gamble_guess / astral_gamble_dice / astral_lottery_pick /\n" +
                     "     astral_shop_buy / astral_buy_relic / astral_atm_transfer …(pending.Options 里会列出本窗口可用的操作);\n" +
                     "  4) 重复 2-3。需要手牌/场上数值时用 astral_state; 想复盘刚发生了什么用 astral_events / astral_actions。\n" +
                     "注意:\n" +
@@ -204,6 +204,11 @@ namespace AstralParty.Mcp
                 "已死或星币不足时客户端把按钮置灰, 桥接会拒答。",
                 "{\"type\":\"object\",\"properties\":{\"sn\":{\"type\":\"integer\"}},\"additionalProperties\":false}");
 
+            Add("astral_lottery_pick", "抽奖: 选号码", false, true,
+                "抽奖地块选号码(5041)。要从 pending(kind=lotteryPick)候选里选 **正好 Num 个**还没被你占的号码(候选就是 1..上限里剩下的)。 " +
+                "不传 numbers 就按客户端超时的口径: 从最小的可用号码开始补满。**超时代答 = 最小的那几个**。",
+                "{\"type\":\"object\",\"properties\":{\"numbers\":{\"type\":\"array\",\"items\":{\"type\":\"integer\"},\"description\":\"选中的号码(取 pending 候选的数字), 个数必须等于 Num\"},\"sn\":{\"type\":\"integer\"}},\"additionalProperties\":false}");
+
             Add("astral_speed", "设置游戏倍速", false, true,
                 "通过加载器的变速通道调整游戏时间流速(加速等待动画/演出)。下限 1.0, 上限 100。别调太高(会影响网络超时与演出)。",
                 "{\"type\":\"object\",\"properties\":{\"speed\":{\"type\":\"number\",\"description\":\"倍率, 1.0 - 100\"}},\"required\":[\"speed\"],\"additionalProperties\":false}");
@@ -271,6 +276,7 @@ namespace AstralParty.Mcp
                 case "astral_divination_pick": return DivinationPick(args);
                 case "astral_gamble_guess": return GambleGuess(args);
                 case "astral_gamble_dice": return GambleDice(args);
+                case "astral_lottery_pick": return LotteryPick(args);
                 case "astral_speed": return Speed(args);
 
                 case "astral_control": return Control(args);
@@ -565,6 +571,16 @@ namespace AstralParty.Mcp
             var dict = new Dictionary<string, object>();
             PutSn(args, dict);
             return Send(AgentBridgeLayout.Tool.GambleDice, dict);
+        }
+
+        /// <summary>抽奖选号(5041): 不传 numbers = 让桥接按客户端超时的口径补满。</summary>
+        private McpToolResult LotteryPick(JsonElement args)
+        {
+            var dict = new Dictionary<string, object>();
+            if (Has(args, "numbers")) dict["numbers"] = IntList(args, "numbers").ToArray();
+            else if (Has(args, "vals")) dict["numbers"] = IntList(args, "vals").ToArray();
+            PutSn(args, dict);
+            return Send(AgentBridgeLayout.Tool.LotteryPick, dict);
         }
 
         private McpToolResult UseEffectCard(JsonElement args)
