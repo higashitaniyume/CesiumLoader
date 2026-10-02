@@ -44,7 +44,8 @@ namespace AstralParty.Mcp
                     "     astral_ask_battle / astral_battle_choice / astral_select_relic / astral_select_reward_card /\n" +
                     "     astral_select_event / astral_use_quick_card / astral_stop_or_continue / astral_pursue_monster /\n" +
                     "     astral_vendor_buy_card / astral_select_point / astral_revive_teammate /\n" +
-                    "     astral_select_mechanism / astral_hospital_check / astral_battery_pick / astral_divination_pick /\n" +
+                    "     astral_select_mechanism / astral_hospital_check / astral_battery_pick /\n" +
+                    "     astral_divination_pick / astral_gamble_guess / astral_gamble_dice /\n" +
                     "     astral_shop_buy / astral_buy_relic / astral_atm_transfer …(pending.Options 里会列出本窗口可用的操作);\n" +
                     "  4) 重复 2-3。需要手牌/场上数值时用 astral_state; 想复盘刚发生了什么用 astral_events / astral_actions。\n" +
                     "注意:\n" +
@@ -192,6 +193,17 @@ namespace AstralParty.Mcp
                 "不传参数按 index=0 处理。**超时代答 = 第 1 张牌**。",
                 "{\"type\":\"object\",\"properties\":{\"index\":{\"type\":\"integer\",\"description\":\"候选下标(0 或 1, 默认 0)\"},\"divinationId\":{\"type\":\"integer\",\"description\":\"占卜卡 id(取 pending 候选)\"},\"sn\":{\"type\":\"integer\"}},\"additionalProperties\":false}");
 
+            Add("astral_gamble_guess", "赌场: 押奇数/偶数", false, true,
+                "赌场开庄后问押奇数还是偶数(5081)。guessCode 1=奇数 2=偶数(也可写 guess=\"odd\"/\"even\")。 " +
+                "**必须明确选** —— 这一注要花星币, 不像选点那样给默认值; **超时代答 = 押奇数**。 " +
+                "已死或星币不足时客户端把按钮置灰, 桥接会拒答(客户端自己的超时仍会押奇数)。",
+                "{\"type\":\"object\",\"properties\":{\"guessCode\":{\"type\":\"integer\",\"description\":\"1=奇数, 2=偶数\"},\"guess\":{\"type\":\"string\",\"description\":\"odd / even(与 guessCode 等价)\"},\"sn\":{\"type\":\"integer\"}},\"additionalProperties\":false}");
+
+            Add("astral_gamble_dice", "赌场: 掷骰", false, true,
+                "轮到你掷骰时(5083)。这条**没有可选参数** —— 唯一合法上行就是掷骰, 客户端超时发的也是它。 " +
+                "已死或星币不足时客户端把按钮置灰, 桥接会拒答。",
+                "{\"type\":\"object\",\"properties\":{\"sn\":{\"type\":\"integer\"}},\"additionalProperties\":false}");
+
             Add("astral_speed", "设置游戏倍速", false, true,
                 "通过加载器的变速通道调整游戏时间流速(加速等待动画/演出)。下限 1.0, 上限 100。别调太高(会影响网络超时与演出)。",
                 "{\"type\":\"object\",\"properties\":{\"speed\":{\"type\":\"number\",\"description\":\"倍率, 1.0 - 100\"}},\"required\":[\"speed\"],\"additionalProperties\":false}");
@@ -257,6 +269,8 @@ namespace AstralParty.Mcp
                 case "astral_hospital_check": return HospitalCheck(args);
                 case "astral_battery_pick": return BatteryPick(args);
                 case "astral_divination_pick": return DivinationPick(args);
+                case "astral_gamble_guess": return GambleGuess(args);
+                case "astral_gamble_dice": return GambleDice(args);
                 case "astral_speed": return Speed(args);
 
                 case "astral_control": return Control(args);
@@ -532,6 +546,25 @@ namespace AstralParty.Mcp
             else if (Has(args, "index")) dict["index"] = Int(args, "index", 0);
             PutSn(args, dict);
             return Send(AgentBridgeLayout.Tool.DivinationPick, dict);
+        }
+
+        /// <summary>赌场押注(5081): 必须明确选边(要花星币), 不给默认值。</summary>
+        private McpToolResult GambleGuess(JsonElement args)
+        {
+            var dict = new Dictionary<string, object>();
+            if (Has(args, "guessCode")) dict["guessCode"] = Int(args, "guessCode", 0);
+            else if (Has(args, "guess")) dict["guess"] = String(args, "guess");
+            else return McpToolResult.Error("需要 guessCode(1=奇数, 2=偶数)或 guess(\"odd\"/\"even\") —— 要花星币, 不替你默认");
+            PutSn(args, dict);
+            return Send(AgentBridgeLayout.Tool.GambleGuess, dict);
+        }
+
+        /// <summary>赌场掷骰(5083): 唯一合法上行, 没有可选参数。</summary>
+        private McpToolResult GambleDice(JsonElement args)
+        {
+            var dict = new Dictionary<string, object>();
+            PutSn(args, dict);
+            return Send(AgentBridgeLayout.Tool.GambleDice, dict);
         }
 
         private McpToolResult UseEffectCard(JsonElement args)

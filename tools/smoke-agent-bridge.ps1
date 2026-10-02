@@ -232,7 +232,7 @@ try {
 
     $list = Invoke-Mcp -Method 'tools/list' -Params ([ordered]@{})
     $tools = @($list.result.tools)
-    Assert-That 'tools/list 返回 32 个工具' ($tools.Count -eq 32) "实际 $($tools.Count)"
+    Assert-That 'tools/list 返回 34 个工具' ($tools.Count -eq 34) "实际 $($tools.Count)"
     Assert-That '工具名统一 astral_ 前缀' (@($tools | Where-Object { $_.name -notlike 'astral_*' }).Count -eq 0) ''
     Assert-That '包含 astral_move 与 astral_emergency_stop' `
         ((@($tools.name) -contains 'astral_move') -and (@($tools.name) -contains 'astral_emergency_stop')) ''
@@ -242,10 +242,11 @@ try {
     Assert-That '包含地块/选点四件套(加油站/追击/商人/选点)' `
         (((@($tools.name) -contains 'astral_stop_or_continue') -and (@($tools.name) -contains 'astral_pursue_monster') -and
           (@($tools.name) -contains 'astral_vendor_buy_card') -and (@($tools.name) -contains 'astral_select_point'))) ''
-    Assert-That '包含地块应答三件套(复活队友/机制选择/医院) + 炮台/占卜' `
+    Assert-That '包含地块应答三件套(复活队友/机制选择/医院) + 炮台/占卜/赌场' `
         (((@($tools.name) -contains 'astral_revive_teammate') -and (@($tools.name) -contains 'astral_select_mechanism') -and
           (@($tools.name) -contains 'astral_hospital_check') -and (@($tools.name) -contains 'astral_battery_pick') -and
-          (@($tools.name) -contains 'astral_divination_pick'))) ''
+          (@($tools.name) -contains 'astral_divination_pick') -and (@($tools.name) -contains 'astral_gamble_guess') -and
+          (@($tools.name) -contains 'astral_gamble_dice'))) ''
 
     # ------------------------------ 2. 只读工具读假状态 ------------------------------
     Write-Host '[smoke] --- 只读工具 ---'
@@ -387,6 +388,28 @@ try {
     $lastLine = @(Get-Content -LiteralPath $cmdLog -Encoding UTF8) | Select-Object -Last 1
     Assert-That '命令文件里 tool=divination_pick 且不带业务参数(默认第 0 张)' `
         (($lastLine -match '"tool"\s*:\s*"divination_pick"') -and ($lastLine -notmatch '"index"')) $lastLine
+
+    # 赌场(5081 押注 / 5083 掷骰): 押注三种写法 + 不选边报错 + 掷骰
+    $gg = Invoke-Tool 'astral_gamble_guess' '{"guessCode":2,"sn":5081}'
+    Assert-That 'astral_gamble_guess(guessCode) 往返成功' ((-not $gg.IsError) -and ($gg.Text -match '已发送\(假游戏\)')) $gg.Text
+    $lastLine = @(Get-Content -LiteralPath $cmdLog -Encoding UTF8) | Select-Object -Last 1
+    Assert-That '命令文件里 tool=gamble_guess 且 guessCode=2' `
+        (($lastLine -match '"tool"\s*:\s*"gamble_guess"') -and ($lastLine -match '"guessCode"\s*:\s*2')) $lastLine
+
+    $gge = Invoke-Tool 'astral_gamble_guess' '{"guess":"even","sn":5081}'
+    Assert-That 'astral_gamble_guess(guess=even) 往返成功' ((-not $gge.IsError) -and ($gge.Text -match '已发送\(假游戏\)')) $gge.Text
+    $lastLine = @(Get-Content -LiteralPath $cmdLog -Encoding UTF8) | Select-Object -Last 1
+    Assert-That '命令文件里 tool=gamble_guess 且 guess=even 原样落盘' `
+        (($lastLine -match '"tool"\s*:\s*"gamble_guess"') -and ($lastLine -match '"guess"\s*:\s*"even"')) $lastLine
+
+    $ggNoArg = Invoke-Tool 'astral_gamble_guess' '{}'
+    Assert-That 'astral_gamble_guess 不选边就报错(要花星币, 不下发)' ($ggNoArg.IsError -eq $true) $ggNoArg.Text
+
+    $gd = Invoke-Tool 'astral_gamble_dice' '{"sn":5083}'
+    Assert-That 'astral_gamble_dice 往返成功' ((-not $gd.IsError) -and ($gd.Text -match '已发送\(假游戏\)')) $gd.Text
+    $lastLine = @(Get-Content -LiteralPath $cmdLog -Encoding UTF8) | Select-Object -Last 1
+    Assert-That '命令文件里 tool=gamble_dice 且不带业务参数' `
+        (($lastLine -match '"tool"\s*:\s*"gamble_dice"') -and ($lastLine -notmatch '"guess')) $lastLine
 
     # ------------------------------ 4. 开关闸门 ------------------------------
     Write-Host '[smoke] --- 安全开关(control.json) ---'

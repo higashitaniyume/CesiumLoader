@@ -558,6 +558,86 @@ namespace AstralParty.AgentMod.Bridge
                                    ", targetType=" + d.TargetType + "}";
                         }
 
+                    // ---------- 赌场(5081 押注 / 5083 掷骰; 回执 5082/5084; 状态 1022) ----------
+                    // 5081 又是"offer 与答案同一个消息类"(offer 带 Hall + IsExec, 答案带 Info + IsExec + GuessCode),
+                    // 靠 Info.Sn 区分; 5083 的 Data 客户端从不读(状态来自 room.curRoomInfo.Hall), 所以
+                    // "我能不能参与/按钮能不能点"要本地探针算(GameProbe.TrySelfGambleHall)。
+                    // 押注/掷骰窗口真正的关闭信号是 1022 GambleChangeS2C{Hall}(不是 id+1 回执)。
+                    case 5081:
+                        {
+                            var d = ByteBuf.ReadObject<StartGambleC2S>(e.Data);
+                            if (d == null) return null;
+                            long offerSn = d.Info != null ? d.Info.Sn : 0;
+                            if (offerSn != 0)
+                                return "GambleGuessAnswer{sn=" + offerSn + ", guess=" + d.GuessCode +
+                                       ", isExec=" + d.IsExec + "}";
+                            var hall = d.Hall;
+                            var mine = FindGambleRole(hall, e.PlayerId);
+                            bool canAct = mine == null || !(mine.IsDie || mine.GoldLack);
+                            int bet = hall != null ? hall.BetGold : 0;
+                            _tracker.OnGambleGuessOffer(e.PlayerId, e.Sn, d.IsExec, canAct, bet, now);
+                            return "GambleGuessOffer{isExec=" + d.IsExec + ", canAct=" + canAct + ", bet=" + bet + "}";
+                        }
+
+                    case 5082:
+                        // StartGambleS2C **没有任何字段**, 所以关窗不认人(playerId=0 = 谁都关)
+                        _tracker.OnGambleGuessDone(0, now);
+                        return "GambleGuessResult{无字段}";
+
+                    case 5083:
+                        {
+                            long answerSn = 0;
+                            int devPoint = 0;
+                            if (e.Data != null && e.Data.Length > 0)
+                            {
+                                var d = ByteBuf.ReadObject<GambleThrowDicC2S>(e.Data);
+                                if (d != null)
+                                {
+                                    answerSn = d.Info != null ? d.Info.Sn : 0;
+                                    devPoint = d.DevPoint;
+                                }
+                            }
+                            if (answerSn != 0)
+                                return "GambleDiceAnswer{sn=" + answerSn + ", devPoint=" + devPoint + "}";
+                            bool inHall, canAct;
+                            if (!GameProbe.TrySelfGambleHall(out inHall, out canAct))
+                                return "GambleDiceOffer{读不到房间/大厅, 不开窗}";
+                            if (!inHall)
+                                return "GambleDiceOffer{我不在大厅里(客户端也不会发上行), 不开窗}";
+                            _tracker.OnGambleDiceOffer(e.PlayerId, e.Sn, canAct, now);
+                            return "GambleDiceOffer{canAct=" + canAct + "}";
+                        }
+
+                    case 5084:
+                        {
+                            var d = ByteBuf.ReadObject<GambleThrowDicS2C>(e.Data);
+                            if (d == null) return null;
+                            _tracker.OnGambleDiceDone(d.PlayerId, now);
+                            return "GambleDiceResult{playerId=" + d.PlayerId + ", point=" + d.Point + "}";
+                        }
+
+                    // 赌场状态变化(1022): 按 Hall 算"两个窗口还开不开", 只用来关窗
+                    case 1022:
+                        {
+                            var d = ByteBuf.ReadObject<GambleChangeS2C>(e.Data);
+                            if (d == null) return null;
+                            var hall = d.Hall;
+                            if (hall == null) return "GambleChange{没有 Hall}";
+                            long self = _selfId != null ? _selfId() : 0;
+                            var mine = FindGambleRole(hall, self);
+                            bool guessOpen, diceOpen;
+                            if (self == 0) { guessOpen = true; diceOpen = true; }
+                            else if (mine == null) { guessOpen = false; diceOpen = false; }
+                            else
+                            {
+                                guessOpen = hall.S == party.model.Gamble.Types.state.Guess && mine.GuessCode == 0;
+                                diceOpen = hall.S == party.model.Gamble.Types.state.Throw && mine.Point == 0;
+                            }
+                            _tracker.OnGambleState(guessOpen, diceOpen);
+                            return "GambleChange{state=" + hall.S + ", guessOpen=" + guessOpen +
+                                   ", diceOpen=" + diceOpen + "}";
+                        }
+
                     case 5068:
                         {
                             var d = ByteBuf.ReadObject<ThrowDiceResultS2C>(e.Data);
@@ -583,6 +663,25 @@ namespace AstralParty.AgentMod.Bridge
             if (src == null) return list;
             foreach (var v in src) list.Add(v);
             return list;
+        }
+
+        /// <summary>
+        /// 从赌场大厅(<c>party.model.Gamble</c>)里找某个玩家的 role(找不到返回 null)。
+        /// 全限定类型名是故意的: 加 <c>using party.model;</c> 会让 <c>Action</c> 与 <c>System.Action</c> 冲突。
+        /// </summary>
+        private static party.model.GambleRole FindGambleRole(party.model.Gamble hall, long playerId)
+        {
+            try
+            {
+                if (hall == null || hall.Roles == null || playerId == 0) return null;
+                for (int i = 0; i < hall.Roles.Count; i++)
+                {
+                    var r = hall.Roles[i];
+                    if (r != null && r.PlayerId == playerId) return r;
+                }
+            }
+            catch { }
+            return null;
         }
 
         private static List<bool> ToBoolList(IEnumerable<bool> src)

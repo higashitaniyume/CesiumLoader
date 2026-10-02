@@ -394,6 +394,56 @@ namespace CesiumLoader.SDK
             catch { return false; }
         }
 
+        /// <summary>
+        /// 赌场押注(服务器动作 5081 = <c>UI.LandGambleWindow.DealLand_Gamble</c>):
+        /// <paramref name="guess"/> = <c>1</c> 押奇数 / <c>2</c> 押偶数(<c>GuessCode</c>);
+        /// <paramref name="isExec"/> 要原样回 offer 的 <c>IsExec</c>。返回是否成功发出。
+        /// </summary>
+        /// <remarks>
+        /// 复刻 <c>LandLogic.RequestStartGambleC2S(sn, isExec, guess)</c>。offer 与答案**是同一个消息类**
+        /// <c>StartGambleC2S</c>: offer 带 <c>Hall</c>(赌场状态)+ <c>IsExec</c>, 答案是 <c>Info</c> + <c>IsExec</c> + <c>GuessCode</c>。
+        /// 倒计时点的是 <c>btn_odd</c> → **不答 = 押奇数**。
+        /// </remarks>
+        public static bool StartGamble(bool isExec, int guess, long? sn = null)
+        {
+            try
+            {
+                if (guess != 1 && guess != 2) return false;
+                if (!Ready(out long targetSn, sn)) return false;
+                Net!.RPC.StartGambleC2S.StartGambleC2SCall(new StartGambleC2S
+                {
+                    Info = MakeInfo(targetSn),
+                    IsExec = isExec,
+                    GuessCode = guess
+                });
+                return true;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>
+        /// 赌场掷骰(服务器动作 5083 = <c>UI.LandGambleWindow.DealLand_GambleDice</c>): 唯一合法上行, 没有可选参数。
+        /// </summary>
+        /// <remarks>
+        /// 复刻 <c>LandLogic.RequestGambleThrowDicC2S</c>(<c>DevPoint = GMConfig.dev_GamblePoint</c>)。
+        /// 动作的 <c>Data</c> 客户端从不读(状态来自 <c>room.curRoomInfo.Hall</c>); 倒计时点的也是 <c>btn_Dice</c>
+        /// → "不答"与"答"在服务器看来一样(同 5093 医院)。
+        /// </remarks>
+        public static bool GambleThrowDice(long? sn = null)
+        {
+            try
+            {
+                if (!Ready(out long targetSn, sn)) return false;
+                Net!.RPC.GambleThrowDicC2S.GambleThrowDicC2SCall(new GambleThrowDicC2S
+                {
+                    Info = MakeInfo(targetSn),
+                    DevPoint = GMConfig.dev_GamblePoint
+                });
+                return true;
+            }
+            catch { return false; }
+        }
+
         // ============================== 移动 ==============================
 
         /// <summary>移动到目标地块(targetLandId = 目标地块 ID, 即方向箭头指向的格)。返回是否成功发出。</summary>

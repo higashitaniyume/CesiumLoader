@@ -86,6 +86,12 @@ namespace AstralParty.AgentMod.Bridge
             public int TargetNum;
             /// <summary>5063 炮台选目标: 候选英雄 playerId(本地按客户端同口径过滤; null = 没算出来)。</summary>
             public long[] TargetIds;
+            /// <summary>5081/5083 赌场: 客户端按钮可不可点(false = 已死/星币不足, 被置灰)。</summary>
+            public bool CanAct = true;
+            /// <summary>5081 赌场押注: 这一注多少星币(纯展示)。</summary>
+            public int BetGold;
+            /// <summary>5081 赌场押注: offer 的 IsExec(应答时要原样回传)。</summary>
+            public bool EnableJoin;
         }
 
         public string WindowKind { get { lock (_lock) { return _window == null ? AgentPendingKind.None : _window.Kind; } } }
@@ -162,6 +168,34 @@ namespace AstralParty.AgentMod.Bridge
                 if (_window == null || _window.Kind != AgentPendingKind.BatteryTarget) return false;
                 targetNum = _window.TargetNum;
                 ids = _window.TargetIds == null ? null : (long[])_window.TargetIds.Clone();
+                return true;
+            }
+        }
+
+        /// <summary>5081 赌场押注: 取 offer 的 IsExec(要原样回传) / 按钮可不可点 / 本注星币。</summary>
+        public bool TryGetGambleGuess(out bool isExec, out bool canAct, out int betGold)
+        {
+            isExec = false;
+            canAct = false;
+            betGold = 0;
+            lock (_lock)
+            {
+                if (_window == null || _window.Kind != AgentPendingKind.GambleGuess) return false;
+                isExec = _window.EnableJoin;
+                canAct = _window.CanAct;
+                betGold = _window.BetGold;
+                return true;
+            }
+        }
+
+        /// <summary>5083 赌场掷骰: 取"按钮可不可点"。没有该窗口时返回 false。</summary>
+        public bool TryGetGambleDice(out bool canAct)
+        {
+            canAct = false;
+            lock (_lock)
+            {
+                if (_window == null || _window.Kind != AgentPendingKind.GambleDice) return false;
+                canAct = _window.CanAct;
                 return true;
             }
         }
@@ -591,6 +625,70 @@ namespace AstralParty.AgentMod.Bridge
         /// <summary>占卜回执(5070 = TriggerDivinationS2C): 窗口关闭。</summary>
         public void OnDivinationDone(long playerId, long nowMs) { ClearIf(AgentPendingKind.Divination, playerId); }
 
+        // ---------- 赌场窗口(5081 押注 / 5083 掷骰; 回执 5082/5084, 状态 1022) ----------
+
+        /// <summary>
+        /// 服务器问"赌场押奇数还是偶数"(5081 = <c>UI.LandGambleWindow.DealLand_Gamble</c>)。
+        /// offer = <c>StartGambleC2S{Hall, IsExec}</c>(<c>IsExec</c> = 我能不能参与), 答案是
+        /// <c>Info</c> + <c>IsExec</c> + <c>GuessCode</c> —— 靠 <c>Info.Sn</c> 区分(同 5323/5067/5063/5069)。
+        /// 倒计时点的是 <c>btn_odd</c> → **不答 = 押奇数**(<c>GuessCode=1</c>)。
+        /// 客户端在 <c>IsDie || GoldLack</c> 时把两个按钮都置灰(<c>touchable=false</c>), 真人点不动 ——
+        /// 桥接记下 <paramref name="canAct"/>=false 并拒答(客户端自己的超时仍会押奇数)。
+        /// </summary>
+        public void OnGambleGuessOffer(long playerId, long sn, bool enableJoin, bool canAct, int betGold, long nowMs)
+        {
+            if (!enableJoin) return;   // 客户端 OnClick* 第一件事就是判 _enableJoinGamble: 不参与就没有任何上行
+            SetWindow(new Window
+            {
+                Kind = AgentPendingKind.GambleGuess,
+                PlayerId = playerId,
+                Sn = sn,
+                EnableJoin = enableJoin,
+                CanAct = canAct,
+                BetGold = betGold,
+                SinceMs = nowMs
+            });
+        }
+
+        /// <summary>
+        /// 赌场掷骰窗口(5083 = <c>LandGambleWindow.DealLand_GambleDice</c>): **唯一合法上行就是掷骰**, 没有可选参数;
+        /// 倒计时点的也是 <c>btn_Dice</c> → "不答"与"答"在服务器看来一样(同 5093 医院)。
+        /// <paramref name="canAct"/>=false 时客户端把按钮置灰, 桥接拒答。
+        /// </summary>
+        public void OnGambleDiceOffer(long playerId, long sn, bool canAct, long nowMs)
+        {
+            SetWindow(new Window
+            {
+                Kind = AgentPendingKind.GambleDice,
+                PlayerId = playerId,
+                Sn = sn,
+                CanAct = canAct,
+                SinceMs = nowMs
+            });
+        }
+
+        /// <summary>押注回执(5082 = StartGambleS2C, **该消息没有任何字段**): 关窗。</summary>
+        public void OnGambleGuessDone(long playerId, long nowMs) { ClearIf(AgentPendingKind.GambleGuess, playerId); }
+
+        /// <summary>掷骰回执(5084 = GambleThrowDicS2C{PlayerId, Point}): 关窗。</summary>
+        public void OnGambleDiceDone(long playerId, long nowMs) { ClearIf(AgentPendingKind.GambleDice, playerId); }
+
+        /// <summary>
+        /// 赌场状态变化(1022 = <c>GambleChangeS2C{Hall}</c>, 由观察者按 <c>Hall</c> 算好两个窗口是否还开着):
+        /// 赌场窗口没有"id+1 回执"式的关窗信号, 真正决定按钮还在不在的是 <c>Hall.S</c> 与我的
+        /// <c>GuessCode</c>/<c>Point</c>, 所以这条必须处理, 否则窗口会一直挂着。
+        /// 只处理"关" —— 窗口的**开**只能由 5081/5083 的 offer 触发(否则会给 agent 一个没有 sn 的窗口)。
+        /// </summary>
+        public void OnGambleState(bool guessOpen, bool diceOpen)
+        {
+            lock (_lock)
+            {
+                if (_window == null) return;
+                if (!guessOpen && _window.Kind == AgentPendingKind.GambleGuess) _window = null;
+                else if (!diceOpen && _window.Kind == AgentPendingKind.GambleDice) _window = null;
+            }
+        }
+
         // ============================== 主线程提示 ==============================
 
         /// <summary>刷新运行时提示(每 tick 由 StateProbe 调用)。</summary>
@@ -707,6 +805,8 @@ namespace AstralParty.AgentMod.Bridge
                 p.MaxPoint = w.MaxPoint;
                 p.TargetNum = w.TargetNum;
                 p.TargetIds = w.TargetIds;
+                p.GambleCanAct = w.CanAct;
+                p.BetGold = w.BetGold;
                 FillCandidates(p, w, nameOf);
                 FillOptions(p, w, moveLands, usable, currentSn);
                 FillDeadline(p, nowMs, remainingOf, w.Sn);
@@ -1029,6 +1129,24 @@ namespace AstralParty.AgentMod.Bridge
                     p.Options.Add("astral_divination_pick {}                    默认选第 0 张");
                     p.Notes.Add("占卜(5069): 两张里选一张(候选见 pending, kind=divination)。");
                     p.Notes.Add("★ 超时不答 = 选第 1 张(客户端超时回调点的是第 1 张牌)。");
+                    break;
+
+                case AgentPendingKind.GambleGuess:
+                    p.Actionable = w.CanAct;
+                    p.Options.Add("astral_gamble_guess {\"guessCode\":1}   押奇数");
+                    p.Options.Add("astral_gamble_guess {\"guessCode\":2}   押偶数");
+                    p.Notes.Add("赌场押注(5081): 本注 " + w.BetGold + " 星币。");
+                    if (!w.CanAct)
+                        p.Notes.Add("**你这边按钮是灰的(已死/星币不足), 桥接会拒答** —— 客户端自己的超时仍会替你押奇数。");
+                    p.Notes.Add("★ 超时不答 = 押奇数(GuessCode=1)。");
+                    break;
+
+                case AgentPendingKind.GambleDice:
+                    p.Actionable = w.CanAct;
+                    p.Options.Add("astral_gamble_dice {}                掷骰(唯一合法上行)");
+                    if (!w.CanAct)
+                        p.Notes.Add("**你这边按钮是灰的(已死/星币不足), 桥接会拒答** —— 客户端自己的超时仍会替你掷。");
+                    p.Notes.Add("★ 超时不答 = 也发掷骰(客户端超时点的就是这个按钮)。");
                     break;
             }
 

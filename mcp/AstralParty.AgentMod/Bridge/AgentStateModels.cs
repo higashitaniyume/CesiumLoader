@@ -153,6 +153,10 @@ namespace AstralParty.AgentMod.Bridge
         public int TargetNum;
         /// <summary>5063 炮台选目标: 候选英雄 playerId(本地按 characterType==Hero &amp;&amp; CanTargetIds[id] 过滤)。</summary>
         public long[] TargetIds;
+        /// <summary>5081/5083 赌场: 客户端这边的按钮可不可点(false = 已死/星币不足, 按钮被置灰, 真人点不动)。</summary>
+        public bool GambleCanAct = true;
+        /// <summary>5081 赌场押注: 这一注多少星币(纯展示)。</summary>
+        public int BetGold;
         /// <summary>可用来应答它的工具名(自解释, 让 agent 不必猜)。</summary>
         public List<string> Options = new List<string>();
         public List<string> Notes = new List<string>();
@@ -198,6 +202,10 @@ namespace AstralParty.AgentMod.Bridge
         public const string BatteryTarget = "batteryTarget";
         /// <summary>占卜 5069(TriggerDivination): 两张占卜牌选一张(候选 = CanChoiceIds)。超时 = 第 1 张。</summary>
         public const string Divination = "divination";
+        /// <summary>赌场押注 5081(StartGamble): GuessCode 1=奇数 2=偶数。超时 = 押奇数。</summary>
+        public const string GambleGuess = "gambleGuess";
+        /// <summary>赌场掷骰 5083(GambleThrowDic): 唯一合法上行(没有可选参数)。超时 = 也走它。</summary>
+        public const string GambleDice = "gambleDice";
     }
 
     public sealed class AgentCounters
