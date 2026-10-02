@@ -206,6 +206,8 @@ namespace AstralParty.AgentMod.Bridge
         public const string GambleGuess = "gambleGuess";
         /// <summary>赌场掷骰 5083(GambleThrowDic): 唯一合法上行(没有可选参数)。超时 = 也走它。</summary>
         public const string GambleDice = "gambleDice";
+        /// <summary>抽奖选号 5041(LotteryChoice): 选 Num 个还没被自己占的号码。超时 = 最小的那几个。</summary>
+        public const string LotteryPick = "lotteryPick";
     }
 
     public sealed class AgentCounters

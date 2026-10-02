@@ -200,6 +200,20 @@ namespace AstralParty.AgentMod.Bridge
             }
         }
 
+        /// <summary>5041 抽奖: 取"可选号码 + 要选几个"。用于"号码必须在候选里、个数必须等于 Num"的校验。</summary>
+        public bool TryGetLottery(out int[] candidates, out int chooseNum)
+        {
+            candidates = null;
+            chooseNum = 0;
+            lock (_lock)
+            {
+                if (_window == null || _window.Kind != AgentPendingKind.LotteryPick) return false;
+                chooseNum = _window.TargetNum;
+                candidates = _window.Ids == null ? null : (int[])_window.Ids.Clone();
+                return true;
+            }
+        }
+
         /// <summary>取当前窗口的 sn(仅当窗口类型匹配)。各项操作的 Info.Sn 必须用对应窗口的 sn。</summary>
         public bool TryGetWindowSn(string kind, out long sn)
         {
@@ -689,6 +703,32 @@ namespace AstralParty.AgentMod.Bridge
             }
         }
 
+        // ---------- 抽奖选号窗口(5041 / 回执 5042) ----------
+
+        /// <summary>
+        /// 服务器问"抽奖选哪几个号"(5041 = <c>UI.LandLotteryWindow.DealLand_Lottery</c>, **只有本人**能选)。
+        /// offer = <c>LotteryChoiceC2S{Num}</c>(<c>Num</c> = 这次能选几个), 答案是 <c>Info</c> + <c>Vals</c>
+        /// (选中的号码) —— 靠 <c>Info.Sn</c> 区分。候选**不在协议里**: 号码范围是
+        /// <c>StaticGlobalData.GAME_LAND_LOTTERY_NUMB_LIMIT</c>, 还要刨掉自己已经占了的
+        /// (<c>player.Hero.Lotterys</c>), 由观察者用 <c>GameProbe.TrySelfLottery</c> 算好传进来。
+        /// 超时回调(<c>OnCompleteSelectLottery</c>)从**最小的可用号码**开始补满 <c>Num</c> 个 → 不答 = 最小的那几个。
+        /// </summary>
+        public void OnLotteryOffer(long playerId, int chooseNum, IReadOnlyList<int> candidates, long sn, long nowMs)
+        {
+            SetWindow(new Window
+            {
+                Kind = AgentPendingKind.LotteryPick,
+                PlayerId = playerId,
+                Ids = ToArray(candidates),
+                TargetNum = chooseNum,
+                Sn = sn,
+                SinceMs = nowMs
+            });
+        }
+
+        /// <summary>抽奖回执(5042 = LotteryChoiceS2C): 窗口关闭。</summary>
+        public void OnLotteryDone(long playerId, long nowMs) { ClearIf(AgentPendingKind.LotteryPick, playerId); }
+
         // ============================== 主线程提示 ==============================
 
         /// <summary>刷新运行时提示(每 tick 由 StateProbe 调用)。</summary>
@@ -1148,6 +1188,15 @@ namespace AstralParty.AgentMod.Bridge
                         p.Notes.Add("**你这边按钮是灰的(已死/星币不足), 桥接会拒答** —— 客户端自己的超时仍会替你掷。");
                     p.Notes.Add("★ 超时不答 = 也发掷骰(客户端超时点的就是这个按钮)。");
                     break;
+
+                case AgentPendingKind.LotteryPick:
+                    p.Actionable = p.Candidates.Count > 0;
+                    p.Options.Add("astral_lottery_pick {\"numbers\":[n1,n2,...]}   选 " + w.TargetNum +
+                                  " 个还没被你占的号码(用候选里的数字)");
+                    p.Options.Add("astral_lottery_pick {}                          默认选最小的那几个(与客户端超时一致)");
+                    p.Notes.Add("抽奖(5041): 这次要选 " + w.TargetNum + " 个号码; 候选 = 1..上限里**你还没占**的号码(见候选, kind=lottery)。");
+                    p.Notes.Add("★ 超时不答 = 从最小的可用号码开始补满 " + w.TargetNum + " 个。");
+                    break;
             }
 
             if (usable != null && usable.Length > 0 && w.Kind != AgentPendingKind.CardChoice)
@@ -1195,6 +1244,7 @@ namespace AstralParty.AgentMod.Bridge
                 case AgentPendingKind.SelectEvent: return "event";
                 case AgentPendingKind.PursueMonster: return "monster";
                 case AgentPendingKind.Divination: return "divination";
+                case AgentPendingKind.LotteryPick: return "lottery";
                 default: return "unknown";
             }
         }

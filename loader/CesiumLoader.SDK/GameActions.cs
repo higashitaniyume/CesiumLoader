@@ -444,6 +444,30 @@ namespace CesiumLoader.SDK
             catch { return false; }
         }
 
+        /// <summary>
+        /// 抽奖选号(服务器动作 5041 = <c>UI.LandLotteryWindow.DealLand_Lottery</c>):
+        /// <paramref name="numbers"/> = 选中的号码(1..<c>GAME_LAND_LOTTERY_NUMB_LIMIT</c>, 个数必须是 offer 的 <c>Num</c>)。
+        /// </summary>
+        /// <remarks>
+        /// 复刻 <c>LandLogic.RequsetLotteryChoiceC2S</c>(注意原方法名就是这个拼写)。offer 与答案**是同一个消息类**
+        /// <c>LotteryChoiceC2S</c>: offer 只有 <c>Num</c>, 答案是 <c>Info</c> + <c>Vals</c>。
+        /// 客户端手点确定时要求选中个数**正好等于** <c>Num</c>(否则只弹提示、不发包);
+        /// 超时回调则从**最小的可用号码**开始补满 <c>Num</c> 个 → 不答 = 最小的那几个。
+        /// </remarks>
+        public static bool LotteryChoice(int[] numbers, long? sn = null)
+        {
+            try
+            {
+                if (numbers == null || numbers.Length == 0) return false;
+                if (!Ready(out long targetSn, sn)) return false;
+                var req = new LotteryChoiceC2S { Info = MakeInfo(targetSn) };
+                for (int i = 0; i < numbers.Length; i++) req.Vals.Add(numbers[i]);
+                Net!.RPC.LotteryChoiceC2S.LotteryChoiceC2SCall(req);
+                return true;
+            }
+            catch { return false; }
+        }
+
         // ============================== 移动 ==============================
 
         /// <summary>移动到目标地块(targetLandId = 目标地块 ID, 即方向箭头指向的格)。返回是否成功发出。</summary>

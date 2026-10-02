@@ -104,6 +104,8 @@ namespace AstralParty.Agent
             public const string GambleGuess = "gamble_guess";
             /// <summary>赌场掷骰(动作 5083): 唯一合法上行(没有选择)。超时 = 也走它。</summary>
             public const string GambleDice = "gamble_dice";
+            /// <summary>抽奖选号(动作 5041): 从 1..上限里选 Num 个还没占的号码(候选 = 本地算)。超时 = 最小的那几个。</summary>
+            public const string LotteryPick = "lottery_pick";
         }
 
         /// <summary>把这些名字拼成外部工具名(<c>astral_xxx</c>)。</summary>

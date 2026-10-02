@@ -638,6 +638,46 @@ namespace AstralParty.AgentMod.Bridge
                                    ", diceOpen=" + diceOpen + "}";
                         }
 
+                    // ---------- 抽奖选号(5041 / 回执 5042) ----------
+                    // offer = LotteryChoiceC2S{Num}(Num = 这次能选几个), 答案是 {Info, Vals} —— 靠 Info.Sn 区分。
+                    // 候选**不在协议里**: 号码上限来自 StaticGlobalData.GAME_LAND_LOTTERY_NUMB_LIMIT,
+                    // 还要刨掉自己已经占了的(player.Hero.Lotterys), 所以本地算。
+                    // 客户端 DealLand_Lottery 对非本人直接 return(只弹"思考中"), 所以只认我自己的 offer。
+                    case 5041:
+                        {
+                            var d = ByteBuf.ReadObject<LotteryChoiceC2S>(e.Data);
+                            if (d == null) return null;
+                            long offerSn = d.Info != null ? d.Info.Sn : 0;
+                            if (offerSn != 0)
+                                return "LotteryAnswer{sn=" + offerSn + ", vals=[" + Join(ToList(d.Vals)) + "]}";
+                            long self = _selfId != null ? _selfId() : 0;
+                            if (self != 0 && e.PlayerId != self)
+                                return "LotteryOffer{不是我的窗口(客户端也只给本人开), 忽略}";
+
+                            int limit;
+                            int[] owned;
+                            if (!GameProbe.TrySelfLottery(out limit, out owned))
+                                return "LotteryOffer{读不到号码上限/我的号码, 不开窗}";
+                            var cands = new List<int>();
+                            for (int n = 1; n <= limit; n++)
+                            {
+                                bool has = false;
+                                if (owned != null)
+                                    for (int i = 0; i < owned.Length; i++) if (owned[i] == n) { has = true; break; }
+                                if (!has) cands.Add(n);
+                            }
+                            _tracker.OnLotteryOffer(e.PlayerId, d.Num, cands, e.Sn, now);
+                            return "LotteryOffer{num=" + d.Num + ", limit=" + limit + ", candidates=" + cands.Count + "}";
+                        }
+
+                    case 5042:
+                        {
+                            var d = ByteBuf.ReadObject<LotteryChoiceS2C>(e.Data);
+                            if (d == null) return null;
+                            _tracker.OnLotteryDone(d.PlayerId, now);
+                            return "LotteryResult{playerId=" + d.PlayerId + "}";
+                        }
+
                     case 5068:
                         {
                             var d = ByteBuf.ReadObject<ThrowDiceResultS2C>(e.Data);

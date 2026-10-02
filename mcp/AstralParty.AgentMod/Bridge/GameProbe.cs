@@ -404,6 +404,42 @@ namespace AstralParty.AgentMod.Bridge
         }
 
         /// <summary>
+        /// 抽奖窗口(5041)的"号码上限 + 我已经占了的号码" —— 与客户端 <c>LandLotteryWindow</c> 同口径:
+        /// 上限 = <c>StaticGlobalData.GAME_LAND_LOTTERY_NUMB_LIMIT</c>(该类型在全局命名空间),
+        /// 已占 = <c>player.Hero.Lotterys</c> 里值为 true 的号码(客户端会把它们置为不可选)。
+        /// 读不到返回 false(此时不要开窗)。
+        /// </summary>
+        public static bool TrySelfLottery(out int numbLimit, out int[] ownedNumbers)
+        {
+            numbLimit = 0;
+            ownedNumbers = null;
+            try
+            {
+                int limit = StaticGlobalData.GAME_LAND_LOTTERY_NUMB_LIMIT;
+                if (limit <= 0) return false;
+                var gm = SimpleSingletonProvider<GameLogicManager>.inst;
+                var battle = gm != null ? gm.battle : null;
+                var self = battle != null ? battle.GetSelfPlayerData() : null;
+                if (self == null || self.player == null || self.player.Hero == null) return false;
+                var map = self.player.Hero.Lotterys;
+
+                var owned = new List<int>();
+                if (map != null)
+                {
+                    for (int n = 1; n <= limit; n++)
+                    {
+                        bool v;
+                        if (map.TryGetValue(n, out v) && v) owned.Add(n);
+                    }
+                }
+                numbLimit = limit;
+                ownedNumbers = owned.ToArray();
+                return true;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>
         /// 我(或指定玩家)当前站在什么地块上 —— 5077 窗口的全部"信息"都来自本地玩家状态
         /// (那条动作的 Data 恒为 0 字节, 见 decomp/四窗口契约.md)。
         /// 返回 "born" / "fillingStation" / "other"; 读不到返回 null。

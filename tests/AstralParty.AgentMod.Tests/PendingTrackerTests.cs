@@ -1056,6 +1056,62 @@ namespace AstralParty.AgentMod.Tests
             Assert.Contains(p.Notes, n => n.Contains("其他玩家"));
         }
 
+        // ---------- 抽奖选号(5041 / 回执 5042) ----------
+
+        [Fact]
+        public void 抽奖窗口_列出可用号码与要选个数()
+        {
+            var t = new PendingTracker();
+            t.OnLotteryOffer(Self, 2, new int[] { 2, 3, 5 }, 555301, 1000);
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Equal(AgentPendingKind.LotteryPick, p.Kind);
+            Assert.Equal(555301, p.Sn);
+            Assert.Equal(2, p.TargetNum);
+            Assert.True(p.Actionable);
+            Assert.Equal(3, p.Candidates.Count);
+            Assert.All(p.Candidates, c => Assert.Equal("lottery", c.Kind));
+            Assert.Contains(p.Candidates, c => c.Id == 5);
+            Assert.Contains(p.Options, o => o.Contains("astral_lottery_pick"));
+            Assert.Contains(p.Notes, n => n.Contains("超时不答 = 从最小的可用号码开始补满"));
+        }
+
+        [Fact]
+        public void 抽奖窗口_号码全被自己占满时不可操作()
+        {
+            var t = new PendingTracker();
+            t.OnLotteryOffer(Self, 1, new int[0], 555302, 1000);
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Equal(AgentPendingKind.LotteryPick, p.Kind);
+            Assert.Empty(p.Candidates);
+            Assert.False(p.Actionable);
+        }
+
+        [Fact]
+        public void 抽奖回执_关掉窗口()
+        {
+            var t = new PendingTracker();
+            t.OnLotteryOffer(Self, 1, new int[] { 1, 2 }, 555303, 1000);
+            t.OnLotteryDone(Self, 1100);
+
+            Assert.Equal(AgentPendingKind.None, Build(t, false, 0, 1200).Kind);
+        }
+
+        [Fact]
+        public void 抽奖窗口_别人的窗口不当作我的()
+        {
+            var t = new PendingTracker();
+            t.OnLotteryOffer(Other, 1, new int[] { 1, 2 }, 555304, 1000);
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Equal(AgentPendingKind.None, p.Kind);
+            Assert.Contains(p.Notes, n => n.Contains("其他玩家"));
+        }
+
         // ---------- 怪物追击(5213 / 回执 5214) ----------
 
         [Fact]
