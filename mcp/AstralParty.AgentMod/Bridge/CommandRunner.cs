@@ -130,6 +130,9 @@ namespace AstralParty.AgentMod.Bridge
                     case AgentBridgeLayout.Tool.HospitalCheck:
                         return HospitalCheck(cmd, started);
 
+                    case AgentBridgeLayout.Tool.BatteryPick:
+                        return BatteryPick(cmd, started);
+
                     default:
                         return BridgeResult.Failure(cmd.Id, cmd.Tool, AgentBridgeLayout.Code.UnknownTool,
                             "未知工具: " + cmd.Tool);
@@ -720,6 +723,61 @@ namespace AstralParty.AgentMod.Bridge
             if (!GameActions.SelectPoint(point, sn)) return NotSent(cmd, "选点应答");
             OnSent(sn);
             return Done(cmd, started, "已发送 选点 SelectPoint(point=" + point + ", sn=" + Show(sn) + ")");
+        }
+
+        /// <summary>
+        /// 炮台选目标(5063 窗口): targetIds = 选中 1..TargetNum 个英雄(候选里的 playerId), 或 leave=true = 离开。
+        /// 候选**在协议里**(offer 的 CanTargetIds), 但客户端还会按 <c>characterType==Hero</c> 与本地 battle 过滤,
+        /// 所以这里只接受 tracker 记下的候选 —— 否则 agent 会以为选上了服务器不认的目标。
+        /// </summary>
+        private BridgeResult BatteryPick(BridgeCommand cmd, long started)
+        {
+            long? sn = ResolveSn(cmd, AgentPendingKind.BatteryTarget);
+            if (!sn.HasValue || sn.Value <= 0)
+                return BadArgs(cmd, "现在没有炮台选目标窗口(5063): sn 只有服务器推 5063(LandType=11)时才有。" +
+                                    "先用 astral_pending 看有没有 kind=batteryTarget");
+
+            if (cmd.GetBool("leave", false) || cmd.GetBool("exit", false))
+            {
+                if (!GameActions.BatteryLeave(sn)) return NotSent(cmd, "炮台离开");
+                OnSent(sn);
+                return Done(cmd, started, "已发送 炮台离开 BatteryLeave(sn=" + Show(sn) + ")");
+            }
+
+            long[] picks = cmd.GetLongArray("targetIds");
+            if ((picks == null || picks.Length == 0) && cmd.Has("targetId"))
+            {
+                long one = cmd.GetLong("targetId", 0);
+                if (one != 0) picks = new long[] { one };
+            }
+            if (picks == null || picks.Length == 0)
+                return BadArgs(cmd, "需要 targetIds:[英雄playerId,...](1..TargetNum 个)或 leave=true(离开); " +
+                                    "候选见 astral_pending(kind=batteryTarget)");
+
+            long[] cands;
+            int targetNum;
+            if (!_tracker.TryGetBatteryTargets(out cands, out targetNum))
+                return BadArgs(cmd, "本地还没拿到炮台候选英雄; 先用 astral_pending 看有没有 kind=batteryTarget");
+
+            if (targetNum > 0 && picks.Length > targetNum)
+                return BadArgs(cmd, "最多只能选 " + targetNum + " 个英雄, 收到 " + picks.Length + " 个");
+
+            if (cands == null)
+                return BadArgs(cmd, "炮台候选还没读出来(战斗数据未就绪), 此时只能 leave=true");
+
+            for (int i = 0; i < picks.Length; i++)
+            {
+                bool found = false;
+                for (int j = 0; j < cands.Length; j++) if (cands[j] == picks[i]) { found = true; break; }
+                if (!found)
+                    return BadArgs(cmd, "targetId=" + picks[i] + " 不在候选里(只能选 astral_pending 列出的玩家; 候选数=" +
+                                        cands.Length + ")");
+            }
+
+            if (!GameActions.LandChoiceTarget(picks, sn)) return NotSent(cmd, "炮台选目标应答");
+            OnSent(sn);
+            return Done(cmd, started, "已发送 炮台选目标 LandChoiceTarget(targets=" + picks.Length +
+                                      ", sn=" + Show(sn) + ")");
         }
 
         private BridgeResult Speed(BridgeCommand cmd, long started)

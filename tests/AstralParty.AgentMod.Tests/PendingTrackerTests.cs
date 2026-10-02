@@ -824,6 +824,76 @@ namespace AstralParty.AgentMod.Tests
             Assert.Equal(AgentPendingKind.None, Build(t, false, 0, 1200).Kind);
         }
 
+        // ---------- 炮台选目标(5063 / 回执 5064) ----------
+
+        [Fact]
+        public void 炮台窗口_列出候选英雄与选择上限()
+        {
+            var t = new PendingTracker();
+            t.OnBatteryOffer(Self, 2, new long[] { 1001, 2002, 3003 }, 555001, 1000);
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Equal(AgentPendingKind.BatteryTarget, p.Kind);
+            Assert.Equal(555001, p.Sn);
+            Assert.Equal(2, p.TargetNum);
+            Assert.True(p.Actionable);
+            Assert.Equal(3, p.Candidates.Count);
+            Assert.Contains(p.Candidates, c => c.Kind == "player" && c.LongId == 1001);
+            Assert.Contains(p.Options, o => o.Contains("astral_battery_pick") && o.Contains("targetIds"));
+            Assert.Contains(p.Options, o => o.Contains("astral_battery_pick") && o.Contains("leave"));
+            Assert.Contains(p.Notes, n => n.Contains("超时不答 = 离开"));
+        }
+
+        [Fact]
+        public void 炮台窗口_候选未读出来时只能离开且不伪装成没有目标()
+        {
+            var t = new PendingTracker();
+            t.OnBatteryOffer(Self, 1, null, 555002, 1000);
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Equal(AgentPendingKind.BatteryTarget, p.Kind);
+            Assert.Empty(p.Candidates);
+            Assert.Contains(p.Notes, n => n.Contains("候选还没读出来"));
+            Assert.Contains(p.Options, o => o.Contains("leave"));
+        }
+
+        [Fact]
+        public void 炮台窗口_候选为空数组是合法结果()
+        {
+            var t = new PendingTracker();
+            t.OnBatteryOffer(Self, 1, new long[0], 555003, 1000);
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Equal(AgentPendingKind.BatteryTarget, p.Kind);
+            Assert.Empty(p.Candidates);
+            Assert.Contains(p.Notes, n => n.Contains("候选有 0 个"));
+        }
+
+        [Fact]
+        public void 炮台回执_关掉窗口()
+        {
+            var t = new PendingTracker();
+            t.OnBatteryOffer(Self, 1, new long[] { 1001 }, 555004, 1000);
+            t.OnBatteryDone(Self, 1100);
+
+            Assert.Equal(AgentPendingKind.None, Build(t, false, 0, 1200).Kind);
+        }
+
+        [Fact]
+        public void 炮台窗口_别人的窗口不当作我的()
+        {
+            var t = new PendingTracker();
+            t.OnBatteryOffer(Other, 1, new long[] { 1001 }, 555005, 1000);
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Equal(AgentPendingKind.None, p.Kind);
+            Assert.Contains(p.Notes, n => n.Contains("其他玩家"));
+        }
+
         // ---------- 怪物追击(5213 / 回执 5214) ----------
 
         [Fact]

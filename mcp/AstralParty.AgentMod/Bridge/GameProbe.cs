@@ -331,6 +331,43 @@ namespace AstralParty.AgentMod.Bridge
         }
 
         /// <summary>
+        /// 炮台选目标(5063)的候选英雄 —— 与客户端 <c>LandBatteryWindow.GetBatteryTargets</c> 完全同口径:
+        /// 遍历 <c>battle.PlayerDatas</c>, 只收 <c>characterType == Hero</c> 且 <paramref name="isCandidate"/>(id) 为 true 的玩家,
+        /// 顺序就是客户端的显示顺序(客户端用 <c>canTargetIds.TryGetValue(id, out v) &amp;&amp; v</c>)。
+        /// 读不到战斗数据返回 false(此时调用方不要伪装成"没有候选")。
+        /// </summary>
+        public static bool TryBatteryTargets(Func<long, bool> isCandidate, out long[] playerIds)
+        {
+            playerIds = null;
+            try
+            {
+                if (isCandidate == null) return false;
+                var gm = SimpleSingletonProvider<GameLogicManager>.inst;
+                var battle = gm != null ? gm.battle : null;
+                if (battle == null) return false;
+                var list = battle.PlayerDatas;
+                if (list == null) return false;
+
+                var ids = new List<long>();
+                for (int i = 0; i < list.Count; i++)
+                {
+                    var pd = list[i];
+                    if (pd == null || pd.player == null) continue;
+                    try
+                    {
+                        if (pd.characterType != CharacterType.Hero) continue;
+                        if (!isCandidate(pd.player.Id)) continue;
+                    }
+                    catch { continue; }
+                    if (pd.player.Id != 0) ids.Add(pd.player.Id);
+                }
+                playerIds = ids.ToArray();
+                return true;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>
         /// 我(或指定玩家)当前站在什么地块上 —— 5077 窗口的全部"信息"都来自本地玩家状态
         /// (那条动作的 Data 恒为 0 字节, 见 decomp/四窗口契约.md)。
         /// 返回 "born" / "fillingStation" / "other"; 读不到返回 null。

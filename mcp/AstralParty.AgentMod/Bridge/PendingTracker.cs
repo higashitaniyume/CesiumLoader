@@ -82,6 +82,10 @@ namespace AstralParty.AgentMod.Bridge
             public int VendorPrice;
             /// <summary>5067 控制移动卡: 可选点数上限(1..MaxPoint)。</summary>
             public int MaxPoint;
+            /// <summary>5063 炮台选目标: 最多能选几个英雄(1..TargetNum)。</summary>
+            public int TargetNum;
+            /// <summary>5063 炮台选目标: 候选英雄 playerId(本地按客户端同口径过滤; null = 没算出来)。</summary>
+            public long[] TargetIds;
         }
 
         public string WindowKind { get { lock (_lock) { return _window == null ? AgentPendingKind.None : _window.Kind; } } }
@@ -144,6 +148,20 @@ namespace AstralParty.AgentMod.Bridge
             {
                 if (_window == null || _window.Kind != AgentPendingKind.VendorCard) return false;
                 price = _window.VendorPrice;
+                return true;
+            }
+        }
+
+        /// <summary>5063 炮台选目标: 取"最多能选几个 + 候选英雄"。用于"agent 只能选候选里的英雄、数量不超上限"的校验。</summary>
+        public bool TryGetBatteryTargets(out long[] ids, out int targetNum)
+        {
+            ids = null;
+            targetNum = 0;
+            lock (_lock)
+            {
+                if (_window == null || _window.Kind != AgentPendingKind.BatteryTarget) return false;
+                targetNum = _window.TargetNum;
+                ids = _window.TargetIds == null ? null : (long[])_window.TargetIds.Clone();
                 return true;
             }
         }
@@ -524,6 +542,32 @@ namespace AstralParty.AgentMod.Bridge
         /// <summary>选点回执(5068 = ThrowDiceResultS2C): 窗口关闭。</summary>
         public void OnSelectPointDone(long playerId, long nowMs) { ClearIf(AgentPendingKind.SelectPoint, playerId); }
 
+        // ---------- 炮台选目标窗口(5063 / 回执 5064) ----------
+
+        /// <summary>
+        /// 服务器问"炮台要打哪几个英雄"(5063 = <c>UI.LandBatteryWindow.DealLand_LandChoiceTarget</c>, 仅 <c>LandType==11</c>)。
+        /// offer 与答案**是同一个消息类** <c>LandChoiceTargetC2S</c>: offer 有 <c>LandType</c>/<c>TargetNum</c>/<c>CanTargetIds</c>,
+        /// 答案是 <c>Info.Sn</c> + <c>TargetIds</c>(或 <c>Exit=true</c>) —— 所以用 <c>Info.Sn</c> 是否为 0 区分。
+        /// 候选英雄由本地按 <c>characterType==Hero &amp;&amp; CanTargetIds[id]</c> 过滤(见 <c>GameProbe.TryBatteryTargets</c>);
+        /// <paramref name="candidateIds"/> = null 表示"没算出来"(不要伪装成"没有目标")。
+        /// 超时回调点的是"离开" → **不答 = 离开**(<c>Exit=true</c>)。
+        /// </summary>
+        public void OnBatteryOffer(long playerId, int targetNum, long[] candidateIds, long sn, long nowMs)
+        {
+            SetWindow(new Window
+            {
+                Kind = AgentPendingKind.BatteryTarget,
+                PlayerId = playerId,
+                TargetNum = targetNum,
+                TargetIds = candidateIds,
+                Sn = sn,
+                SinceMs = nowMs
+            });
+        }
+
+        /// <summary>炮台选目标回执(5064 = LandChoiceTargetS2C): 窗口关闭。</summary>
+        public void OnBatteryDone(long playerId, long nowMs) { ClearIf(AgentPendingKind.BatteryTarget, playerId); }
+
         // ============================== 主线程提示 ==============================
 
         /// <summary>刷新运行时提示(每 tick 由 StateProbe 调用)。</summary>
@@ -638,6 +682,8 @@ namespace AstralParty.AgentMod.Bridge
                 p.VendorCardId = w.VendorCardId;
                 p.VendorPrice = w.VendorPrice;
                 p.MaxPoint = w.MaxPoint;
+                p.TargetNum = w.TargetNum;
+                p.TargetIds = w.TargetIds;
                 FillCandidates(p, w, nameOf);
                 FillOptions(p, w, moveLands, usable, currentSn);
                 FillDeadline(p, nowMs, remainingOf, w.Sn);
@@ -733,6 +779,24 @@ namespace AstralParty.AgentMod.Bridge
                         LongId = id,
                         Kind = "monster",
                         Name = nameOf != null ? nameOf("monster", (int)id) : null
+                    });
+                }
+                return;
+            }
+
+            if (w.Kind == AgentPendingKind.BatteryTarget)
+            {
+                if (w.TargetIds == null) return;
+                foreach (long id in w.TargetIds)
+                {
+                    if (id == 0) continue;
+                    // 英雄 id 是 playerId(64 位): 两个字段都填(LongId 给工具用)
+                    p.Candidates.Add(new AgentCandidate
+                    {
+                        Id = (int)id,
+                        LongId = id,
+                        Kind = "player",
+                        Name = nameOf != null ? nameOf("player", (int)id) : null
                     });
                 }
                 return;
@@ -916,6 +980,23 @@ namespace AstralParty.AgentMod.Bridge
                     p.Options.Add("astral_select_point {\"point\":1.." + w.MaxPoint + "}     用几点移动力");
                     p.Notes.Add("控制移动卡(5067): 可选点数 1.." + w.MaxPoint + "。");
                     p.Notes.Add("★ 超时不答 = 1 点(客户端超时会把点数兜成 1 再确定)。");
+                    break;
+
+                case AgentPendingKind.BatteryTarget:
+                    p.Actionable = true;
+                    {
+                        int candCount = w.TargetIds == null ? -1 : w.TargetIds.Length;
+                        p.Options.Add("astral_battery_pick {\"targetIds\":[id,...]}    选 1.." + w.TargetNum +
+                                      " 个英雄(用候选里的 playerId/LongId)");
+                        p.Options.Add("astral_battery_pick {\"leave\":true}              不选目标, 直接离开");
+                        if (candCount >= 0)
+                            p.Notes.Add("炮台选目标(5063): 最多选 " + w.TargetNum + " 个英雄, 候选有 " + candCount +
+                                        " 个(见 pending 候选, kind=player)。");
+                        else
+                            p.Notes.Add("炮台选目标(5063): 最多选 " + w.TargetNum +
+                                        " 个英雄; 候选还没读出来(战斗数据未就绪), 此时只能 leave=true。");
+                        p.Notes.Add("★ 超时不答 = 离开(客户端超时回调点的是\"离开\"按钮, Exit=true)。");
+                    }
                     break;
             }
 

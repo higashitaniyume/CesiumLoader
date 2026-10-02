@@ -232,7 +232,7 @@ try {
 
     $list = Invoke-Mcp -Method 'tools/list' -Params ([ordered]@{})
     $tools = @($list.result.tools)
-    Assert-That 'tools/list 返回 30 个工具' ($tools.Count -eq 30) "实际 $($tools.Count)"
+    Assert-That 'tools/list 返回 31 个工具' ($tools.Count -eq 31) "实际 $($tools.Count)"
     Assert-That '工具名统一 astral_ 前缀' (@($tools | Where-Object { $_.name -notlike 'astral_*' }).Count -eq 0) ''
     Assert-That '包含 astral_move 与 astral_emergency_stop' `
         ((@($tools.name) -contains 'astral_move') -and (@($tools.name) -contains 'astral_emergency_stop')) ''
@@ -242,9 +242,9 @@ try {
     Assert-That '包含地块/选点四件套(加油站/追击/商人/选点)' `
         (((@($tools.name) -contains 'astral_stop_or_continue') -and (@($tools.name) -contains 'astral_pursue_monster') -and
           (@($tools.name) -contains 'astral_vendor_buy_card') -and (@($tools.name) -contains 'astral_select_point'))) ''
-    Assert-That '包含地块应答三件套(复活队友/机制选择/医院)' `
+    Assert-That '包含地块应答三件套(复活队友/机制选择/医院)与炮台选目标' `
         (((@($tools.name) -contains 'astral_revive_teammate') -and (@($tools.name) -contains 'astral_select_mechanism') -and
-          (@($tools.name) -contains 'astral_hospital_check'))) ''
+          (@($tools.name) -contains 'astral_hospital_check') -and (@($tools.name) -contains 'astral_battery_pick'))) ''
 
     # ------------------------------ 2. 只读工具读假状态 ------------------------------
     Write-Host '[smoke] --- 只读工具 ---'
@@ -355,6 +355,22 @@ try {
     $logged = Get-Content -LiteralPath $cmdLog -Raw -Encoding UTF8
     Assert-That '命令文件里 tool=hospital_check 且不带业务参数(唯一合法上行)' `
         (($logged -match '"tool"\s*:\s*"hospital_check"') -and ($logged -notmatch '"check"')) $logged
+
+    # 炮台选目标(5063): 两种上行各走一次
+    $bat = Invoke-Tool 'astral_battery_pick' '{"targetIds":[1001,2002],"sn":5063}'
+    Assert-That 'astral_battery_pick(选目标) 往返成功' ((-not $bat.IsError) -and ($bat.Text -match '已发送\(假游戏\)')) $bat.Text
+    $logged = Get-Content -LiteralPath $cmdLog -Raw -Encoding UTF8
+    Assert-That '命令文件里 tool=battery_pick 且 targetIds 原样(数组)' `
+        (($logged -match '"tool"\s*:\s*"battery_pick"') -and ($logged -match '"targetIds"\s*:\s*\[\s*1001\s*,\s*2002\s*\]')) $logged
+
+    $batLeave = Invoke-Tool 'astral_battery_pick' '{"leave":true,"sn":5063}'
+    Assert-That 'astral_battery_pick(离开) 往返成功' ((-not $batLeave.IsError) -and ($batLeave.Text -match '已发送\(假游戏\)')) $batLeave.Text
+    $logged = Get-Content -LiteralPath $cmdLog -Raw -Encoding UTF8
+    Assert-That '命令文件里 tool=battery_pick 且 leave=true' `
+        (($logged -match '"tool"\s*:\s*"battery_pick"') -and ($logged -match '"leave"\s*:\s*true')) $logged
+
+    $batNoArg = Invoke-Tool 'astral_battery_pick' '{}'
+    Assert-That 'astral_battery_pick 缺 targetIds/leave 时报错(不下发)' ($batNoArg.IsError -eq $true) $batNoArg.Text
 
     # ------------------------------ 4. 开关闸门 ------------------------------
     Write-Host '[smoke] --- 安全开关(control.json) ---'

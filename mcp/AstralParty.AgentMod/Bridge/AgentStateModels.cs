@@ -149,6 +149,10 @@ namespace AstralParty.AgentMod.Bridge
         public int VendorPrice;
         /// <summary>5067 控制移动卡选点: 可选点数上限(应答 Point ∈ 1..MaxPoint)。</summary>
         public int MaxPoint;
+        /// <summary>5063 炮台选目标: 最多能选几个英雄(应答 TargetIds 的数量 1..TargetNum)。</summary>
+        public int TargetNum;
+        /// <summary>5063 炮台选目标: 候选英雄 playerId(本地按 characterType==Hero &amp;&amp; CanTargetIds[id] 过滤)。</summary>
+        public long[] TargetIds;
         /// <summary>可用来应答它的工具名(自解释, 让 agent 不必猜)。</summary>
         public List<string> Options = new List<string>();
         public List<string> Notes = new List<string>();
@@ -190,6 +194,8 @@ namespace AstralParty.AgentMod.Bridge
         public const string SelectMechanism = "selectMechanism";
         /// <summary>医院 5093(TriggerHospital): 接受检查(唯一合法上行)。超时 = 同样发检查。</summary>
         public const string HospitalCheck = "hospitalCheck";
+        /// <summary>炮台选目标 5063(LandChoiceTarget, 仅 LandType==11): 选 1..TargetNum 个英雄, 或离开。超时 = 离开。</summary>
+        public const string BatteryTarget = "batteryTarget";
     }
 
     public sealed class AgentCounters

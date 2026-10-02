@@ -497,6 +497,43 @@ namespace AstralParty.AgentMod.Bridge
                             return "SelectPointOffer{maxPoint=" + d.MaxPoint + "}";
                         }
 
+                    // ---------- 炮台选目标(5063 / 回执 5064) ----------
+                    // offer 与答案**是同一个消息类**(和 5323/5067 一样): offer 有 LandType(=11)+TargetNum+CanTargetIds,
+                    // 答案是 Info.Sn + TargetIds(或 Exit=true) —— 用 Info.Sn 是否为 0 区分。
+                    // 只有 LandType==11 才是炮台(客户端 DealLand_LandChoiceTarget 里只处理 11)。
+                    case 5063:
+                        {
+                            var d = ByteBuf.ReadObject<LandChoiceTargetC2S>(e.Data);
+                            if (d == null) return null;
+                            long offerSn = d.Info != null ? d.Info.Sn : 0;
+                            if (offerSn != 0)
+                                return "BatteryPickAnswer{sn=" + offerSn + ", targets=" + d.TargetIds.Count +
+                                       ", exit=" + d.Exit + "}";
+                            if (d.LandType != 11)
+                                return "LandChoiceTargetOffer{landType=" + d.LandType + "(非炮台, 忽略)}";
+
+                            long[] cands;
+                            var map = d.CanTargetIds;
+                            if (!GameProbe.TryBatteryTargets(id => map.TryGetValue(id, out bool v) && v, out cands))
+                            {
+                                // 战斗数据还没就绪: 退回协议里给的 id(至少不丢候选; 客户端也会按 battle 过滤, 只是此刻读不到)
+                                var keys = new List<long>();
+                                foreach (var kv in map) if (kv.Value) keys.Add(kv.Key);
+                                cands = keys.ToArray();
+                            }
+                            _tracker.OnBatteryOffer(e.PlayerId, d.TargetNum, cands, e.Sn, now);
+                            return "BatteryPickOffer{targetNum=" + d.TargetNum + ", candidates=" + cands.Length + "}";
+                        }
+
+                    case 5064:
+                        {
+                            var d = ByteBuf.ReadObject<LandChoiceTargetS2C>(e.Data);
+                            if (d == null) return null;
+                            _tracker.OnBatteryDone(e.PlayerId, now);
+                            return "BatteryPickResult{playerId=" + d.PlayerId + ", targets=" + d.TargetIds.Count +
+                                   ", exit=" + d.Exit + "}";
+                        }
+
                     case 5068:
                         {
                             var d = ByteBuf.ReadObject<ThrowDiceResultS2C>(e.Data);

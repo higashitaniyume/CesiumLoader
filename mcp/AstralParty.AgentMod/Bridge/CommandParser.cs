@@ -51,6 +51,12 @@ namespace AstralParty.AgentMod.Bridge
             return Args == null ? new List<int>() : CesiumJson.GetList<int>(Args, key);
         }
 
+        /// <summary>取 long 数组(玩家/怪物 id 是 64 位, 不能用 int 列表)。</summary>
+        public long[] GetLongArray(string key)
+        {
+            return Args == null ? new long[0] : CesiumJson.GetList<long>(Args, key).ToArray();
+        }
+
         /// <summary>取单个 int(既接受 <c>cardId: 123</c> 也接受 <c>cardIds: [123]</c>)。</summary>
         public bool TryGetIntFlexible(string key, string listKey, out int value)
         {
