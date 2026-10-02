@@ -2,6 +2,12 @@
 .SYNOPSIS
     构建并部署"AI agent 接管桥接"(AstralParty.AgentMod) + MCP server 到本机, 并打印 MCP 客户端配置。
 
+.NOTES
+    ⚠ 实验性/未完成功能, **不在**加载器发布包里(tools\builtin-mods.json 只有四个内置 mod):
+    装加载器、装内置 mod 都不会带上它, 只有你手动跑本脚本才会装。
+    装完后 mod 的 config.json 里 enableActions 默认是 **false(只读)**, 想让它动手必须自己改成 true。
+    真机只验证到"只读链路", 窗口级与真实下发没验完 —— 详见 docs\MCP-Agent桥接.md 的状态章节。
+
 .DESCRIPTION
     这是 mcp\ 这一块的部署入口(与加载器本体、其它内置 mod 分开)。步骤:
       1. dotnet build mcp\AstralParty.AgentMod (Release)  → 游戏内 mod

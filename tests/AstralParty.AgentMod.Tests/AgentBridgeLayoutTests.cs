@@ -158,6 +158,35 @@ namespace AstralParty.AgentMod.Tests
             Directory.Delete(root, true);
         }
 
+        /// <summary>
+        /// 走真实调用路径(BridgeJournal 是先 Rotate 再 Append): 只有"累计追加超过上限"时才轮转。
+        /// 这条守住"不再用 FileInfo.Length"这个改动的行为 —— 真机上 FileInfo 直接 MethodNotFind。
+        /// </summary>
+        [Fact]
+        public void RotateIfLarge_按累计追加量轮转_且不改写小文件()
+        {
+            string root = NewTempRoot();
+            string path = Path.Combine(root, "journal.jsonl");
+
+            // 第一次: 文件不存在 → 不轮转
+            AgentBridgeLayout.RotateIfLarge(path, 50);
+
+            // 追加不到上限: 不轮转
+            Assert.True(AgentBridgeLayout.AppendText(path, new string('a', 20)));
+            AgentBridgeLayout.RotateIfLarge(path, 50);
+            Assert.True(File.Exists(path));
+            Assert.False(File.Exists(path + ".1"));
+
+            // 再追加到超过上限: 轮转, 且旧内容完整留在 .1 里
+            Assert.True(AgentBridgeLayout.AppendText(path, new string('b', 40)));
+            AgentBridgeLayout.RotateIfLarge(path, 50);
+            Assert.False(File.Exists(path));
+            Assert.True(File.Exists(path + ".1"));
+            Assert.Equal(60, new FileInfo(path + ".1").Length);   // 测试跑在 net8.0, 这里可以用 FileInfo
+
+            Directory.Delete(root, true);
+        }
+
         [Fact]
         public void NowMs_是真实时间_UTC毫秒量级()
         {

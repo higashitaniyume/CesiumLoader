@@ -1,5 +1,19 @@
 # AstralParty MCP —— 让 AI agent 接管《吉星派对》对局
 
+> ## ⚠ 实验性功能、未完成：**默认不装，默认只读**
+>
+> - **不在发布包里**：`tools\builtin-mods.json` 只有四个内置 mod（`ActivityLogMod` / `FreeCameraMod` /
+>   `SpeedHackMod` / `CombatOddsMod`），所以**装加载器、装内置 mod 都不会带上它**。
+>   想用必须自己跑 `tools\deploy-agentmod.ps1`（可选安装；删掉 `mods\AstralParty.AgentMod\` 即卸载）。
+> - **默认只读**：mod 首次运行写出的 `config.json` 里 `enableActions` 默认 **`false`** ——
+>   此时任何动作命令都会被拒绝，只有 `astral_status` / `astral_state` / `astral_pending` 这类只读工具可用。
+>   要放开动作得自己改成 `true`，并自负风险（服务器权威，违规操作可能被处罚）。
+> - **验证状态（2026-10-02）**：**只读链路已真机实测通过**（心跳、场景/房间识别、只读闸门确实拒绝动作、
+>   命令/结果目录零残留）；**窗口级与真实下发没有验完** —— 用户主动叫停。
+>   期间抓到一个只在真机暴露的 BCL 坑：`new FileInfo(...).Length` → `MethodNotFind System.IO.FileInfo::get_Length`
+>   （日志轮转里，每帧刷一条并打断 tick）。已修 + 已进 lint，详见 `docs\MCP-Agent桥接.md` 的状态章节。
+> - 别把这一块当成"能放心用的成品"：它做过协议反编译与离线测试，但真机只跑通过只读。
+
 这个目录是 **CesiumLoader 的第三个模块**（另外两个是 `loader\` 与 `mods\`）：把游戏状态暴露成
 MCP 工具，并让 agent 的操作合法地落到游戏里。
 
@@ -187,7 +201,7 @@ dotnet build mcp\AstralParty.Mcp\AstralParty.Mcp.csproj -c Release
 ## 测试
 
 ```powershell
-dotnet test tests\AstralParty.AgentMod.Tests\AstralParty.AgentMod.Tests.csproj -c Release   # 143 个
+dotnet test tests\AstralParty.AgentMod.Tests\AstralParty.AgentMod.Tests.csproj -c Release   # 144 个
 dotnet test tests\AstralParty.Mcp.Tests\AstralParty.Mcp.Tests.csproj -c Release             # 67 个
 ```
 

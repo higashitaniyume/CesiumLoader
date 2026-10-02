@@ -350,6 +350,28 @@ namespace AstralParty.Agent
             return DateTime.UtcNow.ToString("o");
         }
 
+        /// <summary>
+        /// 每个文件"本进程已经追加了多少字符" —— 用来判断要不要轮转。
+        /// 为什么不用 <c>new FileInfo(path).Length</c>: 见 <see cref="RotateIfLarge"/> 的 remarks。
+        /// </summary>
+        private static readonly System.Collections.Generic.Dictionary<string, long> AppendedChars =
+            new System.Collections.Generic.Dictionary<string, long>(StringComparer.Ordinal);
+        private static readonly object AppendedCharsLock = new object();
+
+        /// <summary>本进程记的"这个文件有多大"(字符数)。第一次问某个文件时, 用已验证的 <c>File.ReadAllText</c> 量一次真身。</summary>
+        private static long KnownChars(string path)
+        {
+            lock (AppendedCharsLock)
+            {
+                long known;
+                if (AppendedChars.TryGetValue(path, out known)) return known;
+            }
+            long initial = 0;
+            try { initial = File.ReadAllText(path).Length; } catch { initial = 0; }
+            lock (AppendedCharsLock) { AppendedChars[path] = initial; }
+            return initial;
+        }
+
         /// <summary>追加一段文本(一次打开写完, 适合批量刷 jsonl)。</summary>
         public static bool AppendText(string path, string text)
         {
@@ -360,6 +382,12 @@ namespace AstralParty.Agent
                 if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
                 // 同样避开 FileStream: 用 SDK 日志(SdkLog)在游戏里跑通的那条路。
                 File.AppendAllText(path, text);
+                lock (AppendedCharsLock)
+                {
+                    long cur;
+                    if (!AppendedChars.TryGetValue(path, out cur)) cur = 0;   // 不读盘: 刚写进去的别算两遍
+                    AppendedChars[path] = cur + text.Length;
+                }
                 return true;
             }
             catch
@@ -375,16 +403,28 @@ namespace AstralParty.Agent
         }
 
         /// <summary>文件超过 limitBytes 就改名成 <c>{name}.1{ext}</c>(覆盖旧的), 保持单文件有界。</summary>
+        /// <remarks>
+        /// **故意不用 <c>new FileInfo(path).Length</c>**。2026-10-02 真机就是这么炸的:
+        /// <c>[ERR] AgentBridge/OnUpdate: MethodNotFind System.IO.FileInfo::get_Length</c> —— 每一帧刷一条,
+        /// 而异常会打断 OnUpdate 的后续步骤(心跳因此刷不新 → MCP server 判定"桥接掉线", 直接拒绝下发命令,
+        /// 症状是<b>动作一条都发不出去</b>)。它和 <c>FileStream.Flush(bool)</c> 是同一类坑:
+        /// <b>编译期与离线单测(net8.0)全绿, 只有游戏里执行到那一行才抛</b>。
+        /// 所以这里改成"自己记已追加的字符数"(只用游戏内已验证的 File.AppendAllText / File.ReadAllText)。
+        /// 用字符数而不是字节数: 中文会略微低估(实际字节更多), 但 limitBytes 本来就是软上限。
+        /// 已知取舍: 若某个文件在本进程里"没经过 RotateIfLarge 就直接 AppendText", 计数从 0 起(低估),
+        /// 轮转会晚一点发生; 真实调用路径(BridgeJournal.WritePending)是先 Rotate 再 Append, 所以会先用
+        /// File.ReadAllText 量到真身。
+        /// </remarks>
         public static void RotateIfLarge(string path, long limitBytes)
         {
             try
             {
                 if (!File.Exists(path)) return;
-                var fi = new FileInfo(path);
-                if (fi.Length < limitBytes) return;
+                if (KnownChars(path) < limitBytes) return;
                 string rotated = path + ".1";
                 try { if (File.Exists(rotated)) File.Delete(rotated); } catch { }
                 try { File.Move(path, rotated); } catch { }
+                lock (AppendedCharsLock) { AppendedChars[path] = 0; }
             }
             catch { }
         }
