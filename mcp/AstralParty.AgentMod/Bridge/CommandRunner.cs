@@ -136,6 +136,12 @@ namespace AstralParty.AgentMod.Bridge
                     case AgentBridgeLayout.Tool.DivinationPick:
                         return DivinationPick(cmd, started);
 
+                    case AgentBridgeLayout.Tool.GambleGuess:
+                        return GambleGuess(cmd, started);
+
+                    case AgentBridgeLayout.Tool.GambleDice:
+                        return GambleDice(cmd, started);
+
                     default:
                         return BridgeResult.Failure(cmd.Id, cmd.Tool, AgentBridgeLayout.Code.UnknownTool,
                             "未知工具: " + cmd.Tool);
@@ -816,6 +822,63 @@ namespace AstralParty.AgentMod.Bridge
             OnSent(sn);
             return Done(cmd, started, "已发送 占卜 TriggerDivination(divinationId=" + window[index] +
                                       ", index=" + index + ", sn=" + Show(sn) + ")");
+        }
+
+        /// <summary>
+        /// 赌场押注(5081 窗口): guessCode 1=奇数 / 2=偶数(可写 guess="odd"/"even")。
+        /// **必须明确选** —— 这一注要花星币, 不像选点那样给默认值; 不答也没关系(客户端超时会押奇数)。
+        /// 客户端在已死/星币不足时把按钮置灰, 这里同样拒答。
+        /// </summary>
+        private BridgeResult GambleGuess(BridgeCommand cmd, long started)
+        {
+            int guess = cmd.GetInt("guessCode", 0);
+            if (guess == 0)
+            {
+                string g = cmd.GetString("guess", null);
+                if (!string.IsNullOrEmpty(g))
+                {
+                    if (g == "1" || string.Equals(g, "odd", StringComparison.OrdinalIgnoreCase)) guess = 1;
+                    else if (g == "2" || string.Equals(g, "even", StringComparison.OrdinalIgnoreCase)) guess = 2;
+                }
+            }
+            if (guess != 1 && guess != 2)
+                return BadArgs(cmd, "需要 guessCode(1=奇数, 2=偶数)或 guess(\"odd\"/\"even\"); " +
+                                    "要花星币所以不替你默认 —— 不答也行, 客户端自己的超时会押奇数");
+
+            long? sn = ResolveSn(cmd, AgentPendingKind.GambleGuess);
+            if (!sn.HasValue || sn.Value <= 0)
+                return BadArgs(cmd, "现在没有赌场押注窗口(5081): 先用 astral_pending 看有没有 kind=gambleGuess");
+
+            bool isExec, canAct;
+            int bet;
+            if (!_tracker.TryGetGambleGuess(out isExec, out canAct, out bet))
+                return BadArgs(cmd, "本地还没拿到赌场押注窗口的字段, 先用 astral_pending 确认窗口还在");
+
+            if (!canAct)
+                return BadArgs(cmd, "客户端这边两个按钮都是灰的(已死/星币不足), 真人点不动, 所以桥接不发; " +
+                                    "客户端自己的超时仍会替你押奇数");
+
+            if (!GameActions.StartGamble(isExec, guess, sn)) return NotSent(cmd, "赌场押注应答");
+            OnSent(sn);
+            return Done(cmd, started, "已发送 赌场押注 StartGamble(guess=" + guess + ", isExec=" + isExec +
+                                      ", bet=" + bet + ", sn=" + Show(sn) + ")");
+        }
+
+        /// <summary>赌场掷骰(5083 窗口): 唯一合法上行, 没有可选参数; 按钮被置灰时拒答。</summary>
+        private BridgeResult GambleDice(BridgeCommand cmd, long started)
+        {
+            long? sn = ResolveSn(cmd, AgentPendingKind.GambleDice);
+            if (!sn.HasValue || sn.Value <= 0)
+                return BadArgs(cmd, "现在没有赌场掷骰窗口(5083): 先用 astral_pending 看有没有 kind=gambleDice");
+
+            bool canAct;
+            if (_tracker.TryGetGambleDice(out canAct) && !canAct)
+                return BadArgs(cmd, "客户端这边掷骰按钮是灰的(已死/星币不足), 真人点不动, 所以桥接不发; " +
+                                    "客户端自己的超时仍会替你掷");
+
+            if (!GameActions.GambleThrowDice(sn)) return NotSent(cmd, "赌场掷骰");
+            OnSent(sn);
+            return Done(cmd, started, "已发送 赌场掷骰 GambleThrowDice(sn=" + Show(sn) + ")");
         }
 
         private BridgeResult Speed(BridgeCommand cmd, long started)

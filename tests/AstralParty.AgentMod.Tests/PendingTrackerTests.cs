@@ -937,6 +937,125 @@ namespace AstralParty.AgentMod.Tests
             Assert.Contains(p.Notes, n => n.Contains("其他玩家"));
         }
 
+        // ---------- 赌场(5081 押注 / 5083 掷骰; 回执 5082/5084; 状态 1022) ----------
+
+        [Fact]
+        public void 赌场押注窗口_给奇数偶数两个选项()
+        {
+            var t = new PendingTracker();
+            t.OnGambleGuessOffer(Self, 555201, true, true, 5, 1000);
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Equal(AgentPendingKind.GambleGuess, p.Kind);
+            Assert.Equal(555201, p.Sn);
+            Assert.True(p.Actionable);
+            Assert.True(p.GambleCanAct);
+            Assert.Equal(5, p.BetGold);
+            Assert.Contains(p.Options, o => o.Contains("astral_gamble_guess") && o.Contains("1"));
+            Assert.Contains(p.Options, o => o.Contains("astral_gamble_guess") && o.Contains("2"));
+            Assert.Contains(p.Notes, n => n.Contains("超时不答 = 押奇数"));
+        }
+
+        [Fact]
+        public void 赌场押注窗口_按钮被置灰时不可操作且写明桥接会拒答()
+        {
+            var t = new PendingTracker();
+            t.OnGambleGuessOffer(Self, 555202, true, false, 5, 1000);
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Equal(AgentPendingKind.GambleGuess, p.Kind);
+            Assert.False(p.Actionable);
+            Assert.False(p.GambleCanAct);
+            Assert.Contains(p.Notes, n => n.Contains("按钮是灰的"));
+        }
+
+        [Fact]
+        public void 赌场押注窗口_不能参与时根本不开窗()
+        {
+            var t = new PendingTracker();
+            t.OnGambleGuessOffer(Self, 555203, false, true, 5, 1000);
+
+            Assert.Equal(AgentPendingKind.None, Build(t, false, 0, 1200).Kind);
+        }
+
+        [Fact]
+        public void 赌场掷骰窗口_只有一个掷骰选项()
+        {
+            var t = new PendingTracker();
+            t.OnGambleDiceOffer(Self, 555204, true, 1000);
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Equal(AgentPendingKind.GambleDice, p.Kind);
+            Assert.True(p.Actionable);
+            Assert.Single(p.Options);
+            Assert.Contains("astral_gamble_dice", p.Options[0]);
+            Assert.Contains(p.Notes, n => n.Contains("超时不答 = 也发掷骰"));
+        }
+
+        [Fact]
+        public void 赌场掷骰窗口_按钮被置灰时不可操作()
+        {
+            var t = new PendingTracker();
+            t.OnGambleDiceOffer(Self, 555205, false, 1000);
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Equal(AgentPendingKind.GambleDice, p.Kind);
+            Assert.False(p.Actionable);
+            Assert.Contains(p.Notes, n => n.Contains("按钮是灰的"));
+        }
+
+        [Fact]
+        public void 赌场回执_分别关掉两个窗口()
+        {
+            var t = new PendingTracker();
+            t.OnGambleGuessOffer(Self, 555206, true, true, 5, 1000);
+            t.OnGambleGuessDone(0, 1100);          // 5082 一个字段都没有, 所以关窗不认人
+            Assert.Equal(AgentPendingKind.None, Build(t, false, 0, 1200).Kind);
+
+            var t2 = new PendingTracker();
+            t2.OnGambleDiceOffer(Self, 555207, true, 1000);
+            t2.OnGambleDiceDone(Self, 1100);
+            Assert.Equal(AgentPendingKind.None, Build(t2, false, 0, 1200).Kind);
+        }
+
+        [Fact]
+        public void 赌场状态变化_阶段过了就关窗()
+        {
+            var t = new PendingTracker();
+            t.OnGambleGuessOffer(Self, 555208, true, true, 5, 1000);
+
+            t.OnGambleState(true, false);   // 还在押注阶段且我没押 → 保持
+            Assert.Equal(AgentPendingKind.GambleGuess, Build(t, false, 0, 1200).Kind);
+
+            t.OnGambleState(false, true);   // 已经进到掷骰阶段 → 押注窗口该关
+            Assert.Equal(AgentPendingKind.None, Build(t, false, 0, 1200).Kind);
+        }
+
+        [Fact]
+        public void 赌场状态变化_不会凭空开窗()
+        {
+            var t = new PendingTracker();
+            t.OnGambleState(true, true);    // 没有任何 offer
+
+            Assert.Equal(AgentPendingKind.None, Build(t, false, 0, 1200).Kind);
+        }
+
+        [Fact]
+        public void 赌场窗口_别人的窗口不当作我的()
+        {
+            var t = new PendingTracker();
+            t.OnGambleDiceOffer(Other, 555209, true, 1000);
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Equal(AgentPendingKind.None, p.Kind);
+            Assert.Contains(p.Notes, n => n.Contains("其他玩家"));
+        }
+
         // ---------- 怪物追击(5213 / 回执 5214) ----------
 
         [Fact]

@@ -100,6 +100,10 @@ namespace AstralParty.Agent
             public const string BatteryPick = "battery_pick";
             /// <summary>占卜(动作 5069): 两张牌选一张(候选 = CanChoiceIds)。超时 = 第 1 张。</summary>
             public const string DivinationPick = "divination_pick";
+            /// <summary>赌场押注(动作 5081): GuessCode 1=奇数 2=偶数。超时 = 押奇数。</summary>
+            public const string GambleGuess = "gamble_guess";
+            /// <summary>赌场掷骰(动作 5083): 唯一合法上行(没有选择)。超时 = 也走它。</summary>
+            public const string GambleDice = "gamble_dice";
         }
 
         /// <summary>把这些名字拼成外部工具名(<c>astral_xxx</c>)。</summary>

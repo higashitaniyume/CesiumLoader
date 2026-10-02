@@ -368,6 +368,42 @@ namespace AstralParty.AgentMod.Bridge
         }
 
         /// <summary>
+        /// 赌场(5083 掷骰窗口)的"我能不能参与 + 按钮可不可点" —— 与客户端 <c>DealLand_GambleDice</c> 同口径:
+        /// 从 <c>room.curRoomInfo.Hall.Roles</c> 里找我的 role(找到 = <c>_enableJoinGamble</c>), 再看
+        /// <c>IsDie</c>/<c>GoldLack</c>(客户端据此把按钮置灰)。
+        /// 读不到房间/大厅返回 false —— 此时客户端也不会有任何上行(<c>_enableJoinGamble</c> 保持默认 false),
+        /// 所以桥接同样不开窗。
+        /// </summary>
+        public static bool TrySelfGambleHall(out bool inHall, out bool canAct)
+        {
+            inHall = false;
+            canAct = false;
+            try
+            {
+                var gm = SimpleSingletonProvider<GameLogicManager>.inst;
+                if (gm == null) return false;
+                var room = gm.room;
+                var info = room != null ? room.curRoomInfo : null;
+                var hall = info != null ? info.Hall : null;
+                if (hall == null || hall.Roles == null) return false;
+                var battle = gm.battle;
+                var self = battle != null ? battle.GetSelfPlayerData() : null;
+                if (self == null || self.player == null) return false;
+                long selfId = self.player.Id;
+                for (int i = 0; i < hall.Roles.Count; i++)
+                {
+                    var r = hall.Roles[i];
+                    if (r == null || r.PlayerId != selfId) continue;
+                    inHall = true;
+                    canAct = !(r.IsDie || r.GoldLack);
+                    return true;
+                }
+                return true;   // 读到了大厅, 只是我不在里面(inHall 保持 false)
+            }
+            catch { return false; }
+        }
+
+        /// <summary>
         /// 我(或指定玩家)当前站在什么地块上 —— 5077 窗口的全部"信息"都来自本地玩家状态
         /// (那条动作的 Data 恒为 0 字节, 见 decomp/四窗口契约.md)。
         /// 返回 "born" / "fillingStation" / "other"; 读不到返回 null。
