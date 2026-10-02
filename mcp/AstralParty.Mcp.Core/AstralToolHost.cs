@@ -47,6 +47,7 @@ namespace AstralParty.Mcp
                     "     astral_select_mechanism / astral_hospital_check / astral_battery_pick /\n" +
                     "     astral_divination_pick / astral_gamble_guess / astral_gamble_dice /\n" +
                     "     astral_lottery_pick / astral_pursue_player /\n" +
+                    "     astral_assist_vote_select / astral_assist_vote_sure /\n" +
                     "     astral_shop_buy / astral_buy_relic / astral_atm_transfer …(pending.Options 里会列出本窗口可用的操作);\n" +
                     "  4) 重复 2-3。需要手牌/场上数值时用 astral_state; 想复盘刚发生了什么用 astral_events / astral_actions。\n" +
                     "注意:\n" +
@@ -217,6 +218,17 @@ namespace AstralParty.Mcp
                 "所以桥接只接受候选里的 playerId。**超时代答 = 不追**。",
                 "{\"type\":\"object\",\"properties\":{\"playerId\":{\"type\":\"integer\",\"description\":\"要追的敌方英雄 playerId(取 pending 候选的 LongId)\"},\"stay\":{\"type\":\"boolean\",\"description\":\"true=不追, 就地停留\"},\"sn\":{\"type\":\"integer\"}},\"additionalProperties\":false}");
 
+            Add("astral_assist_vote_select", "助力投票: 选一路", false, true,
+                "助力投票(5309)的**第一步**: 选左/右(中)路。side 取 left/right/center, 或直接给 monsterId。 " +
+                "这一步**不带 sn、可以反复改**; 选完还要发 astral_assist_vote_sure 才算把票投出去。 " +
+                "候选来自本地配置(哪一路有哪些怪跟地图有关), 见 pending 的 notes。",
+                "{\"type\":\"object\",\"properties\":{\"side\":{\"type\":\"string\",\"description\":\"left / right / center\"},\"monsterId\":{\"type\":\"integer\",\"description\":\"直接给候选里的怪物 id(与 side 等价)\"},\"sn\":{\"type\":\"integer\"}},\"additionalProperties\":false}");
+
+            Add("astral_assist_vote_sure", "助力投票: 确认这张票", false, true,
+                "助力投票(5309)的**第二步**: 确认。客户端倒计时结束时发的也是这一条 —— " +
+                "所以**超时代答 = 直接确认**(没先 select 过就等于弃票)。",
+                "{\"type\":\"object\",\"properties\":{\"sn\":{\"type\":\"integer\"}},\"additionalProperties\":false}");
+
             Add("astral_speed", "设置游戏倍速", false, true,
                 "通过加载器的变速通道调整游戏时间流速(加速等待动画/演出)。下限 1.0, 上限 100。别调太高(会影响网络超时与演出)。",
                 "{\"type\":\"object\",\"properties\":{\"speed\":{\"type\":\"number\",\"description\":\"倍率, 1.0 - 100\"}},\"required\":[\"speed\"],\"additionalProperties\":false}");
@@ -286,6 +298,8 @@ namespace AstralParty.Mcp
                 case "astral_gamble_dice": return GambleDice(args);
                 case "astral_lottery_pick": return LotteryPick(args);
                 case "astral_pursue_player": return PursuePlayer(args);
+                case "astral_assist_vote_select": return AssistVoteSelect(args);
+                case "astral_assist_vote_sure": return AssistVoteSure(args);
                 case "astral_speed": return Speed(args);
 
                 case "astral_control": return Control(args);
@@ -601,6 +615,24 @@ namespace AstralParty.Mcp
             else return McpToolResult.Error("需要 playerId(取 pending 候选的 LongId)或 stay=true(不追)");
             PutSn(args, dict);
             return Send(AgentBridgeLayout.Tool.PursuePlayer, dict);
+        }
+
+        private McpToolResult AssistVoteSelect(JsonElement args)
+        {
+            var dict = new Dictionary<string, object>();
+            if (Has(args, "side")) dict["side"] = String(args, "side");
+            else if (Has(args, "monsterId")) dict["monsterId"] = Int(args, "monsterId", 0);
+            else return McpToolResult.Error("需要 side(left/right/center)或 monsterId(取 pending 候选)");
+            PutSn(args, dict);
+            return Send(AgentBridgeLayout.Tool.AssistVoteSelect, dict);
+        }
+
+        /// <summary>助力投票确认(5309 第二步): 没有可选参数(超时发的也是它)。</summary>
+        private McpToolResult AssistVoteSure(JsonElement args)
+        {
+            var dict = new Dictionary<string, object>();
+            PutSn(args, dict);
+            return Send(AgentBridgeLayout.Tool.AssistVoteSure, dict);
         }
 
         private McpToolResult UseEffectCard(JsonElement args)

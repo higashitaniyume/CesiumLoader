@@ -108,6 +108,10 @@ namespace AstralParty.Agent
             public const string LotteryPick = "lottery_pick";
             /// <summary>追击地块(动作 5033): 追哪个敌方英雄(playerId), 或 stay=true 停留。超时 = 停留。</summary>
             public const string PursuePlayer = "pursue_player";
+            /// <summary>助力投票选路(动作 5309 第一步): 选左/右(中)路的怪。VoteSelectC2S 不带 sn, 可反复改。</summary>
+            public const string AssistVoteSelect = "assist_vote_select";
+            /// <summary>助力投票确认(动作 5309 第二步): 把票落实(VoteC2S 带 Info.Sn); 客户端超时发的也是它。</summary>
+            public const string AssistVoteSure = "assist_vote_sure";
         }
 
         /// <summary>把这些名字拼成外部工具名(<c>astral_xxx</c>)。</summary>

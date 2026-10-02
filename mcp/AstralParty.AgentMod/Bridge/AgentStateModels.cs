@@ -210,6 +210,8 @@ namespace AstralParty.AgentMod.Bridge
         public const string LotteryPick = "lotteryPick";
         /// <summary>追击地块 5033(Pursuit, 与 5213 怪物追击不是同一个窗口): 追哪个敌方英雄。超时 = 停留。</summary>
         public const string PursuePlayer = "pursuePlayer";
+        /// <summary>助力投票 5309(Vote): 先选左/右(中)路, 再确认。<b>超时 = 直接确认</b>(没选就等于弃票)。</summary>
+        public const string AssistVote = "assistVote";
     }
 
     public sealed class AgentCounters

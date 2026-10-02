@@ -148,6 +148,12 @@ namespace AstralParty.AgentMod.Bridge
                     case AgentBridgeLayout.Tool.PursuePlayer:
                         return PursuePlayer(cmd, started);
 
+                    case AgentBridgeLayout.Tool.AssistVoteSelect:
+                        return AssistVoteSelect(cmd, started);
+
+                    case AgentBridgeLayout.Tool.AssistVoteSure:
+                        return AssistVoteSure(cmd, started);
+
                     default:
                         return BridgeResult.Failure(cmd.Id, cmd.Tool, AgentBridgeLayout.Code.UnknownTool,
                             "未知工具: " + cmd.Tool);
@@ -968,6 +974,59 @@ namespace AstralParty.AgentMod.Bridge
             if (!GameActions.PursuePlayer(selectId, sn)) return NotSent(cmd, "追击地块应答");
             OnSent(sn);
             return Done(cmd, started, "已发送 追击地块 PursuePlayer(selectId=" + selectId + ", sn=" + Show(sn) + ")");
+        }
+
+        /// <summary>
+        /// 助力投票·选路(5309 第一步): side = left/right/center(按本地配置的槽位)或直接给 monsterId。
+        /// 这条上行**没有 sn**, 可以反复改 —— 所以**不**记 OnSent(记了会把窗口标记成"已应答", 之后就改不了)。
+        /// </summary>
+        private BridgeResult AssistVoteSelect(BridgeCommand cmd, long started)
+        {
+            int monsterId = cmd.GetInt("monsterId", 0);
+            string side = cmd.GetString("side", null);
+
+            int[] slots;
+            if (!_tracker.TryGetAssistVote(out slots) || slots == null || slots.Length < 3)
+                return BadArgs(cmd, "现在没有助力投票窗口(5309): 先用 astral_pending 看有没有 kind=assistVote");
+
+            if (monsterId == 0 && !string.IsNullOrEmpty(side))
+            {
+                switch (side.Trim().ToLowerInvariant())
+                {
+                    case "right": monsterId = slots[0]; break;
+                    case "left": monsterId = slots[1]; break;
+                    case "center": monsterId = slots[2]; break;
+                    default:
+                        return BadArgs(cmd, "side 只能是 left / right / center, 收到 \"" + side + "\"");
+                }
+            }
+            if (monsterId == 0)
+                return BadArgs(cmd, "需要 monsterId(取 pending 候选)或 side(left/right/center); " +
+                                    "本图候选: 左=" + slots[1] + " / 右=" + slots[0] + " / 中=" + slots[2]);
+
+            bool ok = false;
+            for (int i = 0; i < slots.Length; i++) if (slots[i] == monsterId) { ok = true; break; }
+            if (!ok)
+                return BadArgs(cmd, "monsterId=" + monsterId + " 不是本次候选(本图候选: 左=" + slots[1] +
+                                    " / 右=" + slots[0] + " / 中=" + slots[2] + ")");
+
+            if (!GameActions.AssistVoteSelect(monsterId)) return NotSent(cmd, "助力投票选路");
+            return Done(cmd, started, "已发送 助力投票选路 VoteSelect(monsterId=" + monsterId +
+                                      ") —— 还没确认, 要再发 astral_assist_vote_sure");
+        }
+
+        /// <summary>助力投票·确认(5309 第二步): 唯一的下行, 客户端超时发的也是它。</summary>
+        private BridgeResult AssistVoteSure(BridgeCommand cmd, long started)
+        {
+            long? sn = ResolveSn(cmd, AgentPendingKind.AssistVote);
+            if (!sn.HasValue || sn.Value <= 0)
+                return BadArgs(cmd, "现在没有助力投票窗口(5309): 先用 astral_pending 看有没有 kind=assistVote");
+
+            if (!GameActions.AssistVoteSure(sn)) return NotSent(cmd, "助力投票确认");
+            OnSent(sn);
+            // 确认之后这个窗口就没得选了(客户端也把三个按钮都收起来), 只是要等 1093 才真正关窗
+            _tracker.OnAssistVoteDone(0, AgentBridgeLayout.NowMs());
+            return Done(cmd, started, "已发送 助力投票确认 Vote(sn=" + Show(sn) + ")");
         }
 
         private BridgeResult Speed(BridgeCommand cmd, long started)

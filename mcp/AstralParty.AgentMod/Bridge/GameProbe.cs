@@ -488,6 +488,57 @@ namespace AstralParty.AgentMod.Bridge
         }
 
         /// <summary>
+        /// 助力投票(5309)的三路候选 —— 与客户端 <c>AssistVoteLogic.LeftMonster/RightMonster/CenterMonster</c> 同口径:
+        /// 在 <c>StaticConfigure.PVEMission.Votes</c> 里找 <c>MapId</c> 等于当前房间 MapId 的那一项, 再取
+        /// 下标 +0(右) / +1(左) / +2(中)(客户端用 <c>GetSafeByIndex</c>, 越界给 null)。
+        /// 三个出参里 <c>0</c> = 这张图没有这一路(82013 只有右/左, 82015/S7 有右/左/中)。读不到返回 false。
+        /// </summary>
+        public static bool TrySelfAssistVote(out int rightId, out int leftId, out int centerId)
+        {
+            rightId = 0;
+            leftId = 0;
+            centerId = 0;
+            try
+            {
+                var gm = SimpleSingletonProvider<GameLogicManager>.inst;
+                var room = gm != null ? gm.room : null;
+                var info = room != null ? room.curRoomInfo : null;
+                if (info == null) return false;
+
+                var pve = StaticConfigure.PVEMission;
+                var votes = pve != null ? pve.Votes : null;
+                if (votes == null || votes.Count == 0) return false;
+
+                int mapId = info.MapId;
+                int hit = -1;
+                for (int i = 0; i < votes.Count; i++)
+                {
+                    var v = votes[i];
+                    if (v != null && v.MapId == mapId) { hit = i; break; }
+                }
+                if (hit < 0) return false;
+
+                rightId = VoteIdAt(votes, hit + 0);
+                leftId = VoteIdAt(votes, hit + 1);
+                centerId = VoteIdAt(votes, hit + 2);
+                return true;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>取 <c>Votes[index].Id</c>(越界返回 0)。收 <see cref="IList"/> 是为了不必引 protobuf 的集合类型。</summary>
+        private static int VoteIdAt(IList votes, int index)
+        {
+            try
+            {
+                if (votes == null || index < 0 || index >= votes.Count) return 0;
+                var v = votes[index] as PVEMissionVoteConfigure;
+                return v != null ? v.Id : 0;
+            }
+            catch { return 0; }
+        }
+
+        /// <summary>
         /// 我(或指定玩家)当前站在什么地块上 —— 5077 窗口的全部"信息"都来自本地玩家状态
         /// (那条动作的 Data 恒为 0 字节, 见 decomp/四窗口契约.md)。
         /// 返回 "born" / "fillingStation" / "other"; 读不到返回 null。

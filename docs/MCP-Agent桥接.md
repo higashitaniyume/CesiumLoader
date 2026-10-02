@@ -309,6 +309,32 @@ RecentActions[]{AtMs,Tool,Ok,Code,Detail}
   `btn_Stay` 发的就是 `0`。倒计时回调点的是 `ClosePursuit`（= 发 `0`）→ **不答 = 不追/停留**。
 - 工具 `astral_pursue_player {"playerId":N}` / `{"stay":true}`；桥接只接受候选里的 playerId。
 
+**5309 助力投票**（`decomp\GameLogic\AssistVoteLogic.cs` + `UI\AssistVoteWindow.cs`（地图 82013）/
+`UI\AssistVoteS7Window.cs`（地图 82015，**三路**）；回执 5310 `VoteS2C`、选路广播 5312 `VoteSelectS2C`、
+结束 **1093 `PkAfterVoteS2C`**）：
+
+- 这是**两步**窗口，两步用的消息类不同：
+  ① 选路 `RequestVoteSelectC2S(monsterId)` → `VoteSelectC2S{SelectId}` —— **不带 `Info`/`Sn`**，
+     所以它不属于某一次投票窗口，只是一次"我当前选谁"的广播，**可以反复改**；
+  ② 确认 `RequestVoteC2S(sn)` → `VoteC2S{Info}`（**只有 sn、不带选择**）。
+  倒计时 `ActionDownTime(action.Sn, 5309, SureVote, ...)` 点的是 **SureVote(第二步)** → **不答 = 直接确认**
+  （没先选过就等于弃票）。
+- offer 又是"与答案同一个消息类" `VoteC2S`：offer 带 `VoteIds`（客户端只在 `Count > 0` 时开窗），
+  答案是 `Info` —— 靠 `Info.Sn` 区分；并且**只给本人**（`GetSelfPlayerData().player.Id != action.PlayerId` 直接 return）。
+- 候选**不在协议里**：客户端从**本地配置**取 `StaticConfigure.PVEMission.Votes` 里 `MapId` 命中的那一项，
+  再取下标 **+0=右 / +1=左 / +2=中**（`GetSafeByIndex`，越界给 null；所以 82013 图只有右/左，82015 才有中）。
+  桥接复刻这段（`GameProbe.TrySelfAssistVote`），pending 里直接写着"左=… 右=… 中=…（0 = 本图没有这一路）"。
+- **关窗信号是 1093**（PK 结束 → `VoteOver()`），不是 5310/5312 —— 那两条只是"某人确认/某人选路"的广播。
+  另外确认之后客户端会把三个按钮都收起来，所以桥接在 `assist_vote_sure` 里就把窗口清掉（不再给 agent"还能改"的错觉）。
+- 工具：`astral_assist_vote_select {"side":"left"|"right"|"center"}`（或 `monsterId`）与
+  `astral_assist_vote_sure {}`。**选路那条不记 `OnSent`**（记了会把窗口标记成已应答，之后就改不了了）。
+
+**不需要工具的四条**（客户端自己会立即上行、玩家没有任何点击机会）—— 逐条读过代码确认：
+**5043 再走一次**（`DealMoveAgain` → `MoveAgainC2S`）、**5049 掷骰得星币**（`DealLand_RollGold` → 立即 `RequsetRollGoldC2S`）、
+**5053 事件触发**（`DealLand_EventTigger` → 立即 `RequestTriggerEvent`）、**5059 炸弹骰**（→ `BombThrowDiceC2S`）、
+**5071 命运**（`DealLand_Destiny` 在 `IsSelf` 时**立即** `RequestTriggerDestinyC2S`，没有按钮/倒计时）、
+**5313 剧情**（剧情播完自动回 `NotifyStoryC2S`）。
+
 `5037`/`5038`/`5317`/`5318` 的依据（反编译）：
 
 - `FightLogic.ReadyFightThrowDice(action)` → `ShowWin().RefreshThrowDice(action.PlayerId, action.Sn)`：
@@ -417,9 +443,9 @@ RecentActions[]{AtMs,Tool,Ok,Code,Detail}
 
 | 层 | 项目 | 覆盖 |
 |---|---|---|
-| 纯逻辑 | `tests\AstralParty.AgentMod.Tests`（139 个） | 目录/文件协议（原子写、日志尾部按行截断、轮转、`Sanitize` 防穿越、`{seq:D8}` 排序）、`PendingTracker` 逐窗口（含 `Sn==0` 拒绝、别人的窗口、优先级、倒计时、副本语义、**已应答 sn 的回声防护**、事件选择与战斗骰窗口、**战斗三件套 5047/5035/5039（含"别人的窗口不许顶掉我的"与 `NoDodge` 查询）**、**地块四件套 5077/5213/5323/5067（含 64 位 `LongId`、价格/点数上限查询、回声防护）**、**地块应答三件套 5233/5259/5093（含"别人的窗口不当作我的"、"医院窗口只有一个选项"）**、**炮台选目标 5063（含候选数量上限、"候选未知 ≠ 没有候选"）**、**占卜 5069（含两张候选与"超时 = 第 1 张"）**、**赌场 5081/5083（含"按钮置灰不可操作"、"不能参与就不开窗"、"状态变化只关窗不开窗"）**、**抽奖 5041（含"号码全占满就不可操作"与"超时 = 最小的可用号码"）**、**追击地块 5033（含"候选为空是合法结果"、"候选未知 ≠ 没有候选"）**）、命令解析与回执序列化、`control.json` 读取（含大小写容错与急停/恢复往返）、**热更 BCL 禁用模式 lint** |
+| 纯逻辑 | `tests\AstralParty.AgentMod.Tests`（143 个） | 目录/文件协议（原子写、日志尾部按行截断、轮转、`Sanitize` 防穿越、`{seq:D8}` 排序）、`PendingTracker` 逐窗口（含 `Sn==0` 拒绝、别人的窗口、优先级、倒计时、副本语义、**已应答 sn 的回声防护**、事件选择与战斗骰窗口、**战斗三件套 5047/5035/5039（含"别人的窗口不许顶掉我的"与 `NoDodge` 查询）**、**地块四件套 5077/5213/5323/5067（含 64 位 `LongId`、价格/点数上限查询、回声防护）**、**地块应答三件套 5233/5259/5093（含"别人的窗口不当作我的"、"医院窗口只有一个选项"）**、**炮台选目标 5063（含候选数量上限、"候选未知 ≠ 没有候选"）**、**占卜 5069（含两张候选与"超时 = 第 1 张"）**、**赌场 5081/5083（含"按钮置灰不可操作"、"不能参与就不开窗"、"状态变化只关窗不开窗"）**、**抽奖 5041（含"号码全占满就不可操作"与"超时 = 最小的可用号码"）**、**追击地块 5033（含"候选为空是合法结果"、"候选未知 ≠ 没有候选"）**、**助力投票 5309（含三路槽位、"两路图中间那路是 0"、"超时 = 直接确认"）**）、命令解析与回执序列化、`control.json` 读取（含大小写容错与急停/恢复往返）、**热更 BCL 禁用模式 lint** |
 | 协议 + 集成 | `tests\AstralParty.Mcp.Tests`（67 个） | JSON-RPC 全路径、工具清单与注解、参数校验、开关合并、**真文件往返**（假游戏线程消费 `commands` 写 `results`）、**新工具的参数确实落进命令文件**（含 `ask_battle`/`battle_choice`/`use_card` 的 `pass`、以及地块四件套的 `stop`/`monsterId`/`buy`/`point`）、**工具清单与 `AgentBridgeLayout.Tool` 的双向一致性守卫**（加了契约常量却忘了暴露 MCP 工具、或名字拼错都会挂）、超时清理、事件尾部截取、`Pending.Kind=None` 的大小写判定 |
-| 端到端冒烟 | `tools\smoke-agent-bridge.ps1`（81 项断言） | **真 server exe** + 临时桥接目录扮演游戏：握手/工具清单（36 个）、state/bridge/control 字段与大小写、命令文件往返与两侧清理（含战斗三件套、地块四件套、地块应答三件套、炮台选目标、占卜、赌场、抽奖与追击地块）、心跳过期拒绝下发 |
+| 端到端冒烟 | `tools\smoke-agent-bridge.ps1`（88 项断言） | **真 server exe** + 临时桥接目录扮演游戏：握手/工具清单（38 个）、state/bridge/control 字段与大小写、命令文件往返与两侧清理（含战斗三件套、地块四件套、地块应答三件套、炮台选目标、占卜、赌场、抽奖、追击地块与助力投票两步）、心跳过期拒绝下发 |
 | 真机 | 需要用户配合 | 见下 |
 
 **为什么要"假桥接目录"这种测法**：整条链路的契约就是目录里的文件。测试里真写 `state.json`、
@@ -479,7 +505,7 @@ pwsh -NoProfile -File tools\smoke-agent-bridge.ps1
    **地块四件套**（5077 停留/继续走 / 5213 追不追怪 / 5323 商人买不买 / 5067 选几点移动力）→
    **地块应答三件套**（5233 复活队友 / 5259 机制选择 / 5093 医院）→ **炮台选目标**（5063）→
    **占卜**（5069 两张牌选一张）→ **赌场**（5081 押奇偶 / 5083 掷骰）→ **抽奖**（5041 选号）→
-   **追击地块**（5033 追敌方英雄；与 5213 追怪是两个窗口）。
+   **追击地块**（5033 追敌方英雄；与 5213 追怪是两个窗口）→ **助力投票**（5309 两步: 选路 + 确认）。
    每验一个都去 `docs` 或本文把"未验证"标注改成"已确认"（含日期）。
    > 事件选择、战斗骰、战斗三件套、地块四件套、地块应答三件套、炮台选目标、占卜、赌场、抽奖、追击地块都是 2026-10-01 按反编译（+ 前两批有 3 局真实回放）
    > **协议实测**补进工具的，**契约与状态机有离线测试，但真机上一个都没验过** —— 真机第一件事是看
@@ -540,18 +566,21 @@ pwsh -NoProfile -File tools\smoke-agent-bridge.ps1
 - `ActionLogic.throwDiceSn` / `CardSN` 足以推断掷骰与卡牌窗口。
 
 **未决（不要当成已确认）**
-- `ActionListener` switch 里**还需要玩家点击、但还没接管**的窗口：抽奖 5041 / 追击地块 5033 /
-  命运 5071 / 助力投票 5309。
-  （战斗内 5035+5039 与战斗询问 5047 **已接管**；地块四件套 5077+5213+5323+5067、
-  地块应答三件套 5233+5259+5093、炮台选目标 5063、占卜 5069、赌场 5081+5083、抽奖 5041、
-  追击地块 5033 **已接管**，见上。
-  5029 PVP 商店按"只做 PVE"的范围决定**不做**。）
-- **已确认不需要工具的动作**（客户端自己会发上行，玩家没有点击机会）：再走一次 5043
-  （`DealMoveAgain` 在 `IsSelf` 时直接发 `MoveAgainC2S`）、炸弹骰 5059
-  （`DealBombThrowDice` 在 `IsSelf` 时直接发 `BombThrowDiceC2S`）、剧情 5313
-  （`StoryLogic.OpenStoryByServer` 在剧情播完时自动回 `NotifyStoryC2S`）。
-- **只是"不在 `ActionDownTime` 调用点里"、还没读代码确认**的：掷骰得星币 5049、事件触发 5053、命运 5071
-  —— 补证之前不能下"不用接管"的结论。
+- **PVE 里"还需要玩家点击"的窗口已经全部接管完了**：战斗三件套 5047/5035/5039、筹码三选一/奖励卡/商店/ATM/
+  筹码地块购买、事件选择 5317、地块四件套 5077/5213/5323/5067、地块应答三件套 5233/5259/5093、
+  炮台选目标 5063、占卜 5069、赌场 5081+5083、抽奖 5041、追击地块 5033、助力投票 5309（都用离线测试锁住了契约）。
+  判据始终是同一条：**`OperationTimer.ActionDownTime(sn, <id>, onComplete)` 的调用点**——
+  有它才有"等玩家点"的窗口；`onComplete` 就是"不答时服务器替你按的按钮"。
+  **5029 PVP 商店**按"只做 PVE"的范围决定**不做**。
+- **已确认不需要工具的动作**（客户端自己会立即上行、玩家没有任何点击机会）：
+  再走一次 5043（`DealMoveAgain` 在 `IsSelf` 时直接发 `MoveAgainC2S`）、
+  掷骰得星币 5049（`DealLand_RollGold` → 立即 `RequsetRollGoldC2S`）、
+  事件触发 5053（`DealLand_EventTigger` → 立即 `RequestTriggerEvent`）、
+  炸弹骰 5059（`DealBombThrowDice` 在 `IsSelf` 时直接发 `BombThrowDiceC2S`）、
+  命运 5071（`DealLand_Destiny` 在 `IsSelf` 时**立即** `RequestTriggerDestinyC2S`，无按钮无倒计时）、
+  剧情 5313（`StoryLogic.OpenStoryByServer` 在剧情播完时自动回 `NotifyStoryC2S`）。
+- **真机验证：全部为"未验证"** —— 上面这些窗口的契约与状态机都只有离线测试，真机上一条都没验过，
+  验收步骤见 §11（`astral_pending` 报不报出对应 kind、动作能不能真的落到游戏里）。
 - `AskBattleC2S.IsPursuit` / `SkillPlayerId` 的游戏语义（全量反编译里既不读也不写，只有服务器填）。
 - `BattleUseCardS2C.NoCard` 字段（客户端从不读，实测 3 局 376 条全为 `false`；跳过语义是 `CardId==0`）。
 - `ShopBuyS2C` / `PVEShopBuyS2C.AssistPlayer` 的服务端语义。
