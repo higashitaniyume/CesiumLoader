@@ -232,7 +232,7 @@ try {
 
     $list = Invoke-Mcp -Method 'tools/list' -Params ([ordered]@{})
     $tools = @($list.result.tools)
-    Assert-That 'tools/list 返回 31 个工具' ($tools.Count -eq 31) "实际 $($tools.Count)"
+    Assert-That 'tools/list 返回 32 个工具' ($tools.Count -eq 32) "实际 $($tools.Count)"
     Assert-That '工具名统一 astral_ 前缀' (@($tools | Where-Object { $_.name -notlike 'astral_*' }).Count -eq 0) ''
     Assert-That '包含 astral_move 与 astral_emergency_stop' `
         ((@($tools.name) -contains 'astral_move') -and (@($tools.name) -contains 'astral_emergency_stop')) ''
@@ -242,9 +242,10 @@ try {
     Assert-That '包含地块/选点四件套(加油站/追击/商人/选点)' `
         (((@($tools.name) -contains 'astral_stop_or_continue') -and (@($tools.name) -contains 'astral_pursue_monster') -and
           (@($tools.name) -contains 'astral_vendor_buy_card') -and (@($tools.name) -contains 'astral_select_point'))) ''
-    Assert-That '包含地块应答三件套(复活队友/机制选择/医院)与炮台选目标' `
+    Assert-That '包含地块应答三件套(复活队友/机制选择/医院) + 炮台/占卜' `
         (((@($tools.name) -contains 'astral_revive_teammate') -and (@($tools.name) -contains 'astral_select_mechanism') -and
-          (@($tools.name) -contains 'astral_hospital_check') -and (@($tools.name) -contains 'astral_battery_pick'))) ''
+          (@($tools.name) -contains 'astral_hospital_check') -and (@($tools.name) -contains 'astral_battery_pick') -and
+          (@($tools.name) -contains 'astral_divination_pick'))) ''
 
     # ------------------------------ 2. 只读工具读假状态 ------------------------------
     Write-Host '[smoke] --- 只读工具 ---'
@@ -371,6 +372,21 @@ try {
 
     $batNoArg = Invoke-Tool 'astral_battery_pick' '{}'
     Assert-That 'astral_battery_pick 缺 targetIds/leave 时报错(不下发)' ($batNoArg.IsError -eq $true) $batNoArg.Text
+
+    # 占卜(5069): 带下标与不带参数(默认第 0 张)各走一次
+    # 注意 fakegame.log 是**累积**日志(每个命令一行), 所以要只看最后一行
+    $div = Invoke-Tool 'astral_divination_pick' '{"index":1,"sn":5069}'
+    Assert-That 'astral_divination_pick(选下标) 往返成功' ((-not $div.IsError) -and ($div.Text -match '已发送\(假游戏\)')) $div.Text
+    $lastLine = @(Get-Content -LiteralPath $cmdLog -Encoding UTF8) | Select-Object -Last 1
+    Assert-That '命令文件里 tool=divination_pick 且 index=1' `
+        (($lastLine -match '"tool"\s*:\s*"divination_pick"') -and ($lastLine -match '"index"\s*:\s*1')) $lastLine
+
+    $divDef = Invoke-Tool 'astral_divination_pick' '{}'
+    Assert-That 'astral_divination_pick 不传参数也往返成功(默认第 0 张)' `
+        ((-not $divDef.IsError) -and ($divDef.Text -match '已发送\(假游戏\)')) $divDef.Text
+    $lastLine = @(Get-Content -LiteralPath $cmdLog -Encoding UTF8) | Select-Object -Last 1
+    Assert-That '命令文件里 tool=divination_pick 且不带业务参数(默认第 0 张)' `
+        (($lastLine -match '"tool"\s*:\s*"divination_pick"') -and ($lastLine -notmatch '"index"')) $lastLine
 
     # ------------------------------ 4. 开关闸门 ------------------------------
     Write-Host '[smoke] --- 安全开关(control.json) ---'

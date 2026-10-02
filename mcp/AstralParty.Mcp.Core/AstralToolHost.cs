@@ -44,7 +44,7 @@ namespace AstralParty.Mcp
                     "     astral_ask_battle / astral_battle_choice / astral_select_relic / astral_select_reward_card /\n" +
                     "     astral_select_event / astral_use_quick_card / astral_stop_or_continue / astral_pursue_monster /\n" +
                     "     astral_vendor_buy_card / astral_select_point / astral_revive_teammate /\n" +
-                    "     astral_select_mechanism / astral_hospital_check / astral_battery_pick /\n" +
+                    "     astral_select_mechanism / astral_hospital_check / astral_battery_pick / astral_divination_pick /\n" +
                     "     astral_shop_buy / astral_buy_relic / astral_atm_transfer …(pending.Options 里会列出本窗口可用的操作);\n" +
                     "  4) 重复 2-3。需要手牌/场上数值时用 astral_state; 想复盘刚发生了什么用 astral_events / astral_actions。\n" +
                     "注意:\n" +
@@ -187,6 +187,11 @@ namespace AstralParty.Mcp
                 "(只收英雄、且要在本地战斗数据里)过滤出来的, 所以桥接只接受候选里的 playerId。",
                 "{\"type\":\"object\",\"properties\":{\"targetIds\":{\"type\":\"array\",\"items\":{\"type\":\"integer\"},\"description\":\"1..TargetNum 个英雄 playerId(取 pending 候选的 LongId)\"},\"leave\":{\"type\":\"boolean\",\"description\":\"true=不选目标直接离开\"},\"sn\":{\"type\":\"integer\"}},\"additionalProperties\":false}");
 
+            Add("astral_divination_pick", "占卜: 两张牌选一张", false, true,
+                "走到占卜地块要翻一张牌(5069)。两张候选牌就在 pending(kind=divination)里, 用 index(0/1)或 divinationId 选一张。 " +
+                "不传参数按 index=0 处理。**超时代答 = 第 1 张牌**。",
+                "{\"type\":\"object\",\"properties\":{\"index\":{\"type\":\"integer\",\"description\":\"候选下标(0 或 1, 默认 0)\"},\"divinationId\":{\"type\":\"integer\",\"description\":\"占卜卡 id(取 pending 候选)\"},\"sn\":{\"type\":\"integer\"}},\"additionalProperties\":false}");
+
             Add("astral_speed", "设置游戏倍速", false, true,
                 "通过加载器的变速通道调整游戏时间流速(加速等待动画/演出)。下限 1.0, 上限 100。别调太高(会影响网络超时与演出)。",
                 "{\"type\":\"object\",\"properties\":{\"speed\":{\"type\":\"number\",\"description\":\"倍率, 1.0 - 100\"}},\"required\":[\"speed\"],\"additionalProperties\":false}");
@@ -251,6 +256,7 @@ namespace AstralParty.Mcp
                 case "astral_select_mechanism": return SelectMechanism(args);
                 case "astral_hospital_check": return HospitalCheck(args);
                 case "astral_battery_pick": return BatteryPick(args);
+                case "astral_divination_pick": return DivinationPick(args);
                 case "astral_speed": return Speed(args);
 
                 case "astral_control": return Control(args);
@@ -516,6 +522,16 @@ namespace AstralParty.Mcp
             else return McpToolResult.Error("需要 targetIds(1..TargetNum 个英雄 id, 取 pending 候选的 LongId)或 leave=true(离开)");
             PutSn(args, dict);
             return Send(AgentBridgeLayout.Tool.BatteryPick, dict);
+        }
+
+        /// <summary>占卜(5069): 不传参数 = index 0(与客户端超时的选择一致)。</summary>
+        private McpToolResult DivinationPick(JsonElement args)
+        {
+            var dict = new Dictionary<string, object>();
+            if (Has(args, "divinationId")) dict["divinationId"] = Int(args, "divinationId", 0);
+            else if (Has(args, "index")) dict["index"] = Int(args, "index", 0);
+            PutSn(args, dict);
+            return Send(AgentBridgeLayout.Tool.DivinationPick, dict);
         }
 
         private McpToolResult UseEffectCard(JsonElement args)

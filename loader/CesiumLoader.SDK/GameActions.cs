@@ -369,6 +369,31 @@ namespace CesiumLoader.SDK
             catch { return false; }
         }
 
+        /// <summary>
+        /// 占卜(服务器动作 5069 = <c>UI.LandDivinationWindow.DealLand_Divination</c>):
+        /// <paramref name="divinationId"/> = 选中的那张占卜牌(候选来自 offer 的 <c>CanChoiceIds</c>)。返回是否成功发出。
+        /// </summary>
+        /// <remarks>
+        /// 复刻 <c>LandLogic.RequestTriggerDivinationC2S</c>。offer 与答案**是同一个消息类**
+        /// <c>TriggerDivinationC2S</c>: offer 带 <c>CanChoiceIds</c>(恰好两张), 答案是 <c>Info</c> + <c>Id</c>。
+        /// 超时回调点的是第 1 张(<c>CanChoiceIds[0]</c>) → **不答 = 选第 1 张**。
+        /// </remarks>
+        public static bool TriggerDivination(int divinationId, long? sn = null)
+        {
+            try
+            {
+                if (divinationId == 0) return false;
+                if (!Ready(out long targetSn, sn)) return false;
+                Net!.RPC.TriggerDivinationC2S.TriggerDivinationC2SCall(new TriggerDivinationC2S
+                {
+                    Info = MakeInfo(targetSn),
+                    Id = divinationId
+                });
+                return true;
+            }
+            catch { return false; }
+        }
+
         // ============================== 移动 ==============================
 
         /// <summary>移动到目标地块(targetLandId = 目标地块 ID, 即方向箭头指向的格)。返回是否成功发出。</summary>

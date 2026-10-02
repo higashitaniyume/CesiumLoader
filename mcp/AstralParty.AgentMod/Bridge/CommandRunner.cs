@@ -133,6 +133,9 @@ namespace AstralParty.AgentMod.Bridge
                     case AgentBridgeLayout.Tool.BatteryPick:
                         return BatteryPick(cmd, started);
 
+                    case AgentBridgeLayout.Tool.DivinationPick:
+                        return DivinationPick(cmd, started);
+
                     default:
                         return BridgeResult.Failure(cmd.Id, cmd.Tool, AgentBridgeLayout.Code.UnknownTool,
                             "未知工具: " + cmd.Tool);
@@ -778,6 +781,41 @@ namespace AstralParty.AgentMod.Bridge
             OnSent(sn);
             return Done(cmd, started, "已发送 炮台选目标 LandChoiceTarget(targets=" + picks.Length +
                                       ", sn=" + Show(sn) + ")");
+        }
+
+        /// <summary>
+        /// 占卜(5069 窗口): 两张牌选一张。index = 候选下标, divinationId = 占卜卡配置 id(候选里的)。
+        /// 客户端超时点的是第 1 张牌 → 不答 = 选第 0 项, 所以这里 index 也默认 0。
+        /// </summary>
+        private BridgeResult DivinationPick(BridgeCommand cmd, long started)
+        {
+            int index = cmd.GetInt("index", -1);
+            int divinationId = cmd.GetInt("divinationId", 0);
+            if (divinationId == 0) divinationId = cmd.GetInt("id", 0);
+
+            int[] window;
+            if (!_tracker.TryGetWindowIds(AgentPendingKind.Divination, out window) || window == null || window.Length == 0)
+                return BadArgs(cmd, "当前没有占卜窗口(5069): 候选只有服务器推 5069 时才有。" +
+                                    "先用 astral_pending 看有没有 kind=divination");
+
+            if (index < 0 && divinationId != 0)
+            {
+                for (int i = 0; i < window.Length; i++)
+                {
+                    if (window[i] == divinationId) { index = i; break; }
+                }
+                if (index < 0)
+                    return BadArgs(cmd, "divinationId=" + divinationId + " 不在本次候选里: [" + Join(window) + "]");
+            }
+            if (index < 0) index = 0; // 与游戏一致: 超时点的是第 1 张
+            if (index >= window.Length)
+                return BadArgs(cmd, "index=" + index + " 超出候选范围(共 " + window.Length + " 个)");
+
+            long? sn = ResolveSn(cmd, AgentPendingKind.Divination);
+            if (!GameActions.TriggerDivination(window[index], sn)) return NotSent(cmd, "占卜选择");
+            OnSent(sn);
+            return Done(cmd, started, "已发送 占卜 TriggerDivination(divinationId=" + window[index] +
+                                      ", index=" + index + ", sn=" + Show(sn) + ")");
         }
 
         private BridgeResult Speed(BridgeCommand cmd, long started)

@@ -196,6 +196,8 @@ namespace AstralParty.AgentMod.Bridge
         public const string HospitalCheck = "hospitalCheck";
         /// <summary>炮台选目标 5063(LandChoiceTarget, 仅 LandType==11): 选 1..TargetNum 个英雄, 或离开。超时 = 离开。</summary>
         public const string BatteryTarget = "batteryTarget";
+        /// <summary>占卜 5069(TriggerDivination): 两张占卜牌选一张(候选 = CanChoiceIds)。超时 = 第 1 张。</summary>
+        public const string Divination = "divination";
     }
 
     public sealed class AgentCounters

@@ -98,6 +98,8 @@ namespace AstralParty.Agent
             public const string HospitalCheck = "hospital_check";
             /// <summary>炮台选目标(动作 5063): 选 1..TargetNum 个英雄当目标(targetIds), 或 leave=true 离开。超时 = 离开。</summary>
             public const string BatteryPick = "battery_pick";
+            /// <summary>占卜(动作 5069): 两张牌选一张(候选 = CanChoiceIds)。超时 = 第 1 张。</summary>
+            public const string DivinationPick = "divination_pick";
         }
 
         /// <summary>把这些名字拼成外部工具名(<c>astral_xxx</c>)。</summary>

@@ -534,6 +534,30 @@ namespace AstralParty.AgentMod.Bridge
                                    ", exit=" + d.Exit + "}";
                         }
 
+                    // ---------- 占卜(5069 / 回执 5070) ----------
+                    // offer 与答案**是同一个消息类**(同 5323/5067/5063): offer 带 CanChoiceIds(恰好两张),
+                    // 答案是 Info.Sn + Id —— 用 Info.Sn 是否为 0 区分。
+                    case 5069:
+                        {
+                            var d = ByteBuf.ReadObject<TriggerDivinationC2S>(e.Data);
+                            if (d == null) return null;
+                            long offerSn = d.Info != null ? d.Info.Sn : 0;
+                            if (offerSn != 0)
+                                return "DivinationAnswer{sn=" + offerSn + ", id=" + d.Id + "}";
+                            var cards = ToList(d.CanChoiceIds);
+                            if (cards.Count > 0) _tracker.OnDivinationOffer(e.PlayerId, cards, e.Sn, now);
+                            return "DivinationOffer{cards=[" + Join(cards) + "]}";
+                        }
+
+                    case 5070:
+                        {
+                            var d = ByteBuf.ReadObject<TriggerDivinationS2C>(e.Data);
+                            if (d == null) return null;
+                            _tracker.OnDivinationDone(e.PlayerId, now);
+                            return "DivinationResult{playerId=" + d.PlayerId + ", id=" + d.Id +
+                                   ", targetType=" + d.TargetType + "}";
+                        }
+
                     case 5068:
                         {
                             var d = ByteBuf.ReadObject<ThrowDiceResultS2C>(e.Data);
