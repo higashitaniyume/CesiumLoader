@@ -727,6 +727,7 @@ namespace AstralParty.Mcp.Tests
             Assert.Contains("astral_select_mechanism", names);
             Assert.Contains("astral_hospital_check", names);
             Assert.Contains("astral_battery_pick", names);
+            Assert.Contains("astral_divination_pick", names);
             Assert.Contains("astral_speed", names);
             Assert.Contains("astral_control", names);
             Assert.Contains("astral_emergency_stop", names);

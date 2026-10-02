@@ -16,6 +16,7 @@ namespace CesiumLoader.SDK
         private static readonly Dictionary<int, string> _relicCache = new Dictionary<int, string>();
         private static readonly Dictionary<int, string> _skillCache = new Dictionary<int, string>();
         private static readonly Dictionary<int, string> _charCache = new Dictionary<int, string>();
+        private static readonly Dictionary<int, string> _divinationCache = new Dictionary<int, string>();
 
         /// <summary>卡牌名: 真实名(Id)。查不到时尝试技能表, 最后"未知卡{id}"。</summary>
         public static string Card(int cardId)
@@ -75,6 +76,28 @@ namespace CesiumLoader.SDK
                 catch { }
                 _relicCache[relicId] = r;
                 return r;
+            }
+        }
+
+        /// <summary>占卜牌名: 真实名(Id), 查不到"占卜{id}"。</summary>
+        public static string Divination(int divinationId)
+        {
+            if (divinationId <= 0) return $"占卜{divinationId}";
+            lock (_divinationCache)
+            {
+                if (_divinationCache.TryGetValue(divinationId, out var v)) return v;
+                string d = "占卜" + divinationId;
+                try
+                {
+                    if (StaticConfigure.Divination.InfoDict.TryGetValue(divinationId, out var cfg))
+                    {
+                        string n = cfg.NameID.GetLocal(UIStringType.Divination);
+                        if (!string.IsNullOrEmpty(n)) d = n + $"({divinationId})";
+                    }
+                }
+                catch { }
+                _divinationCache[divinationId] = d;
+                return d;
             }
         }
 

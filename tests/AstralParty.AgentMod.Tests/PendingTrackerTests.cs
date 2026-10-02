@@ -894,6 +894,49 @@ namespace AstralParty.AgentMod.Tests
             Assert.Contains(p.Notes, n => n.Contains("其他玩家"));
         }
 
+        // ---------- 占卜(5069 / 回执 5070) ----------
+
+        [Fact]
+        public void 占卜窗口_列出两张候选牌()
+        {
+            var t = new PendingTracker();
+            t.OnDivinationOffer(Self, new List<int> { 7001, 7002 }, 555101, 1000);
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Equal(AgentPendingKind.Divination, p.Kind);
+            Assert.Equal(555101, p.Sn);
+            Assert.True(p.Actionable);
+            Assert.Equal(2, p.Candidates.Count);
+            Assert.All(p.Candidates, c => Assert.Equal("divination", c.Kind));
+            Assert.Contains(p.Candidates, c => c.Id == 7001);
+            Assert.Contains(p.Candidates, c => c.Id == 7002);
+            Assert.Contains(p.Options, o => o.Contains("astral_divination_pick"));
+            Assert.Contains(p.Notes, n => n.Contains("超时不答 = 选第 1 张"));
+        }
+
+        [Fact]
+        public void 占卜回执_关掉窗口()
+        {
+            var t = new PendingTracker();
+            t.OnDivinationOffer(Self, new List<int> { 7001, 7002 }, 555102, 1000);
+            t.OnDivinationDone(Self, 1100);
+
+            Assert.Equal(AgentPendingKind.None, Build(t, false, 0, 1200).Kind);
+        }
+
+        [Fact]
+        public void 占卜窗口_别人的窗口不当作我的()
+        {
+            var t = new PendingTracker();
+            t.OnDivinationOffer(Other, new List<int> { 7001, 7002 }, 555103, 1000);
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Equal(AgentPendingKind.None, p.Kind);
+            Assert.Contains(p.Notes, n => n.Contains("其他玩家"));
+        }
+
         // ---------- 怪物追击(5213 / 回执 5214) ----------
 
         [Fact]

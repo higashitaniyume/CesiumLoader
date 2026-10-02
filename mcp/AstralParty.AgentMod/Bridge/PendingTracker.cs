@@ -568,6 +568,29 @@ namespace AstralParty.AgentMod.Bridge
         /// <summary>炮台选目标回执(5064 = LandChoiceTargetS2C): 窗口关闭。</summary>
         public void OnBatteryDone(long playerId, long nowMs) { ClearIf(AgentPendingKind.BatteryTarget, playerId); }
 
+        // ---------- 占卜窗口(5069 / 回执 5070) ----------
+
+        /// <summary>
+        /// 服务器问"占卜翻哪一张"(5069 = <c>UI.LandDivinationWindow.DealLand_Divination</c>)。
+        /// offer = <c>TriggerDivinationC2S{CanChoiceIds}</c>(恰好两张; 同一消息类的答案则是 <c>Info</c> + <c>Id</c>,
+        /// 靠 <c>Info.Sn==0</c> 区分, 同 5323/5067/5063)。只有本人能点, 其他人只看到"思考中"。
+        /// 超时回调点的是 <c>btn_Divination_1</c> → **不答 = 选第 1 张**(<c>CanChoiceIds[0]</c>)。
+        /// </summary>
+        public void OnDivinationOffer(long playerId, IReadOnlyList<int> divinationIds, long sn, long nowMs)
+        {
+            SetWindow(new Window
+            {
+                Kind = AgentPendingKind.Divination,
+                PlayerId = playerId,
+                Ids = ToArray(divinationIds),
+                Sn = sn,
+                SinceMs = nowMs
+            });
+        }
+
+        /// <summary>占卜回执(5070 = TriggerDivinationS2C): 窗口关闭。</summary>
+        public void OnDivinationDone(long playerId, long nowMs) { ClearIf(AgentPendingKind.Divination, playerId); }
+
         // ============================== 主线程提示 ==============================
 
         /// <summary>刷新运行时提示(每 tick 由 StateProbe 调用)。</summary>
@@ -998,6 +1021,15 @@ namespace AstralParty.AgentMod.Bridge
                         p.Notes.Add("★ 超时不答 = 离开(客户端超时回调点的是\"离开\"按钮, Exit=true)。");
                     }
                     break;
+
+                case AgentPendingKind.Divination:
+                    p.Actionable = p.Candidates.Count > 0;
+                    p.Options.Add("astral_divination_pick {\"index\":0..N-1}     选第 index 张占卜牌");
+                    p.Options.Add("astral_divination_pick {\"divinationId\":<候选里的 id>}   按占卜卡 id 选");
+                    p.Options.Add("astral_divination_pick {}                    默认选第 0 张");
+                    p.Notes.Add("占卜(5069): 两张里选一张(候选见 pending, kind=divination)。");
+                    p.Notes.Add("★ 超时不答 = 选第 1 张(客户端超时回调点的是第 1 张牌)。");
+                    break;
             }
 
             if (usable != null && usable.Length > 0 && w.Kind != AgentPendingKind.CardChoice)
@@ -1044,6 +1076,7 @@ namespace AstralParty.AgentMod.Bridge
                 case AgentPendingKind.Move: return "land";
                 case AgentPendingKind.SelectEvent: return "event";
                 case AgentPendingKind.PursueMonster: return "monster";
+                case AgentPendingKind.Divination: return "divination";
                 default: return "unknown";
             }
         }

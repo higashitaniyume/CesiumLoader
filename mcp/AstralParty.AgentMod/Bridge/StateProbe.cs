@@ -221,6 +221,7 @@ namespace AstralParty.AgentMod.Bridge
                 switch (kind)
                 {
                     case "relic": return Fallback(Names.Relic(id), id);
+                    case "divination": return Fallback(Names.Divination(id), id);
                     case "shopCard":
                     case "rewardCard":
                     case "card": return Fallback(Names.Card(id), id);
@@ -246,7 +247,8 @@ namespace AstralParty.AgentMod.Bridge
                             return "手牌#" + id;
                         }
                     case "land": return "#" + id;
-                    // 追击候选的 id 是怪物(也是玩家)的 playerId, 名字从房间花名册里反查
+                    // 追击/炮台的候选 id 是玩家(怪物也是玩家)的 playerId, 名字从房间花名册里反查
+                    case "player":
                     case "monster":
                         {
                             try
