@@ -96,6 +96,8 @@ namespace AstralParty.Agent
             public const string SelectMechanism = "select_mechanism";
             /// <summary>医院(动作 5093): 接受检查。这是该窗口**唯一**的合法上行(超时也走它)。</summary>
             public const string HospitalCheck = "hospital_check";
+            /// <summary>炮台选目标(动作 5063): 选 1..TargetNum 个英雄当目标(targetIds), 或 leave=true 离开。超时 = 离开。</summary>
+            public const string BatteryPick = "battery_pick";
         }
 
         /// <summary>把这些名字拼成外部工具名(<c>astral_xxx</c>)。</summary>

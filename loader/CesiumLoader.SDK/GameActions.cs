@@ -330,6 +330,45 @@ namespace CesiumLoader.SDK
             catch { return false; }
         }
 
+        /// <summary>
+        /// 炮台选目标(服务器动作 5063 = <c>UI.LandBatteryWindow.DealLand_LandChoiceTarget</c>, 仅 <c>LandType==11</c>):
+        /// <paramref name="targetIds"/> = 选中的英雄 playerId(1..TargetNum 个)。返回是否成功发出。
+        /// </summary>
+        /// <remarks>
+        /// 复刻 <c>LandLogic.RequestLandChoiceTargetC2S</c>。offer 与答案**是同一个消息类** <c>LandChoiceTargetC2S</c>:
+        /// offer 有 <c>LandType</c>/<c>TargetNum</c>/<c>CanTargetIds</c>, 答案是 <c>Info</c> + <c>TargetIds</c>。
+        /// 候选由客户端本地按 <c>characterType==Hero &amp;&amp; CanTargetIds[id]</c> 过滤(见 <c>GameProbe.TryBatteryTargets</c>)。
+        /// </remarks>
+        public static bool LandChoiceTarget(long[] targetIds, long? sn = null)
+        {
+            try
+            {
+                if (targetIds == null || targetIds.Length == 0) return false;
+                if (!Ready(out long targetSn, sn)) return false;
+                var req = new LandChoiceTargetC2S { Info = MakeInfo(targetSn) };
+                for (int i = 0; i < targetIds.Length; i++) req.TargetIds.Add(targetIds[i]);
+                Net!.RPC.LandChoiceTargetC2S.LandChoiceTargetC2SCall(req);
+                return true;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>炮台离开(服务器动作 5063): <c>Exit=true</c> = 不选目标直接离开。超时回调点的是"离开" → **不答 = 离开**。</summary>
+        public static bool BatteryLeave(long? sn = null)
+        {
+            try
+            {
+                if (!Ready(out long targetSn, sn)) return false;
+                Net!.RPC.LandChoiceTargetC2S.LandChoiceTargetC2SCall(new LandChoiceTargetC2S
+                {
+                    Info = MakeInfo(targetSn),
+                    Exit = true
+                });
+                return true;
+            }
+            catch { return false; }
+        }
+
         // ============================== 移动 ==============================
 
         /// <summary>移动到目标地块(targetLandId = 目标地块 ID, 即方向箭头指向的格)。返回是否成功发出。</summary>
