@@ -5,6 +5,8 @@
 > - **不在发布包里**：`tools\builtin-mods.json` 只有四个内置 mod（`ActivityLogMod` / `FreeCameraMod` /
 >   `SpeedHackMod` / `CombatOddsMod`），所以**装加载器、装内置 mod 都不会带上它**。
 >   想用必须自己跑 `tools\deploy-agentmod.ps1`（可选安装；删掉 `mods\AstralParty.AgentMod\` 即卸载）。
+>   加载器 CI 也**默认不产出** `cesium-agent-mcp*.zip`（`.github\workflows\release-modloader.yml`
+>   顶部 `env.PUBLISH_AGENT_PACKAGE: 'false'`，改成 `'true'` 才发这个可选包）。
 > - **默认只读**：mod 首次运行写出的 `config.json` 里 `enableActions` 默认 **`false`** ——
 >   此时任何动作命令都会被拒绝，只有 `astral_status` / `astral_state` / `astral_pending` 这类只读工具可用。
 >   要放开动作得自己改成 `true`，并自负风险（服务器权威，违规操作可能被处罚）。

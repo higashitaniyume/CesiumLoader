@@ -21,6 +21,10 @@ permissions:
 env:
   SOLUTION: CesiumLoader.sln
   APP_NAME: cesium-loader
+  # AI agent 接管(AstralParty.AgentMod + AstralParty.Mcp.exe)是**实验性、真机没验完**的可选能力,
+  # 2026-10-02 起默认**不产出** cesium-agent-mcp*.zip —— Release 上只有加载器与 SDK 工具包。
+  # 想重新发这个包: 把这里改成 'true'(代码与打包步骤都还在, 不需要改别的地方)。
+  PUBLISH_AGENT_PACKAGE: 'false'
 
 jobs:
   build:
@@ -209,6 +213,12 @@ jobs:
       - name: Stage AI agent bridge package (optional add-on)
         shell: pwsh
         run: |
+          # 默认不产出(见 workflow 顶部 env.PUBLISH_AGENT_PACKAGE 的说明):
+          # 这个功能是实验性的、真机只验过只读链路, 所以不随 Release 发出去。
+          if ($env:PUBLISH_AGENT_PACKAGE -ne 'true') {
+            Write-Host "跳过 AI 接管包(实验性/未完成, 默认不发)。需要时把 workflow 顶部 env.PUBLISH_AGENT_PACKAGE 改成 'true'。"
+            exit 0
+          }
           # 这一包**不进** cesium-loader.zip: AI 接管是可选能力, 不默认塞给所有用户。
           # 游戏内 mod(AstralParty.AgentMod)需要游戏热更 DLL 才能编译, CI 没有 → 用 dist\agent 下
           # 本地预编译并入库的产物(与 dist\ 里其它托管产物同一约定); MCP server 无游戏依赖, CI 现场构建。
@@ -265,23 +275,23 @@ jobs:
           $sdkZip = "cesium-sdk-tools-${{ steps.version.outputs.version }}.zip"
           Compress-Archive -Path "sdk-staging/*" -DestinationPath $sdkZip -CompressionLevel Optimal
           Copy-Item $sdkZip "cesium-sdk-tools.zip" -Force
-          # AI 接管桥接(可选组件, 与加载器包分开)
-          $agentZip = "cesium-agent-mcp-${{ steps.version.outputs.version }}.zip"
-          Compress-Archive -Path "agent-staging/*" -DestinationPath $agentZip -CompressionLevel Optimal
-          Copy-Item $agentZip "cesium-agent-mcp.zip" -Force
+          # AI 接管桥接(可选组件, 与加载器包分开)。默认不发, 见 workflow 顶部 env.PUBLISH_AGENT_PACKAGE。
+          if ($env:PUBLISH_AGENT_PACKAGE -eq 'true') {
+            $agentZip = "cesium-agent-mcp-${{ steps.version.outputs.version }}.zip"
+            Compress-Archive -Path "agent-staging/*" -DestinationPath $agentZip -CompressionLevel Optimal
+            Copy-Item $agentZip "cesium-agent-mcp.zip" -Force
+          } else {
+            Write-Host "未生成 cesium-agent-mcp*.zip (PUBLISH_AGENT_PACKAGE != true)"
+          }
           Get-ChildItem *.zip | Select-Object Name, Length
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: cesium-loader-package
-          path: |
-            cesium-loader-*.zip
-            cesium-loader.zip
-            cesium-sdk-tools-*.zip
-            cesium-sdk-tools.zip
-            cesium-agent-mcp-*.zip
-            cesium-agent-mcp.zip
+          # 用通配而不是逐个列名: 上面按开关产出的 zip 都会被带上, 也不会因为某个名字
+          # 这一轮不存在而踩到 `if-no-files-found: error`。
+          path: cesium-*.zip
           if-no-files-found: error
           retention-days: 1
 
