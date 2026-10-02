@@ -1112,6 +1112,75 @@ namespace AstralParty.AgentMod.Tests
             Assert.Contains(p.Notes, n => n.Contains("其他玩家"));
         }
 
+        // ---------- 追击地块(5033 / 回执 5034) ----------
+
+        [Fact]
+        public void 追击地块窗口_列出候选敌方英雄()
+        {
+            var t = new PendingTracker();
+            t.OnPursuePlayerOffer(Self, new long[] { 2002, 3003 }, 555401, 1000);
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Equal(AgentPendingKind.PursuePlayer, p.Kind);
+            Assert.Equal(555401, p.Sn);
+            Assert.True(p.Actionable);
+            Assert.Equal(2, p.Candidates.Count);
+            Assert.Contains(p.Candidates, c => c.Kind == "player" && c.LongId == 3003);
+            Assert.Contains(p.Options, o => o.Contains("astral_pursue_player") && o.Contains("playerId"));
+            Assert.Contains(p.Options, o => o.Contains("astral_pursue_player") && o.Contains("stay"));
+            Assert.Contains(p.Notes, n => n.Contains("超时不答 = 不追"));
+        }
+
+        [Fact]
+        public void 追击地块窗口_候选为空是合法结果()
+        {
+            var t = new PendingTracker();
+            t.OnPursuePlayerOffer(Self, new long[0], 555402, 1000);
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Equal(AgentPendingKind.PursuePlayer, p.Kind);
+            Assert.Empty(p.Candidates);
+            Assert.False(p.Actionable);
+            Assert.Contains(p.Notes, n => n.Contains("没有能追的敌方英雄"));
+        }
+
+        [Fact]
+        public void 追击地块窗口_候选没读出来时只能停留()
+        {
+            var t = new PendingTracker();
+            t.OnPursuePlayerOffer(Self, null, 555403, 1000);
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Equal(AgentPendingKind.PursuePlayer, p.Kind);
+            Assert.Empty(p.Candidates);
+            Assert.Contains(p.Notes, n => n.Contains("候选还没读出来"));
+        }
+
+        [Fact]
+        public void 追击地块回执_关掉窗口()
+        {
+            var t = new PendingTracker();
+            t.OnPursuePlayerOffer(Self, new long[] { 2002 }, 555404, 1000);
+            t.OnPursuePlayerDone(Self, 1100);
+
+            Assert.Equal(AgentPendingKind.None, Build(t, false, 0, 1200).Kind);
+        }
+
+        [Fact]
+        public void 追击地块窗口_别人的窗口不当作我的()
+        {
+            var t = new PendingTracker();
+            t.OnPursuePlayerOffer(Other, new long[] { 2002 }, 555405, 1000);
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Equal(AgentPendingKind.None, p.Kind);
+            Assert.Contains(p.Notes, n => n.Contains("其他玩家"));
+        }
+
         // ---------- 怪物追击(5213 / 回执 5214) ----------
 
         [Fact]

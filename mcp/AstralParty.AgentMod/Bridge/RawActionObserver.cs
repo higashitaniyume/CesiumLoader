@@ -144,6 +144,18 @@ namespace AstralParty.AgentMod.Bridge
                     _tracker.OnSelectMechanismOffer(e.PlayerId, e.Sn, now);
                     return "SelectMechanismOffer{空负载}";
                 }
+                // 5033 追击地块: 同样零负载(客户端从不解码 Data, 只用 action.Sn), 而且**只给本人开**。
+                // 候选是本地算的敌方英雄(GameProbe.TrySelfPursuitPlayers), 与 5213 怪物追击不是一个窗口。
+                if (e.Id == 5033)
+                {
+                    long self5033 = _selfId != null ? _selfId() : 0;
+                    if (self5033 != 0 && e.PlayerId != self5033)
+                        return "PursuePlayerOffer{不是我的窗口(客户端只给本人开), 忽略}";
+                    long[] cands5033;
+                    if (!GameProbe.TrySelfPursuitPlayers(out cands5033)) cands5033 = null;
+                    _tracker.OnPursuePlayerOffer(e.PlayerId, cands5033, e.Sn, now);
+                    return "PursuePlayerOffer{空负载, candidates=" + (cands5033 == null ? -1 : cands5033.Length) + "}";
+                }
                 return null; // 其余 id 的空负载无从判断语义, 只记长度(外层已记)
             }
             try
@@ -676,6 +688,36 @@ namespace AstralParty.AgentMod.Bridge
                             if (d == null) return null;
                             _tracker.OnLotteryDone(d.PlayerId, now);
                             return "LotteryResult{playerId=" + d.PlayerId + "}";
+                        }
+
+                    // ---------- 追击地块(5033 / 回执 5034) ----------
+                    // 与 5213 怪物追击**不是一个窗口**: 5213 追怪(MonsterPursuitC2S), 5033 追敌方英雄(PursuitC2S)。
+                    // offer 基本是零负载(上面空负载分支处理); 带负载的 5033 有两种可能: 某人的答案被回播
+                    // (Info.Sn 非 0), 或者服务器这次真的带了 Data —— 用 Info.Sn 区分, 后者照常开窗。
+                    case 5033:
+                        {
+                            var d = ByteBuf.ReadObject<PursuitC2S>(e.Data);
+                            if (d == null) return null;
+                            long offerSn = d.Info != null ? d.Info.Sn : 0;
+                            if (offerSn != 0)
+                                return "PursuePlayerAnswer{sn=" + offerSn + ", selectId=" + d.SelectPlayerId + "}";
+                            long self = _selfId != null ? _selfId() : 0;
+                            if (self != 0 && e.PlayerId != self)
+                                return "PursuePlayerOffer{不是我的窗口, 忽略}";
+                            long[] cands;
+                            if (!GameProbe.TrySelfPursuitPlayers(out cands)) cands = null;
+                            _tracker.OnPursuePlayerOffer(e.PlayerId, cands, e.Sn, now);
+                            return "PursuePlayerOffer{len=" + e.Data.Length + ", candidates=" +
+                                   (cands == null ? -1 : cands.Length) + "}";
+                        }
+
+                    case 5034:
+                        {
+                            var d = ByteBuf.ReadObject<PursuitS2C>(e.Data);
+                            if (d == null) return null;
+                            _tracker.OnPursuePlayerDone(d.PlayerId, now);
+                            return "PursuePlayerResult{playerId=" + d.PlayerId + ", nodeId=" + d.NodeId +
+                                   ", exit=" + d.Exit + "}";
                         }
 
                     case 5068:

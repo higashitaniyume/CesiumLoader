@@ -232,7 +232,7 @@ try {
 
     $list = Invoke-Mcp -Method 'tools/list' -Params ([ordered]@{})
     $tools = @($list.result.tools)
-    Assert-That 'tools/list 返回 35 个工具' ($tools.Count -eq 35) "实际 $($tools.Count)"
+    Assert-That 'tools/list 返回 36 个工具' ($tools.Count -eq 36) "实际 $($tools.Count)"
     Assert-That '工具名统一 astral_ 前缀' (@($tools | Where-Object { $_.name -notlike 'astral_*' }).Count -eq 0) ''
     Assert-That '包含 astral_move 与 astral_emergency_stop' `
         ((@($tools.name) -contains 'astral_move') -and (@($tools.name) -contains 'astral_emergency_stop')) ''
@@ -242,11 +242,12 @@ try {
     Assert-That '包含地块/选点四件套(加油站/追击/商人/选点)' `
         (((@($tools.name) -contains 'astral_stop_or_continue') -and (@($tools.name) -contains 'astral_pursue_monster') -and
           (@($tools.name) -contains 'astral_vendor_buy_card') -and (@($tools.name) -contains 'astral_select_point'))) ''
-    Assert-That '包含地块应答三件套(复活队友/机制选择/医院) + 炮台/占卜/赌场/抽奖' `
+    Assert-That '包含地块应答三件套(复活队友/机制选择/医院) + 炮台/占卜/赌场/抽奖/追地' `
         (((@($tools.name) -contains 'astral_revive_teammate') -and (@($tools.name) -contains 'astral_select_mechanism') -and
           (@($tools.name) -contains 'astral_hospital_check') -and (@($tools.name) -contains 'astral_battery_pick') -and
           (@($tools.name) -contains 'astral_divination_pick') -and (@($tools.name) -contains 'astral_gamble_guess') -and
-          (@($tools.name) -contains 'astral_gamble_dice') -and (@($tools.name) -contains 'astral_lottery_pick'))) ''
+          (@($tools.name) -contains 'astral_gamble_dice') -and (@($tools.name) -contains 'astral_lottery_pick') -and
+          (@($tools.name) -contains 'astral_pursue_player'))) ''
 
     # ------------------------------ 2. 只读工具读假状态 ------------------------------
     Write-Host '[smoke] --- 只读工具 ---'
@@ -424,6 +425,22 @@ try {
     $lastLine = @(Get-Content -LiteralPath $cmdLog -Encoding UTF8) | Select-Object -Last 1
     Assert-That '命令文件里 tool=lottery_pick 且不带 numbers' `
         (($lastLine -match '"tool"\s*:\s*"lottery_pick"') -and ($lastLine -notmatch '"numbers"')) $lastLine
+
+    # 追击地块(5033): 追人 / 停留 / 两个都不给就报错
+    $pp = Invoke-Tool 'astral_pursue_player' '{"playerId":2002,"sn":5033}'
+    Assert-That 'astral_pursue_player(追人) 往返成功' ((-not $pp.IsError) -and ($pp.Text -match '已发送\(假游戏\)')) $pp.Text
+    $lastLine = @(Get-Content -LiteralPath $cmdLog -Encoding UTF8) | Select-Object -Last 1
+    Assert-That '命令文件里 tool=pursue_player 且 playerId 原样(64 位)' `
+        (($lastLine -match '"tool"\s*:\s*"pursue_player"') -and ($lastLine -match '"playerId"\s*:\s*2002')) $lastLine
+
+    $ppStay = Invoke-Tool 'astral_pursue_player' '{"stay":true,"sn":5033}'
+    Assert-That 'astral_pursue_player(停留) 往返成功' ((-not $ppStay.IsError) -and ($ppStay.Text -match '已发送\(假游戏\)')) $ppStay.Text
+    $lastLine = @(Get-Content -LiteralPath $cmdLog -Encoding UTF8) | Select-Object -Last 1
+    Assert-That '命令文件里 tool=pursue_player 且 stay=true' `
+        (($lastLine -match '"tool"\s*:\s*"pursue_player"') -and ($lastLine -match '"stay"\s*:\s*true')) $lastLine
+
+    $ppNoArg = Invoke-Tool 'astral_pursue_player' '{}'
+    Assert-That 'astral_pursue_player 缺 playerId/stay 时报错(不下发)' ($ppNoArg.IsError -eq $true) $ppNoArg.Text
 
     # ------------------------------ 4. 开关闸门 ------------------------------
     Write-Host '[smoke] --- 安全开关(control.json) ---'

@@ -106,6 +106,8 @@ namespace AstralParty.Agent
             public const string GambleDice = "gamble_dice";
             /// <summary>抽奖选号(动作 5041): 从 1..上限里选 Num 个还没占的号码(候选 = 本地算)。超时 = 最小的那几个。</summary>
             public const string LotteryPick = "lottery_pick";
+            /// <summary>追击地块(动作 5033): 追哪个敌方英雄(playerId), 或 stay=true 停留。超时 = 停留。</summary>
+            public const string PursuePlayer = "pursue_player";
         }
 
         /// <summary>把这些名字拼成外部工具名(<c>astral_xxx</c>)。</summary>

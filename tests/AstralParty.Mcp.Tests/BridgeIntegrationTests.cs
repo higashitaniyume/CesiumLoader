@@ -731,6 +731,7 @@ namespace AstralParty.Mcp.Tests
             Assert.Contains("astral_gamble_guess", names);
             Assert.Contains("astral_gamble_dice", names);
             Assert.Contains("astral_lottery_pick", names);
+            Assert.Contains("astral_pursue_player", names);
             Assert.Contains("astral_speed", names);
             Assert.Contains("astral_control", names);
             Assert.Contains("astral_emergency_stop", names);

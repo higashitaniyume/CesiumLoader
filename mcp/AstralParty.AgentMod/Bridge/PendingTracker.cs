@@ -214,6 +214,19 @@ namespace AstralParty.AgentMod.Bridge
             }
         }
 
+        /// <summary>5033 追击地块: 取候选敌方英雄 playerId。用于"agent 只能追候选里的人"这条校验。</summary>
+        public bool TryGetPursuePlayers(out long[] playerIds)
+        {
+            playerIds = null;
+            lock (_lock)
+            {
+                if (_window == null || _window.Kind != AgentPendingKind.PursuePlayer) return false;
+                if (_window.TargetIds == null) return false;
+                playerIds = (long[])_window.TargetIds.Clone();
+                return true;
+            }
+        }
+
         /// <summary>取当前窗口的 sn(仅当窗口类型匹配)。各项操作的 Info.Sn 必须用对应窗口的 sn。</summary>
         public bool TryGetWindowSn(string kind, out long sn)
         {
@@ -729,6 +742,32 @@ namespace AstralParty.AgentMod.Bridge
         /// <summary>抽奖回执(5042 = LotteryChoiceS2C): 窗口关闭。</summary>
         public void OnLotteryDone(long playerId, long nowMs) { ClearIf(AgentPendingKind.LotteryPick, playerId); }
 
+        // ---------- 追击地块窗口(5033 / 回执 5034) ----------
+
+        /// <summary>
+        /// 服务器问"要不要追某个敌方英雄"(5033 = <c>UI.LandPursuitWindow.DealLand_Pursuit</c>) ——
+        /// **注意这与 5213 怪物追击不是同一个窗口**(5213 追怪, 5033 追人)。
+        /// 这条动作的 <c>Data</c> 客户端**从不解码**(窗口只用 <c>action.Sn</c>), 所以 offer 基本是零负载;
+        /// 候选是本地算的: <c>characterType==Hero &amp;&amp; 不是我 &amp;&amp; 不同队 &amp;&amp; !NotSelect</c>,
+        /// 再按"还能不能打"过滤(血量&gt;0 且不在医院地块 —— 客户端会把这类行置灰、确定键点不亮),
+        /// 口径见 <c>GameProbe.TrySelfPursuitPlayers</c>。候选为空数组是合法结果("现在没人可追")。
+        /// 超时回调点的是"停留" → **不答 = 不追**(<c>SelectPlayerId=0</c>)。
+        /// </summary>
+        public void OnPursuePlayerOffer(long playerId, long[] candidateIds, long sn, long nowMs)
+        {
+            SetWindow(new Window
+            {
+                Kind = AgentPendingKind.PursuePlayer,
+                PlayerId = playerId,
+                TargetIds = candidateIds,
+                Sn = sn,
+                SinceMs = nowMs
+            });
+        }
+
+        /// <summary>追击地块回执(5034 = PursuitS2C): 窗口关闭。</summary>
+        public void OnPursuePlayerDone(long playerId, long nowMs) { ClearIf(AgentPendingKind.PursuePlayer, playerId); }
+
         // ============================== 主线程提示 ==============================
 
         /// <summary>刷新运行时提示(每 tick 由 StateProbe 调用)。</summary>
@@ -947,7 +986,7 @@ namespace AstralParty.AgentMod.Bridge
                 return;
             }
 
-            if (w.Kind == AgentPendingKind.BatteryTarget)
+            if (w.Kind == AgentPendingKind.BatteryTarget || w.Kind == AgentPendingKind.PursuePlayer)
             {
                 if (w.TargetIds == null) return;
                 foreach (long id in w.TargetIds)
@@ -1196,6 +1235,23 @@ namespace AstralParty.AgentMod.Bridge
                     p.Options.Add("astral_lottery_pick {}                          默认选最小的那几个(与客户端超时一致)");
                     p.Notes.Add("抽奖(5041): 这次要选 " + w.TargetNum + " 个号码; 候选 = 1..上限里**你还没占**的号码(见候选, kind=lottery)。");
                     p.Notes.Add("★ 超时不答 = 从最小的可用号码开始补满 " + w.TargetNum + " 个。");
+                    break;
+
+                case AgentPendingKind.PursuePlayer:
+                    p.Actionable = p.Candidates.Count > 0;
+                    p.Options.Add("astral_pursue_player {\"playerId\":<候选里的 id>}   追这个敌方英雄");
+                    p.Options.Add("astral_pursue_player {\"stay\":true}                不追, 就地停留");
+                    {
+                        int candCount = w.TargetIds == null ? -1 : w.TargetIds.Length;
+                        if (candCount > 0)
+                            p.Notes.Add("追击地块(5033): 候选有 " + candCount +
+                                        " 个敌方英雄(见候选, kind=player); 只有血量>0 且不在医院地块的才算能追。");
+                        else if (candCount == 0)
+                            p.Notes.Add("追击地块(5033): 现在没有能追的敌方英雄(要么不在场、要么血量 0/在医院)。");
+                        else
+                            p.Notes.Add("追击地块(5033): 候选还没读出来(战斗数据未就绪), 此时只能 stay=true。");
+                    }
+                    p.Notes.Add("★ 超时不答 = 不追(SelectPlayerId=0, 客户端超时点的是\"停留\"按钮)。");
                     break;
             }
 
