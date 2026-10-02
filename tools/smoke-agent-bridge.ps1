@@ -232,7 +232,7 @@ try {
 
     $list = Invoke-Mcp -Method 'tools/list' -Params ([ordered]@{})
     $tools = @($list.result.tools)
-    Assert-That 'tools/list 返回 36 个工具' ($tools.Count -eq 36) "实际 $($tools.Count)"
+    Assert-That 'tools/list 返回 38 个工具' ($tools.Count -eq 38) "实际 $($tools.Count)"
     Assert-That '工具名统一 astral_ 前缀' (@($tools | Where-Object { $_.name -notlike 'astral_*' }).Count -eq 0) ''
     Assert-That '包含 astral_move 与 astral_emergency_stop' `
         ((@($tools.name) -contains 'astral_move') -and (@($tools.name) -contains 'astral_emergency_stop')) ''
@@ -242,12 +242,13 @@ try {
     Assert-That '包含地块/选点四件套(加油站/追击/商人/选点)' `
         (((@($tools.name) -contains 'astral_stop_or_continue') -and (@($tools.name) -contains 'astral_pursue_monster') -and
           (@($tools.name) -contains 'astral_vendor_buy_card') -and (@($tools.name) -contains 'astral_select_point'))) ''
-    Assert-That '包含地块应答三件套(复活队友/机制选择/医院) + 炮台/占卜/赌场/抽奖/追地' `
+    Assert-That '包含地块应答三件套(复活队友/机制选择/医院) + 炮台/占卜/赌场/抽奖/追地/投票' `
         (((@($tools.name) -contains 'astral_revive_teammate') -and (@($tools.name) -contains 'astral_select_mechanism') -and
           (@($tools.name) -contains 'astral_hospital_check') -and (@($tools.name) -contains 'astral_battery_pick') -and
           (@($tools.name) -contains 'astral_divination_pick') -and (@($tools.name) -contains 'astral_gamble_guess') -and
           (@($tools.name) -contains 'astral_gamble_dice') -and (@($tools.name) -contains 'astral_lottery_pick') -and
-          (@($tools.name) -contains 'astral_pursue_player'))) ''
+          (@($tools.name) -contains 'astral_pursue_player') -and (@($tools.name) -contains 'astral_assist_vote_select') -and
+          (@($tools.name) -contains 'astral_assist_vote_sure'))) ''
 
     # ------------------------------ 2. 只读工具读假状态 ------------------------------
     Write-Host '[smoke] --- 只读工具 ---'
@@ -441,6 +442,28 @@ try {
 
     $ppNoArg = Invoke-Tool 'astral_pursue_player' '{}'
     Assert-That 'astral_pursue_player 缺 playerId/stay 时报错(不下发)' ($ppNoArg.IsError -eq $true) $ppNoArg.Text
+
+    # 助力投票(5309 两步): 选路(side / monsterId) + 确认 + 不选就报错
+    $avs = Invoke-Tool 'astral_assist_vote_select' '{"side":"left","sn":5309}'
+    Assert-That 'astral_assist_vote_select(side) 往返成功' ((-not $avs.IsError) -and ($avs.Text -match '已发送\(假游戏\)')) $avs.Text
+    $lastLine = @(Get-Content -LiteralPath $cmdLog -Encoding UTF8) | Select-Object -Last 1
+    Assert-That '命令文件里 tool=assist_vote_select 且 side=left 原样落盘' `
+        (($lastLine -match '"tool"\s*:\s*"assist_vote_select"') -and ($lastLine -match '"side"\s*:\s*"left"')) $lastLine
+
+    $avm = Invoke-Tool 'astral_assist_vote_select' '{"monsterId":8201301,"sn":5309}'
+    Assert-That 'astral_assist_vote_select(monsterId) 往返成功' ((-not $avm.IsError) -and ($avm.Text -match '已发送\(假游戏\)')) $avm.Text
+    $lastLine = @(Get-Content -LiteralPath $cmdLog -Encoding UTF8) | Select-Object -Last 1
+    Assert-That '命令文件里 tool=assist_vote_select 且 monsterId 原样(64 位)' `
+        (($lastLine -match '"tool"\s*:\s*"assist_vote_select"') -and ($lastLine -match '"monsterId"\s*:\s*8201301')) $lastLine
+
+    $avNoArg = Invoke-Tool 'astral_assist_vote_select' '{}'
+    Assert-That 'astral_assist_vote_select 缺 side/monsterId 时报错(不下发)' ($avNoArg.IsError -eq $true) $avNoArg.Text
+
+    $avSure = Invoke-Tool 'astral_assist_vote_sure' '{"sn":5309}'
+    Assert-That 'astral_assist_vote_sure 往返成功' ((-not $avSure.IsError) -and ($avSure.Text -match '已发送\(假游戏\)')) $avSure.Text
+    $lastLine = @(Get-Content -LiteralPath $cmdLog -Encoding UTF8) | Select-Object -Last 1
+    Assert-That '命令文件里 tool=assist_vote_sure 且不带业务参数' `
+        (($lastLine -match '"tool"\s*:\s*"assist_vote_sure"') -and ($lastLine -notmatch '"side"')) $lastLine
 
     # ------------------------------ 4. 开关闸门 ------------------------------
     Write-Host '[smoke] --- 安全开关(control.json) ---'

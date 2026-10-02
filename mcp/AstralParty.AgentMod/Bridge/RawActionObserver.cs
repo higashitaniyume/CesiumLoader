@@ -720,6 +720,54 @@ namespace AstralParty.AgentMod.Bridge
                                    ", exit=" + d.Exit + "}";
                         }
 
+                    // ---------- 助力投票(5309 选/确认 / 5310 已确认 / 5312 已选路 / 1093 PK 结束) ----------
+                    // 5309 又是"offer 与答案同一个消息类": offer 带 VoteIds(只有 count > 0 时客户端才开窗),
+                    // 答案是 {Info}(只有 sn, 不带选择) —— 靠 Info.Sn 区分。
+                    // 候选**不在协议里**(客户端用本地配置 StaticConfigure.PVEMission.Votes), 所以本地算。
+                    // 只有本人开窗; 关窗信号是 1093(PK 结束), 不是 5310。
+                    case 5309:
+                        {
+                            var d = ByteBuf.ReadObject<VoteC2S>(e.Data);
+                            if (d == null) return null;
+                            long offerSn = d.Info != null ? d.Info.Sn : 0;
+                            if (offerSn != 0)
+                                return "AssistVoteAnswer{sn=" + offerSn + "}";
+                            var voteIds = ToList(d.VoteIds);
+                            if (voteIds.Count == 0)
+                                return "AssistVoteOffer{VoteIds 为空, 客户端也不开窗}";
+                            long self = _selfId != null ? _selfId() : 0;
+                            if (self != 0 && e.PlayerId != self)
+                                return "AssistVoteOffer{不是我的窗口, 忽略}";
+                            int rightId, leftId, centerId;
+                            if (!GameProbe.TrySelfAssistVote(out rightId, out leftId, out centerId))
+                                return "AssistVoteOffer{读不到本地投票配置(地图/配置对不上), 不开窗}";
+                            _tracker.OnAssistVoteOffer(e.PlayerId, new int[] { rightId, leftId, centerId }, e.Sn, now);
+                            return "AssistVoteOffer{voteIds=[" + Join(voteIds) + "], 左=" + leftId +
+                                   ", 右=" + rightId + ", 中=" + centerId + "}";
+                        }
+
+                    case 5310:
+                        {
+                            var d = ByteBuf.ReadObject<VoteS2C>(e.Data);
+                            if (d == null) return null;
+                            // 只是"某人确认了", 窗口还得等 1093 才关
+                            return "AssistVoteResult{playerId=" + d.PlayerId + ", selectId=" + d.SelectId + "}";
+                        }
+
+                    case 5312:
+                        {
+                            var d = ByteBuf.ReadObject<VoteSelectS2C>(e.Data);
+                            if (d == null) return null;
+                            return "AssistVoteSelect{playerId=" + d.PlayerId + ", selectId=" + d.SelectId + "}";
+                        }
+
+                    case 1093:
+                        {
+                            // PkAfterVoteS2C 没有 PlayerId, 所以关窗不认人
+                            _tracker.OnAssistVoteDone(0, now);
+                            return "AssistVoteOver{1093 PK 结束}";
+                        }
+
                     case 5068:
                         {
                             var d = ByteBuf.ReadObject<ThrowDiceResultS2C>(e.Data);

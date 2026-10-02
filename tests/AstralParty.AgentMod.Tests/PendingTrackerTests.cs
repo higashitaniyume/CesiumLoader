@@ -1181,6 +1181,63 @@ namespace AstralParty.AgentMod.Tests
             Assert.Contains(p.Notes, n => n.Contains("其他玩家"));
         }
 
+        // ---------- 助力投票(5309 / 回执 5310 / 选路 5312 / 结束 1093) ----------
+
+        [Fact]
+        public void 助力投票窗口_给出左右中三路与两步操作()
+        {
+            var t = new PendingTracker();
+            t.OnAssistVoteOffer(Self, new int[] { 200, 100, 300 }, 555501, 1000);   // 槽位 = [右, 左, 中]
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Equal(AgentPendingKind.AssistVote, p.Kind);
+            Assert.Equal(555501, p.Sn);
+            Assert.True(p.Actionable);
+            Assert.Equal(3, p.Candidates.Count);
+            Assert.All(p.Candidates, c => Assert.Equal("monster", c.Kind));
+            Assert.Contains(p.Candidates, c => c.Id == 100);
+            Assert.Contains(p.Options, o => o.Contains("astral_assist_vote_select"));
+            Assert.Contains(p.Options, o => o.Contains("astral_assist_vote_sure"));
+            Assert.Contains(p.Notes, n => n.Contains("左=100") && n.Contains("右=200") && n.Contains("中=300"));
+            Assert.Contains(p.Notes, n => n.Contains("超时不答 = **直接确认**"));
+        }
+
+        [Fact]
+        public void 助力投票窗口_两路图中间那路是0且不进候选()
+        {
+            var t = new PendingTracker();
+            t.OnAssistVoteOffer(Self, new int[] { 200, 100, 0 }, 555502, 1000);
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Equal(2, p.Candidates.Count);
+            Assert.DoesNotContain(p.Candidates, c => c.Id == 0);
+            Assert.Contains(p.Notes, n => n.Contains("中=0"));
+        }
+
+        [Fact]
+        public void 助力投票结束_关掉窗口()
+        {
+            var t = new PendingTracker();
+            t.OnAssistVoteOffer(Self, new int[] { 200, 100, 0 }, 555503, 1000);
+            t.OnAssistVoteDone(0, 1100);   // 1093 没有 PlayerId, 关窗不认人
+
+            Assert.Equal(AgentPendingKind.None, Build(t, false, 0, 1200).Kind);
+        }
+
+        [Fact]
+        public void 助力投票窗口_别人的窗口不当作我的()
+        {
+            var t = new PendingTracker();
+            t.OnAssistVoteOffer(Other, new int[] { 200, 100, 0 }, 555504, 1000);
+
+            var p = Build(t, false, 0, 1200);
+
+            Assert.Equal(AgentPendingKind.None, p.Kind);
+            Assert.Contains(p.Notes, n => n.Contains("其他玩家"));
+        }
+
         // ---------- 怪物追击(5213 / 回执 5214) ----------
 
         [Fact]

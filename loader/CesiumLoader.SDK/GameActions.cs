@@ -494,6 +494,44 @@ namespace CesiumLoader.SDK
             catch { return false; }
         }
 
+        /// <summary>
+        /// 助力投票·选路(服务器动作 5309 的**第一步**): <paramref name="monsterId"/> = 投给哪一路的怪。
+        /// </summary>
+        /// <remarks>
+        /// 复刻 <c>AssistVoteLogic.RequestVoteSelectC2S</c> → <c>VoteSelectC2S{SelectId}</c>。
+        /// **这条上行不带 <c>Info</c>/<c>Sn</c>** —— 它不属于某一次投票窗口, 而是一次"我当前选谁"的广播,
+        /// 所以窗口还开着的时候**可以反复改**。候选来自本地配置(见 <c>GameProbe.TrySelfAssistVote</c>)。
+        /// 第二步要再发 <see cref="AssistVoteSure"/> 才算把票落实。
+        /// </remarks>
+        public static bool AssistVoteSelect(int monsterId)
+        {
+            try
+            {
+                if (monsterId == 0) return false;
+                Net!.RPC.VoteSelectC2S.VoteSelectC2SCall(new VoteSelectC2S { SelectId = monsterId });
+                return true;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>
+        /// 助力投票·确认(服务器动作 5309 的**第二步**): 把票落实。带 <c>Info.Sn</c>。
+        /// </summary>
+        /// <remarks>
+        /// 复刻 <c>AssistVoteLogic.RequestVoteC2S</c> → <c>VoteC2S{Info}</c>(**只有 sn, 不带选择**)。
+        /// 客户端倒计时回调点的是 <c>SureVote</c>(就是这一步) → **不答 = 直接确认**(没选过就等于弃票)。
+        /// </remarks>
+        public static bool AssistVoteSure(long? sn = null)
+        {
+            try
+            {
+                if (!Ready(out long targetSn, sn)) return false;
+                Net!.RPC.VoteC2S.VoteC2SCall(new VoteC2S { Info = MakeInfo(targetSn) });
+                return true;
+            }
+            catch { return false; }
+        }
+
         // ============================== 移动 ==============================
 
         /// <summary>移动到目标地块(targetLandId = 目标地块 ID, 即方向箭头指向的格)。返回是否成功发出。</summary>

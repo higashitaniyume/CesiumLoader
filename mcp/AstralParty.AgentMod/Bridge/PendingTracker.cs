@@ -227,6 +227,23 @@ namespace AstralParty.AgentMod.Bridge
             }
         }
 
+        /// <summary>
+        /// 5309 助力投票: 取三个槽位(下标 0=右, 1=左, 2=中; <c>0</c> = 本赛季/本图没有这一路)。
+        /// 用槽位而不是"只给非空", 是因为两张地图的票数不同(82013 两路, 82015 三路),
+        /// agent 需要知道"左/右/中"分别对应哪个 id。
+        /// </summary>
+        public bool TryGetAssistVote(out int[] slots)
+        {
+            slots = null;
+            lock (_lock)
+            {
+                if (_window == null || _window.Kind != AgentPendingKind.AssistVote) return false;
+                if (_window.Ids == null || _window.Ids.Length < 3) return false;
+                slots = (int[])_window.Ids.Clone();
+                return true;
+            }
+        }
+
         /// <summary>取当前窗口的 sn(仅当窗口类型匹配)。各项操作的 Info.Sn 必须用对应窗口的 sn。</summary>
         public bool TryGetWindowSn(string kind, out long sn)
         {
@@ -768,6 +785,34 @@ namespace AstralParty.AgentMod.Bridge
         /// <summary>追击地块回执(5034 = PursuitS2C): 窗口关闭。</summary>
         public void OnPursuePlayerDone(long playerId, long nowMs) { ClearIf(AgentPendingKind.PursuePlayer, playerId); }
 
+        // ---------- 助力投票窗口(5309 / 回执 5310 / 选路 5312 / 结束 1093) ----------
+
+        /// <summary>
+        /// 服务器问"助力投哪一路"(5309 = <c>AssistVoteLogic.TryShowAssistVote</c>)。
+        /// offer = <c>VoteC2S{VoteIds}</c>, 答案是**同一个消息类的** <c>{Info}</c>(只有 sn, **不带选择**) ——
+        /// 靠 <c>Info.Sn</c> 区分。这是**两步**窗口:
+        /// ① 选路 <c>RequestVoteSelectC2S(monsterId)</c> → <c>VoteSelectC2S{SelectId}</c>(**没有 sn**, 可以反复改);
+        /// ② 确认 <c>RequestVoteC2S(sn)</c> → <c>VoteC2S{Info}</c>。
+        /// 倒计时回调点的是 <c>SureVote</c>(=第二步) → **不答 = 直接确认**(没选过就等于弃票)。
+        /// 候选来自**本地配置**(<c>StaticConfigure.PVEMission.Votes</c> 里 <c>MapId</c> 命中的那组):
+        /// 下标 0=右 / 1=左 / 2=中, 82013 图只有右/左, 82015(S7) 图有右/左/中。
+        /// 窗口真正的关闭信号是 **1093 PkAfterVoteS2C**(PK 结束), 不是 5310。
+        /// </summary>
+        public void OnAssistVoteOffer(long playerId, int[] slots, long sn, long nowMs)
+        {
+            SetWindow(new Window
+            {
+                Kind = AgentPendingKind.AssistVote,
+                PlayerId = playerId,
+                Ids = slots,
+                Sn = sn,
+                SinceMs = nowMs
+            });
+        }
+
+        /// <summary>助力投票结束(1093 = PkAfterVoteS2C, 该消息**没有 PlayerId**): 关窗(不认人)。</summary>
+        public void OnAssistVoteDone(long playerId, long nowMs) { ClearIf(AgentPendingKind.AssistVote, playerId); }
+
         // ============================== 主线程提示 ==============================
 
         /// <summary>刷新运行时提示(每 tick 由 StateProbe 调用)。</summary>
@@ -1253,6 +1298,20 @@ namespace AstralParty.AgentMod.Bridge
                     }
                     p.Notes.Add("★ 超时不答 = 不追(SelectPlayerId=0, 客户端超时点的是\"停留\"按钮)。");
                     break;
+
+                case AgentPendingKind.AssistVote:
+                    {
+                        p.Actionable = true;
+                        int right = w.Ids != null && w.Ids.Length > 0 ? w.Ids[0] : 0;
+                        int left = w.Ids != null && w.Ids.Length > 1 ? w.Ids[1] : 0;
+                        int center = w.Ids != null && w.Ids.Length > 2 ? w.Ids[2] : 0;
+                        p.Options.Add("astral_assist_vote_select {\"side\":\"left\"|\"right\"|\"center\"}   选一路(可反复改)");
+                        p.Options.Add("astral_assist_vote_sure {}                                    确认这张票");
+                        p.Notes.Add("助力投票(5309, 两步): 左=" + left + " / 右=" + right + " / 中=" + center +
+                                    "(0 = 本图没有这一路)。先 select 再 sure。");
+                        p.Notes.Add("★ 超时不答 = **直接确认**(没选过就等于弃票, 客户端超时点的是\"确认\"按钮)。");
+                    }
+                    break;
             }
 
             if (usable != null && usable.Length > 0 && w.Kind != AgentPendingKind.CardChoice)
@@ -1301,6 +1360,7 @@ namespace AstralParty.AgentMod.Bridge
                 case AgentPendingKind.PursueMonster: return "monster";
                 case AgentPendingKind.Divination: return "divination";
                 case AgentPendingKind.LotteryPick: return "lottery";
+                case AgentPendingKind.AssistVote: return "monster";
                 default: return "unknown";
             }
         }
