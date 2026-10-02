@@ -29,6 +29,8 @@ namespace AstralParty.AgentMod.Tests
             ("Flush(true)", "真机 MethodNotFind System.IO.FileStream::Flush —— 就是这么炸的"),
             ("Flush(false)", "同上(FileStream.Flush(bool) 这个重载)"),
             ("new FileStream", "游戏内没有验证过 FileStream 的 Seek/Length/Flush 组合; 仓库里跑通的写入全走 File.* 静态方法"),
+            ("new FileInfo", "真机 MethodNotFind System.IO.FileInfo::get_Length —— 2026-10-02 就是这么炸的(日志轮转的大小检查), 每帧刷一条并打断 OnUpdate 的后续步骤"),
+            ("new DirectoryInfo", "同上(FileInfo/DirectoryInfo 的 Length/Name 等在游戏内未验证; 要列目录用 Directory.GetFiles 拿 string[])"),
             ("File.Open", "同上(FileStream 的另一条构造路径)"),
             ("new StreamWriter", "未验证; 用 File.WriteAllText/AppendAllText 代替"),
             ("new StreamReader", "未验证; 用 File.ReadAllText 代替"),

@@ -39,7 +39,8 @@ namespace AstralParty.AgentMod.Tests
             var s = new BridgeSettings();
             s.ApplyControl(_root);
 
-            Assert.True(s.EnableActions);      // 默认放行(接管开箱即用)
+            // 默认**只读**: 这是实验性功能, 想放开动作必须在 config.json/control.json 里显式打开
+            Assert.False(s.EnableActions);
             Assert.False(s.PauseActions);
             Assert.False(s.DryRun);
             Assert.False(s.ControlFileApplied);

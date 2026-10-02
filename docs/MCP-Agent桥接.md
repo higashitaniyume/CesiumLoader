@@ -5,6 +5,58 @@
 
 ---
 
+## 0. 状态：实验性、未完成（2026-10-02）
+
+**一句话**：协议契约与状态机有大量离线测试撑着，**但真机只跑通过"只读链路"，窗口级与真实下发没验完**，
+用户主动叫停。别把它当成品用。
+
+**默认不装、默认只读**：
+
+- 不在 `tools\builtin-mods.json` 里 → 装加载器/装内置 mod **不会**带上它；
+  只能用 `tools\deploy-agentmod.ps1` 单独装（删 `mods\AstralParty.AgentMod\` 即卸载）。
+- mod 的 `config.json` 里 `enableActions` 默认 **`false`**；只读时任何动作命令都返回 `rejected`。
+
+**真机实测到什么程度**（游戏 PID 2896，单人对局）：
+
+| 验过的 | 结果 |
+|---|---|
+| mod 在游戏里加载、写 `bridge.json`/`state.json` | ✅ 心跳持续、`ProcessId` 对得上、`StateSeq` 递增 |
+| 场景/房间识别 | ✅ 大厅 `InRoom=false` → 进对局后 `InRoom=true InBattle=true`、场景 id 变化 |
+| **只读闸门** | ✅ 故意发 `astral_throw_dice` → `rejected: 桥接处于只读模式`；mod 侧 `CommandsRejected=1`、`CommandsExecuted=0`、命令/结果目录零残留 |
+| 状态快照契约 | ✅ `astral_state` 里本轮新增字段（`TargetNum`/`TargetIds`/`GambleCanAct`/`BetGold`）都在 |
+| `astral_pending` 报窗口 | ⚠ 只看到 `cardChoice` 一个 kind，**其余 15+ 个 kind 没验** |
+| 真实下发动作 | ❌ **一条都没成功下发**（原因见下），用户随即叫停 |
+
+**期间抓到的真机 bug（已修）**：`mcp\Shared\AgentBridgeLayout.cs` 的日志轮转用了
+`new FileInfo(path).Length`，游戏里每一帧抛一条
+`[ERR] [AstralParty.AgentMod] AgentBridge/OnUpdate: MethodNotFind System.IO.FileInfo::get_Length`。
+它与 `FileStream.Flush(bool)` 是同一类坑（编译期/离线测试全绿，只有真机执行到那一行才抛）。
+**后果**：异常打断 `OnUpdate` 的后续步骤 → `state.json` 还在更新，但**心跳刷不新** →
+MCP server 按 `bridge.json` 判定"桥接掉线" → **一切动作命令在 server 侧就被拒发**
+（`CommandsExecuted=0`、`commands`/`results` 零残留，全部吻合）。
+已改成"自己记已追加字符数"（只用 `File.AppendAllText`/`File.ReadAllText`），
+并把 `new FileInfo` / `new DirectoryInfo` 加进了 BCL lint（`BclCompatibilityTests`）。
+
+> 教训：**"没在真机跑过的 BCL 成员"清单必须包含 FileSystemInfo 家族**。
+> 离线测试跑在 net8.0 上，`FileInfo.Length` 一定通过 —— 它拦不住这类问题。
+
+**还没验的（接手的人先做这些）**：
+
+1. `astral_pending` 对每个 kind 是否报得对（`selectRelic`/`throwDice`/`move`/`askFight`/`fightCard`/
+   `fightChoice`/`stopOrContinue`/`pursueMonster`/`vendorCard`/`selectPoint`/`reviveTeammate`/
+   `selectMechanism`/`hospitalCheck`/`batteryTarget`/`divination`/`gambleGuess`/`gambleDice`/
+   `lotteryPick`/`pursuePlayer`/`assistVote`）。
+2. 真实下发（先 `DryRun`，再逐步放开）。
+3. `File.GetLastWriteTimeUtc`（`AgentBridgeModule` 里清结果文件用的）**没在真机跑到过** ——
+   同样是 FileSystemInfo 家族，值得优先怀疑并换成别的判据。
+
+> ⚠ 另外两条真机注意事项：Unity 默认 `runInBackground=false`，**游戏窗口失焦时主线程停摆**，
+> mod 心跳随之过期（server 会拒发）——验证时要让游戏窗口保持在前台。
+> 桥接的 `state.json` 每 250ms 重写一次，**裸读 `state.json` 可能撞上写锁**（server 侧有重试；
+> 自己写脚本读时要带重试）。
+
+---
+
 ## 1. 目标与边界
 
 **目标**：外部 AI agent 能（1）读到足够做出决策的对局状态，（2）把自己的决策落成游戏**合法的
@@ -443,7 +495,7 @@ RecentActions[]{AtMs,Tool,Ok,Code,Detail}
 
 | 层 | 项目 | 覆盖 |
 |---|---|---|
-| 纯逻辑 | `tests\AstralParty.AgentMod.Tests`（143 个） | 目录/文件协议（原子写、日志尾部按行截断、轮转、`Sanitize` 防穿越、`{seq:D8}` 排序）、`PendingTracker` 逐窗口（含 `Sn==0` 拒绝、别人的窗口、优先级、倒计时、副本语义、**已应答 sn 的回声防护**、事件选择与战斗骰窗口、**战斗三件套 5047/5035/5039（含"别人的窗口不许顶掉我的"与 `NoDodge` 查询）**、**地块四件套 5077/5213/5323/5067（含 64 位 `LongId`、价格/点数上限查询、回声防护）**、**地块应答三件套 5233/5259/5093（含"别人的窗口不当作我的"、"医院窗口只有一个选项"）**、**炮台选目标 5063（含候选数量上限、"候选未知 ≠ 没有候选"）**、**占卜 5069（含两张候选与"超时 = 第 1 张"）**、**赌场 5081/5083（含"按钮置灰不可操作"、"不能参与就不开窗"、"状态变化只关窗不开窗"）**、**抽奖 5041（含"号码全占满就不可操作"与"超时 = 最小的可用号码"）**、**追击地块 5033（含"候选为空是合法结果"、"候选未知 ≠ 没有候选"）**、**助力投票 5309（含三路槽位、"两路图中间那路是 0"、"超时 = 直接确认"）**）、命令解析与回执序列化、`control.json` 读取（含大小写容错与急停/恢复往返）、**热更 BCL 禁用模式 lint** |
+| 纯逻辑 | `tests\AstralParty.AgentMod.Tests`（144 个） | 目录/文件协议（原子写、日志尾部按行截断、轮转、`Sanitize` 防穿越、`{seq:D8}` 排序）、`PendingTracker` 逐窗口（含 `Sn==0` 拒绝、别人的窗口、优先级、倒计时、副本语义、**已应答 sn 的回声防护**、事件选择与战斗骰窗口、**战斗三件套 5047/5035/5039（含"别人的窗口不许顶掉我的"与 `NoDodge` 查询）**、**地块四件套 5077/5213/5323/5067（含 64 位 `LongId`、价格/点数上限查询、回声防护）**、**地块应答三件套 5233/5259/5093（含"别人的窗口不当作我的"、"医院窗口只有一个选项"）**、**炮台选目标 5063（含候选数量上限、"候选未知 ≠ 没有候选"）**、**占卜 5069（含两张候选与"超时 = 第 1 张"）**、**赌场 5081/5083（含"按钮置灰不可操作"、"不能参与就不开窗"、"状态变化只关窗不开窗"）**、**抽奖 5041（含"号码全占满就不可操作"与"超时 = 最小的可用号码"）**、**追击地块 5033（含"候选为空是合法结果"、"候选未知 ≠ 没有候选"）**、**助力投票 5309（含三路槽位、"两路图中间那路是 0"、"超时 = 直接确认"）**）、命令解析与回执序列化、`control.json` 读取（含大小写容错与急停/恢复往返）、**热更 BCL 禁用模式 lint** |
 | 协议 + 集成 | `tests\AstralParty.Mcp.Tests`（67 个） | JSON-RPC 全路径、工具清单与注解、参数校验、开关合并、**真文件往返**（假游戏线程消费 `commands` 写 `results`）、**新工具的参数确实落进命令文件**（含 `ask_battle`/`battle_choice`/`use_card` 的 `pass`、以及地块四件套的 `stop`/`monsterId`/`buy`/`point`）、**工具清单与 `AgentBridgeLayout.Tool` 的双向一致性守卫**（加了契约常量却忘了暴露 MCP 工具、或名字拼错都会挂）、超时清理、事件尾部截取、`Pending.Kind=None` 的大小写判定 |
 | 端到端冒烟 | `tools\smoke-agent-bridge.ps1`（88 项断言） | **真 server exe** + 临时桥接目录扮演游戏：握手/工具清单（38 个）、state/bridge/control 字段与大小写、命令文件往返与两侧清理（含战斗三件套、地块四件套、地块应答三件套、炮台选目标、占卜、赌场、抽奖、追击地块与助力投票两步）、心跳过期拒绝下发 |
 | 真机 | 需要用户配合 | 见下 |
@@ -601,3 +653,5 @@ pwsh -NoProfile -File tools\smoke-agent-bridge.ps1
 | 动作回 `bad_args` | 参数或窗口不匹配（回执 `Error` 里有具体原因） |
 | 动作回 `expired` 或没有回执 | TTL 太短 / mod 没在轮询；命令文件还在 `commands\` 说明 mod 侧没消费 |
 | 发了动作游戏没反应 | 看 `actions.jsonl` 是否 `Ok`；`Ok` 但没反应通常是 `sn` 不对（窗口已被别人推进） |
+
+

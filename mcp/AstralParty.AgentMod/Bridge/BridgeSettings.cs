@@ -33,8 +33,8 @@ namespace AstralParty.AgentMod.Bridge
         /// <summary>结果文件保留时长(超过就删, 防止目录无限增长)。</summary>
         public int ResultRetentionMs = 10 * 60 * 1000;
 
-        /// <summary>总开关: false = 桥接只读(所有动作命令返回 rejected)。</summary>
-        public bool EnableActions = true;
+        /// <summary>总开关: false = 桥接只读(所有动作命令返回 rejected)。默认 false —— 这是实验性功能, 要动手得显式打开。</summary>
+        public bool EnableActions = false;
         /// <summary>急停: 只记录不执行。</summary>
         public bool PauseActions;
         /// <summary>演练: 走完整流程但不真的发 C2S。</summary>
@@ -79,9 +79,9 @@ namespace AstralParty.AgentMod.Bridge
             try
             {
                 if (config.Has("agentDir")) return;
-                config.Set("_说明", "AI Agent 桥接: 桥接目录放 state.json/events.jsonl/actions.jsonl/commands/。enableActions=false 时只读(任何操作都拒绝执行)。");
+                config.Set("_说明", "AI Agent 桥接(实验性/未完成, 真机只验过只读链路)。桥接目录放 state.json/events.jsonl/actions.jsonl/commands/。**默认只读**: enableActions=false 时任何操作都拒绝执行; 想放开动作要自己改成 true 并自负风险。");
                 config.Set("agentDir", agentDir ?? string.Empty);
-                config.Set("enableActions", true);
+                config.Set("enableActions", false);
                 config.Set("pauseActions", false);
                 config.Set("dryRun", false);
                 config.Set("stateIntervalMs", 250);
