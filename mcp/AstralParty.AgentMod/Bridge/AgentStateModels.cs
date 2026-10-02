@@ -208,6 +208,8 @@ namespace AstralParty.AgentMod.Bridge
         public const string GambleDice = "gambleDice";
         /// <summary>抽奖选号 5041(LotteryChoice): 选 Num 个还没被自己占的号码。超时 = 最小的那几个。</summary>
         public const string LotteryPick = "lotteryPick";
+        /// <summary>追击地块 5033(Pursuit, 与 5213 怪物追击不是同一个窗口): 追哪个敌方英雄。超时 = 停留。</summary>
+        public const string PursuePlayer = "pursuePlayer";
     }
 
     public sealed class AgentCounters

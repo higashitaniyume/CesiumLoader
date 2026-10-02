@@ -45,7 +45,8 @@ namespace AstralParty.Mcp
                     "     astral_select_event / astral_use_quick_card / astral_stop_or_continue / astral_pursue_monster /\n" +
                     "     astral_vendor_buy_card / astral_select_point / astral_revive_teammate /\n" +
                     "     astral_select_mechanism / astral_hospital_check / astral_battery_pick /\n" +
-                    "     astral_divination_pick / astral_gamble_guess / astral_gamble_dice / astral_lottery_pick /\n" +
+                    "     astral_divination_pick / astral_gamble_guess / astral_gamble_dice /\n" +
+                    "     astral_lottery_pick / astral_pursue_player /\n" +
                     "     astral_shop_buy / astral_buy_relic / astral_atm_transfer …(pending.Options 里会列出本窗口可用的操作);\n" +
                     "  4) 重复 2-3。需要手牌/场上数值时用 astral_state; 想复盘刚发生了什么用 astral_events / astral_actions。\n" +
                     "注意:\n" +
@@ -209,6 +210,13 @@ namespace AstralParty.Mcp
                 "不传 numbers 就按客户端超时的口径: 从最小的可用号码开始补满。**超时代答 = 最小的那几个**。",
                 "{\"type\":\"object\",\"properties\":{\"numbers\":{\"type\":\"array\",\"items\":{\"type\":\"integer\"},\"description\":\"选中的号码(取 pending 候选的数字), 个数必须等于 Num\"},\"sn\":{\"type\":\"integer\"}},\"additionalProperties\":false}");
 
+            Add("astral_pursue_player", "追击地块: 追哪个敌方英雄", false, true,
+                "追击地块问要不要追某个敌方英雄(5033)。**注意这与 5213 怪物追击不是同一个窗口**: 5213 追怪, 5033 追人。 " +
+                "playerId 取 pending(kind=pursuePlayer)候选里的 LongId; stay=true 表示不追、就地停留。 " +
+                "候选**不在协议里**(该动作的 Data 客户端从不解码), 是本地按客户端同口径过滤的(是英雄、不是我、不同队、未被禁选, 且血量>0、不在医院地块), " +
+                "所以桥接只接受候选里的 playerId。**超时代答 = 不追**。",
+                "{\"type\":\"object\",\"properties\":{\"playerId\":{\"type\":\"integer\",\"description\":\"要追的敌方英雄 playerId(取 pending 候选的 LongId)\"},\"stay\":{\"type\":\"boolean\",\"description\":\"true=不追, 就地停留\"},\"sn\":{\"type\":\"integer\"}},\"additionalProperties\":false}");
+
             Add("astral_speed", "设置游戏倍速", false, true,
                 "通过加载器的变速通道调整游戏时间流速(加速等待动画/演出)。下限 1.0, 上限 100。别调太高(会影响网络超时与演出)。",
                 "{\"type\":\"object\",\"properties\":{\"speed\":{\"type\":\"number\",\"description\":\"倍率, 1.0 - 100\"}},\"required\":[\"speed\"],\"additionalProperties\":false}");
@@ -277,6 +285,7 @@ namespace AstralParty.Mcp
                 case "astral_gamble_guess": return GambleGuess(args);
                 case "astral_gamble_dice": return GambleDice(args);
                 case "astral_lottery_pick": return LotteryPick(args);
+                case "astral_pursue_player": return PursuePlayer(args);
                 case "astral_speed": return Speed(args);
 
                 case "astral_control": return Control(args);
@@ -581,6 +590,17 @@ namespace AstralParty.Mcp
             else if (Has(args, "vals")) dict["numbers"] = IntList(args, "vals").ToArray();
             PutSn(args, dict);
             return Send(AgentBridgeLayout.Tool.LotteryPick, dict);
+        }
+
+        private McpToolResult PursuePlayer(JsonElement args)
+        {
+            var dict = new Dictionary<string, object>();
+            if (Bool(args, "stay", false) || Bool(args, "pass", false)) dict["stay"] = true;
+            else if (Has(args, "playerId")) dict["playerId"] = Long(args, "playerId", 0);
+            else if (Has(args, "targetId")) dict["playerId"] = Long(args, "targetId", 0);
+            else return McpToolResult.Error("需要 playerId(取 pending 候选的 LongId)或 stay=true(不追)");
+            PutSn(args, dict);
+            return Send(AgentBridgeLayout.Tool.PursuePlayer, dict);
         }
 
         private McpToolResult UseEffectCard(JsonElement args)

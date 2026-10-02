@@ -468,6 +468,32 @@ namespace CesiumLoader.SDK
             catch { return false; }
         }
 
+        /// <summary>
+        /// 追击地块(服务器动作 5033 = <c>UI.LandPursuitWindow.DealLand_Pursuit</c>):
+        /// <paramref name="playerId"/> = 要追的敌方英雄(填它的 playerId), <c>0</c> = 不追(停留)。
+        /// </summary>
+        /// <remarks>
+        /// 复刻 <c>LandLogic.RequsetPursuitC2S</c>(原方法名就是这个拼写) → <c>PursuitC2S{Info, SelectPlayerId}</c>。
+        /// 该动作的 <c>Data</c> 客户端**从不解码**(窗口只用 <c>action.Sn</c>), 候选是本地按
+        /// <c>Hero &amp;&amp; 不是我 &amp;&amp; 不同队 &amp;&amp; !NotSelect</c> 过滤的(见 <c>GameProbe.TrySelfPursuitPlayers</c>)。
+        /// 超时回调点的是"停留" → **不答 = 不追**(<c>SelectPlayerId=0</c>)。
+        /// **注意与 5213 怪物追击(<c>MonsterPursuitC2S</c>)是两个不同的窗口和消息类。**
+        /// </remarks>
+        public static bool PursuePlayer(long playerId, long? sn = null)
+        {
+            try
+            {
+                if (!Ready(out long targetSn, sn)) return false;
+                Net!.RPC.PursuitC2S.PursuitC2SCall(new PursuitC2S
+                {
+                    Info = MakeInfo(targetSn),
+                    SelectPlayerId = playerId
+                });
+                return true;
+            }
+            catch { return false; }
+        }
+
         // ============================== 移动 ==============================
 
         /// <summary>移动到目标地块(targetLandId = 目标地块 ID, 即方向箭头指向的格)。返回是否成功发出。</summary>

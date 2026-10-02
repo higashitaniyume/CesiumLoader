@@ -440,6 +440,54 @@ namespace AstralParty.AgentMod.Bridge
         }
 
         /// <summary>
+        /// 追击地块窗口(5033)的候选敌方英雄 —— 与客户端 <c>LandPursuitWindow.InitAvailablePlayer</c> 同口径:
+        /// <c>characterType == Hero &amp;&amp; 不是我 &amp;&amp; 不同队 &amp;&amp; !Property.NotSelect</c>,
+        /// 再按"还能不能打"过滤(血量&gt;0 且不在医院地块 —— 客户端会把这类行置灰、确定键也点不亮),
+        /// 与 5213 的候选人过滤同一套口径。
+        /// 候选**不在协议里**(5033 的 Data 客户端从不解码), 所以只能本地算。读不到返回 false。
+        /// </summary>
+        public static bool TrySelfPursuitPlayers(out long[] playerIds)
+        {
+            playerIds = null;
+            try
+            {
+                var gm = SimpleSingletonProvider<GameLogicManager>.inst;
+                var battle = gm != null ? gm.battle : null;
+                if (battle == null) return false;
+                var self = battle.GetSelfPlayerData();
+                if (self == null || self.player == null) return false;
+                var list = battle.PlayerDatas;
+                if (list == null) return false;
+
+                var ids = new List<long>();
+                for (int i = 0; i < list.Count; i++)
+                {
+                    var pd = list[i];
+                    if (pd == null || pd.player == null) continue;
+                    try
+                    {
+                        if (pd.characterType != CharacterType.Hero) continue;
+                        if (pd.player.Id == self.player.Id) continue;
+                        if (pd.player.TeamId == self.player.TeamId) continue;
+                        if (pd.Property != null && pd.Property.NotSelect != null && pd.Property.NotSelect.Value) continue;
+                        if (pd.Property == null || pd.Property.HP == null || pd.Property.HP.Value <= 0) continue;
+                        var inst = pd.CharacterInst;
+                        if (inst != null)
+                        {
+                            var land = inst.standLand;
+                            if (land != null && land.LandType == LandType.Hospital) continue;
+                        }
+                    }
+                    catch { continue; }
+                    if (pd.player.Id != 0) ids.Add(pd.player.Id);
+                }
+                playerIds = ids.ToArray();
+                return true;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>
         /// 我(或指定玩家)当前站在什么地块上 —— 5077 窗口的全部"信息"都来自本地玩家状态
         /// (那条动作的 Data 恒为 0 字节, 见 decomp/四窗口契约.md)。
         /// 返回 "born" / "fillingStation" / "other"; 读不到返回 null。

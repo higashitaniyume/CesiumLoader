@@ -145,6 +145,9 @@ namespace AstralParty.AgentMod.Bridge
                     case AgentBridgeLayout.Tool.LotteryPick:
                         return LotteryPick(cmd, started);
 
+                    case AgentBridgeLayout.Tool.PursuePlayer:
+                        return PursuePlayer(cmd, started);
+
                     default:
                         return BridgeResult.Failure(cmd.Id, cmd.Tool, AgentBridgeLayout.Code.UnknownTool,
                             "未知工具: " + cmd.Tool);
@@ -928,6 +931,43 @@ namespace AstralParty.AgentMod.Bridge
             OnSent(sn);
             return Done(cmd, started, "已发送 抽奖选号 LotteryChoice(numbers=[" + Join(picks.ToArray()) +
                                       "], sn=" + Show(sn) + ")");
+        }
+
+        /// <summary>
+        /// 追击地块(5033 窗口): playerId = 追这个敌方英雄(候选里的 playerId), stay=true = 不追就地停留。
+        /// 候选**在协议外**(本地按客户端同口径过滤出来), 所以只接受候选里的 id ——
+        /// 追一个服务器不认的人, agent 会以为追上了。**注意这与 5213 怪物追击是两个窗口。**
+        /// </summary>
+        private BridgeResult PursuePlayer(BridgeCommand cmd, long started)
+        {
+            bool stay = cmd.GetBool("stay", false) || cmd.GetBool("pass", false);
+            long targetId = cmd.GetLong("playerId", 0);
+            if (targetId == 0) targetId = cmd.GetLong("targetId", 0);
+
+            long? sn = ResolveSn(cmd, AgentPendingKind.PursuePlayer);
+            if (!sn.HasValue || sn.Value <= 0)
+                return BadArgs(cmd, "现在没有追击地块窗口(5033): 先用 astral_pending 看有没有 kind=pursuePlayer");
+
+            if (!stay)
+            {
+                if (targetId == 0)
+                    return BadArgs(cmd, "需要 playerId(取 pending 候选的 LongId)或 stay=true(不追)");
+                long[] cands;
+                if (!_tracker.TryGetPursuePlayers(out cands))
+                    return BadArgs(cmd, "本地还没算出可追的敌方英雄(候选不在协议里, 是本地按客户端同口径过滤的); " +
+                                        "现在只能 stay=true");
+                bool found = false;
+                if (cands != null)
+                    for (int i = 0; i < cands.Length; i++) if (cands[i] == targetId) { found = true; break; }
+                if (!found)
+                    return BadArgs(cmd, "playerId=" + targetId + " 不在候选里(只能追 astral_pending 列出的英雄; 候选数=" +
+                                        (cands == null ? 0 : cands.Length) + ")");
+            }
+
+            long selectId = stay ? 0 : targetId;
+            if (!GameActions.PursuePlayer(selectId, sn)) return NotSent(cmd, "追击地块应答");
+            OnSent(sn);
+            return Done(cmd, started, "已发送 追击地块 PursuePlayer(selectId=" + selectId + ", sn=" + Show(sn) + ")");
         }
 
         private BridgeResult Speed(BridgeCommand cmd, long started)
