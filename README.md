@@ -433,3 +433,22 @@ pwsh -NoProfile -File tools\package-modloader.ps1
 它会重建 SDK 与 `tools\builtin-mods.json` 里列出的每个内置 mod，组装
 `dist\modloader\AstralParty_ModLoader\`（sdk + mods + doorstop_config.json），
 再产出 `dist\release\*.zip` 与清单。跑完 `git status` 看一眼 dist 的改动一起提交即可。
+
+## 开源协议
+
+本项目以 **GNU Affero General Public License v3.0（AGPL-3.0）** 发布，协议全文见 [LICENSE](LICENSE)。
+
+Copyright (C) 2026 Yume Higashitani
+
+- 允许自由使用、修改、分发，包括商业用途。
+- 分发修改版或衍生作品时，必须以**同样的 AGPL-3.0** 开源，并保留版权与协议声明。
+- **第 13 条（Remote Network Interaction）**是 AGPL 与 GPL 的关键差别：如果把本项目（或它的修改版）
+  作为**网络服务**提供给他人使用，也必须向这些使用者提供对应的完整源代码。
+- 本软件按“现状”提供，不附带任何担保。
+
+> ⚠ **对 mod 作者的影响**：SDK 与本项目的内置 mod 都属于本项目，随 AGPL-3.0 发布。AGPL 是强传染性
+> 协议，链接 `CesiumLoader.SDK.dll` 的第三方 mod 通常也需要以 AGPL-3.0 兼容的方式授权。
+> 若希望第三方 mod 能采用更宽松的协议（如 MIT），需要另外给 SDK 增加链接例外（linking exception）。
+
+> 随源码分发的第三方库位于 `third_party\`（`fmt`、`spdlog`、`nlohmann_json`），各自适用其自带的
+> `LICENSE.txt`（均为 MIT），与本项目的 AGPL-3.0 并存且不冲突。
