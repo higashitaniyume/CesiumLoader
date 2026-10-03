@@ -72,6 +72,9 @@ $modDir = Join-Path $loaderDir 'mods\AstralParty.AgentMod'
 New-Item -ItemType Directory -Path $modDir -Force | Out-Null
 Copy-Item $dll  (Join-Path $modDir 'AstralParty.AgentMod.dll')  -Force
 Copy-Item $json (Join-Path $modDir 'AstralParty.AgentMod.json') -Force
+# 符号: 桥接是实验性代码, 排障基本都要看栈行号(存在才复制, 不影响部署)
+$pdb = Join-Path $repo 'mcp\AstralParty.AgentMod\bin\Release\netstandard2.0\AstralParty.AgentMod.pdb'
+if (Test-Path $pdb) { Copy-Item $pdb (Join-Path $modDir 'AstralParty.AgentMod.pdb') -Force }
 
 # 桥接用的是 SDK 的 GameEvents.RawAction(第 16 个事件)。SDK 旧了会 MissingMethodException,
 # 所以和其它 mod 的部署脚本一样, 顺手把 SDK 同步过去。

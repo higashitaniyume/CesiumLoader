@@ -46,7 +46,7 @@ namespace ActivityLogMod
             }
             catch (Exception ex)
             {
-                // 顶层兜底: 完整堆栈写 mod-errors.log(SDK 故障报告), 并重新抛出让加载器看到
+                // 顶层兜底: 完整堆栈写本次启动的 mod-errors 日志(SDK 故障报告), 并重新抛出让加载器看到
                 SdkLog.ReportCrash("ActivityLogMod", "ModEntry.Main 顶层异常", ex);
                 throw;
             }

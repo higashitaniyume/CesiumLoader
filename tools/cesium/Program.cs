@@ -182,7 +182,7 @@ namespace CesiumCli
             });
 
             // ------------------------------ package ------------------------------
-            var packageCmd = new Command("package", "打包 mod 为分发 zip(DLL + sidecar)");
+            var packageCmd = new Command("package", "打包 mod 为分发 zip(DLL + sidecar + 符号)");
             var packageDir = new Argument<string>("dir") { Description = "mod 项目目录(默认当前目录)", Arity = ArgumentArity.ZeroOrOne };
             var packageOut = new Option<string>("--output", "-o") { Description = "输出 zip 路径(默认 <dir>/<name>-1.0.0.zip)", HelpName = "out.zip" };
             packageCmd.Add(packageDir);
@@ -207,9 +207,15 @@ namespace CesiumCli
                 zip.CreateEntryFromFile(dll, name + "/" + name + ".dll");
                 string sidecar = Path.Combine(dir, name + ".json");
                 if (File.Exists(sidecar)) zip.CreateEntryFromFile(sidecar, name + "/" + name + ".json");
+                // 符号(.pdb)一起打进去: 别人拿到你的 mod 报崩溃时, 有这个才能把栈还原到你的源码行。
+                // 加载器按 {ModId}.dll 精确名加载, 同目录多一个 .pdb 不影响加载; 没有就跳过。
+                string pdb = Path.Combine(dir, "bin", "Release", "netstandard2.0", name + ".pdb");
+                if (File.Exists(pdb)) zip.CreateEntryFromFile(pdb, name + "/" + name + ".pdb");
 
                 Console.WriteLine($"已打包: {outZip}");
                 Console.WriteLine($"  解压到游戏目录 AstralParty_ModLoader\\mods\\ 即安装完成 (将生成 mods\\{name}\\ 文件夹)");
+                if (!File.Exists(pdb))
+                    Console.WriteLine("  提示: 没找到 " + name + ".pdb, 包里不含符号(崩溃栈只有偏移, 看不到行号)");
                 return 0;
             });
 

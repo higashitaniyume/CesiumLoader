@@ -61,7 +61,7 @@ version.dll (C++ 薄代理, 15 个导出转发到系统 version.dll)
        2. 等待 GameAssembly.dll (60s) → 解析 il2cpp_* 导出
        3. 等待 il2cpp domain (30s) + thread_attach
        4. 等待 HybridCLR 热更 (AstralParty.Runtime 出现, 60s)
-       5. 设置环境变量 CESIUM_* 目录
+       5. 设置环境变量 CESIUM_* 目录 + 本次启动的日志文件路径
        6. 编排层:
           - 默认 (useManagedBootstrap=false): 原生加载 sdk\*.dll → mods\ 下
             每 mod 文件夹的 {ModId}.dll, 逐个 Assembly.Load(byte[]) +
@@ -70,7 +70,7 @@ version.dll (C++ 薄代理, 15 个导出转发到系统 version.dll)
           - 实验 (useManagedBootstrap=true): Assembly.Load(byte[]) 加载
             bootstrap\CesiumLoader.Bootstrap.dll 并调用 Bootstrap.Main(),
             由托管代码编排一切
-       7. 启动 activity-mod.log → 控制台 转发线程
+       7. 启动 activity-mod-<会话>.log → 控制台 转发线程
   └─ CesiumLoader.Bootstrap.dll (C# 托管引导, 零引用, 可脱离游戏单元测试):
        1. 按文件名排序加载 sdk\*.dll (不调入口)
        2. 按文件名排序加载 mods\ 下的 {ModId}.dll 并调用 {文件名}.ModEntry.Main()
@@ -124,7 +124,7 @@ version.dll (C++ 薄代理, 15 个导出转发到系统 version.dll)
 | **API 版本协商** | SDK 声明版本 `2.2.4`；mod 声明 `SdkVersion`，要求高于当前的 mod 被拒绝加载。`doorstop_config.json` 的 `sdkVersion` 声明当前版本 |
 | **事件驱动化** | `GameEvents.StartAutoHook()` 内部每 1 秒维持 RPC 挂钩，mod 无需每秒轮询；`ModBase.Run` 不传 tick 则不空转 |
 | **IL2CPP 互操作安全封装** | `il2cpp_safe.h` 收敛全部互操作点：函数指针空检查、参数/返回值校验、托管异常转译成可读错误，防止原生崩溃拖垮游戏 |
-| **调试与故障体验** | mod 入口异常写 `logs\mod-errors.log`（SDK `SdkLog.ReportCrash` + 原生 `write_mod_error` 双写）；`cesium verify` 离线预检兼容性 |
+| **调试与故障体验** | mod 入口异常写 `logs\mod-errors-<会话>.log`（SDK `SdkLog.ReportCrash` + 原生 `write_mod_error` 双写）；`cesium verify` 离线预检兼容性；**每次启动一套日志文件**（引导/activity/错误三个文件共用会话标识 `<yyyyMMdd>-<HHmmss>-<pid>`） |
 | **脚手架与包分发** | `tools\cesium` CLI：`new`（生成项目+程序集级元数据）/ `build` / `package`（zip 分发）/ `list` / `verify`（模拟加载器判定） |
 | **相机接管** | `CameraService` + `ICameraBackend` 接缝：解析/读写/快照还原；`CameraState` 可 JSON 持久化；`CinemachineService` 反射接入 Cinemachine（玩家没装也安全降级） |
 | **输入与光标** | `InputService`：按键/鼠标查询 + mod 间输入独占仲裁 + 光标锁定还原；后端为「Unity 反射 → Win32」两级兜底 |
@@ -174,7 +174,9 @@ version.dll (C++ 薄代理, 15 个导出转发到系统 version.dll)
     │   └── ActivityLogMod\      ← 示例 mod 文件夹 (DLL + sidecar 同文件夹)
     │       ├── ActivityLogMod.dll
     │       └── ActivityLogMod.json   ← sidecar (id/版本/权限/enabled/依赖)
-    ├── logs\                    ← cesium-loader.log + activity-mod.log
+    ├── logs\                    ← 每次启动一套: cesium-loader-<会话>.log
+    │                               + activity-mod-<会话>.log + mod-errors-<会话>.log
+    │                               (会话 = <yyyyMMdd>-<HHmmss>-<pid>, 见 docs\SDK-生命周期与日志.md)
     └── speed\                   ← 变速控制文件通道 (request.txt / state.txt)
 ```
 
@@ -272,6 +274,8 @@ pwsh -NoProfile -File tools\package-modloader.ps1
 - `mods\SpeedHackMod\bin\Release\netstandard2.0\SpeedHackMod.dll` — 内置 mod (变速热键)
 - `tools\cesium\bin\Release\net8.0\cesium.exe` — mod 脚手架与包分发 CLI
 
+每个 dll 旁边还有同名 `.pdb` 符号（同一次构建产出，`package-modloader.ps1` 会成对复制并一起打包）。
+
 ## SDK 工具包下载
 
 mod 开发者无需克隆仓库——直接从 Release 下载 **SDK 工具包**（`cesium-sdk-tools.zip`，
@@ -284,7 +288,9 @@ https://github.com/higashitaniyume/CesiumLoader/releases/latest/download/cesium-
 包含:
 - `cesium.exe` — mod 脚手架与包分发 CLI (自包含, 无需本机 .NET)
 - `CesiumLoader.SDK.dll` — mod 开发引用 (编译期绑定, 需配合游戏热更程序集)
-- `docs\` — SDK 文档 (概览/事件/玩家/操作/变速/生命周期/配置/能力声明)- `examples\ActivityLogMod\` — 示例 mod 源码 (行为日志)
+- `CesiumLoader.SDK.pdb` — SDK 符号 (调试时可单步进 SDK 内部并看到行号)
+- `docs\` — SDK 文档 (概览/事件/玩家/操作/变速/生命周期/配置/能力声明)
+- `examples\ActivityLogMod\` — 示例 mod 源码 (行为日志)
 
 快速开始:
 
@@ -346,12 +352,17 @@ public static class ModEntry
 `cesium package` 打出的 zip 已是该布局，解压到 `mods\` 即完成安装。
 发布前用 `cesium verify <mods_dir>` 离线预检依赖与版本兼容性。
 
+> 提示: `cesium package` 会把 `bin\Release\netstandard2.0\{ModId}.pdb` 一起打进包里
+> （加载器按 `{ModId}.dll` 精确名加载，同目录多一个 `.pdb` 不影响加载）。
+> 这样别人拿你的 mod 报崩溃时，栈才能还原到你的源码行而不是一片偏移。
+> 想给别人调你的 mod，就别把 `.pdb` 删掉。
+
 SDK API 一览:
 - `ModBase.Run(init, tick=null, delayMs=30000, tag)` — 生命周期 (不传 tick 不轮询)
 - `GameEvents.*` — 16 个事件 + `StartAutoHook()` (SDK 内部维持挂钩, 事件驱动)
 - `Permissions.Has/Require` — 恒返回 true (权限门控已取消, 仅保留 API 兼容)
 - `SdkVersion.Accepts/Current` — API 版本协商
-- `SdkLog.ReportCrash/CrashGuard` — 故障报告 (完整堆栈写 mod-errors.log)
+- `SdkLog.ReportCrash/CrashGuard` — 故障报告 (完整堆栈写本次启动的 mod-errors 日志)
 - `Players.*` — 全部玩家 / 星币 / 手牌数 / 名字 / 是否自己 / 手牌内容
 - `Names.*` — 卡牌 / 遗物 / 技能 / 角色 / 战斗角色 名字解析
 - `SdkLog.Write(tag, line)` — 写日志 (转发到 loader 控制台)
@@ -382,14 +393,21 @@ git push origin modloader-2.2.4
 2. dotnet 现场构建 CesiumLoader.Bootstrap (自包含, 零引用) + cesium CLI (SDK 工具包)
 3. 用 `dist\modloader\` 里的预编译 SDK / 内置 mod (游戏热更 DLL 不入库, 故用 dist)；
    内置 mod 清单读 `tools\builtin-mods.json`（与本地打包脚本同一来源），并逐项校验产物存在
-4. 打包成部署布局 + 生成 `cesium-loader.json` 清单 (版本 / SHA256 / 布局)
-5. 组装 SDK 工具包 (cesium.exe + SDK DLL + 文档 + 示例源码)
+4. 打包成部署布局 + 生成 `cesium-loader.json` 清单 (版本 / SHA256 / 布局)；
+   连同每份 dll 的 `.pdb` 符号一起打包并写进清单（原生 `version.pdb` 与 `version.dll`
+   由同一次 msbuild 产出，托管符号取自 `dist\`）
+5. 组装 SDK 工具包 (cesium.exe + SDK DLL + SDK 符号 + 文档 + 示例源码)
 
 产物 (Release 资产):
-- `cesium-loader-2.2.4.zip` — 加载器部署包 (带版本号)
+- `cesium-loader-2.2.4.zip` — 加载器部署包 (带版本号; 含各 dll 的同名 .pdb 符号,
+  体积几乎全来自原生 `version.pdb`)
 - `cesium-loader.zip` — 固定名, 供 `releases/latest/download/cesium-loader.zip` 使用
 - `cesium-sdk-tools-2.2.4.zip` — SDK 工具包 (带版本号)
 - `cesium-sdk-tools.zip` — 固定名, 供 `releases/latest/download/cesium-sdk-tools.zip` 使用
+
+> 🔎 **为什么要带 `.pdb`**: 用户端崩溃给出的只是地址(或一个没有行号的栈), 有符号才能还原到
+> 具体文件行号 —— mod 的异常栈尤其需要。符号与 dll 是**强绑定**的(PDB 里存着 dll 的 GUID),
+> 因此只能"同一次构建产出的那一对"配套发布, 删掉 `.pdb` 不影响加载器与 mod 运行。
 
 AstralParty.Toys 的 Mod 管理功能从这个 URL 下载安装:
 `https://github.com/higashitaniyume/CesiumLoader/releases/latest/download/cesium-loader.zip`
@@ -407,6 +425,10 @@ mod 开发者从这个 URL 下载 SDK 工具包:
 ```
 pwsh -NoProfile -File tools\package-modloader.ps1
 ```
+
+⚠ **dll 与它的 `.pdb` 必须同一次刷新**：符号文件里记着 dll 的 GUID，分两次构建拼出来的
+"dll + 别人的 pdb"会被调试器直接拒绝加载（等于没符号）。`package-modloader.ps1` 已经成对复制，
+但手工替换 `dist\` 里的 dll 时，别忘了把旁边的 `.pdb` 一起换掉（`dist\agent\` 的 AI 接管包同理）。
 
 它会重建 SDK 与 `tools\builtin-mods.json` 里列出的每个内置 mod，组装
 `dist\modloader\AstralParty_ModLoader\`（sdk + mods + doorstop_config.json），

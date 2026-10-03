@@ -11,7 +11,7 @@
 //   2. 等待 GameAssembly.dll + IL2CPP + HybridCLR 热更就绪
 //   3. 原生加载 sdk\*.dll → mods\{ModId}\{ModId}.dll → 调用 {文件名}.ModEntry.Main()
 //      (useManagedBootstrap=true 时改走托管 Bootstrap 编排, 实验特性)
-//   4. 启动 activity-mod.log → 控制台 转发线程
+//   4. 启动 activity-mod-<会话>.log → 控制台 转发线程
 //
 // 所有 version.dll 导出函数转发到系统 C:\Windows\System32\version.dll,
 // 保证 UnityPlayer 读取 exe 版本信息等行为正常。

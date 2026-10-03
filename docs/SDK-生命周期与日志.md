@@ -67,8 +67,13 @@ public static class SdkLog
 
 ### 输出位置与格式
 
-- 写入 `CESIUM_LOG_DIR\activity-mod.log`（加载器设置；未设置时回退 `%LocalAppData%\AstralParty_ModLoader\logs\activity-mod.log`）。
-- 所有 mod 共用**同一个文件**（当前加载器只转发这一个文件到控制台窗口）。
+- 写入加载器**本次启动**的 activity 日志：环境变量 `CESIUM_ACTIVITY_LOG_FILE`（完整路径，形如
+  `<logs>\activity-mod-<yyyyMMdd>-<HHmmss>-<pid>.log`）→ 未设置时回退 `CESIUM_LOG_DIR\activity-mod.log`
+  → 两个都没有时回退 `%LocalAppData%\AstralParty_ModLoader\logs\activity-mod.log`。
+- 所有 mod 共用**同一个文件**（加载器只转发这一个文件到控制台窗口）。
+- **每次启动一套日志文件**：引导日志 / activity 日志 / 错误日志三个文件共用同一个会话标识
+  `<yyyyMMdd>-<HHmmss>-<pid>`，所以上一次启动的 mod 日志不会和这一次交错在一起；
+  排查时先按名字（或修改时间）挑出对应那次启动的文件。
 - 每行格式：`[HH:mm:ss.fff] [级别] [tag] 内容`，例如：
 
 ```

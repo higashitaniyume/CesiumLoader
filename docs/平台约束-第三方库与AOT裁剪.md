@@ -129,7 +129,8 @@ api-ms-win-crt-{stdio,heap,convert,filesystem,locale,runtime,string,time,math}-l
 
 ## 5. 复现步骤（如果将来还要试）
 
-1. 把待测程序集放进 `AstralParty_ModLoader\sdk\`，启动游戏，看 `logs\cesium-loader.log`：
+1. 把待测程序集放进 `AstralParty_ModLoader\sdk\`，启动游戏，看本次启动的引导日志
+   `logs\cesium-loader-<会话>.log`（每次启动一个文件，取最新那个）：
    * `SDK <名字> 加载成功` / `加载失败: <真实托管异常>`（加载器已把托管异常的类型与消息转成 UTF-8）
 2. 出现 `TypeLoadException: Could not load type 'X' from assembly 'Y'` → 打开 `logs\aot-assemblies.txt` 确认 Y 是否在域内、X 是否被裁。
 3. 要精确判定"某类型/某方法是否存在"，用 C++ 侧的 `il2cpp_class_from_name` / `il2cpp_class_get_methods`，

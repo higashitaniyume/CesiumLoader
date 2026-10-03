@@ -115,6 +115,40 @@ namespace CesiumLoader.SDK.Tests
             Assert.False(string.IsNullOrEmpty(SdkDiagnostics.Summary()));
         }
 
+        /// <summary>
+        /// 加载器现在每次启动给一个独立的日志文件(CESIUM_LOG_FILE)。诊断转储必须跟着它走,
+        /// 否则"这次启动"的诊断会被写进另一个文件, 和加载器引导日志分家。
+        /// </summary>
+        [Fact]
+        public void SdkDiagnostics_PrefersLoaderSessionLogFile()
+        {
+            string previousFile = Environment.GetEnvironmentVariable("CESIUM_LOG_FILE");
+            string previousDir = Environment.GetEnvironmentVariable("CESIUM_LOG_DIR");
+            string dir = Path.Combine(Path.GetTempPath(), "cesium-diag-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            // 会话日志文件名(加载器的命名规则: cesium-loader-<yyyyMMdd>-<HHmmss>-<pid>.log)
+            string sessionLog = Path.Combine(dir, "cesium-loader-20261003-201234-4242.log");
+            try
+            {
+                Environment.SetEnvironmentVariable("CESIUM_LOG_FILE", sessionLog);
+                // 故意同时设一个不同的目录: 有 CESIUM_LOG_FILE 时它必须优先
+                Environment.SetEnvironmentVariable("CESIUM_LOG_DIR", Path.Combine(dir, "other"));
+
+                Assert.Equal(sessionLog, SdkDiagnostics.GetDumpFilePath());
+
+                string written = SdkDiagnostics.Dump("会话日志测试");
+                Assert.Equal(sessionLog, written);
+                Assert.True(File.Exists(sessionLog), "诊断应写进本次会话的日志文件: " + sessionLog);
+                Assert.Contains("会话日志测试", File.ReadAllText(sessionLog));
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("CESIUM_LOG_FILE", previousFile);
+                Environment.SetEnvironmentVariable("CESIUM_LOG_DIR", previousDir);
+                try { Directory.Delete(dir, true); } catch { }
+            }
+        }
+
         [Fact]
         public void SdkDiagnostics_JsonBundleIsValidJson()
         {
