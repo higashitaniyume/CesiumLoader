@@ -26,7 +26,7 @@ namespace CesiumLoader.Bootstrap
         private static readonly object _logLock = new object();
         private static string _logFile;
 
-        // ---------- 日志(与 SdkLog 共用 activity-mod.log, 由原生转发线程输出到控制台) ----------
+        // ---------- 日志(与 SdkLog 共用本次启动的 activity 日志, 由原生转发线程输出到控制台) ----------
 
         private static void Log(string line)
         {
@@ -38,7 +38,9 @@ namespace CesiumLoader.Bootstrap
                     {
                         string dir = EnvOr("CESIUM_LOG_DIR", Path.Combine(LocalAppData(), "AstralParty_ModLoader", "logs"));
                         Directory.CreateDirectory(dir);
-                        _logFile = Path.Combine(dir, "activity-mod.log");
+                        // 加载器把**本次启动**的文件路径给了就用它 —— 必须与 SdkLog / 原生转发线程
+                        // 是同一个文件, 否则 bootstrap 的日志会落到另一次启动的文件里。
+                        _logFile = EnvOr("CESIUM_ACTIVITY_LOG_FILE", Path.Combine(dir, "activity-mod.log"));
                     }
                     File.AppendAllText(_logFile, $"[{DateTime.Now:HH:mm:ss.fff}] [INF] [Bootstrap] {line}\r\n");
                 }

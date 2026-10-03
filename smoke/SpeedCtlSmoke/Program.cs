@@ -39,7 +39,7 @@ internal static class Program
     /// </summary>
     private static long RealMs() => DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond;
 
-    private static string _root, _loader, _state, _request, _log;
+    private static string _root, _loader, _state, _request, _logDir;
     private static int _failures;
 
     private static int Main()
@@ -48,7 +48,7 @@ internal static class Program
         _loader = Path.Combine(_root, "AstralParty_ModLoader");
         _state = Path.Combine(_loader, "speed", "state.txt");
         _request = Path.Combine(_loader, "speed", "request.txt");
-        _log = Path.Combine(_loader, "logs", "cesium-loader.log");
+        _logDir = Path.Combine(_loader, "logs");
 
         Console.WriteLine("[smoke] 宿主: " + _root);
         Console.WriteLine("[smoke] 触发加载器引导...");
@@ -361,10 +361,32 @@ internal static class Program
         Console.WriteLine("  ✗ " + what);
     }
 
+    /// <summary>
+    /// 加载器**每次启动**写一个新的日志文件(cesium-loader-&lt;会话&gt;.log), 取目录里最新的那个。
+    /// 没有则返回 null。
+    /// </summary>
+    private static string NewestLoaderLog()
+    {
+        try
+        {
+            if (!Directory.Exists(_logDir)) return null;
+            string best = null;
+            DateTime bestTime = DateTime.MinValue;
+            foreach (string f in Directory.GetFiles(_logDir, "cesium-loader-*.log"))
+            {
+                DateTime t = File.GetLastWriteTimeUtc(f);
+                if (best == null || t > bestTime) { best = f; bestTime = t; }
+            }
+            return best;
+        }
+        catch { return null; }
+    }
+
     private static void DumpLog()
     {
-        if (!File.Exists(_log)) { Console.WriteLine("[smoke] (没有加载器日志)"); return; }
-        Console.WriteLine("[smoke] --- 加载器日志 ---");
+        string log = NewestLoaderLog();
+        if (log == null) { Console.WriteLine("[smoke] (没有加载器日志)"); return; }
+        Console.WriteLine("[smoke] --- 加载器日志 (" + Path.GetFileName(log) + ") ---");
 
         // 加载器的 spdlog sink 是"进程活着就一直持有"的(没有 shutdown_logging), 而本宿主就是把
         // 加载器装进自己进程里跑的 —— 所以这里读到一半完全可能撞上共享冲突。
@@ -372,7 +394,7 @@ internal static class Program
         string[] lines;
         try
         {
-            using var fs = new FileStream(_log, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            using var fs = new FileStream(log, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             using var reader = new StreamReader(fs);
             lines = reader.ReadToEnd().Split('\n');
         }

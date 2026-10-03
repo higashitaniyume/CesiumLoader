@@ -1,6 +1,6 @@
 // DllMainBootTest - 验证新逻辑: version.dll 被 LoadLibrary(不调用任何导出)
 // 时, DllMain(DLL_PROCESS_ATTACH) 应自动启动引导线程, 表现为:
-//   1. cesium-loader.log 出现 "[hijack] version.dll 被加载"
+//   1. 本次启动的加载器日志(cesium-loader-<会话>.log)出现 "[hijack] version.dll 被加载"
 //   2. 约 1.5s 后出现 "[hijack] version.dll Doorstop 引导线程启动"
 //   3. boot_thread 随后等待 GameAssembly.dll(测试进程没有, 60s 超时), 不崩溃
 using System;
@@ -75,11 +75,12 @@ internal static class Program
         // loader_root 基于测试 exe 目录: bin/Debug/net8.0/ + AstralParty_ModLoader
         string exeDir = AppContext.BaseDirectory;
         string modRoot = Path.Combine(exeDir, "AstralParty_ModLoader");
-        string log = Path.Combine(modRoot, "logs", "cesium-loader.log");
-        Console.WriteLine("日志路径: " + log);
-        if (!File.Exists(log))
+        // 加载器每次启动各写一个文件(names 里带会话标识), 取目录里最新的那个
+        string log = NewestSessionLog(Path.Combine(modRoot, "logs"), "cesium-loader-*.log");
+        Console.WriteLine("日志路径: " + (log ?? "(未找到 cesium-loader-*.log)"));
+        if (log == null)
         {
-            Console.WriteLine("[FAIL] cesium-loader.log 未生成");
+            Console.WriteLine("[FAIL] cesium-loader-*.log 未生成");
             return 1;
         }
         string text = File.ReadAllText(log);
@@ -93,6 +94,20 @@ internal static class Program
         Console.WriteLine(boot ? "[PASS] 引导线程启动 + enabled=true 配置解析" : "[FAIL] 引导线程启动");
         Console.WriteLine(console ? "[PASS] 控制台初始化" : "[FAIL] 控制台初始化");
         return (boot && console) ? 0 : 1;
+    }
+
+    /// <summary>加载器每次启动写一个新日志文件, 取目录里最新的那个(没有则 null)。</summary>
+    private static string NewestSessionLog(string dir, string pattern)
+    {
+        if (!Directory.Exists(dir)) return null;
+        string best = null;
+        DateTime bestTime = DateTime.MinValue;
+        foreach (string f in Directory.GetFiles(dir, pattern))
+        {
+            DateTime t = File.GetLastWriteTimeUtc(f);
+            if (best == null || t > bestTime) { best = f; bestTime = t; }
+        }
+        return best;
     }
 }
 

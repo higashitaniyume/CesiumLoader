@@ -2,7 +2,7 @@
 //
 // 游戏进程本身是 GUI(无控制台)。引导线程启动时 AllocConsole 分配一个
 // 控制台窗口,loader 日志与 mod 的标准输出都写到这个窗口。
-// 同时把日志追加写入 logs\cesium-loader.log。
+// 同时把日志写入 logs\cesium-loader-<时间>-<pid>.log(**每次启动一个新文件**, 见 logging.h)。
 
 #include "loader.h"
 
@@ -76,7 +76,7 @@ void console_set_color(WORD attr)
 
 // ---------- 日志 ----------
 
-// 一行日志 = 控制台(当前属性色) + 文件(logs\cesium-loader.log)。
+// 一行日志 = 控制台(当前属性色) + 文件(logs\cesium-loader-<时间>-<pid>.log)。
 // 文件那一半由 spdlog 负责(见 logging.cpp): 句柄常开、线程安全、带时间戳、每行落盘。
 // 旧实现是**每行** CreateFileW + WriteFile + CloseHandle, 已废弃。
 void log_line(const char* msg)

@@ -36,7 +36,7 @@ namespace CesiumLoader.SDK
         /// <summary>Fatal 级。</summary>
         public void Fatal(string message) { SdkLog.Fatal(_tag, message); }
 
-        /// <summary>记录异常完整堆栈(独立文件 mod-errors.log)。</summary>
+        /// <summary>记录异常完整堆栈(独立文件 mod-errors-&lt;启动会话&gt;.log)。</summary>
         public void ReportCrash(string context, Exception ex) { SdkLog.ReportCrash(_tag, context, ex); }
 
         /// <summary>异常防护包装。</summary>

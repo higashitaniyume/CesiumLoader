@@ -13,6 +13,10 @@
       7. 打包 zip: cesium-loader-<版本>.zip / cesium-loader.zip
                    cesium-sdk-tools-<版本>.zip / cesium-sdk-tools.zip
 
+    符号(.pdb): 每一份随包 dll 都配一个同目录同名 .pdb(version.pdb / bootstrap / SDK / 各 mod),
+    并且都进清单做哈希校验。理由: 用户端崩溃只有一个栈帧地址时, 没有 pdb 就只能看到偏移;
+    有了 pdb 才能把 mod 的异常栈还原到具体文件行。缺符号只警告不阻塞发布(见 Resolve-Pdb)。
+
     版本号单一来源: loader\CesiumLoader.SDK\ModManifest.cs 里的 SdkVersion.Current。
     加载器版本与之一致(加载器横幅同时打印两者, 见 config.h 的 loaderVersion)。
 
@@ -50,6 +54,28 @@ $BuiltInMods = @(
 if ($BuiltInMods.Count -eq 0) { throw 'tools\builtin-mods.json 里没有内置 mod, 请先补上' }
 
 function Write-Step([string] $text) { Write-Host "`n=== $text ===" -ForegroundColor Cyan }
+
+# ---------------------------------------------------------------- 符号文件
+# 每个 dll 的符号就是同目录同名的 .pdb(MSVC 与 dotnet 都是这个约定)。
+# 找不到时只记下来并警告, 不 throw —— 符号缺失不该拦住一次发布, 但必须在日志里显眼。
+$script:MissingPdbs = @()
+
+function Resolve-Pdb([string] $binaryPath)
+{
+    $pdb = [System.IO.Path]::ChangeExtension($binaryPath, '.pdb')
+    if (Test-Path -LiteralPath $pdb) { return $pdb }
+    $script:MissingPdbs += $pdb
+    return $null
+}
+
+# 把 $from 的符号复制到 $to 旁边(同名 .pdb); 拿不到就跳过。
+function Copy-PdbNextTo([string] $fromBinary, [string] $toBinary)
+{
+    $pdb = Resolve-Pdb $fromBinary
+    if (-not $pdb) { return $false }
+    Copy-Item -LiteralPath $pdb -Destination ([System.IO.Path]::ChangeExtension($toBinary, '.pdb')) -Force
+    return $true
+}
 
 # ---------------------------------------------------------------- 版本号
 function Resolve-Version
@@ -122,6 +148,7 @@ if (-not $SkipBuild)
         if (-not (Test-Path $item.From)) { throw "缺少构建产物: $($item.From)" }
         New-Item -ItemType Directory -Path (Split-Path -Parent $item.To) -Force | Out-Null
         Copy-Item $item.From $item.To -Force
+        Copy-PdbNextTo $item.From $item.To | Out-Null
     }
     foreach ($mod in $BuiltInMods)
     {
@@ -130,6 +157,7 @@ if (-not $SkipBuild)
         $built = "mods\$mod\bin\Release\netstandard2.0\$mod.dll"
         if (-not (Test-Path $built)) { throw "缺少 mod 产物: $built" }
         Copy-Item $built "$modDir\$mod.dll" -Force
+        Copy-PdbNextTo $built "$modDir\$mod.dll" | Out-Null
         # sidecar: 有的 mod 源码里带 .json(如 FreeCameraMod), 有的只在 dist 里维护(如 ActivityLogMod)
         $sidecarSrc = "mods\$mod\$mod.json"
         if (Test-Path $sidecarSrc) { Copy-Item $sidecarSrc "$modDir\$mod.json" -Force }
@@ -154,11 +182,27 @@ Copy-Item 'dist\modloader\AstralParty_ModLoader\doorstop_config.json' 'staging\A
 Copy-Item 'dist\modloader\AstralParty_ModLoader\bootstrap\CesiumLoader.Bootstrap.dll' 'staging\AstralParty_ModLoader\bootstrap\CesiumLoader.Bootstrap.dll' -Force
 Copy-Item 'dist\modloader\AstralParty_ModLoader\sdk\CesiumLoader.SDK.dll' 'staging\AstralParty_ModLoader\sdk\CesiumLoader.SDK.dll' -Force
 
+# 符号: dist 里已经和 dll 配好对了(见第 3 步), 这里原样搬进 staging。
+# 缺哪个就在下面的清单过滤里统一警告 —— 符号不全不该拦住发布。
+foreach ($pdb in @(
+        'dist\modloader\version.pdb',
+        'dist\modloader\AstralParty_ModLoader\bootstrap\CesiumLoader.Bootstrap.pdb',
+        'dist\modloader\AstralParty_ModLoader\sdk\CesiumLoader.SDK.pdb'))
+{
+    if (Test-Path -LiteralPath $pdb)
+    {
+        Copy-Item -LiteralPath $pdb -Destination ('staging\' + $pdb.Substring('dist\modloader\'.Length)) -Force
+    }
+}
+
 $manifestFiles = @(
     'staging/version.dll',
+    'staging/version.pdb',
     'staging/AstralParty_ModLoader/doorstop_config.json',
     'staging/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll',
-    'staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll'
+    'staging/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.pdb',
+    'staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll',
+    'staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.pdb'
 )
 foreach ($mod in $BuiltInMods)
 {
@@ -167,9 +211,19 @@ foreach ($mod in $BuiltInMods)
     New-Item -ItemType Directory -Path $to -Force | Out-Null
     Copy-Item "$from\$mod.dll" "$to\$mod.dll" -Force
     Copy-Item "$from\$mod.json" "$to\$mod.json" -Force
+    if (Test-Path -LiteralPath "$from\$mod.pdb") { Copy-Item "$from\$mod.pdb" "$to\$mod.pdb" -Force }
     $manifestFiles += "staging/AstralParty_ModLoader/mods/$mod/$mod.dll"
     $manifestFiles += "staging/AstralParty_ModLoader/mods/$mod/$mod.json"
+    $manifestFiles += "staging/AstralParty_ModLoader/mods/$mod/$mod.pdb"
 }
+
+# 只把真正落盘的文件写进清单。两个理由:
+#   1) 符号缺失时不会让 Get-FileHash 崩掉, 也不会在清单里留一个 zip 里没有的条目;
+#   2) 清单必须与 zip 内容严格一致 —— Toys 安装时会按清单逐个校验 mods/** 的 SHA256。
+$missingSymbols = @($manifestFiles | Where-Object { $_.EndsWith('.pdb') -and -not (Test-Path -LiteralPath $_) })
+$manifestFiles = @($manifestFiles | Where-Object { Test-Path -LiteralPath $_ })
+foreach ($m in $missingSymbols) { Write-Warning "符号缺失, 本次发布不含: $m" }
+$symbolCount = @($manifestFiles | Where-Object { $_.EndsWith('.pdb') }).Count
 
 $modList = ($BuiltInMods | ForEach-Object { "mods\{$_}\{$_}.dll" }) -join ' / '
 $readme = @(
@@ -181,6 +235,8 @@ $readme = @(
     "- AstralParty_ModLoader\mods\          → 用户 mod (每 mod 一个文件夹: mods\{ModId}\{ModId}.dll)",
     "  随包内置: $modList",
     "- AstralParty_ModLoader\mods\{ModId}\{ModId}.json → mod sidecar (id/版本/权限/enabled 开关/依赖)",
+    "- *.pdb (version.pdb / bootstrap / sdk / mods\*) → 符号文件(与同名 dll 配对):",
+    "  把 dll 的崩溃栈还原成文件行号用, 删掉不影响运行; 调试器会自动在 dll 同目录找它。",
     "- AstralParty_ModLoader\logs\          → 日志目录",
     "解压到游戏 exe 目录即完成安装。",
     "从旧版升级: 请删除游戏目录下的 winmm.dll (旧代理), 换成 version.dll。",
@@ -220,6 +276,11 @@ if (Test-Path 'sdk-staging') { Remove-Item 'sdk-staging' -Recurse -Force }
 New-Item -ItemType Directory -Path 'sdk-staging\docs', 'sdk-staging\examples\ActivityLogMod' -Force | Out-Null
 Copy-Item 'sdk-tools\cesium.exe' 'sdk-staging\cesium.exe' -Force
 Copy-Item 'dist\modloader\AstralParty_ModLoader\sdk\CesiumLoader.SDK.dll' 'sdk-staging\CesiumLoader.SDK.dll' -Force
+# SDK 的符号一起给: 模组作者单步进 SDK 内部时(比如追 SdkLog/事件派发)才有行号。
+if (Test-Path -LiteralPath 'dist\modloader\AstralParty_ModLoader\sdk\CesiumLoader.SDK.pdb')
+{
+    Copy-Item 'dist\modloader\AstralParty_ModLoader\sdk\CesiumLoader.SDK.pdb' 'sdk-staging\CesiumLoader.SDK.pdb' -Force
+}
 Copy-Item 'docs\*.md' 'sdk-staging\docs\' -Force
 Copy-Item 'mods\ActivityLogMod\ModEntry.cs', 'mods\ActivityLogMod\AssemblyInfo.cs', 'mods\ActivityLogMod\ActivityLogMod.csproj' 'sdk-staging\examples\ActivityLogMod\' -Force
 $sdkReadme = @(
@@ -228,6 +289,7 @@ $sdkReadme = @(
     "包含:",
     "- cesium.exe            → mod 脚手架与包分发 CLI (win-x64 自包含, 无需本机 .NET)",
     "- CesiumLoader.SDK.dll  → mod 开发引用 (编译期绑定; cesium new 会自动附带进项目)",
+    "- CesiumLoader.SDK.pdb  → SDK 符号 (调试时能单步进 SDK 内部并看到行号)",
     "- docs\                 → SDK 文档",
     "- examples\ActivityLogMod\ → 示例 mod 源码 (行为日志, 最简单)",
     "",
@@ -258,5 +320,11 @@ Write-Host ''
 Get-ChildItem $OutputDir -File | Select-Object Name, @{n='KB';e={[math]::Round($_.Length/1KB,1)}}, @{n='SHA256';e={(Get-FileHash $_.FullName -Algorithm SHA256).Hash.Substring(0,16)}} | Format-Table -AutoSize | Out-String -Width 200 | Write-Host
 Write-Host "打包完成: $OutputDir" -ForegroundColor Green
 Write-Host "  清单版本: $((Get-Content 'staging\cesium-loader.json' -Raw | ConvertFrom-Json).version)"
+Write-Host "  符号文件: $symbolCount 个 (.pdb 与对应 dll 同目录, 并已写进清单)"
+if ($script:MissingPdbs.Count -gt 0)
+{
+    Write-Warning "这些构建产物没有符号, 本次发布不含它们:"
+    foreach ($p in $script:MissingPdbs) { Write-Warning "  $p" }
+}
 Write-Host "  发布提示: 打 tag 后 CI 会用同一套步骤构建并发布 GitHub Release:"
 Write-Host "    git tag modloader-$version && git push origin modloader-$version"

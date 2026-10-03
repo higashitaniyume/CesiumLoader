@@ -379,6 +379,14 @@ tools/smoke/env2/
 dist/modloader/version.dll
 dist/modloader/AstralParty_ModLoader/bootstrap/
 
+# 符号文件: SDK / mod 的 .pdb 必须与它们的 dll 成对入库 —— 两者的 hash 是绑定的
+# (PDB 里存着 dll 的 GUID+Age), 分两次构建出来的 pdb 贴上去会让调试器直接拒绝加载符号。
+# 加载器 version.pdb 与 bootstrap 的 pdb 和它们的 dll 一样由 CI 现场构建, 不入库。
+!dist/modloader/AstralParty_ModLoader/sdk/*.pdb
+!dist/modloader/AstralParty_ModLoader/mods/**/*.pdb
+# AI 接管包(可选组件)里的同一个 mod 同理
+!dist/agent/**/*.pdb
+
 # 变速引擎冒烟测试 (本地编译/运行产物)
 tools/smoke/speedtest/*.exe
 tools/smoke/speedtest/*.obj

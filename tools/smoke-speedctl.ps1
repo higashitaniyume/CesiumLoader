@@ -85,7 +85,7 @@ try
 '@
     Set-Content -Path (Join-Path $loaderDir 'doorstop_config.json') -Value $config -Encoding UTF8
     Remove-Item (Join-Path $loaderDir 'speed\*.txt') -Force -ErrorAction SilentlyContinue
-    Remove-Item (Join-Path $loaderDir 'logs\cesium-loader.log') -Force -ErrorAction SilentlyContinue
+    Remove-Item (Join-Path $loaderDir 'logs\cesium-loader*.log') -Force -ErrorAction SilentlyContinue
     Remove-Item (Join-Path $sandboxLocal 'AstralParty_ModLoader') -Recurse -Force -ErrorAction SilentlyContinue
 
     Write-Host '[smoke] 3/3 运行'
@@ -93,11 +93,13 @@ try
     $code = $LASTEXITCODE
     if ($code -ne 0) { throw "变速控制文件通道冒烟测试失败 (exit $code)" }
 
-    # 加载器日志要等宿主退出才读得到(spdlog 的 sink 独占持有到进程结束), 所以在这里打印
-    $logFile = Join-Path $loaderDir 'logs\cesium-loader.log'
-    if (Test-Path $logFile) {
-      Write-Host '[smoke] --- 加载器日志 ---'
-      Select-String -Path $logFile -Pattern 'speedctl|speedhack|倍率|基础' -Encoding UTF8 |
+    # 加载器日志要等宿主退出才读得到(spdlog 的 sink 独占持有到进程结束), 所以在这里打印。
+    # 加载器每次启动写一个新文件(cesium-loader-<会话>.log), 取最新的那个。
+    $logFile = Get-ChildItem (Join-Path $loaderDir 'logs') -Filter 'cesium-loader-*.log' -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if ($logFile) {
+      Write-Host "[smoke] --- 加载器日志 ($($logFile.Name)) ---"
+      Select-String -Path $logFile.FullName -Pattern 'speedctl|speedhack|倍率|基础' -Encoding UTF8 |
         ForEach-Object { Write-Host "        $($_.Line.TrimEnd())" }
     }
 

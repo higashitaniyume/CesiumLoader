@@ -3,7 +3,7 @@
 //   1. sdk/*.dll 被加载
 //   2. mods/*.dll 被加载并调用 {Name}.ModEntry.Main()
 //   3. 入口抛异常时被捕获记录, 不中断
-//   4. activity-mod.log 被正确写入
+//   4. 本次启动的 activity 日志被正确写入
 using System;
 using System.IO;
 
@@ -30,19 +30,25 @@ internal static class Program
         Environment.SetEnvironmentVariable("CESIUM_SDK_DIR", sdkDir);
         Environment.SetEnvironmentVariable("CESIUM_MODS_DIR", modsDir);
         Environment.SetEnvironmentVariable("CESIUM_LOG_DIR", logDir);
+        // 真实加载器每次启动都会把"这一次"的日志文件路径传下来(见 loader.cpp / logging.h),
+        // 这里照做 —— 否则测到的只是"没有加载器时回退固定文件名"那条路。
+        string session = DateTime.Now.ToString("yyyyMMdd-HHmmss") + "-" + Environment.ProcessId;
+        string activityLog = Path.Combine(logDir, "activity-mod-" + session + ".log");
+        Environment.SetEnvironmentVariable("CESIUM_ACTIVITY_LOG_FILE", activityLog);
+        Environment.SetEnvironmentVariable("CESIUM_ERROR_LOG_FILE", Path.Combine(logDir, "mod-errors-" + session + ".log"));
 
         Console.WriteLine("调用 Bootstrap.Main() ...");
         CesiumLoader.Bootstrap.Bootstrap.Main();
         Console.WriteLine("Bootstrap.Main() 返回(未崩溃)");
 
-        string log = Path.Combine(logDir, "activity-mod.log");
+        string log = activityLog;
         string marker = Path.Combine(logDir, "testmod-ran.txt");
 
-        Check(File.Exists(log), "activity-mod.log 已生成");
+        Check(File.Exists(log), "本次启动的 activity 日志已生成");
         if (File.Exists(log))
         {
             string text = File.ReadAllText(log);
-            Console.WriteLine("  [INFO] activity-mod.log 内容:");
+            Console.WriteLine("  [INFO] " + Path.GetFileName(log) + " 内容:");
             foreach (var line in text.Split('\n'))
                 if (!string.IsNullOrWhiteSpace(line)) Console.WriteLine("         " + line.TrimEnd('\r'));
 

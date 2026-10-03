@@ -59,6 +59,14 @@ jobs:
           if (-not (Test-Path $vdbin)) { throw "version.dll 未生成" }
           New-Item -ItemType Directory -Path "bin/Release" -Force | Out-Null
           Copy-Item $vdbin "bin/Release/version.dll" -Force   # 统一到仓库根, 供后续步骤引用
+          # 符号: 与 dll 同一次链接产出, 必须一起带走 —— 分开构建的 pdb 会因 GUID 不匹配被调试器拒绝。
+          $vdpdb = "loader/CesiumLoader/bin/Release/version.pdb"
+          if (Test-Path $vdpdb) {
+            Copy-Item $vdpdb "bin/Release/version.pdb" -Force
+            Write-Host "version.pdb 已复制到 bin/Release/ ($((Get-Item $vdpdb).Length) bytes)"
+          } else {
+            Write-Warning "version.pdb 未生成: 本次发布包不含加载器符号"
+          }
           Write-Host "version.dll 已复制到 bin/Release/"
 
       - name: Build managed bootstrap
@@ -70,6 +78,12 @@ jobs:
           if (-not (Test-Path $bootstrap)) { throw "CesiumLoader.Bootstrap.dll 未生成" }
           New-Item -ItemType Directory -Path "dist/modloader/AstralParty_ModLoader/bootstrap" -Force | Out-Null
           Copy-Item $bootstrap "dist/modloader/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll" -Force
+          $bootstrapPdb = "loader/CesiumLoader.Bootstrap/bin/Release/netstandard2.0/CesiumLoader.Bootstrap.pdb"
+          if (Test-Path $bootstrapPdb) {
+            Copy-Item $bootstrapPdb "dist/modloader/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.pdb" -Force
+          } else {
+            Write-Warning "CesiumLoader.Bootstrap.pdb 未生成"
+          }
 
       - name: Build SDK tools (cesium CLI)
         shell: pwsh
@@ -100,6 +114,15 @@ jobs:
           }
           foreach ($f in $required) { if (-not (Test-Path $f)) { throw "缺少预编译产物: $f" } }
           Write-Host "dist 预编译产物齐全: $($builtInMods -join ', ')"
+          # 符号也要在(与 dll 成对入库, 见 .gitignore): 缺了只警告 —— 符号不全不该拦住一次发布。
+          $symbols = @("dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.pdb")
+          foreach ($mod in $builtInMods) { $symbols += "dist/modloader/AstralParty_ModLoader/mods/$mod/$mod.pdb" }
+          $missingSymbols = @($symbols | Where-Object { -not (Test-Path $_) })
+          if ($missingSymbols.Count -gt 0) {
+            Write-Warning "dist 缺符号(本次发布包不含它们): $($missingSymbols -join ', ')"
+          } else {
+            Write-Host "dist 符号齐全: $($symbols.Count) 个 .pdb"
+          }
 
       - name: Stage deployment layout
         shell: pwsh
@@ -109,6 +132,15 @@ jobs:
           Copy-Item "dist/modloader/AstralParty_ModLoader/doorstop_config.json" "staging/AstralParty_ModLoader/doorstop_config.json" -Force
           Copy-Item "dist/modloader/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll" "staging/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll" -Force
           Copy-Item "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll" "staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll" -Force
+          # 符号(.pdb): 有就带上, 缺了不拦发布(但要在日志里显眼)。
+          # 用途: 用户端崩溃只有一个栈帧地址时, 没有 pdb 只能看偏移, 有 pdb 才能还原到文件行。
+          foreach ($p in @(
+              @{ From = "bin/Release/version.pdb";                                                              To = "staging/version.pdb" },
+              @{ From = "dist/modloader/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.pdb";           To = "staging/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.pdb" },
+              @{ From = "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.pdb";                       To = "staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.pdb" }
+            )) {
+            if (Test-Path $p.From) { Copy-Item $p.From $p.To -Force } else { Write-Warning "符号缺失, 本次发布不含: $($p.From)" }
+          }
           # 内置 mod: 每 mod 一个文件夹(mods\{ModId}\{ModId}.dll + .json)
           # 清单来源: tools/builtin-mods.json(单一来源, 与打包脚本共用)
           $builtInMods = @(Get-Content "tools/builtin-mods.json" -Raw | ConvertFrom-Json)
@@ -122,6 +154,11 @@ jobs:
             New-Item -ItemType Directory -Path "staging/AstralParty_ModLoader/mods/$mod" -Force | Out-Null
             Copy-Item "dist/modloader/AstralParty_ModLoader/mods/$mod/$mod.dll" "staging/AstralParty_ModLoader/mods/$mod/$mod.dll" -Force
             Copy-Item "dist/modloader/AstralParty_ModLoader/mods/$mod/$mod.json" "staging/AstralParty_ModLoader/mods/$mod/$mod.json" -Force
+            if (Test-Path "dist/modloader/AstralParty_ModLoader/mods/$mod/$mod.pdb") {
+              Copy-Item "dist/modloader/AstralParty_ModLoader/mods/$mod/$mod.pdb" "staging/AstralParty_ModLoader/mods/$mod/$mod.pdb" -Force
+            } else {
+              Write-Warning "符号缺失, 本次发布不含: mods/$mod/$mod.pdb"
+            }
             $label = if ($modNames.ContainsKey($mod)) { $modNames[$mod] } else { $mod }
             $modList += "mods\$mod ($label)"
           }
@@ -134,6 +171,7 @@ jobs:
             "- AstralParty_ModLoader\sdk\           → SDK 依赖",
             "- AstralParty_ModLoader\mods\          → 用户 mod (每 mod 一个文件夹: mods\{ModId}\{ModId}.dll)",
             "- AstralParty_ModLoader\mods\{ModId}\{ModId}.json → mod sidecar (id/版本/权限/enabled 开关/依赖)",
+            "- *.pdb (version / bootstrap / sdk / mods\*) → 符号文件(与同名 dll 配对): 把崩溃栈还原成文件行号用, 删掉不影响运行",
             "  随包内置: " + ($modList -join " / "),
             "- AstralParty_ModLoader\logs\          → 日志目录",
             "解压到游戏 exe 目录即完成安装。",
@@ -151,16 +189,23 @@ jobs:
         run: |
           $files = @(
             "staging/version.dll",
+            "staging/version.pdb",
             "staging/AstralParty_ModLoader/doorstop_config.json",
             "staging/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll",
-            "staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll"
+            "staging/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.pdb",
+            "staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll",
+            "staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.pdb"
           )
           # 内置 mod 清单同样来自 tools/builtin-mods.json —— 保证 manifest 与实际打包内容一致
           $builtInMods = @(Get-Content "tools/builtin-mods.json" -Raw | ConvertFrom-Json)
           foreach ($mod in $builtInMods) {
             $files += "staging/AstralParty_ModLoader/mods/$mod/$mod.dll"
             $files += "staging/AstralParty_ModLoader/mods/$mod/$mod.json"
+            $files += "staging/AstralParty_ModLoader/mods/$mod/$mod.pdb"
           }
+          # 只收真正落盘的文件: 上一步可能已经警告过某个符号缺失, 而清单必须与 zip 内容严格一致
+          # —— Toys 安装时会按清单逐个校验 mods/** 的 SHA256, 多一个不存在的条目就会安装失败。
+          $files = @($files | Where-Object { Test-Path $_ })
           $fileMap = @{}
           foreach ($f in $files) {
             $rel = $f.Substring("staging/".Length) -replace '\\', '/'
@@ -177,7 +222,8 @@ jobs:
             files     = $fileMap
           }
           $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path "staging/cesium-loader.json" -Encoding UTF8
-          Write-Host "manifest:"
+          $symbols = @($fileMap.Keys | Where-Object { $_.EndsWith(".pdb") }).Count
+          Write-Host "manifest: $($fileMap.Count) 个文件, 其中符号 $symbols 个"
           Get-Content "staging/cesium-loader.json"
 
       - name: Stage SDK tools package
@@ -186,6 +232,12 @@ jobs:
           New-Item -ItemType Directory -Path "sdk-staging/docs", "sdk-staging/examples/ActivityLogMod" -Force | Out-Null
           Copy-Item "sdk-tools/cesium.exe" "sdk-staging/cesium.exe" -Force
           Copy-Item "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll" "sdk-staging/CesiumLoader.SDK.dll" -Force
+          # SDK 的符号一起给: 模组作者单步进 SDK 内部(比如追 SdkLog/事件派发)才有行号。
+          if (Test-Path "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.pdb") {
+            Copy-Item "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.pdb" "sdk-staging/CesiumLoader.SDK.pdb" -Force
+          } else {
+            Write-Warning "符号缺失, SDK 工具包不含 CesiumLoader.SDK.pdb"
+          }
           Copy-Item "docs/*.md" "sdk-staging/docs/" -Force
           Copy-Item "mods/ActivityLogMod/ModEntry.cs", "mods/ActivityLogMod/AssemblyInfo.cs", "mods/ActivityLogMod/ActivityLogMod.csproj" "sdk-staging/examples/ActivityLogMod/" -Force
           # SDK 工具包说明
@@ -195,6 +247,7 @@ jobs:
             "包含:",
             "- cesium.exe            → mod 脚手架与包分发 CLI (win-x64 自包含, 无需本机 .NET)",
             "- CesiumLoader.SDK.dll  → mod 开发引用 (编译期绑定; cesium new 会自动附带进项目)",
+            "- CesiumLoader.SDK.pdb  → SDK 符号 (调试时能单步进 SDK 内部并看到行号)",
             "- docs\                 → SDK 文档 (概览/事件/玩家/操作/变速/生命周期/配置/能力声明)",
             "- examples\ActivityLogMod\ → 示例 mod 源码 (行为日志, 最简单)",
             "",
@@ -237,6 +290,12 @@ jobs:
           Copy-Item "agent-tools/AstralParty.Mcp.exe" "agent-staging/AstralParty.Mcp.exe" -Force
           Copy-Item "$modSrc/AstralParty.AgentMod.dll"  "agent-staging/mods/AstralParty.AgentMod/AstralParty.AgentMod.dll"  -Force
           Copy-Item "$modSrc/AstralParty.AgentMod.json" "agent-staging/mods/AstralParty.AgentMod/AstralParty.AgentMod.json" -Force
+          # 符号同样带上(与 dll 成对入库, 见 .gitignore): 桥接是实验性代码, 出问题要看栈的行号。
+          if (Test-Path "$modSrc/AstralParty.AgentMod.pdb") {
+            Copy-Item "$modSrc/AstralParty.AgentMod.pdb" "agent-staging/mods/AstralParty.AgentMod/AstralParty.AgentMod.pdb" -Force
+          } else {
+            Write-Warning "符号缺失, 本包不含 AstralParty.AgentMod.pdb"
+          }
           # 用通配符而不是中文字面量路径, 免掉 YAML/控制台编码的坑
           Copy-Item "docs/MCP-*.md" "agent-staging/docs/" -Force
           Copy-Item "mcp/README.md" "agent-staging/docs/MCP-README.md" -Force
@@ -248,7 +307,7 @@ jobs:
             "",
             "安装:",
             "  1. AstralParty.Mcp.exe                     → 放任意目录(MCP server, 自包含无需 .NET 运行时)",
-            "  2. mods\AstralParty.AgentMod\*.dll/.json   → 整个文件夹复制到 <游戏exe目录>\AstralParty_ModLoader\mods\ 下",
+            "  2. mods\AstralParty.AgentMod\*.dll/.json(.pdb) → 整个文件夹复制到 <游戏exe目录>\AstralParty_ModLoader\mods\ 下",
             "  3. 启动游戏(桥接会自己建 %LocalAppData%\AstralParty_ModLoader\agent\)",
             "  4. 自检: AstralParty.Mcp.exe --print-config   (看到『心跳: 活着』即通)",
             "",

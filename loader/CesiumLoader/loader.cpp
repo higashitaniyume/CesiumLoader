@@ -6,10 +6,10 @@
 //   3. 解析 il2cpp_* 导出函数
 //   4. 等待 il2cpp domain 就绪 + thread_attach
 //   5. 等待 HybridCLR 热更(AstralParty.Runtime 出现)
-//   6. 设置环境变量 CESIUM_* 目录
+//   6. 设置环境变量 CESIUM_* 目录 + 本次启动的日志文件路径(每次启动一套)
 //   7. 通过 Assembly.Load(byte[]) 加载托管引导程序 (CesiumLoader.Bootstrap.dll)
 //      并调用其入口 —— SDK 加载 / mod 枚举 / 入口调用 全部在托管层完成
-//   8. 启动 activity-mod.log -> 控制台 转发线程
+//   8. 启动 activity-mod-<会话>.log -> 控制台 转发线程
 //
 // 这样 native 保持薄引导, mod 编排逻辑在 C# 里(可脱离游戏单元测试)。
 
@@ -487,16 +487,18 @@ static bool run_entry(Il2CppAssembly* asm_, const char* entry_type, const char* 
     return false;
 }
 
-// ---------- 日志转发线程(activity-mod.log -> 控制台) ----------
+// ---------- 日志转发线程(activity-mod-<会话>.log -> 控制台) ----------
 
 // mod / bootstrap 无法直接 P/Invoke 到自定义导出(IL2CPP 限制), 改为写文件,
-// 本线程监控 activity-mod.log, 把新增行写到控制台窗口。
+// 本线程监控本次启动的 activity 日志, 把新增行写到控制台窗口。
 static DWORD WINAPI forward_activity_log(LPVOID param)
 {
     std::wstring log_dir = *reinterpret_cast<std::wstring*>(param);
     delete reinterpret_cast<std::wstring*>(param);
 
-    std::wstring path = log_dir + L"\\activity-mod.log";
+    // 必须用当前这次启动的文件名(带会话标识), 不能写死 activity-mod.log —— 否则会去 tail
+    // 上一次启动留下的旧文件, 控制台什么都看不到。
+    const std::wstring path = cesium::log::activity_log_path(log_dir);
     LARGE_INTEGER last_len{};
     last_len.QuadPart = 0;
     // 初始:跳过已有内容(只转发"从现在起"的新日志)
@@ -560,7 +562,7 @@ static DWORD WINAPI forward_activity_log(LPVOID param)
 
 // ---------- 引导线程 ----------
 
-// 故障体验: 把 mod 加载/入口失败写入 logs\mod-errors.log(与 SDK ReportCrash 同一文件)。
+// 故障体验: 把 mod 加载/入口失败写入本次启动的 logs\mod-errors-<会话>.log(与 SDK ReportCrash 同一文件)。
 // 即使 mod 自身崩溃抛异常, 这里也能记录"哪个 mod 失败 + 原因", 方便定位。
 // 具体写盘由 spdlog 负责(见 logging.cpp): 行格式 [时间] [mod] 原因 + 分隔线保持不变。
 static void write_mod_error(const std::wstring& logs_dir, const std::string& mod_name, const std::string& reason)
@@ -689,11 +691,25 @@ static DWORD WINAPI boot_thread(LPVOID)
     set_env_w(L"CESIUM_SDK_DIR", sdk);
     set_env_w(L"CESIUM_BOOTSTRAP_DIR", boot);
     set_env_w(L"CESIUM_SPEED_DIR", speed);
+
+    // 本次启动的日志文件(**每次启动一套, 不共用**)。
+    // 托管侧(SDK 的 SdkLog / SdkDiagnostics / Bootstrap)也要往"这一次"的文件里写, 而它只知道
+    // 目录、推不出文件名, 所以把完整路径一起传下去 —— 只给 CESIUM_LOG_DIR 的话, 托管侧就只能
+    // 写死一个固定名字, 那样几次启动又混到同一个文件里了。
+    const std::wstring log_file = cesium::log::loader_log_path();
+    const std::wstring activity_file = cesium::log::activity_log_path(logs);
+    const std::wstring error_file = cesium::log::error_log_path(logs);
+    set_env_w(L"CESIUM_LOG_FILE", log_file);
+    set_env_w(L"CESIUM_ACTIVITY_LOG_FILE", activity_file);
+    set_env_w(L"CESIUM_ERROR_LOG_FILE", error_file);
+
     log_line(L"[hijack] 加载器根目录: " + loader_root());
     log_line(L"[hijack] bootstrap 目录: " + boot);
     log_line(L"[hijack] SDK 目录: " + sdk);
     log_line(L"[hijack] mods 目录: " + mods);
     log_line(L"[hijack] 日志目录: " + logs);
+    log_line(L"[hijack] 本次启动日志: " + cesium::log::session_id() +
+             L" (引导: " + log_file + L" / mod: " + activity_file + L" / 错误: " + error_file + L")");
     log_line(L"[hijack] 变速目录: " + speed);
 
     // 6a. 实验特性: useManagedBootstrap=true 时, 加载 bootstrap DLL 并调用入口,

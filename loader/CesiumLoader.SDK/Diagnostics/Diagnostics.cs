@@ -478,8 +478,13 @@ namespace CesiumLoader.SDK
     /// SdkDiagnostics.DumpSceneInfo();   // 只看场景
     /// </code>
     ///
-    /// 输出位置: <c>CESIUM_LOG_DIR\cesium-loader.log</c>(与 mod 的 activity-mod.log 同目录),
-    /// 同时把摘要打进 activity-mod.log(会转发到控制台)。
+    /// 输出位置: 加载器本次启动的日志文件(<c>CESIUM_LOG_FILE</c>, 形如
+    /// <c>CESIUM_LOG_DIR\cesium-loader-&lt;yyyyMMdd&gt;-&lt;HHmmss&gt;-&lt;pid&gt;.log</c>;
+    /// 与本次启动的 activity 日志同目录),
+    /// 同时把摘要打进 activity 日志(会转发到控制台)。
+    ///
+    /// 加载器没给 <c>CESIUM_LOG_FILE</c> 时(旧版加载器)回退到 <c>CESIUM_LOG_DIR\cesium-loader.log</c>。
+    /// 每次启动一套日志文件, 所以诊断转储落在"这次启动"的文件里, 不会和上一次启动的内容混在一起。
     ///
     /// 性能: 只应手动触发(按键/命令)。内部使用 on-demand 的场景扫描,
     /// 不会每帧生成字符串。
@@ -492,7 +497,7 @@ namespace CesiumLoader.SDK
         /// <summary>已执行的 Dump 次数。</summary>
         public static long DumpCount { get { return _dumpCount; } }
 
-        /// <summary>诊断日志文件名。</summary>
+        /// <summary>旧版加载器的回退文件名(没有 CESIUM_LOG_FILE 时用)。</summary>
         public const string DumpFileName = "cesium-loader.log";
 
         /// <summary>诊断日志完整路径(无法定位时返回文件名)。</summary>
@@ -500,6 +505,10 @@ namespace CesiumLoader.SDK
         {
             try
             {
+                // 首选加载器给的"本次启动的日志文件"完整路径
+                string file = Environment.GetEnvironmentVariable("CESIUM_LOG_FILE");
+                if (!string.IsNullOrEmpty(file)) return file;
+
                 string dir = Environment.GetEnvironmentVariable("CESIUM_LOG_DIR");
                 if (string.IsNullOrEmpty(dir))
                 {

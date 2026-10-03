@@ -15,11 +15,17 @@ namespace CesiumLoader.SDK
     }
 
     /// <summary>
-    /// 日志: 写到 CESIUM_LOG_DIR/activity-mod.log, 由加载器(winmm.dll)转发到控制台窗口。
-    /// 所有 mod 共用同一文件(当前加载器只转发这一个文件)。
+    /// 日志: 写到加载器**本次启动**的 activity 日志, 由加载器转发到控制台窗口。
+    /// 所有 mod 共用同一文件(加载器只转发这一个文件)。
+    ///
+    /// 文件名由**加载器**决定(每次启动一套, 像 activity-mod-20261003-201234-12345.log),
+    /// 通过环境变量 CESIUM_ACTIVITY_LOG_FILE / CESIUM_ERROR_LOG_FILE 传完整路径 —— 只给目录
+    /// (CESIUM_LOG_DIR) 的话托管侧推不出这次的文件名, 只能写死一个固定名字, 那样几次启动的
+    /// 日志又会混进同一个文件。环境变量缺失时(旧版加载器 / 脱离加载器单独跑)才回退固定名。
+    ///
     /// 分级: Debug/Info/Warn/Error; 可通过环境变量 CESIUM_LOG_LEVEL 过滤(默认 Info, 只显示 Info 及以上)。
     ///
-    /// 故障体验: ReportCrash 把异常完整堆栈写到独立 mod-errors.log(不经过日志级别过滤),
+    /// 故障体验: ReportCrash 把异常完整堆栈写到独立的 errors 日志(不经过日志级别过滤),
     /// 方便定位 mod 崩溃; CrashGuard 包装回调, 异常不外泄到游戏。
     /// </summary>
     public static class SdkLog
@@ -78,14 +84,25 @@ namespace CesiumLoader.SDK
                         "AstralParty_ModLoader", "logs");
                 }
                 Directory.CreateDirectory(dir);
-                _logFile = Path.Combine(dir, "activity-mod.log");
-                _errorFile = Path.Combine(dir, "mod-errors.log");
+                // 加载器给了"本次启动的文件"就用它(每次启动一套); 没给(旧版加载器/脱离加载器)才回退固定名。
+                _logFile = EnvOr("CESIUM_ACTIVITY_LOG_FILE", Path.Combine(dir, "activity-mod.log"));
+                _errorFile = EnvOr("CESIUM_ERROR_LOG_FILE", Path.Combine(dir, "mod-errors.log"));
             }
             catch { _logFile = "activity-mod.log"; }
         }
 
+        private static string EnvOr(string name, string fallback)
+        {
+            try
+            {
+                string v = Environment.GetEnvironmentVariable(name);
+                return string.IsNullOrEmpty(v) ? fallback : v;
+            }
+            catch { return fallback; }
+        }
+
         /// <summary>
-        /// 报告 mod 异常: 完整堆栈写到 mod-errors.log(独立文件, 不受日志级别过滤),
+        /// 报告 mod 异常: 完整堆栈写到独立的 errors 日志(不受日志级别过滤),
         /// 并同时输出一条 ERR 日志。调用方应捕获异常后调用。
         /// </summary>
         /// <param name="modId">mod 程序集名/标识。</param>

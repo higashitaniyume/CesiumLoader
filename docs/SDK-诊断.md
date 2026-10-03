@@ -38,8 +38,10 @@ string oneLine = SdkDiagnostics.Summary();         // 一行摘要, 适合直接
 string file = SdkDiagnostics.GetDumpFilePath();
 ```
 
-路径规则：环境变量 `CESIUM_LOG_DIR` → 否则 `%LOCALAPPDATA%\AstralParty_ModLoader\logs\`。
-文件是**追加**模式，所以一份日志能看到多次转储的时间线。
+路径规则：`CESIUM_LOG_FILE`（加载器给出的**本次启动**的引导日志完整路径）→ 否则
+`CESIUM_LOG_DIR\cesium-loader.log` → 再否则 `%LOCALAPPDATA%\AstralParty_ModLoader\logs\cesium-loader.log`。
+每次启动一套日志文件，同一次启动内的多次转储会追加到**同一个**文件（能看到时间线），
+但不会落进上一次启动的文件里；没有加载器（脱离游戏跑）时仍然是固定名 + 追加。
 
 游戏内触发方式（示例 mod）：
 
@@ -91,8 +93,8 @@ SdkLog.Debug("MYMOD", "每帧信息(默认不显示)");
 
 | 现象 | 先看 |
 | --- | --- |
-| mod 完全没加载 | `logs\cesium-loader.log`（引导阶段） |
-| mod 加载了但没反应 | `logs\activity-mod.log`、`mod-errors.log` |
+| mod 完全没加载 | `logs\cesium-loader-<会话>.log`（引导阶段；取最新一个） |
+| mod 加载了但没反应 | `logs\activity-mod-<会话>.log`、`logs\mod-errors-<会话>.log` |
 | 游戏内部报错 | `%LOCALAPPDATA%Low\feimo\AstralParty_CN\Player.log` |
 | 相机/场景状态不对 | `SdkDiagnostics.Dump()` 的转储文件 |
 | 按键没生效 | `InputService.CaptureDeniedCount`、`DescribeCursor()` |

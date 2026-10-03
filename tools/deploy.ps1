@@ -27,8 +27,8 @@
     注意: **必须由 Steam 拉起游戏**。本作在 SteamManager.Awake() 里校验启动来源,
     直接运行 AstralParty_CN.exe 会得到 "[ERROR] [SteamManager] 非Steam客户端启动,
     退出游戏" 并主动退出 (Player.log 中 SteamPlatform Initialized: False)。
-    另外请确保同一时刻只有一个游戏实例: 多实例会各注入一次 version.dll,
-    在共享的 logs\cesium-loader.log 里留下两段引导记录。
+    另外请确保同一时刻只有一个游戏实例: 多实例会各注入一次 version.dll、
+    重复加载 mod (每次启动各写一套日志, 见下)。
 
 .EXAMPLE
     pwsh -File tools\deploy.ps1
@@ -50,7 +50,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot          # modding\msvc
-$src = Join-Path $repo 'src'
+# 工程布局: 加载器在 loader\ 下, 内置/示例 mod 在 mods\ 下(各自独立 csproj)。
+# 注意这里曾写成 Join-Path $repo 'src' —— 那是旧布局, 早已不存在, 脚本会在找 version.dll 时直接失败。
+$loaderSrc = Join-Path $repo 'loader'
+$modsSrc = Join-Path $repo 'mods'
 
 if ($Mods.Count -eq 0)
 {
@@ -161,24 +164,30 @@ if (Test-Path -LiteralPath (Join-Path $gameDir 'version.dll'))
     Copy-Item -LiteralPath (Join-Path $gameDir 'version.dll') -Destination $backup -Force
     Write-Host "已备份原有 version.dll -> version.dll.bak"
 }
-Deploy-File -From (Join-Path $src "CesiumLoader\bin\$Configuration\version.dll") -To (Join-Path $gameDir 'version.dll')
+Deploy-File -From (Join-Path $loaderSrc "CesiumLoader\bin\$Configuration\version.dll") -To (Join-Path $gameDir 'version.dll')
+# 符号: 放在 dll 同目录, 调试器(或看崩溃转储)会自动找到它, 把加载器内部的地址还原成源码行。
+Deploy-File -From (Join-Path $loaderSrc "CesiumLoader\bin\$Configuration\version.pdb") -To (Join-Path $gameDir 'version.pdb') -Optional
 
 # 2) 加载器配置
 Deploy-File -From (Join-Path $repo 'dist\modloader\AstralParty_ModLoader\doorstop_config.json') `
             -To (Join-Path $loaderDir 'doorstop_config.json')
 
 # 3) SDK (加载器从 sdk\*.dll 载入)
-Deploy-File -From (Join-Path $src "CesiumLoader.SDK\$netstd\CesiumLoader.SDK.dll") `
+Deploy-File -From (Join-Path $loaderSrc "CesiumLoader.SDK\$netstd\CesiumLoader.SDK.dll") `
             -To (Join-Path $loaderDir 'sdk\CesiumLoader.SDK.dll')
+Deploy-File -From (Join-Path $loaderSrc "CesiumLoader.SDK\$netstd\CesiumLoader.SDK.pdb") `
+            -To (Join-Path $loaderDir 'sdk\CesiumLoader.SDK.pdb') -Optional
 
 # 4) 托管 Bootstrap (默认不启用, 但按布局就位)
-Deploy-File -From (Join-Path $src "CesiumLoader.Bootstrap\$netstd\CesiumLoader.Bootstrap.dll") `
+Deploy-File -From (Join-Path $loaderSrc "CesiumLoader.Bootstrap\$netstd\CesiumLoader.Bootstrap.dll") `
             -To (Join-Path $loaderDir 'bootstrap\CesiumLoader.Bootstrap.dll') -Optional
+Deploy-File -From (Join-Path $loaderSrc "CesiumLoader.Bootstrap\$netstd\CesiumLoader.Bootstrap.pdb") `
+            -To (Join-Path $loaderDir 'bootstrap\CesiumLoader.Bootstrap.pdb') -Optional
 
-# 5) mods: 每个 mod 一个文件夹 (DLL + 同名 sidecar)
+# 5) mods: 每个 mod 一个文件夹 (DLL + 同名 sidecar + 符号)
 foreach ($mod in $Mods)
 {
-    $from = Join-Path $src "$mod\$netstd"
+    $from = Join-Path $modsSrc "$mod\$netstd"
     if (-not (Test-Path -LiteralPath $from)) { Write-Warning "跳过 mod (未构建): $mod"; continue }
 
     $dll = Join-Path $from "$mod.dll"
@@ -187,6 +196,8 @@ foreach ($mod in $Mods)
     $json = Join-Path $from "$mod.json"
     if (-not (Test-Path -LiteralPath $json)) { $json = Join-Path $repo "dist\modloader\AstralParty_ModLoader\mods\$mod\$mod.json" }
     Deploy-File -From $json -To (Join-Path $loaderDir "mods\$mod\$mod.json") -Optional
+
+    Deploy-File -From (Join-Path $from "$mod.pdb") -To (Join-Path $loaderDir "mods\$mod\$mod.pdb") -Optional
 }
 
 # 6) 日志目录
@@ -207,13 +218,14 @@ if (Test-Path -LiteralPath $bep)
 }
 
 Write-Host ''
-Write-Host "日志: $loaderDir\logs\cesium-loader.log" -ForegroundColor Cyan
+Write-Host "日志: $loaderDir\logs\cesium-loader-<启动时间>-<pid>.log (每次启动一个文件)" -ForegroundColor Cyan
+Write-Host '符号: version.pdb / sdk\*.pdb / mods\*\*.pdb 已随 dll 部署(存在时), 调试器会自动加载它们。' -ForegroundColor DarkGray
 
 # ---------------------------------------------------------------- 启动 (可选)
 if ($Launch)
 {
-    # 单实例原则: 同一时刻只允许一个游戏进程。两个进程会各自注入一次 version.dll,
-    # 共享同一份 cesium-loader.log(日志交错), 并重复加载 mod。
+    # 单实例原则: 同一时刻只允许一个游戏进程。两个进程会各自注入一次 version.dll 并重复加载 mod
+    # (日志现在是每次启动各一套, 不会交错, 但仍会让同一份 mod 被加载两遍)。
     if (Get-Process -Name 'AstralParty_CN' -ErrorAction SilentlyContinue)
     {
         throw '已有游戏实例在运行, 拒绝再次启动 (避免多实例重复注入)。'

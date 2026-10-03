@@ -15,7 +15,7 @@ namespace DiagnosticsMod
     }
 
     /// <summary>
-    /// 诊断模块: 把运行时/相机/场景信息转储到 <c>logs\cesium-loader.log</c>。
+    /// 诊断模块: 把运行时/相机/场景信息转储到本次启动的加载器日志(<c>logs\cesium-loader-&lt;会话&gt;.log</c>)。
     ///
     /// 按键(可在 config.json 修改):
     ///   F10  全量转储(运行时 + 相机 + 场景 + UI + 计数器)
