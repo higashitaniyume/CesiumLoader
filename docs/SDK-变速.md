@@ -133,7 +133,7 @@ using CesiumLoader.SDK;
 using UnityEngine;
 
 [ModManifest("我的变速mod", "1.0.0", "作者", "描述",
-    Permissions = ModPermission.SpeedHack, SdkVersion = "2.2.4")]
+    Permissions = ModPermission.SpeedHack, SdkVersion = "2.2.5")]
 public static class ModEntry
 {
     public static void Main()
