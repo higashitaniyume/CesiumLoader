@@ -139,7 +139,7 @@ function Write-Heartbeat {
     param([int]$AgeMs = 120)
     $now = Get-BridgeNowMs
     $hb = [ordered]@{
-        Schema = 1; ModVersion = '1.0.0'; SdkVersion = '2.2.4'; ProcessId = 4242
+        Schema = 1; ModVersion = '1.0.0'; SdkVersion = '2.2.5'; ProcessId = 4242
         StartedAtMs = $now - 60000; LastTickMs = $now - $AgeMs; TickCount = 999; StateSeq = 42
         AgentDir = $bridge; Scene = 'RoomScene'; InRoom = $true; InBattle = $false
         CommandsExecuted = 0; CommandsRejected = 0
