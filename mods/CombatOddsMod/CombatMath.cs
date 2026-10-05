@@ -300,9 +300,12 @@ namespace CombatOddsMod
             int damageAdjust = 0, int judgeFaces = DefaultJudgeDiceFaces)
         {
             if (judgeFaces <= 0) judgeFaces = DefaultJudgeDiceFaces;
-            int killTotal = defenderHp + defenderMaxDef - damageAdjust;
+            int killTotal = defenderHp + defenderMaxDef - attackerCurrentAtk - damageAdjust;
             int killRoll = killTotal;
-            int currentDefenseKillRoll = defenderInitDef + defenderHp - damageAdjust;            int defenseTotal = attackerCurrentAtk + damageAdjust - attackerHp + 1;
+            int currentDefenseKillRoll = defenderInitDef + defenderHp - attackerCurrentAtk - damageAdjust;
+            if (currentDefenseKillRoll < 1) currentDefenseKillRoll = 1;
+            if (killRoll < 1) killRoll = 1;
+            int defenseTotal = attackerCurrentAtk + damageAdjust - attackerHp + 1;
             int defenseRoll = defenseTotal - defenderInitDef;
             int dodgeRoll = attackerPoint >= judgeFaces ? judgeFaces : attackerPoint + 1;
             return new BattleThresholds

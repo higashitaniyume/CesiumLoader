@@ -366,8 +366,8 @@ namespace CombatOddsMod.Tests
         public void RequiredBattleRolls_ComputesGuaranteeThresholds()
         {
             var t = CombatMath.RequiredBattleRolls(2, 8, 6, 22, 2, 2, 2, 0, 6);
-            Assert.Equal(24, t.AttackRollToKillAtCurrentDefense);
-            Assert.Equal(28, t.AttackRollToGuaranteeKill);
+            Assert.Equal(22, t.AttackRollToKillAtCurrentDefense);
+            Assert.Equal(26, t.AttackRollToGuaranteeKill);
             Assert.False(t.KillReachable);
             Assert.Equal(1, t.DefenseRollToAvoidKnockdown);
             Assert.True(t.DefenseReachable);
