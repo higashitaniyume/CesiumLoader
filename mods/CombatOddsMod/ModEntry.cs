@@ -43,6 +43,8 @@ namespace CombatOddsMod
         private static string _hud;              // 当前 HUD 文本(供 OnGUI/覆盖层渲染)
         private static string _lastLogged;       // 控制台去重
         private static FightOverlayController _overlay;  // FightWindow 内嵌覆盖层(真机验证)
+        private static FightUnitThresholdOverlay _thresholdOverlay;
+        private static Battle _lastBattle;
         private static readonly Dictionary<int, CombatMath.BuffDamageEffect> _buffTable = CombatMath.DefaultBuffTable();
 
         /// <summary>
@@ -145,12 +147,15 @@ namespace CombatOddsMod
                 return;
             }
             GameEvents.BattleUpdate += OnBattleUpdate;
+            GameEvents.CardUsed += OnCombatCardUsed;
+            GameEvents.EffectCardUsed += OnCombatEffectCardUsed;
+            GameEvents.QuickCardUsed += OnCombatQuickCardUsed;
             GameEvents.HeroAttrUpdated += OnHeroAttrUpdated;
             GameEvents.SkillUsed += OnSkillUsed;
             GameEvents.StartAutoHook();
 
             // FightWindow 内嵌覆盖层(FairyGUI 反射, 需进游戏目视确认位置; 失败自动降级到控制台)。
-            try { _overlay = new FightOverlayController(new RuntimeFightOverlayReflector()); }
+            try { _overlay = new FightOverlayController(new RuntimeFightOverlayReflector()); _thresholdOverlay = new FightUnitThresholdOverlay(new RuntimeFightOverlayReflector()); }
             catch (Exception e) { SdkLog.Warn("CombatOdds", "覆盖层初始化失败(仅用控制台): " + e.Message); }
 
             // 主 HUD 攻击力加成(星币锤/手电筒/美工刀): 在左下角攻击力右侧显示, 可悬浮看明细。
@@ -474,6 +479,32 @@ namespace CombatOddsMod
         private static int _lastOrbitalDiscardCount;
         private static int _lastOrbitalDiscardCost;
 
+        private static void OnCombatCardUsed(long playerId, int cardId, int remain)
+        {
+            RefreshAfterCombatCard("BattleCard#" + cardId);
+        }
+
+        private static void OnCombatEffectCardUsed(long playerId, int cardId, int remain)
+        {
+            RefreshAfterCombatCard("EffectCard#" + cardId);
+        }
+
+        private static void OnCombatQuickCardUsed(long playerId, int cardId, int originalCardId)
+        {
+            RefreshAfterCombatCard("QuickCard#" + cardId);
+        }
+
+        private static void RefreshAfterCombatCard(string source)
+        {
+            try
+            {
+                if (_lastBattle == null) return;
+                SdkLog.Info("CombatOdds", "出牌后重新计算战斗骰点阈值；来源=" + source);
+                OnBattleUpdate(_lastBattle);
+            }
+            catch { }
+        }
+
         private static void OnSkillUsed(long playerId, int skillId)
         {
             try
@@ -542,7 +573,9 @@ namespace CombatOddsMod
             try
             {
                 if (b == null || b.Attacker == null || b.Defender == null) return;
-                if (b.IsEnd) { Clear(); return; }
+                if (b.IsEnd) { _lastBattle = null; Clear(); return; }
+
+                _lastBattle = b;
 
                 var atk = b.Attacker;
                 var def = b.Defender;
@@ -661,6 +694,13 @@ namespace CombatOddsMod
                         sb.Append('\n').Append(C("🛡 目标减伤 受伤" + dmgAdjust, Green)).Append(Dim(BuffTail(badj.Applied)));
                 }
 
+                if (_thresholdOverlay != null)
+                {
+                    string attackerThreshold = BuildAttackerThresholdText(atk, def, badj, finalAtk, bonnieBonus, attackerThrew);
+                    string defenderThreshold = BuildDefenderThresholdText(atk, def, badj, finalAtk, bonnieBonus, attackerThrew);
+                    _thresholdOverlay.Update(_cfg.InGameOverlay, attackerThreshold, defenderThreshold);
+                }
+
                 Publish(sb.ToString());
             }
             catch (Exception e)
@@ -699,6 +739,7 @@ namespace CombatOddsMod
             _hud = null;
             _lastLogged = null;
             if (_overlay != null) { try { _overlay.Hide(); } catch { } }
+            if (_thresholdOverlay != null) { try { _thresholdOverlay.Hide(); } catch { } }
         }
 
         /// <summary>OnGUI 绘制(仅当安装了 UI 渲染后端时才会被 SDK 调用)。</summary>
@@ -710,6 +751,30 @@ namespace CombatOddsMod
 
         // ============================== 辅助 ==============================
 
+        private static string BuildAttackerThresholdText(BattleRole atk, BattleRole def, CombatMath.BuffAdjustment badj, int finalAtk, int bonnieBonus, bool attackerThrew)
+        {
+            int hp = HpOf(def.PlayerId);
+            int init = SafeInt(() => atk.InitAtk) + bonnieBonus;
+            int maxDef = SafeInt(() => def.MaxDef);
+            var t = CombatMath.RequiredBattleRolls(init, hp, maxDef, hp, finalAtk, SafeInt(() => def.InitDef), SafeInt(() => atk.Point), badj.Delta, JudgeFaces());
+            string kill = "击杀骰 [size=42][color=#FFE45C]≥ " + t.AttackRollToKillAtCurrentDefense + "[/color][/size]";
+            return "[color=#FFD24A]攻击者[/color]\n" + kill;
+        }
+
+        private static string BuildDefenderThresholdText(BattleRole atk, BattleRole def, CombatMath.BuffAdjustment badj, int finalAtk, int bonnieBonus, bool attackerThrew)
+        {
+            int defenderHp = HpOf(def.PlayerId);
+            int attackerHp = HpOf(atk.PlayerId);
+            int initDef = SafeInt(() => def.InitDef);
+            int maxDef = SafeInt(() => def.MaxDef);
+            var t = CombatMath.RequiredBattleRolls(SafeInt(() => atk.InitAtk) + bonnieBonus, attackerHp, maxDef, defenderHp,
+                finalAtk, initDef, SafeInt(() => atk.Point), badj.Delta, JudgeFaces());
+            string defend = t.DefenseReachable && t.DefenseRollToAvoidKnockdown >= 1
+                ? "防御骰 [size=38][color=#72F0A2]≥ " + t.DefenseRollToAvoidKnockdown + "[/color][/size] 不被击倒" : "防御无法保证不被击倒";
+            string dodge = t.DodgeReachable
+                ? "闪避判定骰 [size=38][color=#72B7FF]≥ " + t.DodgeRollToSucceed + "[/color][/size] 成功" : "闪避无法成功";
+            return "[color=#6DE0A2]防御者[/color]\n" + defend + "\n" + dodge;
+        }
         private static int JudgeFaces()
         {
             try
@@ -853,7 +918,7 @@ namespace CombatOddsMod
         /// <summary>击杀率颜色: 越高越绿(对攻方是好事)。</summary>
         private static string KillColor(double p) => p >= 0.60 ? Green : (p >= 0.30 ? Yellow : Red);
 
-        private static string PctPlain(double p) => System.Math.Round(p * 100.0).ToString("0") + "%";
+        private static string PctPlain(double p) => (p * 100.0).ToString("0.#") + "%";
 
         /// <summary>buff 尾注: " (标记x2 / 狂暴)" —— 最多两项, 简短。</summary>
         private static string BuffTail(System.Collections.Generic.List<string> applied)

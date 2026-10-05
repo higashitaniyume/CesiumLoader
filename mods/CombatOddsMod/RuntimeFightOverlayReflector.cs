@@ -96,6 +96,47 @@ namespace CombatOddsMod
             }
         }
 
+        public object CreateUnitLabel(bool attacker)
+        {
+            var label = CreateLabel();
+            if (label == null) return null;
+                RuntimeAssemblyService.SafeInvoke(label, "SetSize", new object[] { 460f, 150f }, "CombatOdds.threshold");
+                RuntimeAssemblyService.SafeSetProperty(label, "UBBEnabled", true, "CombatOdds.threshold");
+                RuntimeAssemblyService.SafeSetField(label, "_ubbEnabled", true, "CombatOdds.threshold");
+                RuntimeAssemblyService.SafeSetProperty(label, "touchable", false, "CombatOdds.threshold");
+                RuntimeAssemblyService.SafeSetProperty(label, "sortingOrder", 9100, "CombatOdds.threshold");
+
+            var tf = RuntimeAssemblyService.SafeGetProperty(label, "textFormat", "CombatOdds.threshold");
+            if (tf != null)
+            {
+                RuntimeAssemblyService.SafeSetField(tf, "size", System.Math.Max(22, BaseFontSize + 3), "CombatOdds.threshold");
+                RuntimeAssemblyService.SafeSetField(tf, "bold", true, "CombatOdds.threshold");
+                RuntimeAssemblyService.SafeInvoke(label, "ApplyTextFormat", new object[] { tf }, "CombatOdds.threshold");
+            }
+            return label;
+        }
+
+        public void AddUnitLabel(object pane, object label, bool attacker)
+        {
+            if (pane == null || label == null) return;
+            RuntimeAssemblyService.SafeInvoke(pane, "AddChild", new object[] { label }, "CombatOdds.threshold");
+            float paneWidth = RuntimeAssemblyService.SafeGetProperty<float>(pane, "width", 1920f, "CombatOdds.threshold");
+            float x = attacker ? paneWidth * 0.14f : paneWidth * 0.70f;
+            RuntimeAssemblyService.SafeInvoke(label, "SetXY", new object[] { x, 52f }, "CombatOdds.threshold");
+
+
+        }
+
+        public void SetUnitText(object label, string text)
+        {
+            if (label != null) RuntimeAssemblyService.SafeSetProperty(label, "text", text ?? string.Empty, "CombatOdds.threshold");
+        }
+
+        public void SetUnitVisible(object label, bool visible)
+        {
+            if (label != null) RuntimeAssemblyService.SafeSetProperty(label, "visible", visible, "CombatOdds.threshold");
+        }
+
         public bool LabelInPane(object label, object pane)
         {
             if (label == null || pane == null) return false;

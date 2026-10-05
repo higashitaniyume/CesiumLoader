@@ -363,6 +363,18 @@ namespace CombatOddsMod.Tests
             Assert.Single(player.ContextOnly);
         }
         [Fact]
+        public void RequiredBattleRolls_ComputesGuaranteeThresholds()
+        {
+            var t = CombatMath.RequiredBattleRolls(2, 8, 6, 22, 2, 2, 2, 0, 6);
+            Assert.Equal(24, t.AttackRollToKillAtCurrentDefense);
+            Assert.Equal(28, t.AttackRollToGuaranteeKill);
+            Assert.False(t.KillReachable);
+            Assert.Equal(1, t.DefenseRollToAvoidKnockdown);
+            Assert.True(t.DefenseReachable);
+            Assert.Equal(3, t.DodgeRollToSucceed);
+            Assert.True(t.DodgeReachable);
+        }
+        [Fact]
         public void KnownSkillLabels_MatchObservedCharacterSkills()
         {
             Assert.Equal("梅加斯·轨道轰炸", CombatMath.KnownSkillLabel(12203));

@@ -283,8 +283,41 @@ namespace CombatOddsMod
             dice = DiceD6(n);
         }
 
-        // =====================================================================
-        // Buff 伤害修正 —— 实时可读, 数据来源 Buff.bin/STRBuff 反编译
+        public struct BattleThresholds
+        {
+            public int AttackRollToKillAtCurrentDefense;
+            public int AttackRollToGuaranteeKill;
+            public int DefenseRollToAvoidKnockdown;
+            public int DodgeRollToSucceed;
+            public bool KillReachable;
+            public bool DefenseReachable;
+            public bool DodgeReachable;
+        }
+
+        /// <summary>按当前攻防面板计算最低保证骰点；骰点均按 1..judgeFaces 处理。</summary>
+        public static BattleThresholds RequiredBattleRolls(int attackerInitAtk, int attackerHp, int defenderMaxDef,
+            int defenderHp, int attackerCurrentAtk, int defenderInitDef, int attackerPoint,
+            int damageAdjust = 0, int judgeFaces = DefaultJudgeDiceFaces)
+        {
+            if (judgeFaces <= 0) judgeFaces = DefaultJudgeDiceFaces;
+            int killTotal = defenderHp + defenderMaxDef - damageAdjust;
+            int killRoll = killTotal;
+            int currentDefenseKillRoll = defenderInitDef + defenderHp - damageAdjust;            int defenseTotal = attackerCurrentAtk + damageAdjust - attackerHp + 1;
+            int defenseRoll = defenseTotal - defenderInitDef;
+            int dodgeRoll = attackerPoint >= judgeFaces ? judgeFaces : attackerPoint + 1;
+            return new BattleThresholds
+            {
+                AttackRollToKillAtCurrentDefense = currentDefenseKillRoll,
+                AttackRollToGuaranteeKill = killRoll,
+                DefenseRollToAvoidKnockdown = defenseRoll < 1 ? 1 : defenseRoll,
+                DodgeRollToSucceed = dodgeRoll,
+                KillReachable = killRoll >= 1 && killRoll <= judgeFaces,
+                DefenseReachable = defenseRoll <= judgeFaces,
+                DodgeReachable = dodgeRoll >= 1 && dodgeRoll <= judgeFaces
+            };
+        }
+
+        // —— 实时可读, 数据来源 Buff.bin/STRBuff 反编译
         // =====================================================================
         //
         // 针对【目标身上实时可读的 buff】: 服务器把每个单位的激活 buff 放在

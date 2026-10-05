@@ -1,0 +1,1 @@
+{"id":"FacingHighlightMod","name":"单位朝向高亮","version":"2.2.5","author":"CesiumLoader","description":"在地图上的玩家和怪物头顶显示高亮方向箭头，帮助快速辨认单位朝向。只读，不修改游戏状态。","permissions":1,"sdkVersion":"2.2.5","dependencies":[]}
