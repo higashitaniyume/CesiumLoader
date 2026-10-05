@@ -300,6 +300,84 @@ namespace CombatOddsMod
         //   · 语境限定类(精准打击只吃【轨道轰炸】、渊蚀印记只吃魔渊触须)【不进】普通投牌结算,
         //     标 GeneralCombat=false, 只作展示提示, 不改数值。
 
+        public enum DamageContext
+        {
+            NormalBattle,
+            Skill,
+            Card,
+            Destiny,
+            Divination,
+            Event,
+            Land,
+            Buff,
+            Summon,
+            Relic,
+            MapEvent,
+            Unknown
+        }
+
+        /// <summary>把服务端 DamageType 转为求值语境。</summary>
+        public static DamageContext ContextFromDamageType(int damageType)
+        {
+            switch (damageType)
+            {
+                case 1: return DamageContext.Skill;
+                case 2: return DamageContext.Card;
+                case 3: return DamageContext.Destiny;
+                case 4: return DamageContext.Divination;
+                case 5: return DamageContext.Event;
+                case 6: return DamageContext.Land;
+                case 7: return DamageContext.NormalBattle;
+                case 8: return DamageContext.Buff;
+                case 9: return DamageContext.Summon;
+                case 10: return DamageContext.Relic;
+                case 11: return DamageContext.MapEvent;
+                default: return DamageContext.Unknown;
+            }
+        }
+
+        /// <summary>语境限定 Buff 是否适用于当前伤害来源。</summary>
+        public static bool AppliesInContext(BuffDamageEffect effect, DamageContext context, long causeId = 0)
+        {
+            if (effect == null || effect.GeneralCombat) return true;
+            if (effect.BuffId == 1221202) return context == DamageContext.Skill && causeId == 12203;
+            if (effect.BuffId == 1291202)
+                return context == DamageContext.Summon && (causeId == 12911 || causeId == 12912);
+            return false;
+        }
+
+        /// <summary>梅加斯轨道轰炸：每丢弃两张牌触发一次，每3点总费用使每次伤害+1。</summary>
+        public static int MegasOrbitalBombardmentCount(int discardedCards)
+        {
+            return discardedCards > 0 ? discardedCards / 2 : 0;
+        }
+
+        public static int MegasOrbitalBombardmentDamage(int discardedCards, int discardedCost)
+        {
+            if (MegasOrbitalBombardmentCount(discardedCards) == 0) return 0;
+            if (discardedCost < 0) discardedCost = 0;
+            return 3 + discardedCost / 3;
+        }
+
+        /// <summary>邦妮攻击带标记(10006)怪物时的额外攻击力。</summary>
+        public static int BonnieMarkedMonsterAttackBonus(int heroId, bool targetIsMonster, bool targetMarked)
+        {
+            return heroId == 127 && targetIsMonster && targetMarked ? 3 : 0;
+        }
+
+        /// <summary>日志与协议已确认的角色技能标签；仅用于来源说明，不代表未知公式已被猜测。</summary>
+        public static string KnownSkillLabel(long causeId)
+        {
+            switch (causeId)
+            {
+                case 12203: return "梅加斯·轨道轰炸";
+                case 12902: return "赛克斯·魔域转化";
+                case 11403: return "蓝海晴·虚弱印记";
+                case 12702: return "邦妮·隐匿行动";
+                default: return null;
+            }
+        }
+
         /// <summary>一条 buff 的伤害修正规则(针对"该 buff 拥有者被击中时"的受伤)。</summary>
         public sealed class BuffDamageEffect
         {
@@ -331,7 +409,7 @@ namespace CombatOddsMod
             Add(new BuffDamageEffect(10006,   "标记",     +1, true,  true,  false, "每层受到伤害+1(玩家/怪物通用)"));
             Add(new BuffDamageEffect(2000801, "狂暴",     +1, true,  true,  false, "卡牌狂暴: 每层攻击+3、受到伤害+1"));
             Add(new BuffDamageEffect(1140101, "宿命回响", +1, false, true,  false, "蓝海晴PVP: 受到伤害+1, 2回合"));
-            Add(new BuffDamageEffect(1140102, "虚弱印记", +1, false, true,  false, "蓝海晴PVE: 受到伤害+1, 2回合"));
+            Add(new BuffDamageEffect(1140102, "虚弱印记", +1, false, true,  false, "蓝海晴PVE: 怪物受到伤害+1, 2回合"));
             Add(new BuffDamageEffect(4000401, "霉运",     +2, false, true,  false, "下次受到伤害+2"));
             Add(new BuffDamageEffect(3200501, "易伤",     +2, false, true,  false, "下次受到伤害+2"));
             Add(new BuffDamageEffect(10671302,"真凶",     +2, false, true,  false, "攻+2/移+2/出牌+1, 受到伤害+2"));
@@ -384,6 +462,16 @@ namespace CombatOddsMod
         /// </summary>
         public static BuffAdjustment EvaluateTargetBuffs(IEnumerable<TargetBuff> targetBuffs, Dictionary<int, BuffDamageEffect> table)
         {
+            return EvaluateTargetBuffs(targetBuffs, table, DamageContext.NormalBattle);
+        }
+
+        public static BuffAdjustment EvaluateTargetBuffs(IEnumerable<TargetBuff> targetBuffs, Dictionary<int, BuffDamageEffect> table, DamageContext context, long causeId = 0)
+        {
+            return EvaluateTargetBuffs(targetBuffs, table, context, causeId, true);
+        }
+
+        public static BuffAdjustment EvaluateTargetBuffs(IEnumerable<TargetBuff> targetBuffs, Dictionary<int, BuffDamageEffect> table, DamageContext context, long causeId, bool targetIsMonster)
+        {
             var adj = new BuffAdjustment
             {
                 Delta = 0,
@@ -398,9 +486,14 @@ namespace CombatOddsMod
                 if (!table.TryGetValue(tb.BuffId, out var eff) || eff == null) continue;
                 int layers = tb.Layers > 0 ? tb.Layers : 1;
 
-                if (!eff.GeneralCombat)
+                if (eff.BuffId == 1140102 && !targetIsMonster)
                 {
-                    adj.ContextOnly.Add(eff.Name);
+                    adj.ContextOnly.Add(eff.Name + "（仅怪物）");
+                    continue;
+                }
+                if (!eff.GeneralCombat && !AppliesInContext(eff, context, causeId))
+                {
+                    adj.ContextOnly.Add(eff.Name + "（仅" + eff.Note + "）");
                     continue;
                 }
                 if (eff.Immunity)

@@ -86,8 +86,10 @@ namespace CesiumLoader.SDK
         /// <summary>手牌变化: (playerId, 原始CardInfo列表)。队友的 CardId 可能是负数(服务器掩码)。</summary>
         public static event Action<long, IReadOnlyList<CardInfo>> HandChanged;
 
-        /// <summary>
-        /// **原始动作流**: 服务器 1002 推送的每一条 Action, 不做过滤也不去重。
+        /// <summary>实时属性更新(含 CauseOrigin、生命变化和 DamageType)。</summary>
+        public static event Action<UpdateHeroAttrS2C> HeroAttrUpdated;
+
+        /// <summary>原始动作流, 不做过滤也不去重。
         ///
         /// 用途: SDK 只把常见的几类动作翻译成上面那些强类型事件(如商店/筹码候选),
         /// 但有些窗口没有对应事件(筹码地块购买 offer 5249、移动 5027 的目标地块、
@@ -120,6 +122,7 @@ namespace CesiumLoader.SDK
         private static Core.Net.ThrowDiceResultS2CRPC.OnThrowDiceResultS2CServerDelegate _myWrappedDice;
         private static Core.Net.SelectRewardCardS2CRPC.OnSelectRewardCardS2CServerDelegate _myWrappedRewardCard;
         private static Core.Net.SyncRelicsS2CRPC.OnSyncRelicsS2CServerDelegate _myWrappedSyncRelics;
+        private static Core.Net.UpdateHeroAttrS2CRPC.OnUpdateHeroAttrS2CServerDelegate _myWrappedAttr;
         private static Core.Net.BattleS2CRPC.OnBattleS2CServerDelegate _myWrappedBattle;
         private static Core.Net.BattleThrowDiceS2CRPC.OnBattleThrowDiceS2CServerDelegate _myWrappedBattleDice;
         private static Core.Net.MoveS2CRPC.OnMoveS2CServerDelegate _myWrappedMove;
@@ -147,6 +150,7 @@ namespace CesiumLoader.SDK
                 HookRewardCard(net);
                 HookSyncRelics(net);
                 HookBattle(net);
+                HookHeroAttr(net);
                 HookBattleDice(net);
                 HookMove(net);
 
@@ -324,6 +328,24 @@ namespace CesiumLoader.SDK
             rpc.OnSyncRelicsS2CServerCallBackAsync = wrapped;
             _myWrappedSyncRelics = wrapped;
             SdkLog.Write("EVENTS", "[挂钩] SyncRelicsS2C");
+        }
+
+        private static void HookHeroAttr(Core.Net.RPCMsgManager net)
+        {
+            var rpc = net.UpdateHeroAttrS2C;
+            if (rpc == null) return;
+            var cur = rpc.OnUpdateHeroAttrS2CServerCallBackAsync;
+            if (cur == null || ReferenceEquals(cur, _myWrappedAttr)) return;
+            var original = cur;
+            Core.Net.UpdateHeroAttrS2CRPC.OnUpdateHeroAttrS2CServerDelegate wrapped = (model, errId, isDispatch) =>
+            {
+                try { if (errId == 0 && model != null) HeroAttrUpdated?.Invoke(model); } catch { }
+                if (original != null) return original(model, errId, isDispatch);
+                return UniTask.CompletedTask;
+            };
+            rpc.OnUpdateHeroAttrS2CServerCallBackAsync = wrapped;
+            _myWrappedAttr = wrapped;
+            SdkLog.Write("EVENTS", "[挂钩] UpdateHeroAttrS2C");
         }
 
         private static void HookBattle(Core.Net.RPCMsgManager net)

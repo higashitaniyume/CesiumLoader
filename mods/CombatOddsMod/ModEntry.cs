@@ -57,6 +57,8 @@ namespace CombatOddsMod
         private static object _atkPropBound;        // 已挂监听的 ATK 属性(用于换绑/解绑)
         private static Action<int> _atkListener;    // 保活引用, 便于 RemoveListener
         private static string _lastAtkBonusLog;     // 诊断日志去重(只在加成文本变化时打一行)
+        private static readonly Dictionary<string, float> _recentDamageEvents = new Dictionary<string, float>();
+        private static float _lastDamagePruneTime;
 
         public static void Main()
         {
@@ -143,6 +145,8 @@ namespace CombatOddsMod
                 return;
             }
             GameEvents.BattleUpdate += OnBattleUpdate;
+            GameEvents.HeroAttrUpdated += OnHeroAttrUpdated;
+            GameEvents.SkillUsed += OnSkillUsed;
             GameEvents.StartAutoHook();
 
             // FightWindow 内嵌覆盖层(FairyGUI 反射, 需进游戏目视确认位置; 失败自动降级到控制台)。
@@ -467,6 +471,72 @@ namespace CombatOddsMod
 
         // ============================== 核心: 战斗更新 ==============================
 
+        private static int _lastOrbitalDiscardCount;
+        private static int _lastOrbitalDiscardCost;
+
+        private static void OnSkillUsed(long playerId, int skillId)
+        {
+            try
+            {
+                if (skillId == 12203)
+                {
+                    var hand = Players.HandSnapshot(playerId);
+                    _lastOrbitalDiscardCount = hand.Item1;
+                    _lastOrbitalDiscardCost = hand.Item2;
+                    int count = CombatMath.MegasOrbitalBombardmentCount(hand.Item1);
+                    int damage = CombatMath.MegasOrbitalBombardmentDamage(hand.Item1, hand.Item2);
+                    SdkLog.Info("CombatOdds", "[技能估算] 梅加斯·轨道轰炸：弃牌 " + hand.Item1 + " 张，总费用 " + hand.Item2 +
+                        "；轰炸次数 " + count + "；每次伤害 " + damage + "；随机目标为6格内怪物(由服务器决定)");
+                }
+                else if (skillId == 12902 || skillId == 11403 || skillId == 12702)
+                {
+                    string label = CombatMath.KnownSkillLabel(skillId);
+                    SdkLog.Info("CombatOdds", "[技能识别] " + label + "；释放者=" + playerId);
+                }
+            }
+            catch { }
+        }
+
+        private static void OnHeroAttrUpdated(party.protocol.UpdateHeroAttrS2C update)
+        {
+            try
+            {
+                if (update?.Cause == null || update.EffectDatas == null) return;
+                foreach (var effect in update.EffectDatas)
+                {
+                    var hp = effect?.Hp;
+                    if (hp == null || hp.RealChangeHp >= 0) continue;
+                    string source = update.Cause.S + "#" + update.Cause.Id;
+                    string eventKey = hp.PlayerId + "|" + source + "|" + hp.RealChangeHp + "|" + hp.OriHp + "|" + hp.CurrHp;
+                    float now = UnityEngine.Time.realtimeSinceStartup;
+                    if (_recentDamageEvents.TryGetValue(eventKey, out var seenAt) && now - seenAt < 0.5f) continue;
+                    _recentDamageEvents[eventKey] = now;
+                    if (now - _lastDamagePruneTime > 10f)
+                    {
+                        _lastDamagePruneTime = now;
+                        var expired = new List<string>();
+                        foreach (var item in _recentDamageEvents)
+                            if (now - item.Value > 2f) expired.Add(item.Key);
+                        foreach (var key in expired) _recentDamageEvents.Remove(key);
+                    }
+                    var context = CombatMath.ContextFromDamageType(hp.DamageType);
+                    long contextCauseId = update.Cause.S == party.protocol.CauseOrigin.Types.source.Skill ? update.Cause.Id : 0;
+                    bool targetIsMonster = IsMonster(hp.PlayerId);
+                    var buffs = BuffAdjOf(hp.PlayerId, context, contextCauseId, targetIsMonster);
+                    string skillLabel = update.Cause.S == party.protocol.CauseOrigin.Types.source.Skill
+                        ? CombatMath.KnownSkillLabel(update.Cause.Id) : null;
+                    string line = "[实际伤害] 目标 " + hp.PlayerId + " 受到 " + (-hp.RealChangeHp) +
+                        " 点伤害；DamageType=" + context + "；Cause=" + source +
+                        (skillLabel != null ? "（" + skillLabel + "）" : string.Empty) +
+                        (buffs.Applied.Count > 0 ? "；已匹配修正=" + BuffTail(buffs.Applied) : string.Empty) +
+                        (buffs.ContextOnly.Count > 0 ? "；其他语境提示=" + string.Join("、", buffs.ContextOnly) : string.Empty) +
+                        (hp.Killer != 0 ? "；Killer=" + hp.Killer : string.Empty);
+                    SdkLog.Info("CombatOdds", line);
+                }
+            }
+            catch { }
+        }
+
         private static void OnBattleUpdate(Battle b)
         {
             try
@@ -497,11 +567,13 @@ namespace CombatOddsMod
 
                 int atkPoint = SafeInt(() => atk.Point);
                 int finalAtk = SafeInt(() => atk.Atk);
+                int bonnieBonus = BonnieMarkedMonsterBonus(atk, def);
+                finalAtk += bonnieBonus;
                 bool attackerThrew = atkPoint > 0;
 
                 // 目标(防守方/被击中者)身上的实时 buff → 受伤修正(易伤/减伤/免疫)。
                 // 攻、守两个视角命中的都是同一个"被击中者"= 防守方, 故只求一次。
-                var badj = BuffAdjOf(def.PlayerId);
+                var badj = BuffAdjOf(def.PlayerId, CombatMath.DamageContext.NormalBattle, 0, IsMonster(def.PlayerId));
                 int dmgAdjust = badj.Delta;
                 bool targetImmune = badj.Immune;
 
@@ -559,13 +631,19 @@ namespace CombatOddsMod
                     // 我方攻击: 未投则 = 当前基础 + N×d6(默认单 d6); 已投则锁定 finalAtk。
                     int aFlat; int[] aDice;
                     if (attackerThrew) { aFlat = finalAtk; aDice = new int[0]; }
-                    else CombatMath.D6ModelFromRange(SafeInt(() => atk.Atk), SafeInt(() => atk.MaxAtk), out aFlat, out aDice);
+                    else
+                    {
+                        int rawAtk = SafeInt(() => atk.Atk) + bonnieBonus;
+                        int rawMaxAtk = SafeInt(() => atk.MaxAtk) + bonnieBonus;
+                        CombatMath.D6ModelFromRange(rawAtk, rawMaxAtk, out aFlat, out aDice);
+                    }
 
                     // 目标防御: InitDef + N×d6(d6 模型, 精确骰池)。
                     int dFlat; int[] dDice;
                     CombatMath.D6ModelFromRange(tgtInitDef, System.Math.Max(maxDef, tgtInitDef + 6), out dFlat, out dDice);
 
                     var r = CombatMath.Attack(aFlat, aDice, dFlat, dDice, targetHp, 1, dmgAdjust, targetImmune);
+                    if (bonnieBonus > 0) sb.Append('\n').Append(C("邦妮标记目标攻击+3", Orange));
                     if (showDefender) sb.Append('\n');
                     sb.Append(Big("🎯 击杀 " + C(PctPlain(r.KillProb), KillColor(r.KillProb))));
                     sb.Append('\n').Append(Dim(atkName + " > " + defName + " " + targetHp + "血 · 期望伤害 " + Fmt1(r.ExpectedDamage)));
@@ -642,8 +720,45 @@ namespace CombatOddsMod
             catch { return CombatMath.DefaultJudgeDiceFaces; }
         }
 
+        private static int BonnieMarkedMonsterBonus(BattleRole attacker, BattleRole defender)
+        {
+            try
+            {
+                var pd = Players.Get(attacker.PlayerId);
+                if (pd?.player?.Hero == null) return 0;
+                var target = Players.Get(defender.PlayerId);
+                bool isMonster = target != null && target.characterType == CharacterType.Monster;
+                if (!isMonster)
+                {
+                    foreach (var roster in Players.Roster())
+                        if (roster.Id == defender.PlayerId && roster.IsMonster) { isMonster = true; break; }
+                }
+                if (!isMonster) return 0;
+                bool marked = false;
+                var buffs = Players.BuffsOf(defender.PlayerId);
+                if (buffs != null)
+                    foreach (var buff in buffs)
+                        if (buff.BuffId == 10006 && buff.Layers > 0) { marked = true; break; }
+                return CombatMath.BonnieMarkedMonsterAttackBonus(pd.player.Hero.HeroId, isMonster, marked);
+            }
+            catch { return 0; }
+        }
+
+        private static bool IsMonster(long playerId)
+        {
+            try
+            {
+                var pd = Players.Get(playerId);
+                if (pd != null) return pd.characterType == CharacterType.Monster;
+                foreach (var stat in Players.Roster())
+                    if (stat.Id == playerId) return stat.IsMonster;
+            }
+            catch { }
+            return false;
+        }
+
         /// <summary>读目标身上的实时 buff, 换算成普通投牌战斗的受伤修正(易伤/减伤/免疫)。</summary>
-        private static CombatMath.BuffAdjustment BuffAdjOf(long targetId)
+        private static CombatMath.BuffAdjustment BuffAdjOf(long targetId, CombatMath.DamageContext context = CombatMath.DamageContext.NormalBattle, long causeId = 0, bool targetIsMonster = true)
         {
             try
             {
@@ -652,7 +767,7 @@ namespace CombatOddsMod
                 {
                     var tb = new List<CombatMath.TargetBuff>(raw.Count);
                     foreach (var b in raw) tb.Add(new CombatMath.TargetBuff(b.BuffId, b.Layers));
-                    return CombatMath.EvaluateTargetBuffs(tb, _buffTable);
+                    return CombatMath.EvaluateTargetBuffs(tb, _buffTable, context, causeId, targetIsMonster);
                 }
             }
             catch { }

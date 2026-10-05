@@ -59,6 +59,29 @@ namespace CesiumLoader.SDK
             catch { return 0; }
         }
 
+        /// <summary>当前手牌快照: (卡牌数量, 当前战斗费用总和)。读取失败返回 (0,0)。</summary>
+        public static Tuple<int, int> HandSnapshot(long playerId)
+        {
+            try
+            {
+                var gm = SimpleSingletonProvider<GameLogicManager>.inst;
+                if (gm?.account == null || !gm.account.IsSelf(playerId)) return Tuple.Create(0, 0);
+                var pd = gm?.battle?.GetPlayerDataById(playerId);
+                var cards = pd?.cardContainer?._HandCards;
+                if (cards == null) return Tuple.Create(0, 0);
+                int total = 0;
+                foreach (var card in cards)
+                {
+                    if (card == null) continue;
+                    int cost = card.BattleCost;
+                    if (cost < 0) cost = card.Config != null ? card.Config.Cost : 0;
+                    if (cost > 0) total += cost;
+                }
+                return Tuple.Create(cards.Count, total);
+            }
+            catch { return Tuple.Create(0, 0); }
+        }
+
         /// <summary>玩家昵称(只查玩家列表), 查不到返回 null。</summary>
         public static string Nick(long playerId)
         {
