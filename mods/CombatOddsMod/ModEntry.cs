@@ -53,6 +53,7 @@ namespace CombatOddsMod
 
         // 主 HUD(左下角)攻击力后面的"筹码加成"追加显示。
         private static HudAtkBonusOverlay _hudBonus;
+        private static PlayerAttrOverlay _playerAttrOverlay;
         private static object _atkPropBound;        // 已挂监听的 ATK 属性(用于换绑/解绑)
         private static Action<int> _atkListener;    // 保活引用, 便于 RemoveListener
         private static string _lastAtkBonusLog;     // 诊断日志去重(只在加成文本变化时打一行)
@@ -100,6 +101,7 @@ namespace CombatOddsMod
                     _cfg.OverlayOffsetX        = c.GetDouble("OverlayOffsetX", d.OverlayOffsetX);
                     _cfg.OverlayOffsetY        = c.GetDouble("OverlayOffsetY", d.OverlayOffsetY);
                     _cfg.ShowRelicAtkBonus     = c.GetBool("ShowRelicAtkBonus", d.ShowRelicAtkBonus);
+                    _cfg.ShowBoardPlayerAttrs  = c.GetBool("ShowBoardPlayerAttrs", d.ShowBoardPlayerAttrs);
                     _cfg.LogAtkBonusDetail     = c.GetBool("LogAtkBonusDetail", d.LogAtkBonusDetail);
 
                     // 全字段写回, 保证 config.json 始终含全部键 → Toys ⚙ 表单能把每一项都列出来。
@@ -116,6 +118,7 @@ namespace CombatOddsMod
                     c.Set("OverlayOffsetX", _cfg.OverlayOffsetX);
                     c.Set("OverlayOffsetY", _cfg.OverlayOffsetY);
                     c.Set("ShowRelicAtkBonus", _cfg.ShowRelicAtkBonus);
+                    c.Set("ShowBoardPlayerAttrs", _cfg.ShowBoardPlayerAttrs);
                     c.Set("LogAtkBonusDetail", _cfg.LogAtkBonusDetail);
                     try { c.Save(); } catch { }
                 }
@@ -154,6 +157,13 @@ namespace CombatOddsMod
             }
             catch (Exception e) { SdkLog.Warn("CombatOdds", "HUD 攻击力加成初始化失败(仅不显示加成): " + e.Message); }
 
+            try
+            {
+                _playerAttrOverlay = new PlayerAttrOverlay();
+                _playerAttrOverlay.Start();
+            }
+            catch (Exception e) { SdkLog.Warn("CombatOdds", "棋盘玩家攻防覆盖层初始化失败: " + e.Message); }
+
             // 登记覆盖层 + OnGUI 回调(有渲染后端时会被画出; 无后端时仅登记, 不影响控制台输出)。
             try
             {
@@ -171,6 +181,7 @@ namespace CombatOddsMod
             GameEvents.EnsureHooked();
             // HUD 攻击力加成: 星币/血量/层数变化不触发 ATK 事件, 靠这每秒一次兜底刷新。
             RefreshHudAtkBonus();
+            if (_playerAttrOverlay != null) _playerAttrOverlay.Update(_cfg.ShowBoardPlayerAttrs);
         }
 
         // ============================== 主 HUD: 攻击力 + 筹码加成 ==============================
@@ -209,7 +220,7 @@ namespace CombatOddsMod
 
                 int atk = SafeInt(() => pd.Property.ATK.Value);
                 RelicAtkBonus.Input input;
-                var bonuses = SelfAtkBonuses(pd, out input);
+                var bonuses = CurrentAtkBonuses(pd, out input);
 
                 if (bonuses.Count == 0)
                 {
@@ -240,7 +251,7 @@ namespace CombatOddsMod
         }
 
         /// <summary>读自己当前的筹码与各项实时数值, 交给纯逻辑算出各筹码的攻击力加成。</summary>
-        private static List<RelicAtkBonus.Bonus> SelfAtkBonuses(BattlePlayerData pd, out RelicAtkBonus.Input input)
+        internal static List<RelicAtkBonus.Bonus> CurrentAtkBonuses(BattlePlayerData pd, out RelicAtkBonus.Input input)
         {
             input = new RelicAtkBonus.Input();
             try
@@ -787,6 +798,8 @@ namespace CombatOddsMod
         public double OverlayOffsetY = 0;
         /// <summary>是否在主 HUD(左下角)的攻击力后面追加显示星币锤/手电筒/美工刀带来的攻击力加成。</summary>
         public bool ShowRelicAtkBonus = true;
+        /// <summary>是否在棋盘上每个玩家头顶显示实时攻击/防御, 悬停查看详情。</summary>
+        public bool ShowBoardPlayerAttrs = true;
         /// <summary>把每次攻击的攻击力加成明细打进加载器日志(星币/治愈/星光/血量/持有筹码 + 各筹码加成), 便于与结算伤害对拍。</summary>
         public bool LogAtkBonusDetail = true;
     }
