@@ -1,8 +1,8 @@
 // modmeta.cpp - mod 元数据(sidecar)解析 + 依赖拓扑排序 (见 modmeta.h)
 
-#include "modmeta.h"
+#include "mods/modmeta.h"
 
-#include "jsonc.h"   // JSONC 读取(nlohmann/json 封装: 允许注释、剥离 BOM、失败不抛异常)
+#include "config/jsonc.h"   // JSONC 读取(nlohmann/json 封装: 允许注释、剥离 BOM、失败不抛异常)
 
 #include <fstream>
 #include <cstdlib>

@@ -103,7 +103,7 @@
 
 #pragma once
 
-#include "il2cpp_safe.h"   // cesium_safe::il2cpp_tbl (= 任务描述里的 Il2CppFnTable)
+#include "runtime/il2cpp_safe.h"   // cesium_safe::il2cpp_tbl (= 任务描述里的 Il2CppFnTable)
 
 #include <string>          // steamhack_install 的 task_ctor_mode 参数
 
@@ -175,3 +175,10 @@ int steamhack_hook_count();
 // 卸载本模块创建的 hook(进程退出时调用; 幂等)。
 // 注意: 不会 Uninitialize MinHook —— 那是 speedhack.cpp 的职责(见上)。
 void steamhack_uninstall();
+
+namespace cesium::steam
+{
+using ::steamhack_hook_count;
+using ::steamhack_install;
+using ::steamhack_uninstall;
+}

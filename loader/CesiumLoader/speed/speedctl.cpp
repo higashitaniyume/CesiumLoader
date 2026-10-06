@@ -10,11 +10,11 @@
 // 路径推导, 任何一环出问题就"按了没反应"; 两个位置都摆一份, 只要 mod 命中其中一个
 // 通道就是通的。两处的请求都能生效, 谁变了就用谁(各自记 last_seen)。
 
-#include "speedctl.h"
+#include "speed/speedctl.h"
 
-#include "config.h"
-#include "loader.h"
-#include "speedhack.h"
+#include "config/config.h"
+#include "platform/loader.h"
+#include "speed/speedhack.h"
 
 #include <cctype>
 #include <cstdlib>
@@ -167,7 +167,7 @@ void write_state()
     double speed = speedhack_get_speed();
 
     std::string s;
-    s += "version="; s += LoaderConfig::loaderVersion; s += "\r\n";
+    s += "version="; s += cesium::config::LoaderConfig::loaderVersion; s += "\r\n";
     s += "speed=";   s += fmt_speed(speed);            s += "\r\n";
     s += "base=";    s += fmt_speed(g_base);           s += "\r\n";
     s += "active=";  s += active ? "1" : "0";          s += "\r\n";

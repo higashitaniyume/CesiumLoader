@@ -1,7 +1,7 @@
 // modmeta_test.cpp - 依赖解析/版本协商单元测试 (纯 C++, 不依赖游戏/il2cpp)
-// 编译: cl /nologo /std:c++17 /EHsc /utf-8 modmeta_test.cpp ..\..\loader\CesiumLoader\modmeta.cpp /Fe:modmeta_test.exe
+// 编译: cl /nologo /std:c++17 /EHsc /utf-8 modmeta_test.cpp ..\..\loader\CesiumLoader\mods\modmeta.cpp /Fe:modmeta_test.exe
 //   (/utf-8: 源文件含中文注释, 无此标志在 GBK 代码页下可能解析错位)
-#include "../../loader/CesiumLoader/modmeta.h"
+#include "../../loader/CesiumLoader/mods/modmeta.h"
 #include <windows.h>
 #include <cstdio>
 #include <string>

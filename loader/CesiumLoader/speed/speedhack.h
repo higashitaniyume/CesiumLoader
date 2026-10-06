@@ -36,3 +36,15 @@ bool speedhack_active();
 // 成功启用的 hook 数量(0~4)。0 表示变速不可用; mod 侧的状态文件用它判断引擎是否真的就绪
 // (hook 数量为 0 时 ap_speed_set 会失败, 此时不该让 mod 以为能变速)。
 int speedhack_hook_count();
+
+namespace cesium::speed
+{
+using ::kSpeedMax;
+using ::kSpeedMin;
+using ::speedhack_active;
+using ::speedhack_get_speed;
+using ::speedhack_hook_count;
+using ::speedhack_init;
+using ::speedhack_set_speed;
+using ::speedhack_shutdown;
+}

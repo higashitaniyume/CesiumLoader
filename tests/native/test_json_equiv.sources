@@ -1,2 +1,2 @@
-loader/CesiumLoader/config.cpp
-loader/CesiumLoader/modmeta.cpp
+loader/CesiumLoader/config/config.cpp
+loader/CesiumLoader/mods/modmeta.cpp

@@ -86,3 +86,16 @@ std::vector<std::string> sort_mods_by_deps(
     std::vector<std::string>* rejected_out = nullptr);
 
 } // namespace cesium
+
+namespace cesium::mods
+{
+using ::cesium::ModDep;
+using ::cesium::ModLoc;
+using ::cesium::ModMeta;
+using ::cesium::parse_sidecar;
+using ::cesium::read_mods_meta;
+using ::cesium::read_sidecar_text;
+using ::cesium::scan_mods_dir;
+using ::cesium::semver_compare;
+using ::cesium::sort_mods_by_deps;
+}

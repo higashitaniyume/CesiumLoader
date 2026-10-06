@@ -75,13 +75,13 @@
       <LanguageStandard>stdcpp17</LanguageStandard>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalIncludeDirectories>..\..\third_party\fmt\include;..\..\third_party\nlohmann_json\include;..\..\third_party\spdlog\include;..\..\third_party\minhook\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);..\..\third_party\fmt\include;..\..\third_party\nlohmann_json\include;..\..\third_party\spdlog\include;..\..\third_party\minhook\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ControlFlowGuard>Guard</ControlFlowGuard>
-      <ModuleDefinitionFile>version.def</ModuleDefinitionFile>
+      <ModuleDefinitionFile>platform\version.def</ModuleDefinitionFile>
       <AdditionalDependencies>winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
@@ -98,7 +98,7 @@
       <Optimization>MaxSpeed</Optimization>
       <SpectreMitigation>Spectre</SpectreMitigation>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalIncludeDirectories>..\..\third_party\fmt\include;..\..\third_party\nlohmann_json\include;..\..\third_party\spdlog\include;..\..\third_party\minhook\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);..\..\third_party\fmt\include;..\..\third_party\nlohmann_json\include;..\..\third_party\spdlog\include;..\..\third_party\minhook\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -106,20 +106,21 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ControlFlowGuard>Guard</ControlFlowGuard>
-      <ModuleDefinitionFile>version.def</ModuleDefinitionFile>
+      <ModuleDefinitionFile>platform\version.def</ModuleDefinitionFile>
       <AdditionalDependencies>winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="config.cpp" />
-    <ClCompile Include="console.cpp" />
-    <ClCompile Include="exports.cpp" />
-    <ClCompile Include="loader.cpp" />
-    <ClCompile Include="logging.cpp" />
-    <ClCompile Include="modmeta.cpp" />
-    <ClCompile Include="speedctl.cpp" />
-    <ClCompile Include="speedhack.cpp" />
-    <ClCompile Include="steamhack.cpp" />
+    <ClCompile Include="config\config.cpp" />
+    <ClCompile Include="platform\console.cpp" />
+    <ClCompile Include="platform\exports.cpp" />
+    <ClCompile Include="runtime\loader.cpp" />
+    <ClCompile Include="logging\logging.cpp" />
+    <ClCompile Include="mods\modmeta.cpp" />
+    <ClCompile Include="speed\speedctl.cpp" />
+    <ClCompile Include="speed\speedhack.cpp" />
+    <ClCompile Include="steam\steamhack.cpp" />
+    <ClCompile Include="steam\steam_diagnostics.cpp" />
     <ClCompile Include="..\..\third_party\minhook\src\buffer.c" />
     <ClCompile Include="..\..\third_party\minhook\src\hook.c" />
     <ClCompile Include="..\..\third_party\minhook\src\trampoline.c" />
@@ -127,17 +128,24 @@
     <ClCompile Include="..\..\third_party\minhook\src\hde\hde64.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="config.h" />
-    <ClInclude Include="jsonc.h" />
-    <ClInclude Include="loader.h" />
-    <ClInclude Include="logging.h" />
-    <ClInclude Include="modmeta.h" />
-    <ClInclude Include="speedctl.h" />
-    <ClInclude Include="speedhack.h" />
-    <ClInclude Include="steamhack.h" />
+    <ClInclude Include="config\config.h" />
+    <ClInclude Include="config\jsonc.h" />
+    <ClInclude Include="platform\loader.h" />
+    <ClInclude Include="logging\logging.h" />
+    <ClInclude Include="mods\modmeta.h" />
+    <ClInclude Include="speed\speedctl.h" />
+    <ClInclude Include="speed\speedhack.h" />
+    <ClInclude Include="steam\steamhack.h" />
+    <ClInclude Include="steam\steam_diagnostics.h" />
+    <ClInclude Include="steam\steamhack_internal.h" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="version.def" />
+    <None Include="platform\version.def" />
+    <None Include="steam\steamhack_core_part.cpp" />
+    <None Include="steam\steamhack_matchmaking_part.cpp" />
+    <None Include="steam\steamhack_lobby_part.cpp" />
+    <None Include="steam\steamhack_lobby_hooks_part.cpp" />
+    <None Include="steam\steamhack_entry_part.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

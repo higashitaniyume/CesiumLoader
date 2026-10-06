@@ -10,9 +10,9 @@
 //
 // 签名对照 Windows SDK versionapi.h / winver.h。
 
-#include "loader.h"
-#include "speedhack.h"
-#include "steamhack.h"
+#include "platform/loader.h"
+#include "speed/speedhack.h"
+#include "steam/steamhack.h"
 
 #include <windows.h>
 

@@ -15,9 +15,9 @@
 //    就会**直接写不出日志** —— 那是功能倒退。spdlog 默认不定义这个宏, 必须显式打开。
 #define SPDLOG_WCHAR_FILENAMES 1
 
-#include "logging.h"
+#include "logging/logging.h"
 
-#include "loader.h"   // logs_dir()
+#include "platform/loader.h"   // logs_dir()
 
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/spdlog.h>

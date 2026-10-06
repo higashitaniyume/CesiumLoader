@@ -30,3 +30,9 @@ std::wstring speedctl_dir();
 // 启动监听线程(幂等)。base_speed = doorstop_config.json 的 speedhackBaseSpeed,
 // 仅用于 state.txt 里的 base= 字段(记录/诊断)。不抛异常、不阻塞调用者。
 void speedctl_start(const std::wstring& dir, double base_speed);
+
+namespace cesium::speed
+{
+using ::speedctl_dir;
+using ::speedctl_start;
+}

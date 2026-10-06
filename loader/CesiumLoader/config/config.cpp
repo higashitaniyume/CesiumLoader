@@ -7,11 +7,11 @@
 //
 // 各字段的默认值取自 LoaderConfig 的成员初始值(config.h), 不再在调用处重复字面量。
 
-#include "config.h"
+#include "config/config.h"
 
-#include "jsonc.h"       // JSONC 读取(nlohmann/json 封装: 允许注释、剥离 BOM、失败不抛异常)
-#include "loader.h"
-#include "speedhack.h"   // kSpeedMin / kSpeedMax: 倍率区间与引擎共用一份定义
+#include "config/jsonc.h"       // JSONC 读取(nlohmann/json 封装: 允许注释、剥离 BOM、失败不抛异常)
+#include "platform/loader.h"
+#include "speed/speedhack.h"   // kSpeedMin / kSpeedMax: 倍率区间与引擎共用一份定义
 
 #include <fstream>
 

@@ -19,8 +19,8 @@
 #endif
 #include <windows.h>
 
-#include "../../loader/CesiumLoader/loader.h"
-#include "../../loader/CesiumLoader/logging.h"
+#include "../../loader/CesiumLoader/platform/loader.h"
+#include "../../loader/CesiumLoader/logging/logging.h"
 
 #include <algorithm>
 #include <fstream>

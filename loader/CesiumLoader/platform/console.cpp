@@ -4,9 +4,9 @@
 // 控制台窗口,loader 日志与 mod 的标准输出都写到这个窗口。
 // 同时把日志写入 logs\cesium-loader-<时间>-<pid>.log(**每次启动一个新文件**, 见 logging.h)。
 
-#include "loader.h"
+#include "platform/loader.h"
 
-#include "logging.h"   // 文件日志(spdlog)
+#include "logging/logging.h"   // 文件日志(spdlog)
 
 #include <io.h>
 #include <fcntl.h>

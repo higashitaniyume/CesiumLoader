@@ -170,3 +170,9 @@ struct LoaderConfig
 
 // 从 config_path 读取配置。文件不存在/解析失败返回默认配置(不抛异常)。
 LoaderConfig load_config(const std::wstring& config_path);
+
+namespace cesium::config
+{
+using ::LoaderConfig;
+using ::load_config;
+}

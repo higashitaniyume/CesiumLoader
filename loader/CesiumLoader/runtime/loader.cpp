@@ -13,15 +13,15 @@
 //
 // 这样 native 保持薄引导, mod 编排逻辑在 C# 里(可脱离游戏单元测试)。
 
-#include "loader.h"
+#include "platform/loader.h"
 
-#include "config.h"
-#include "speedhack.h"
-#include "speedctl.h"
-#include "modmeta.h"
-#include "logging.h"
-#include "il2cpp_safe.h"
-#include "steamhack.h"
+#include "config/config.h"
+#include "speed/speedhack.h"
+#include "speed/speedctl.h"
+#include "mods/modmeta.h"
+#include "logging/logging.h"
+#include "runtime/il2cpp_safe.h"
+#include "steam/steamhack.h"
 
 #include <tlhelp32.h>
 #include <vector>
@@ -856,7 +856,7 @@ static DWORD WINAPI boot_thread(LPVOID)
     // ---- 彩色分级输出: 要加载的 mod 列表 ----
     console_set_color(LOG_CYAN);
     log_line("──────────────────────────────────────────────");
-    log_line(std::string("  CesiumLoader loader v") + LoaderConfig::loaderVersion + " / SDK v" + cfg.sdkVersion + " — mod 加载报告");
+    log_line(std::string("  CesiumLoader loader v") + cesium::config::LoaderConfig::loaderVersion + " / SDK v" + cfg.sdkVersion + " — mod 加载报告");
     log_line("──────────────────────────────────────────────");
     console_set_color(LOG_DEFAULT);
 

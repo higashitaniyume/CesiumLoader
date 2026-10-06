@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="config"><UniqueIdentifier>{7D79AF01-4B72-4706-8E4C-31DF1E1B8D00}</UniqueIdentifier></Filter>
+    <Filter Include="logging"><UniqueIdentifier>{0152CF77-6E89-44F6-9044-1A3416443BF3}</UniqueIdentifier></Filter>
+    <Filter Include="mods"><UniqueIdentifier>{BF53BD99-75DC-4EF4-8ECB-83B4DF9A2DB7}</UniqueIdentifier></Filter>
+    <Filter Include="platform"><UniqueIdentifier>{B6C9D59B-2E3C-4A1A-B9A3-7ED1BA4B8EC7}</UniqueIdentifier></Filter>
+    <Filter Include="runtime"><UniqueIdentifier>{518B819A-376B-420F-95A9-5D391EFC8F26}</UniqueIdentifier></Filter>
+    <Filter Include="speed"><UniqueIdentifier>{1EC466CA-4604-47A0-952A-3C47B80A1E45}</UniqueIdentifier></Filter>
+    <Filter Include="steam"><UniqueIdentifier>{E6EA7D24-1CF8-4E7D-A927-3CAB875AD2D9}</UniqueIdentifier></Filter>
+    <Filter Include="third_party\minhook"><UniqueIdentifier>{3EB01327-181D-411D-8BC2-0E414A8D251C}</UniqueIdentifier></Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="config\config.cpp"><Filter>config</Filter></ClCompile>
+    <ClCompile Include="logging\logging.cpp"><Filter>logging</Filter></ClCompile>
+    <ClCompile Include="mods\modmeta.cpp"><Filter>mods</Filter></ClCompile>
+    <ClCompile Include="platform\console.cpp"><Filter>platform</Filter></ClCompile>
+    <ClCompile Include="platform\exports.cpp"><Filter>platform</Filter></ClCompile>
+    <ClCompile Include="runtime\loader.cpp"><Filter>runtime</Filter></ClCompile>
+    <ClCompile Include="speed\speedctl.cpp"><Filter>speed</Filter></ClCompile>
+    <ClCompile Include="speed\speedhack.cpp"><Filter>speed</Filter></ClCompile>
+    <ClCompile Include="steam\steamhack.cpp"><Filter>steam</Filter></ClCompile>
+    <ClCompile Include="steam\steam_diagnostics.cpp"><Filter>steam</Filter></ClCompile>
+    <ClCompile Include="..\..\third_party\minhook\src\buffer.c"><Filter>third_party\minhook</Filter></ClCompile>
+    <ClCompile Include="..\..\third_party\minhook\src\hook.c"><Filter>third_party\minhook</Filter></ClCompile>
+    <ClCompile Include="..\..\third_party\minhook\src\trampoline.c"><Filter>third_party\minhook</Filter></ClCompile>
+    <ClCompile Include="..\..\third_party\minhook\src\hde\hde32.c"><Filter>third_party\minhook</Filter></ClCompile>
+    <ClCompile Include="..\..\third_party\minhook\src\hde\hde64.c"><Filter>third_party\minhook</Filter></ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="config\config.h"><Filter>config</Filter></ClInclude>
+    <ClInclude Include="config\jsonc.h"><Filter>config</Filter></ClInclude>
+    <ClInclude Include="logging\logging.h"><Filter>logging</Filter></ClInclude>
+    <ClInclude Include="mods\modmeta.h"><Filter>mods</Filter></ClInclude>
+    <ClInclude Include="platform\loader.h"><Filter>platform</Filter></ClInclude>
+    <ClInclude Include="runtime\il2cpp_safe.h"><Filter>runtime</Filter></ClInclude>
+    <ClInclude Include="speed\speedctl.h"><Filter>speed</Filter></ClInclude>
+    <ClInclude Include="speed\speedhack.h"><Filter>speed</Filter></ClInclude>
+    <ClInclude Include="steam\steamhack.h"><Filter>steam</Filter></ClInclude>
+    <ClInclude Include="steam\steam_diagnostics.h"><Filter>steam</Filter></ClInclude>
+    <ClInclude Include="steam\steamhack_internal.h"><Filter>steam</Filter></ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="platform\version.def"><Filter>platform</Filter></None>
+    <None Include="steam\steamhack_core_part.cpp"><Filter>steam</Filter></None>
+    <None Include="steam\steamhack_matchmaking_part.cpp"><Filter>steam</Filter></None>
+    <None Include="steam\steamhack_lobby_part.cpp"><Filter>steam</Filter></None>
+    <None Include="steam\steamhack_lobby_hooks_part.cpp"><Filter>steam</Filter></None>
+    <None Include="steam\steamhack_entry_part.cpp"><Filter>steam</Filter></None>
+  </ItemGroup>
+</Project>

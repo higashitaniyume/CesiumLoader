@@ -12,9 +12,9 @@
 // 与 CheatEngine/speedhack 相同的效果。变速会影响游戏感知的所有时间
 // (动画/回合/网络超时), 倍率别调太高; 倍率下限硬性为 1.0(不允许减速, 见 speedhack.h)。
 
-#include "speedhack.h"
+#include "speed/speedhack.h"
 
-#include "loader.h"
+#include "platform/loader.h"
 
 #include <atomic>
 #include <cstdint>

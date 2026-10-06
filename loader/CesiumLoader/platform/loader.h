@@ -78,3 +78,24 @@ extern "C" BOOL WINAPI ap_speed_active();
 // ---------- IL2CPP 桥(boot 线程使用) ----------
 struct Il2Cpp;
 bool boot_il2cpp_and_load_mods();
+
+namespace cesium::platform
+{
+using ::LogColor;
+using ::bootstrap_dir;
+using ::config_path;
+using ::console_init;
+using ::console_set_color;
+using ::console_write;
+using ::console_write_w;
+using ::loader_root;
+using ::log_line;
+using ::logs_dir;
+using ::mods_dir;
+using ::sdk_dir;
+}
+
+namespace cesium::runtime
+{
+using ::boot_il2cpp_and_load_mods;
+}
