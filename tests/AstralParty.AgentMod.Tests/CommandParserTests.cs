@@ -136,12 +136,12 @@ namespace AstralParty.AgentMod.Tests
             string json = res.ToJson();
 
             object node;
-            Assert.True(CesiumLoader.SDK.CesiumJson.TryDeserialize(json, out node));
+            Assert.True(CesiumLoader.SDK.Configuration.CesiumJson.TryDeserialize(json, out node));
             var map = (System.Collections.Generic.IDictionary<string, object>)node;
 
-            Assert.True(CesiumLoader.SDK.CesiumJson.GetBool(map, "Ok", false));
-            Assert.Equal("c9", CesiumLoader.SDK.CesiumJson.GetString(map, "Id", null));
-            Assert.Equal("ok", CesiumLoader.SDK.CesiumJson.GetString(map, "Code", null));
+            Assert.True(CesiumLoader.SDK.Configuration.CesiumJson.GetBool(map, "Ok", false));
+            Assert.Equal("c9", CesiumLoader.SDK.Configuration.CesiumJson.GetString(map, "Id", null));
+            Assert.Equal("ok", CesiumLoader.SDK.Configuration.CesiumJson.GetString(map, "Code", null));
         }
     }
 }

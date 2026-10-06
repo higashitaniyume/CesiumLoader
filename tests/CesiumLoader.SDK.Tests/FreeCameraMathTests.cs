@@ -1,5 +1,5 @@
 using System;
-using CesiumLoader.SDK;
+using CesiumLoader.SDK.Cameras;
 using Xunit;
 
 namespace CesiumLoader.SDK.Tests

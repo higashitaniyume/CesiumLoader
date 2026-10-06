@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
-using CesiumLoader.SDK;
+using CesiumLoader.SDK.Inputs;
+using CesiumLoader.SDK.Logging;
+using CesiumLoader.SDK.Mods;
 using Core.Net;
 using GameLogic;
 using party.model;

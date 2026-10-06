@@ -1,4 +1,4 @@
-using CesiumLoader.SDK;
+using CesiumLoader.SDK.Inputs;
 using UnityEngine;
 using Xunit;
 

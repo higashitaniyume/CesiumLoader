@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
-using CesiumLoader.SDK;
+using CesiumLoader.SDK.Manifests;
 using Xunit;
 
 namespace CesiumLoader.SDK.Tests

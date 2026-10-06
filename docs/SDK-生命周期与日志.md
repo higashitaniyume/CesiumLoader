@@ -1,6 +1,6 @@
 # SDK 生命周期与日志
 
-命名空间：`CesiumLoader.SDK`
+命名空间：`CesiumLoader.SDK.Mods`（生命周期）；`CesiumLoader.SDK.Logging`（日志）
 
 ## ModBase — mod 生命周期基座
 

@@ -1,5 +1,10 @@
 using System;
-using CesiumLoader.SDK;
+using CesiumLoader.SDK.Configuration;
+using CesiumLoader.SDK.Diagnostics;
+using CesiumLoader.SDK.Inputs;
+using CesiumLoader.SDK.Mods;
+using CesiumLoader.SDK.Scheduling;
+using CesiumLoader.SDK.UserInterface;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 

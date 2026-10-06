@@ -1,5 +1,6 @@
 using System;
-using CesiumLoader.SDK;
+using CesiumLoader.SDK.Inputs;
+using CesiumLoader.SDK.Mods;
 using UnityEngine;
 using Xunit;
 

@@ -4,7 +4,10 @@ using System.IO;
 using System.Text;
 using AstralParty.Agent;
 using AstralParty.AgentMod.Bridge;
-using CesiumLoader.SDK;
+using CesiumLoader.SDK.Configuration;
+using CesiumLoader.SDK.Gameplay;
+using CesiumLoader.SDK.Mods;
+using CesiumLoader.SDK.Scenes;
 using UnityEngine.SceneManagement;
 
 namespace AstralParty.AgentMod

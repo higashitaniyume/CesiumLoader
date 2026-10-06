@@ -68,7 +68,7 @@ SDK 还会回退到 `CESIUM_LOG_DIR\..\speed`、`%LocalAppData%\AstralParty_ModL
 ## API
 
 ```csharp
-using CesiumLoader.SDK;
+using CesiumLoader.SDK.Speed;
 
 // 变速引擎是否可用(加载器装了 hook 且支持控制文件通道; 需要加载器 >= 2.1.5)
 bool ok = SpeedHack.IsAvailable;
@@ -129,7 +129,7 @@ double safe = SpeedHack.StepSpeed(2.0, +1, step: 0.0);
 mod 也可用 SDK API 编程控制（配合热键轮询实现 CheatEngine 式变速）：
 
 ```csharp
-using CesiumLoader.SDK;
+using CesiumLoader.SDK.Speed;
 using UnityEngine;
 
 [ModManifest("我的变速mod", "1.0.0", "作者", "描述",

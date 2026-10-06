@@ -1,4 +1,6 @@
-using CesiumLoader.SDK;
+using CesiumLoader.SDK.Gameplay;
+using CesiumLoader.SDK.Manifests;
+using CesiumLoader.SDK.Speed;
 
 // mod 元数据: 程序集级声明(权威位置, 读取时不触发类型加载, 兼容 HybridCLR)。
 // 敏感权限(GameActions/SpeedHack)默认关闭, 需要时在此声明, 并可用

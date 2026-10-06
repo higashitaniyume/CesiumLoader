@@ -1,6 +1,13 @@
 using System;
 using System.Globalization;
-using CesiumLoader.SDK;
+using CesiumLoader.SDK.Cameras;
+using CesiumLoader.SDK.Configuration;
+using CesiumLoader.SDK.Engine;
+using CesiumLoader.SDK.Events;
+using CesiumLoader.SDK.Inputs;
+using CesiumLoader.SDK.Mods;
+using CesiumLoader.SDK.Scheduling;
+using CesiumLoader.SDK.UserInterface;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 

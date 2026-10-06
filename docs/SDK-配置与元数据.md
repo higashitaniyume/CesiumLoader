@@ -1,6 +1,6 @@
 # SDK 配置与元数据
 
-命名空间：`CesiumLoader.SDK`
+命名空间：`CesiumLoader.SDK.Configuration`（配置）；`CesiumLoader.SDK.Manifests`（元数据）
 
 ## SdkConfig — mod 配置 (JSON)
 

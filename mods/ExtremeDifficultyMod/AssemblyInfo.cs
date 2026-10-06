@@ -1,4 +1,4 @@
-using CesiumLoader.SDK;
+using CesiumLoader.SDK.Manifests;
 
 // mod 元数据: 程序集级声明(权威位置, 读取时不触发类型加载, 兼容 HybridCLR)。
 // 本 mod 会改写游戏配置的内存态(不改文件、不碰网络协议本身), 所以声明 ModifyGameState。

@@ -436,19 +436,17 @@ pwsh -NoProfile -File tools\package-modloader.ps1
 
 ## 开源协议
 
-本项目以 **GNU Affero General Public License v3.0（AGPL-3.0）** 发布，协议全文见 [LICENSE](LICENSE)。
+本仓库除 `loader/CesiumLoader.SDK/` 外的原创代码以 **GNU Affero General Public License v3.0（AGPL-3.0）** 发布，协议全文见根目录 [LICENSE](LICENSE)。加载器本体、Bootstrap、内置 mods、MCP 与工具均保留 AGPL-3.0。
+
+`loader/CesiumLoader.SDK/` 中的 SDK 源码单独以 **MIT License** 发布，协议全文见 [SDK LICENSE](loader/CesiumLoader.SDK/LICENSE)。SDK 的预编译程序集与 SDK 工具包也按 MIT 许可提供。
 
 Copyright (C) 2026 Yume Higashitani
 
-- 允许自由使用、修改、分发，包括商业用途。
-- 分发修改版或衍生作品时，必须以**同样的 AGPL-3.0** 开源，并保留版权与协议声明。
-- **第 13 条（Remote Network Interaction）**是 AGPL 与 GPL 的关键差别：如果把本项目（或它的修改版）
-  作为**网络服务**提供给他人使用，也必须向这些使用者提供对应的完整源代码。
-- 本软件按“现状”提供，不附带任何担保。
+- AGPL 覆盖部分允许自由使用、修改、分发，包括商业用途；修改版和衍生作品须遵守 AGPL-3.0 的对应条款。若将其修改版作为网络服务提供，AGPL 第 13 条要求向远程交互用户提供相应源代码。
+- MIT 覆盖部分允许使用者使用、修改、分发、再许可和销售 SDK，包括将 SDK 用于闭源 mod；只需在 SDK 副本或实质部分中保留版权声明与 MIT 许可文本。
+- SDK 的 MIT 授权仅覆盖 SDK 本身，不会把加载器、Bootstrap、内置 mod、MCP、工具或其他 AGPL 文件重新授权为 MIT。SDK 工具包若包含其他组件，各组件仍适用其各自许可证。
 
-> ⚠ **对 mod 作者的影响**：SDK 与本项目的内置 mod 都属于本项目，随 AGPL-3.0 发布。AGPL 是强传染性
-> 协议，链接 `CesiumLoader.SDK.dll` 的第三方 mod 通常也需要以 AGPL-3.0 兼容的方式授权。
-> 若希望第三方 mod 能采用更宽松的协议（如 MIT），需要另外给 SDK 增加链接例外（linking exception）。
+> **对 mod 作者的影响**：第三方 mod 可以自行选择闭源或开源，以及自己的分发协议；仅因引用或链接 MIT 许可的 `CesiumLoader.SDK.dll`，不要求 mod 使用 AGPL。若 mod 复制了仓库中 AGPL 覆盖部分的代码，仍须遵守该部分适用的 AGPL 条款。
 
 > 随源码分发的第三方库位于 `third_party\`（`fmt`、`spdlog`、`nlohmann_json`），各自适用其自带的
-> `LICENSE.txt`（均为 MIT），与本项目的 AGPL-3.0 并存且不冲突。
+> `LICENSE.txt`（均为 MIT），与本仓库其余部分的 AGPL-3.0 并存且不冲突。

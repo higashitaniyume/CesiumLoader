@@ -1,5 +1,6 @@
 using System;
-using CesiumLoader.SDK;
+using CesiumLoader.SDK.Logging;
+using CesiumLoader.SDK.Runtime;
 using Tools;   // SimpleSingletonProvider<>
 using UI;      // UIManager / FightWindow
 using UnityEngine;

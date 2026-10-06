@@ -1,4 +1,4 @@
-using CesiumLoader.SDK;
+using CesiumLoader.SDK.Manifests;
 
 // mod 元数据: 程序集级声明(权威位置, 读取时不触发类型加载, 兼容 HybridCLR)。
 // 本 mod 只读对局数据 + 登记 UI, 不发送任何 C2S 指令, 故只声明 ReadGameState。

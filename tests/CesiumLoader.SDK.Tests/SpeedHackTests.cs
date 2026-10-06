@@ -1,7 +1,8 @@
 using System;
 using System.Globalization;
 using System.IO;
-using CesiumLoader.SDK;
+using CesiumLoader.SDK.Manifests;
+using CesiumLoader.SDK.Speed;
 using Xunit;
 
 namespace CesiumLoader.SDK.Tests

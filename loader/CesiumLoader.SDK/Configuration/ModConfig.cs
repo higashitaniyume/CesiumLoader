@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
-namespace CesiumLoader.SDK
+using CesiumLoader.SDK.Logging;
+using CesiumLoader.SDK.Mods;
+namespace CesiumLoader.SDK.Configuration
 {
     /// <summary>
     /// 每个 mod 独立的配置: <c>mods\{ModId}\config.json</c>。

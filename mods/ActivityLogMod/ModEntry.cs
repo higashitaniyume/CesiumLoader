@@ -1,7 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using CesiumLoader.SDK;
+using CesiumLoader.SDK.Configuration;
+using CesiumLoader.SDK.Gameplay;
+using CesiumLoader.SDK.Logging;
+using CesiumLoader.SDK.Manifests;
+using CesiumLoader.SDK.Mods;
 using GameLogic;
 using party.model;
 using Tools;

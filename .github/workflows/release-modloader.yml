@@ -232,6 +232,7 @@ jobs:
           New-Item -ItemType Directory -Path "sdk-staging/docs", "sdk-staging/examples/ActivityLogMod" -Force | Out-Null
           Copy-Item "sdk-tools/cesium.exe" "sdk-staging/cesium.exe" -Force
           Copy-Item "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll" "sdk-staging/CesiumLoader.SDK.dll" -Force
+          Copy-Item "loader/CesiumLoader.SDK/LICENSE" "sdk-staging/LICENSE" -Force
           # SDK 的符号一起给: 模组作者单步进 SDK 内部(比如追 SdkLog/事件派发)才有行号。
           if (Test-Path "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.pdb") {
             Copy-Item "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.pdb" "sdk-staging/CesiumLoader.SDK.pdb" -Force
@@ -243,6 +244,8 @@ jobs:
           # SDK 工具包说明
           $readme = @(
             "cesium SDK 工具包 ${{ steps.version.outputs.version }}",
+            "SDK 许可: LICENSE (MIT, 仅适用于 CesiumLoader.SDK 源码与程序集)",
+            "其他工具、文档和示例按各自适用的许可使用；本工具包并非整体以 MIT 授权。",
             "",
             "包含:",
             "- cesium.exe            → mod 脚手架与包分发 CLI (win-x64 自包含, 无需本机 .NET)",

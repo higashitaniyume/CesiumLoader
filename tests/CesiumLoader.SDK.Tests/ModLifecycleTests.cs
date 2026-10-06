@@ -1,7 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using CesiumLoader.SDK;
+using CesiumLoader.SDK.Inputs;
+using CesiumLoader.SDK.Mods;
+using CesiumLoader.SDK.Scenes;
+using CesiumLoader.SDK.Scheduling;
+using CesiumLoader.SDK.UserInterface;
 using Xunit;
 
 namespace CesiumLoader.SDK.Tests

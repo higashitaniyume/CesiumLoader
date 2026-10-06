@@ -1,6 +1,6 @@
 # SDK 操作 — GameActions
 
-命名空间：`CesiumLoader.SDK`
+命名空间：`CesiumLoader.SDK.Gameplay`
 
 > ⚠️ **警告**：本类的方法会**真实影响对局** —— 让 mod 像玩家一样向服务器发送 C2S 指令（投骰子/移动/用牌等）。只在你的 mod 确实需要时调用，滥用可能导致对局异常或封号风险。
 

@@ -1,5 +1,7 @@
 using System;
-namespace CesiumLoader.SDK
+using CesiumLoader.SDK.Logging;
+using CesiumLoader.SDK.UserInterface;
+namespace CesiumLoader.SDK.Events
 {
     /// <summary>
     /// UI 事件(门面形式)。由 <see cref="UiService"/> 在状态变化时触发, 全部在主线程。

@@ -1,4 +1,4 @@
-using CesiumLoader.SDK;
+using CesiumLoader.SDK.Manifests;
 
 // 诊断工具: 只读。
 [assembly: ModManifest("诊断工具", "2.2.5", "CesiumLoader",

@@ -1,4 +1,4 @@
-using CesiumLoader.SDK;
+using CesiumLoader.SDK.Manifests;
 
 // 相机探针: 只读游戏状态, 不修改任何东西。
 [assembly: ModManifest("相机探针", "2.2.5", "CesiumLoader",

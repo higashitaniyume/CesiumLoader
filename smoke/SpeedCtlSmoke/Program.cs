@@ -162,7 +162,7 @@ internal static class Program
         Type type;
         try
         {
-            type = System.Reflection.Assembly.LoadFrom(sdkPath).GetType("CesiumLoader.SDK.SpeedHack", true);
+            type = System.Reflection.Assembly.LoadFrom(sdkPath).GetType("CesiumLoader.SDK.Speed.SpeedHack", true);
         }
         catch (Exception e)
         {

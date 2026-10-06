@@ -17,7 +17,7 @@
     并且都进清单做哈希校验。理由: 用户端崩溃只有一个栈帧地址时, 没有 pdb 就只能看到偏移;
     有了 pdb 才能把 mod 的异常栈还原到具体文件行。缺符号只警告不阻塞发布(见 Resolve-Pdb)。
 
-    版本号单一来源: loader\CesiumLoader.SDK\ModManifest.cs 里的 SdkVersion.Current。
+    版本号单一来源: loader\CesiumLoader.SDK\Manifests\SdkVersion.cs 里的 SdkVersion.Current。
     加载器版本与之一致(加载器横幅同时打印两者, 见 config.h 的 loaderVersion)。
 
 .PARAMETER Version
@@ -81,9 +81,9 @@ function Copy-PdbNextTo([string] $fromBinary, [string] $toBinary)
 function Resolve-Version
 {
     if ($Version) { return $Version }
-    $manifest = Join-Path $repo 'loader\CesiumLoader.SDK\ModManifest.cs'
+    $manifest = Join-Path $repo 'loader\CesiumLoader.SDK\Manifests\SdkVersion.cs'
     $m = [regex]::Match([System.IO.File]::ReadAllText($manifest), 'Current\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"')
-    if (-not $m.Success) { throw "无法从 ModManifest.cs 解析 SdkVersion.Current, 请用 -Version 显式指定" }
+    if (-not $m.Success) { throw "无法从 SdkVersion.cs 解析 SdkVersion.Current, 请用 -Version 显式指定" }
     return $m.Groups[1].Value
 }
 
@@ -276,6 +276,7 @@ if (Test-Path 'sdk-staging') { Remove-Item 'sdk-staging' -Recurse -Force }
 New-Item -ItemType Directory -Path 'sdk-staging\docs', 'sdk-staging\examples\ActivityLogMod' -Force | Out-Null
 Copy-Item 'sdk-tools\cesium.exe' 'sdk-staging\cesium.exe' -Force
 Copy-Item 'dist\modloader\AstralParty_ModLoader\sdk\CesiumLoader.SDK.dll' 'sdk-staging\CesiumLoader.SDK.dll' -Force
+Copy-Item 'loader\CesiumLoader.SDK\LICENSE' 'sdk-staging\LICENSE' -Force
 # SDK 的符号一起给: 模组作者单步进 SDK 内部时(比如追 SdkLog/事件派发)才有行号。
 if (Test-Path -LiteralPath 'dist\modloader\AstralParty_ModLoader\sdk\CesiumLoader.SDK.pdb')
 {
@@ -285,6 +286,8 @@ Copy-Item 'docs\*.md' 'sdk-staging\docs\' -Force
 Copy-Item 'mods\ActivityLogMod\ModEntry.cs', 'mods\ActivityLogMod\AssemblyInfo.cs', 'mods\ActivityLogMod\ActivityLogMod.csproj' 'sdk-staging\examples\ActivityLogMod\' -Force
 $sdkReadme = @(
     "cesium SDK 工具包 $version",
+    "SDK 许可: LICENSE (MIT, 仅适用于 CesiumLoader.SDK 源码与程序集)",
+    "其他工具、文档和示例按各自适用的许可使用；本工具包并非整体以 MIT 授权。",
     "",
     "包含:",
     "- cesium.exe            → mod 脚手架与包分发 CLI (win-x64 自包含, 无需本机 .NET)",

@@ -1,6 +1,6 @@
 # SDK 事件 — GameEvents
 
-命名空间：`CesiumLoader.SDK`
+命名空间：`CesiumLoader.SDK.Gameplay`
 
 游戏事件中枢：包装游戏 RPC 回调（S2C），把原始协议转成简单事件。所有事件在**游戏每场战斗重置回调后需重新挂钩**。
 

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
-using CesiumLoader.SDK;
+using CesiumLoader.SDK.Logging;
+using CesiumLoader.SDK.Runtime;
 using FairyGUI;
 using UnityEngine;
 

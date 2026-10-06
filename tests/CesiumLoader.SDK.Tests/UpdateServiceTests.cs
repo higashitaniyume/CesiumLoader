@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
-using CesiumLoader.SDK;
+using CesiumLoader.SDK.Mods;
+using CesiumLoader.SDK.Scheduling;
 using Xunit;
 
 namespace CesiumLoader.SDK.Tests

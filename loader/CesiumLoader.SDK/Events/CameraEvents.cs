@@ -1,8 +1,12 @@
 using System;
 using System.Threading;
 using UnityEngine;
+using CesiumLoader.SDK.Cameras;
+using CesiumLoader.SDK.Engine;
+using CesiumLoader.SDK.Logging;
+using CesiumLoader.SDK.Scheduling;
 
-namespace CesiumLoader.SDK
+namespace CesiumLoader.SDK.Events
 {
     /// <summary>
     /// 相机事件(门面形式): 主相机出现/消失/更换、活动相机更换。

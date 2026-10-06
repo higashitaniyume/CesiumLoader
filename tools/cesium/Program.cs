@@ -85,7 +85,10 @@ namespace CesiumCli
                 // 2. ModEntry.cs
                 string entry = $$"""
                     using System;
-                    using CesiumLoader.SDK;
+                    using CesiumLoader.SDK.Gameplay;
+                    using CesiumLoader.SDK.Logging;
+                    using CesiumLoader.SDK.Manifests;
+                    using CesiumLoader.SDK.Mods;
 
                     namespace {{name}}
                     {
@@ -120,7 +123,7 @@ namespace CesiumCli
 
                 // 2b. AssemblyInfo.cs(程序集级元数据声明, 权威位置)
                 string asmInfo = $$"""
-                    using CesiumLoader.SDK;
+                    using CesiumLoader.SDK.Manifests;
 
                     // mod 元数据: 程序集级声明(权威位置, 读取时不触发类型加载, 兼容 HybridCLR)。
                     // Permissions 声明会用到的能力(仅展示/警告, 已取消权限门控):

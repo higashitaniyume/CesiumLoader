@@ -1,6 +1,11 @@
 using System;
 using System.Text;
-using CesiumLoader.SDK;
+using CesiumLoader.SDK.Cameras;
+using CesiumLoader.SDK.Configuration;
+using CesiumLoader.SDK.Engine;
+using CesiumLoader.SDK.Inputs;
+using CesiumLoader.SDK.Logging;
+using CesiumLoader.SDK.Mods;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 

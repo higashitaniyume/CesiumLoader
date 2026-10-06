@@ -1,4 +1,4 @@
-using CesiumLoader.SDK;
+using CesiumLoader.SDK.Manifests;
 
 // 自由相机: 滚轮缩放(沿当前视线前后移动, 视角完全不变), F1 恢复原来的视角; 进游戏不接管任何东西。
 [assembly: ModManifest("自由相机", "2.2.5", "CesiumLoader",

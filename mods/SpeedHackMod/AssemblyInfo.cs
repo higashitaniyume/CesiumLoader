@@ -1,4 +1,5 @@
-using CesiumLoader.SDK;
+using CesiumLoader.SDK.Manifests;
+using CesiumLoader.SDK.Speed;
 
 // 变速: 用热键实时调整游戏时间流速(Alt+= 加速 / Alt+- 减速 / Delete 在 1.0x 与刚才的倍率间切换)。
 // 敏感能力: 需要 SpeedHack 权限; 倍率下限硬性 1.0(不能减速), 别调太高(见 docs/mod-SpeedHackMod.md)。
