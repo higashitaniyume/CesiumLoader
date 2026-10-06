@@ -195,7 +195,9 @@ namespace CombatOddsMod
             GameEvents.EnsureHooked();
             // HUD 攻击力加成: 星币/血量/层数变化不触发 ATK 事件, 靠这每秒一次兜底刷新。
             RefreshHudAtkBonus();
-            if (_playerAttrOverlay != null) _playerAttrOverlay.Update(_cfg.ShowBoardPlayerAttrs);
+            // 棋盘头顶攻防: 位置/数值的实时刷新已由 PlayerAttrOverlay 自己的每帧(LateUpdate)回调负责,
+            // 这里每秒一次只用于把配置开关同步过去(不承担跟随刷新, 否则又会变成低刷新率)。
+            if (_playerAttrOverlay != null) _playerAttrOverlay.SetEnabled(_cfg.ShowBoardPlayerAttrs);
         }
 
         // ============================== 主 HUD: 攻击力 + 筹码加成 ==============================

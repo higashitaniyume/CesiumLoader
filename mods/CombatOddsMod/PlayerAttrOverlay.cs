@@ -4,6 +4,7 @@ using System.Reflection;
 using CesiumLoader.SDK.Gameplay;
 using CesiumLoader.SDK.Logging;
 using CesiumLoader.SDK.Runtime;
+using CesiumLoader.SDK.Scheduling;
 using FairyGUI;
 using GameLogic;
 using UnityEngine;
@@ -13,7 +14,6 @@ namespace CombatOddsMod
     /// <summary>在棋盘角色头顶显示实时攻防, 悬停时显示属性说明。</summary>
     internal sealed class PlayerAttrOverlay
     {
-        private const float PollInterval = 0.05f;
         private const float VerticalOffset = 112f;
         private const int TipSortingOrder = 30000;
         private const int FontSize = 28;
@@ -29,6 +29,8 @@ namespace CombatOddsMod
             public GComponent Box;
             public GTextField Text;
             public BattlePlayerData Data;
+            /// <summary>上次写入文本的内容 —— 值没变就跳过字符串比较/排版重算。</summary>
+            public string LastText;
         }
 
         private readonly Dictionary<long, Entry> _entries = new Dictionary<long, Entry>();
@@ -37,19 +39,43 @@ namespace CombatOddsMod
         private GGraph _tipBg;
         private GTextField _tipText;
         private long _hoverId;
+        private UpdateSubscription _subscription;
         private bool _polling;
+        /// <summary>配置开关(ShowBoardPlayerAttrs)的当前值 —— 每帧回调必须尊重它, 否则会把开关关掉的标签又摆回来。</summary>
+        private bool _enabled = true;
         private static PropertyInfo _mousePosition;
         private static bool _mouseProbeDone;
 
         public void Start()
         {
             if (_polling) return;
-            try { Timers.inst.Add(PollInterval, 0, Poll); _polling = true; }
+            try
+            {
+                // 每帧(LateUpdate)跟随, 与游戏自己的 UICom_PlayerAttrInfo 同一节奏
+                // (UIBattleInfoPanel.OnUpdate 里就是每帧 WorldToScreenPoint 摆头顶名牌)。
+                // 早先用 FairyGUI Timers.inst.Add(0.05f, ...) 是 ~20Hz 的阶跃: 定时器要攒够
+                // 间隔才回调, 相位还与相机不同步, 快速滑屏时标签追不上角色 = 残影。
+                // LateUpdate 的另一层意义: 排在相机移动之后算坐标, 同一帧的位置才自洽。
+                _subscription = UpdateService.SubscribeLateUpdate(Poll, null, "CombatOdds.PlayerAttr");
+                _polling = _subscription != null && _subscription.Id != 0;
+                if (!_polling) SdkLog.Warn("CombatOdds", "玩家攻防覆盖层订阅每帧回调失败, 头顶攻防将不更新");
+            }
             catch (Exception e) { SdkLog.Warn("CombatOdds", "玩家攻防悬浮轮询启动失败: " + e.Message); }
+        }
+
+        /// <summary>
+        /// 同步配置开关(ShowBoardPlayerAttrs)。秒级调用即可 —— 真正的每帧跟随在 <see cref="Poll"/> 里,
+        /// 它读的就是这里写下的 <see cref="_enabled"/>。
+        /// </summary>
+        public void SetEnabled(bool enabled)
+        {
+            _enabled = enabled;
+            if (!enabled) { HideEntries(); HideTip(); }
         }
 
         public void Update(bool enabled = true)
         {
+            _enabled = enabled;
             try
             {
                 if (!enabled)
@@ -71,6 +97,10 @@ namespace CombatOddsMod
                 var camera = Core.Scene.BattleSceneController.inst?.mainCamera;
                 if (camera == null) return;
 
+                float rootW = GRoot.inst.width;
+                float rootH = GRoot.inst.height;
+                var container = _panel.com_PlayerAttrInfos;
+
                 foreach (var player in players)
                 {
                     if (player?.player == null || player.characterType == CharacterType.Monster || player.Property == null || player.CharacterInst == null ||
@@ -82,28 +112,51 @@ namespace CombatOddsMod
                     var pos = camera.WorldToScreenPoint(player.CharacterInst.characterObject.position);
                     if (pos.z <= 0f) { Hide(id); continue; }
                     pos.y = Screen.height - pos.y;
-                    var local = _panel.com_PlayerAttrInfos.GlobalToLocal(new Vector2(pos.x, pos.y));
+                    var local = container.GlobalToLocal(new Vector2(pos.x, pos.y));
                     var entry = EnsureEntry(id);
                     if (entry == null) continue;
 
+                    // 位置: 每帧都摆(这正是"字跟不上角色"的修复点)。
+                    entry.Box.SetXY(local.x - entry.Box.width * 0.5f, local.y - VerticalOffset - entry.Box.height);
+                    entry.Box.visible = local.x >= 0 && local.y >= 0 && local.x <= rootW && local.y <= rootH;
+
+                    // 压在最上层: com_PlayerAttrInfos 是与游戏自己那份头顶名牌(UICom_PlayerAttrInfo)
+                    // 共用的容器, 游戏后加的名牌会盖住我们的字。只在真的不在最上层时才重排
+                    // (原来是每帧无条件 SetChildIndex, 那是每帧一次子节点重排, 没必要)。
+                    if (container.numChildren > 0 && container.GetChildAt(container.numChildren - 1) != entry.Box)
+                        container.SetChildIndex(entry.Box, container.numChildren - 1);
+
+                    // 数值: 只有影响显示的东西真的变了才重排文本
+                    // (字符串拼接 + textWidth 排版 + 子节点尺寸重算都不便宜, 没变就别做)。
+                    // 注意: 显示的是 finalAtk(基础攻击 + 筹码加成), 与原来一致; 加成明细进悬停浮框。
                     int atk = player.Property.ATK != null ? player.Property.ATK.Value : 0;
                     int def = player.Property.DEF != null ? player.Property.DEF.Value : 0;
                     int hp = player.Property.HP != null ? player.Property.HP.Value : 0;
-                    string name = Players.SafeNick(player) ?? ("P" + id);
+
                     RelicAtkBonus.Input input;
                     var bonuses = ModEntry.CurrentAtkBonuses(player, out input);
                     int finalAtk = atk + RelicAtkBonus.Total(bonuses);
                     string text = "[color=#5AA9FF]攻 " + finalAtk + "[/color]   [color=#6DE0A2]防 " + def + "[/color]";
-                    entry.Data = player;
-                    entry.Box.data = BuildTip(name, atk, finalAtk, def, hp, bonuses);
-                    if (entry.Text.text != text)
+
+                    // 签名覆盖浮框会显示的全部字段(基础攻/最终攻/防/血), 任一变化就一起重建,
+                    // 避免"只帮浮框重建却因为文字没变而跳过"导致的悬停信息过期。
+                    string signature = text + "|" + atk + "|" + hp;
+                    if (entry.LastText != signature)
                     {
+                        entry.LastText = signature;
                         entry.Text.text = text;
+                        // 尺寸给 Box(普通 GComponent, 会老实采纳)。不能改成给 GTextField.SetSize:
+                        // 本字段 autoSize=Both, GTextField.HandleSizeChanged 在 Both 下直接 return,
+                        // 那个 SetSize 是空操作, 宽度/高度都不会按我们给的算。
                         entry.Box.SetSize(Math.Max(90f, entry.Text.textWidth + 14f), Math.Max(30f, entry.Text.textHeight + 8f));
+
+                        entry.Data = player;
+                        // 悬停浮框内容直接存进 Box.data(ShowTip 就取它), 不再另存一份, 避免两处状态不一致。
+                        entry.Box.data = BuildTip(Players.SafeNick(player) ?? ("P" + id), atk, finalAtk, def, hp, bonuses);
+
+                        // 尺寸变了, 用新宽度重摆一次居中(否则这一帧会偏半个差值)。
+                        entry.Box.SetXY(local.x - entry.Box.width * 0.5f, local.y - VerticalOffset - entry.Box.height);
                     }
-                    entry.Box.SetXY(local.x - entry.Box.width * 0.5f, local.y - VerticalOffset - entry.Box.height);
-                    entry.Box.visible = local.x >= 0 && local.y >= 0 && local.x <= GRoot.inst.width && local.y <= GRoot.inst.height;
-                    _panel.com_PlayerAttrInfos.SetChildIndex(entry.Box, _panel.com_PlayerAttrInfos.numChildren - 1);
                 }
 
                 var stale = new List<long>();
@@ -151,11 +204,15 @@ namespace CombatOddsMod
             catch (Exception e) { SdkLog.Warn("CombatOdds", "创建棋盘玩家攻防标签失败: " + e.Message); return null; }
         }
 
-        private void Poll(object _)
+        private void Poll()
         {
             try
             {
-                Update();
+                // 尊重配置开关: Update 每帧跑, 关掉开关时只做隐藏(仍会摆位置, 但 visible=false),
+                // 绝不能在开关关掉时把标签又显示出来。
+                Update(_enabled);
+                if (!_enabled) { HideTip(); return; }
+
                 var point = Pointer();
                 Entry hit = null;
                 foreach (var entry in _entries.Values)

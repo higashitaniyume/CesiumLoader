@@ -109,6 +109,40 @@ pwsh -File modding\msvc\tools\deploy-combatodds.ps1
 
 ---
 
+## 5.1 棋盘头顶攻防的刷新（2026-10-06 修复）
+
+**症状**：棋盘上角色头顶的「攻 N 防 M」在快速滑动屏幕时跟不上角色，出现残影。
+
+**根因**：位置更新挂在 FairyGUI 定时器上（`Timers.inst.Add(0.05f, 0, Poll)`）。
+游戏自己的 `Timers.Update()` 是**每帧累加、攒够 interval 才回调**并丢弃余量
+（`Timers.cs:177-186`），所以那是 **~20Hz 的离散阶跃**，相位还与相机不同步；
+相机跟随是连续插值，两者相位差被放大就成了残影。
+
+**修法**：改用 SDK 的每帧钩子 `UpdateService.SubscribeLateUpdate`（主线程 `PostLateUpdate`），
+与游戏自己的头顶名牌 `UICom_PlayerAttrInfo` 同一个节奏 —— 后者正是在
+`UIBattleInfoPanel.OnUpdate()` 里每帧 `WorldToScreenPoint` 摆位置的。
+选 **LateUpdate**（而非 Update）是为了排在相机移动之后算坐标，同一帧内位置才自洽。
+
+同时把每帧的重活挪出热路径：
+
+- 文本/尺寸只在**数值真变**时重排（判定签名覆盖浮框会显示的全部字段：最终攻/基础攻/防/血）；
+- `SetChildIndex`（子节点置顶）只在真的不在最上层时才做 —— `com_PlayerAttrInfos` 是与游戏
+  自己的名牌**共用**的容器，游戏后加的名牌会盖住我们的字，所以不能完全不置顶。
+
+**两个坑（改这块时务必注意）**：
+
+1. **配置开关会被每帧刷新顶回来**。`Poll` 每帧调 `Update()`，而 `Update` 默认
+   `enabled=true`；若不同步开关，`ShowBoardPlayerAttrs=false` 隐藏的标签会被每帧重新显示。
+   现在开关存在 `_enabled`，由 `ModEntry.OnTick` 每秒调 `SetEnabled` 同步（每秒只同步开关，
+   不承担跟随刷新）。
+2. **不能给 `GTextField.SetSize` 设尺寸**。该字段 `autoSize=Both`，而
+   `GTextField.HandleSizeChanged()` 在 Both 下**直接 return**，那个 `SetSize` 是空操作。
+   尺寸必须给外层 `Box`（普通 `GComponent`，会老实采纳）。
+
+**验证**：真机快速滑屏确认残影消失（2026-10-06）。
+
+---
+
 ## 6. 进游戏验证清单（完成阶段 1 的唯一剩余步骤）
 
 前提：游戏已装 CesiumLoader 加载器，`doorstop_config.json` 里 `console=true`（能看控制台）。
