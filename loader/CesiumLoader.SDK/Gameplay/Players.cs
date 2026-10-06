@@ -276,7 +276,8 @@ namespace CesiumLoader.SDK.Gameplay
 
         /// <summary>
         /// 读取任意单位(玩家或怪物)当前身上的全部激活 buff, 含层数。
-        /// 数据取自该单位 <c>party.model.Hero.Buffs</c>(<c>MapField&lt;long,Buff&gt;</c>)。
+        /// 优先读取角色 <c>buffContainer._buffDict</c>(与游戏 buff 界面同源)。
+        /// 没有实时容器时才回退到 <c>party.model.Hero.Buffs</c>；容器为空代表没有 buff，不能回退。
         /// 查不到(不在房间/无该单位)返回空。绝不抛异常。
         /// </summary>
         public static IReadOnlyList<BuffOnUnit> BuffsOf(long unitId)
@@ -284,13 +285,15 @@ namespace CesiumLoader.SDK.Gameplay
             var list = new List<BuffOnUnit>();
             try
             {
-                var hero = HeroOf(unitId);
-                if (hero?.Buffs == null) return list;
-                foreach (var kv in hero.Buffs)
+                var current = Get(unitId)?.buffContainer?._buffDict;
+                // Hero.Buffs 是模型快照；HeroBuffChangeS2C 的增删改只更新 buffContainer。
+                // 空容器也必须优先，否则消耗掉的护盾会从旧快照里被重新读出来。
+                var buffs = PreferLiveBuffs(current?.Values, () => HeroOf(unitId)?.Buffs?.Values);
+                if (buffs == null) return list;
+                foreach (var b in buffs)
                 {
                     try
                     {
-                        var b = kv.Value;
                         if (b == null) continue;
                         int layers = 0;
                         try { layers = b.Progress; } catch { }
@@ -304,6 +307,12 @@ namespace CesiumLoader.SDK.Gameplay
             }
             catch { }
             return list;
+        }
+
+        /// <summary>实时容器即使为空也优先；仅缺少容器时读取模型快照。</summary>
+        internal static IEnumerable<T> PreferLiveBuffs<T>(IEnumerable<T> current, Func<IEnumerable<T>> snapshot)
+        {
+            return current ?? snapshot();
         }
 
         /// <summary>取某单位的 Hero 模型(先查战斗 PlayerDatas, 再查房间 Players+Monsters)。查不到返回 null。</summary>

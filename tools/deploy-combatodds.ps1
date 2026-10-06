@@ -52,7 +52,26 @@ $sdkDll = Join-Path $repo 'loader\CesiumLoader.SDK\bin\Release\netstandard2.0\Ce
 $sdkDestDir = Join-Path $loaderDir 'sdk'
 if ((Test-Path $sdkDll) -and (Test-Path $sdkDestDir)) {
     Copy-Item $sdkDll (Join-Path $sdkDestDir 'CesiumLoader.SDK.dll') -Force
-    Write-Host "== 已同步 SDK: $sdkDestDir\CesiumLoader.SDK.dll =="
+    # 原生加载器按配置的 sdkVersion 做准入检查，并不读取 SDK DLL 的版本。
+    # 只更新 SDK DLL 会让要求新版本的 mod 被跳过；只替换版本字段，保留玩家设置。
+    $versionSource = Get-Content (Join-Path $repo 'loader\CesiumLoader.SDK\Manifests\SdkVersion.cs') -Raw
+    $versionMatch = [regex]::Match($versionSource, 'Current\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"')
+    if (-not $versionMatch.Success) { throw '无法读取 SDK 版本' }
+    $configPath = Join-Path $loaderDir 'doorstop_config.json'
+    $configText = Get-Content -LiteralPath $configPath -Raw
+    $versionPattern = '("sdkVersion"\s*:\s*")[^"]*(")'
+    if (-not [regex]::IsMatch($configText, $versionPattern)) {
+        throw '加载器配置缺少 sdkVersion 字段，请补齐后重试部署'
+    }
+    $sdkVersion = $versionMatch.Groups[1].Value
+    $newConfigText = [regex]::Replace($configText, $versionPattern, {
+        param($match)
+        $match.Groups[1].Value + $sdkVersion + $match.Groups[2].Value
+    })
+    if ($newConfigText -ne $configText) {
+        [System.IO.File]::WriteAllText($configPath, $newConfigText)
+    }
+    Write-Host "== 已同步 SDK 和配置版本 $sdkVersion : $sdkDestDir\CesiumLoader.SDK.dll =="
 } else {
     Write-Warning "未同步 SDK(找不到 $sdkDll 或目标 $sdkDestDir); 若用到 SDK 新 API 可能运行时报错。"
 }
