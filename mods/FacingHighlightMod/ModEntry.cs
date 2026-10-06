@@ -27,7 +27,7 @@ namespace FacingHighlightMod
         private bool _loggedHighlight;
 
         public override string Name { get { return "单位朝向高亮"; } }
-        public override string Version { get { return "2.2.5"; } }
+        public override string Version { get { return "2.3.0"; } }
         public override string Author { get { return "CesiumLoader"; } }
         public override string Description { get { return "高亮游戏原有的方向箭头，不创建额外箭头"; } }
 

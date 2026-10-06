@@ -15,4 +15,4 @@ using CesiumLoader.SDK.Speed;
 [assembly: ModManifest("AI Agent 桥接", "1.0.0", "CesiumLoader",
     "把对局暴露成文件通道(bridge): 状态快照 + 事件流 + 原始动作流 + 命令执行, 供外部 MCP server 让 AI agent 接管对局",
     Permissions = ModPermission.ReadGameState | ModPermission.GameActions | ModPermission.SpeedHack | ModPermission.FileWrite | ModPermission.FileSystem,
-    SdkVersion = "2.2.5")]
+    SdkVersion = "2.3.0")]

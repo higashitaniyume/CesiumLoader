@@ -43,7 +43,7 @@ namespace DiagnosticsMod
         public override string Name { get { return "诊断工具"; } }
 
         /// <summary>版本。</summary>
-        public override string Version { get { return "2.2.5"; } }
+        public override string Version { get { return "2.3.0"; } }
 
         /// <summary>初始化。</summary>
         public override void OnInitialize()

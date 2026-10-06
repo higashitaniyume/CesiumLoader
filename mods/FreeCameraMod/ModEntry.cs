@@ -25,7 +25,7 @@ namespace FreeCameraMod
     }
 
     /// <summary>
-    /// 滚轮缩放(v2.2.1 —— 旧版"F1 开关俯瞰视角"已整体重写)。
+    /// 滚轮缩放(v2.3.0 —— 旧版"F1 开关俯瞰视角"已整体重写)。
     ///
     /// 要的行为:
     ///   1) 进游戏后<b>什么都不做</b>: 画面就是游戏自己的默认视角, 没有开关、没有自动接管;
@@ -154,7 +154,7 @@ namespace FreeCameraMod
 
         public override string Name { get { return "自由相机"; } }
 
-        public override string Version { get { return "2.2.5"; } }
+        public override string Version { get { return "2.3.0"; } }
 
         // =====================================================================
         // 生命周期
