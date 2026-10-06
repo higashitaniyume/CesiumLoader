@@ -1,6 +1,6 @@
 # SDK 玩家与名字
 
-命名空间：`CesiumLoader.SDK`
+命名空间：`CesiumLoader.SDK.Gameplay`
 
 ## Players — 玩家数据访问
 

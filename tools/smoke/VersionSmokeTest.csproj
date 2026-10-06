@@ -12,5 +12,9 @@
     <Compile Remove="testmod/**/*.cs" />
     <Compile Remove="configtest/**/*" />
     <Compile Remove="boottest/**/*" />
+    <Compile Remove="permtest/**/*" />
+    <Compile Remove="speedtest/**/*" />
+    <Compile Remove="**/obj/**/*.cs" />
+    <Compile Remove="**/bin/**/*.cs" />
   </ItemGroup>
 </Project>

@@ -1,5 +1,5 @@
 using System.IO;
-using CesiumLoader.SDK;
+using CesiumLoader.SDK.Cameras;
 using UnityEngine;
 using Xunit;
 

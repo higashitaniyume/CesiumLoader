@@ -1,5 +1,5 @@
 using System.Reflection;
-using CesiumLoader.SDK;
+using CesiumLoader.SDK.Manifests;
 using Xunit;
 
 namespace CesiumLoader.SDK.Tests
@@ -12,8 +12,8 @@ namespace CesiumLoader.SDK.Tests
         {
             // 本次扩展保持向后兼容 → 不升 major。发布时三处版本号同步递增:
             // SdkVersion.Current / SdkVersion.LoaderVersion / CesiumLoader.SDK.csproj 的 <Version>。
-            Assert.Equal("2.2.5", SdkVersion.Current);
-            Assert.Equal("2.2.5", SdkVersion.LoaderVersion);
+            Assert.Equal("2.3.0", SdkVersion.Current);
+            Assert.Equal("2.3.0", SdkVersion.LoaderVersion);
         }
 
         [Theory]
@@ -43,7 +43,7 @@ namespace CesiumLoader.SDK.Tests
         [Fact]
         public void Accepts_AllowsSameOrOlderDeclaration()
         {
-            // 与当前版本相同 → 兼容（SDK 2.2.1 接受声明 2.2.1 的 mod）
+            // 与当前版本相同 → 兼容（SDK 2.3.0 接受声明 2.3.0 的 mod）
             Assert.True(SdkVersion.Accepts(SdkVersion.Current));
             Assert.True(SdkVersion.Accepts("2.0.0"));
             Assert.True(SdkVersion.Accepts("1.0.0"));
@@ -60,7 +60,7 @@ namespace CesiumLoader.SDK.Tests
             Assert.False(SdkVersion.Accepts(Bump(SdkVersion.Current, 0)));
         }
 
-        /// <summary>把指定段 +1、更低的段归零(2.2.1 的 revision → 2.2.1, minor → 2.2.1, major → 3.0.0)。</summary>
+        /// <summary>把指定段 +1、更低的段归零(2.3.0 的 revision → 2.3.0, minor → 2.3.0, major → 3.0.0)。</summary>
         private static string Bump(string version, int index)
         {
             var parts = version.Split('.');

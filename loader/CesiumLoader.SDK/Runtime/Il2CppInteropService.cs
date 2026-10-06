@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
+using CesiumLoader.SDK.Gameplay;
+using CesiumLoader.SDK.Logging;
 
-namespace CesiumLoader.SDK
+namespace CesiumLoader.SDK.Runtime
 {
     /// <summary>
     /// 托管侧的 IL2CPP 互操作层 —— 原生层 <c>il2cpp_safe.h</c> 的镜像。

@@ -1,7 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using CesiumLoader.SDK;
+using CesiumLoader.SDK.Cameras;
+using CesiumLoader.SDK.Configuration;
+using CesiumLoader.SDK.Diagnostics;
+using CesiumLoader.SDK.Gameplay;
+using CesiumLoader.SDK.Manifests;
+using CesiumLoader.SDK.Mods;
+using CesiumLoader.SDK.Runtime;
 using Xunit;
 
 namespace CesiumLoader.SDK.Tests
@@ -60,7 +66,7 @@ namespace CesiumLoader.SDK.Tests
 
             var map = parsed as Dictionary<string, object>;
             Assert.NotNull(map);
-            Assert.Equal("2.2.5", map["SdkVersion"]);
+            Assert.Equal("2.3.0", map["SdkVersion"]);
             Assert.Equal(false, map["Il2CppAvailable"]);
         }
 
@@ -181,9 +187,9 @@ namespace CesiumLoader.SDK.Tests
         {
             Assert.True(RuntimeAssemblyService.IsAssemblyLoaded("CesiumLoader.SDK"));
             Assert.NotNull(RuntimeAssemblyService.FindAssembly("CesiumLoader.SDK"));
-            Assert.True(RuntimeAssemblyService.HasType("CesiumLoader.SDK.ModBase"));
-            Assert.NotNull(RuntimeAssemblyService.FindType("CesiumLoader.SDK.SdkVersion"));
-            Assert.NotNull(RuntimeAssemblyService.FindType("CesiumLoader.SDK", "CesiumLoader.SDK.ModRegistry"));
+            Assert.True(RuntimeAssemblyService.HasType("CesiumLoader.SDK.Mods.ModBase"));
+            Assert.NotNull(RuntimeAssemblyService.FindType("CesiumLoader.SDK.Manifests.SdkVersion"));
+            Assert.NotNull(RuntimeAssemblyService.FindType("CesiumLoader.SDK", "CesiumLoader.SDK.Mods.ModRegistry"));
             Assert.NotNull(RuntimeAssemblyService.FindTypeBySimpleName("ModRegistry"));
         }
 
@@ -205,8 +211,8 @@ namespace CesiumLoader.SDK.Tests
         {
             long hitsBefore = RuntimeAssemblyService.TypeCacheHits;
 
-            RuntimeAssemblyService.FindType("CesiumLoader.SDK.ModBase");
-            RuntimeAssemblyService.FindType("CesiumLoader.SDK.ModBase");
+            RuntimeAssemblyService.FindType("CesiumLoader.SDK.Mods.ModBase");
+            RuntimeAssemblyService.FindType("CesiumLoader.SDK.Mods.ModBase");
 
             Assert.True(RuntimeAssemblyService.TypeLookupCount > 0);
             Assert.True(RuntimeAssemblyService.TypeCacheHits > hitsBefore);
@@ -217,7 +223,7 @@ namespace CesiumLoader.SDK.Tests
         {
             RuntimeAssemblyService.InvalidateCaches();
 
-            Assert.NotNull(RuntimeAssemblyService.FindType("CesiumLoader.SDK.ModBase"));
+            Assert.NotNull(RuntimeAssemblyService.FindType("CesiumLoader.SDK.Mods.ModBase"));
         }
 
         [Fact]

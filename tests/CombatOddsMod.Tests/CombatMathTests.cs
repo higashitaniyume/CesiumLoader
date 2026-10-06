@@ -301,6 +301,90 @@ namespace CombatOddsMod.Tests
         }
 
         [Fact]
+        public void EvaluateTargetBuffs_ContextOnly_AppliesToSummonContext()
+        {
+            var t = CombatMath.DefaultBuffTable();
+            var buffs = new[] { new CombatMath.TargetBuff(1291202, 1) };
+            var normal = CombatMath.EvaluateTargetBuffs(buffs, t, CombatMath.DamageContext.NormalBattle);
+            var summon = CombatMath.EvaluateTargetBuffs(buffs, t, CombatMath.DamageContext.Summon, 12911);
+            Assert.Equal(0, normal.Delta);
+            Assert.Single(normal.ContextOnly);
+            Assert.Equal(1, summon.Delta);
+            Assert.Empty(summon.ContextOnly);
+        }
+
+        [Fact]
+        public void DamageTypeMapsToDamageContext()
+        {
+            Assert.Equal(CombatMath.DamageContext.Skill, CombatMath.ContextFromDamageType(1));
+            Assert.Equal(CombatMath.DamageContext.Summon, CombatMath.ContextFromDamageType(9));
+            Assert.Equal(CombatMath.DamageContext.NormalBattle, CombatMath.ContextFromDamageType(7));
+        }
+        [Fact]
+        public void PrecisionStrike_AppliesOnlyToMegasOrbitalBombardment()
+        {
+            var t = CombatMath.DefaultBuffTable();
+            var buffs = new[] { new CombatMath.TargetBuff(1221202, 1) };
+            var ordinarySkill = CombatMath.EvaluateTargetBuffs(buffs, t, CombatMath.DamageContext.Skill, 103701);
+            var orbitalBombardment = CombatMath.EvaluateTargetBuffs(buffs, t, CombatMath.DamageContext.Skill, 12203);
+            Assert.Equal(0, ordinarySkill.Delta);
+            Assert.Single(ordinarySkill.ContextOnly);
+            Assert.Equal(1, orbitalBombardment.Delta);
+            Assert.Empty(orbitalBombardment.ContextOnly);
+        }
+
+        [Fact]
+        public void MegasBombardment_UsesDiscardCountAndTotalCost()
+        {
+            Assert.Equal(0, CombatMath.MegasOrbitalBombardmentCount(1));
+            Assert.Equal(2, CombatMath.MegasOrbitalBombardmentCount(5));
+            Assert.Equal(5, CombatMath.MegasOrbitalBombardmentDamage(4, 6));
+            Assert.Equal(6, CombatMath.MegasOrbitalBombardmentDamage(6, 9));
+        }
+
+        [Fact]
+        public void BonnieBonus_RequiresBonnieMarkedMonster()
+        {
+            Assert.Equal(3, CombatMath.BonnieMarkedMonsterAttackBonus(127, true, true));
+            Assert.Equal(0, CombatMath.BonnieMarkedMonsterAttackBonus(127, true, false));
+            Assert.Equal(0, CombatMath.BonnieMarkedMonsterAttackBonus(127, false, true));
+            Assert.Equal(0, CombatMath.BonnieMarkedMonsterAttackBonus(129, true, true));
+        }
+        [Fact]
+        public void BlueHaeGyeongWeakness_AppliesOnlyToMonsterTarget()
+        {
+            var buffs = new[] { new CombatMath.TargetBuff(1140102, 1) };
+            var table = CombatMath.DefaultBuffTable();
+            var monster = CombatMath.EvaluateTargetBuffs(buffs, table, CombatMath.DamageContext.NormalBattle, 0, true);
+            var player = CombatMath.EvaluateTargetBuffs(buffs, table, CombatMath.DamageContext.NormalBattle, 0, false);
+            Assert.Equal(1, monster.Delta);
+            Assert.Single(monster.Applied);
+            Assert.Equal(0, player.Delta);
+            Assert.Single(player.ContextOnly);
+        }
+        [Fact]
+        public void RequiredBattleRolls_ComputesGuaranteeThresholds()
+        {
+            var t = CombatMath.RequiredBattleRolls(2, 8, 6, 22, 2, 2, 2, 0, 6);
+            Assert.Equal(22, t.AttackRollToKillAtCurrentDefense);
+            Assert.Equal(26, t.AttackRollToGuaranteeKill);
+            Assert.False(t.KillReachable);
+            Assert.Equal(1, t.DefenseRollToAvoidKnockdown);
+            Assert.True(t.DefenseReachable);
+            Assert.Equal(3, t.DodgeRollToSucceed);
+            Assert.True(t.DodgeReachable);
+        }
+        [Fact]
+        public void KnownSkillLabels_MatchObservedCharacterSkills()
+        {
+            Assert.Equal("梅加斯·轨道轰炸", CombatMath.KnownSkillLabel(12203));
+            Assert.Equal("赛克斯·魔域转化", CombatMath.KnownSkillLabel(12902));
+            Assert.Equal("蓝海晴·虚弱印记", CombatMath.KnownSkillLabel(11403));
+            Assert.Equal("邦妮·隐匿行动", CombatMath.KnownSkillLabel(12702));
+            Assert.Null(CombatMath.KnownSkillLabel(99999));
+        }
+
+        [Fact]
         public void EvaluateTargetBuffs_UnknownBuff_Ignored()
         {
             var t = CombatMath.DefaultBuffTable();

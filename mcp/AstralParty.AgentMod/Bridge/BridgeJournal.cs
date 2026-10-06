@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using AstralParty.Agent;
-using CesiumLoader.SDK;
+using CesiumLoader.SDK.Configuration;
 
 namespace AstralParty.AgentMod.Bridge
 {

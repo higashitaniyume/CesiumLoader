@@ -1,6 +1,11 @@
 using System;
 using System.Text;
-using CesiumLoader.SDK;
+using CesiumLoader.SDK.Cameras;
+using CesiumLoader.SDK.Configuration;
+using CesiumLoader.SDK.Engine;
+using CesiumLoader.SDK.Inputs;
+using CesiumLoader.SDK.Logging;
+using CesiumLoader.SDK.Mods;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -33,7 +38,7 @@ namespace CameraProbeMod
         public override string Name { get { return "相机探针"; } }
 
         /// <summary>版本。</summary>
-        public override string Version { get { return "2.2.5"; } }
+        public override string Version { get { return "2.3.0"; } }
 
         /// <summary>初始化(主线程, 启动延迟之后)。</summary>
         public override void OnInitialize()

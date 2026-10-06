@@ -1,6 +1,7 @@
 using System;
 using System.Reflection;
-using CesiumLoader.SDK;
+using CesiumLoader.SDK.Gameplay;
+using CesiumLoader.SDK.Manifests;
 using Xunit;
 
 namespace CesiumLoader.SDK.Tests

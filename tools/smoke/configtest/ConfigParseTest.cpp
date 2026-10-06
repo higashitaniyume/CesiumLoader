@@ -1,32 +1,15 @@
 // ConfigParseTest - 验证 config.cpp 的 doorstop_config.json 极简解析器
-// 编译: cl /EHsc /std:c++17 /I loader\CesiumLoader ConfigParseTest.cpp loader\CesiumLoader\config.cpp loader\CesiumLoader\console.cpp
+// 编译: cl /EHsc /std:c++17 /I loader\CesiumLoader ConfigParseTest.cpp loader\CesiumLoader\config\config.cpp loader\CesiumLoader\platform\console.cpp
 // (需要 loader.cpp 的符号, 但 config.cpp 只依赖 log_line —— 用最小桩代替)
 #include <cstdio>
 #include <string>
 #include <windows.h>
 
-// ---- loader.h 所需符号的最小桩 ----
-#include <io.h>
-#include <fcntl.h>
-
-static HANDLE g_console_handle = INVALID_HANDLE_VALUE;
-void console_write(const char*) {}
-void console_write_w(const wchar_t*, size_t) {}
+// ---- platform API stubs required by config.cpp ----
 void log_line(const char*) {}
 void log_line(const std::string&) {}
 void log_line(const std::wstring&) {}
-std::wstring loader_root() { return L"."; }
-std::wstring bootstrap_dir() { return L"."; }
-std::wstring mods_dir() { return L"."; }
-std::wstring sdk_dir() { return L"."; }
-std::wstring logs_dir() { return L"."; }
-std::wstring config_path() { return L"."; }
-void maybe_start_boot() {}
-void* real_version_handle() { return nullptr; }
-void* real_version_fn(const char*) { return nullptr; }
-bool boot_il2cpp_and_load_mods() { return false; }
-
-#include "config.h"
+#include "../../../loader/CesiumLoader/config/config.h"
 
 static int g_fail = 0;
 static void check(bool ok, const char* what) {

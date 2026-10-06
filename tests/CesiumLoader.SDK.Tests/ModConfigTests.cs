@@ -1,5 +1,5 @@
 using System.IO;
-using CesiumLoader.SDK;
+using CesiumLoader.SDK.Configuration;
 using Xunit;
 
 namespace CesiumLoader.SDK.Tests

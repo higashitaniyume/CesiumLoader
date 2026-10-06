@@ -1,4 +1,6 @@
-using CesiumLoader.SDK;
+using CesiumLoader.SDK.Gameplay;
+using CesiumLoader.SDK.Manifests;
+using CesiumLoader.SDK.Speed;
 
 // mod 元数据: 程序集级声明(权威位置, 读取时不触发类型加载, 兼容 HybridCLR)。
 //
@@ -13,4 +15,4 @@ using CesiumLoader.SDK;
 [assembly: ModManifest("AI Agent 桥接", "1.0.0", "CesiumLoader",
     "把对局暴露成文件通道(bridge): 状态快照 + 事件流 + 原始动作流 + 命令执行, 供外部 MCP server 让 AI agent 接管对局",
     Permissions = ModPermission.ReadGameState | ModPermission.GameActions | ModPermission.SpeedHack | ModPermission.FileWrite | ModPermission.FileSystem,
-    SdkVersion = "2.2.5")]
+    SdkVersion = "2.3.0")]

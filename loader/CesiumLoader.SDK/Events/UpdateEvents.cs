@@ -1,6 +1,8 @@
 using System;
+using CesiumLoader.SDK.Logging;
+using CesiumLoader.SDK.Scheduling;
 
-namespace CesiumLoader.SDK
+namespace CesiumLoader.SDK.Events
 {
     /// <summary>
     /// 每帧事件(Update / LateUpdate)。

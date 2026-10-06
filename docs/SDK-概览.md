@@ -3,6 +3,31 @@
 > Astral Party 国服 (Steam appid 2622000, Unity 2021.3.45f2 IL2CPP + HybridCLR) 的 Mod SDK。
 > 加载器把 mod DLL 注入 HybridCLR 解释器，SDK 提供与游戏类型强类型绑定的 API。
 
+## 命名空间结构
+
+SDK 类型全部位于 `CesiumLoader.SDK` 根命名空间之下的子命名空间中，按职责组织：
+
+| 命名空间 | 主要类型 |
+|---|---|
+| `CesiumLoader.SDK.Mods` | `ModBase`、`ModContext`、`IMod` |
+| `CesiumLoader.SDK.Manifests` | `ModManifestAttribute`、`ModPermission`、`SdkManifest`、`SdkVersion` |
+| `CesiumLoader.SDK.Configuration` | `ModConfig`、`SdkConfig`、`CesiumJson` |
+| `CesiumLoader.SDK.Logging` | `SdkLog`、`ModLogger` |
+| `CesiumLoader.SDK.Gameplay` | `GameEvents`、`GameActions`、`Players`、`Names` |
+| `CesiumLoader.SDK.Speed` | `SpeedHack` |
+| `CesiumLoader.SDK.Cameras` | `CameraService`、`CameraState`、`FreeCameraMath` |
+| `CesiumLoader.SDK.Scenes` | `SceneService` |
+| `CesiumLoader.SDK.Inputs` | `InputService`、input backends |
+| `CesiumLoader.SDK.Scheduling` | `CoroutineService`、`UpdateService` |
+| `CesiumLoader.SDK.UserInterface` | `UiService`、UI data types |
+| `CesiumLoader.SDK.Events` | UI, scene, camera and update events |
+| `CesiumLoader.SDK.Diagnostics` | diagnostic snapshots and collectors |
+| `CesiumLoader.SDK.Engine` | Unity object, transform and time helpers |
+| `CesiumLoader.SDK.Runtime` | main-thread and runtime assembly services |
+| `CesiumLoader.SDK.Internals` | loader-only implementation details |
+
+> 不再提供根命名空间中的兼容类型；引用 SDK 类型时需导入对应的子命名空间。
+
 ## 架构
 
 ```
@@ -59,24 +84,28 @@ C# 类库 (netstandard2.0)，引用 SDK 和游戏热更程序集（参考 `Activ
 ### 2. 入口
 
 ```csharp
+using CesiumLoader.SDK.Gameplay;
+using CesiumLoader.SDK.Logging;
+using CesiumLoader.SDK.Mods;
+
 public static class ModEntry
 {
     public static void Main()
     {
-        CesiumLoader.SDK.ModBase.Run(OnInit, OnTick, tag: "MyMod");
+        ModBase.Run(OnInit, OnTick, tag: "MyMod");
     }
 
     static void OnInit()
     {
         // 订阅事件 / 读配置 (启动 30 秒后执行)
-        CesiumLoader.SDK.GameEvents.CardUsed += (pid, cardId, remain) =>
-            CesiumLoader.SDK.SdkLog.Info("MyMod", $"玩家 {pid} 出牌 {CesiumLoader.SDK.Names.Card(cardId)} 剩{remain}张");
+        GameEvents.CardUsed += (pid, cardId, remain) =>
+            SdkLog.Info("MyMod", $"玩家 {pid} 出牌 {Names.Card(cardId)} 剩{remain}张");
     }
 
     static void OnTick()
     {
         // 每秒轮询: 保持事件挂钩 (游戏每场战斗会重置 RPC 回调)
-        CesiumLoader.SDK.GameEvents.EnsureHooked();
+        GameEvents.EnsureHooked();
     }
 }
 ```

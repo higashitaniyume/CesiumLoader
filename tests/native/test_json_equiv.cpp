@@ -16,10 +16,10 @@
 #endif
 #include <windows.h>   // GetTempPathW / DeleteFileW / MAX_PATH
 
-#include "../../loader/CesiumLoader/config.h"
-#include "../../loader/CesiumLoader/jsonc.h"
-#include "../../loader/CesiumLoader/modmeta.h"
-#include "../../loader/CesiumLoader/speedhack.h"   // kSpeedMin / kSpeedMax(旧 json_double 用到)
+#include "../../loader/CesiumLoader/config/config.h"
+#include "../../loader/CesiumLoader/config/jsonc.h"
+#include "../../loader/CesiumLoader/mods/modmeta.h"
+#include "../../loader/CesiumLoader/speed/speedhack.h"   // kSpeedMin / kSpeedMax(旧 json_double 用到)
 
 #include <algorithm>
 #include <cstdint>

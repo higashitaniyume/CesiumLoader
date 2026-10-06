@@ -1,6 +1,12 @@
 using System;
 using System.Globalization;
-using CesiumLoader.SDK;
+using CesiumLoader.SDK.Configuration;
+using CesiumLoader.SDK.Engine;
+using CesiumLoader.SDK.Inputs;
+using CesiumLoader.SDK.Logging;
+using CesiumLoader.SDK.Mods;
+using CesiumLoader.SDK.Speed;
+using CesiumLoader.SDK.UserInterface;
 using UnityEngine;
 
 namespace SpeedHackMod
@@ -91,7 +97,7 @@ namespace SpeedHackMod
         private float _saveAt;             // 可以落盘的时刻
         private double _restoreSpeed;      // 被 toggleKey 压到 1.0x 之前的倍率(0 = 本次运行还没记过)
 
-        public override string Version { get { return "2.2.5"; } }
+        public override string Version { get { return "2.3.0"; } }
 
         // =====================================================================
         // 生命周期

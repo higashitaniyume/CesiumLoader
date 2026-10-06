@@ -1,7 +1,8 @@
 using System;
 using System.Collections.Generic;
 using AstralParty.Agent;
-using CesiumLoader.SDK;
+using CesiumLoader.SDK.Gameplay;
+using CesiumLoader.SDK.Scenes;
 
 namespace AstralParty.AgentMod.Bridge
 {

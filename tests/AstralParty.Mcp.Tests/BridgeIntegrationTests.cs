@@ -41,7 +41,7 @@ namespace AstralParty.Mcp.Tests
             {
                 { AgentBridgeLayout.BridgeField.Schema, 1 },
                 { AgentBridgeLayout.BridgeField.ModVersion, "1.0.0" },
-                { AgentBridgeLayout.BridgeField.SdkVersion, "2.2.5" },
+                { AgentBridgeLayout.BridgeField.SdkVersion, "2.3.0" },
                 { AgentBridgeLayout.BridgeField.ProcessId, 4242 },
                 { AgentBridgeLayout.BridgeField.StartedAtMs, now - 60000 },
                 { AgentBridgeLayout.BridgeField.LastTickMs, alive ? now - ageMs : now - 60000 },

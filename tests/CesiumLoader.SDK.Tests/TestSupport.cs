@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using CesiumLoader.SDK;
+using CesiumLoader.SDK.Cameras;
+using CesiumLoader.SDK.Inputs;
+using CesiumLoader.SDK.Logging;
 using UnityEngine;
 
 namespace CesiumLoader.SDK.Tests

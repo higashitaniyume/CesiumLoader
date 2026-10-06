@@ -1,6 +1,6 @@
 using System;
 
-namespace CesiumLoader.SDK
+namespace CesiumLoader.SDK.Logging
 {
     /// <summary>
     /// 绑定到某个 mod 的日志器: 自动把 ModId 作为标签, 免去每个 mod 手写 tag。
