@@ -4,7 +4,8 @@ using System.Reflection;
 using CesiumLoader.SDK.Gameplay;
 using CesiumLoader.SDK.Logging;
 using CesiumLoader.SDK.Runtime;
-using CesiumLoader.SDK.Scheduling;
+using CesiumLoader.SDK.Events;
+using CesiumLoader.SDK.Mods;
 using FairyGUI;
 using GameLogic;
 using UnityEngine;
@@ -14,7 +15,7 @@ namespace CombatOddsMod
     /// <summary>在棋盘角色头顶显示实时攻防, 悬停时显示属性说明。</summary>
     internal sealed class PlayerAttrOverlay
     {
-        private const float VerticalOffset = 112f;
+        private const float HeadGap = 8f;
         private const int TipSortingOrder = 30000;
         private const int FontSize = 28;
         private const int TipFontSize = 22;
@@ -29,6 +30,9 @@ namespace CombatOddsMod
             public GComponent Box;
             public GTextField Text;
             public BattlePlayerData Data;
+            public Component SpriteOwner;
+            public SpriteRenderer SpriteRenderer;
+            public bool AnchorWarningLogged;
             /// <summary>上次写入文本的内容 —— 值没变就跳过字符串比较/排版重算。</summary>
             public string LastText;
         }
@@ -39,7 +43,6 @@ namespace CombatOddsMod
         private GGraph _tipBg;
         private GTextField _tipText;
         private long _hoverId;
-        private UpdateSubscription _subscription;
         private bool _polling;
         /// <summary>配置开关(ShowBoardPlayerAttrs)的当前值 —— 每帧回调必须尊重它, 否则会把开关关掉的标签又摆回来。</summary>
         private bool _enabled = true;
@@ -51,16 +54,24 @@ namespace CombatOddsMod
             if (_polling) return;
             try
             {
-                // 每帧(LateUpdate)跟随, 与游戏自己的 UICom_PlayerAttrInfo 同一节奏
-                // (UIBattleInfoPanel.OnUpdate 里就是每帧 WorldToScreenPoint 摆头顶名牌)。
-                // 早先用 FairyGUI Timers.inst.Add(0.05f, ...) 是 ~20Hz 的阶跃: 定时器要攒够
-                // 间隔才回调, 相位还与相机不同步, 快速滑屏时标签追不上角色 = 残影。
-                // LateUpdate 的另一层意义: 排在相机移动之后算坐标, 同一帧的位置才自洽。
-                _subscription = UpdateService.SubscribeLateUpdate(Poll, null, "CombatOdds.PlayerAttr");
-                _polling = _subscription != null && _subscription.Id != 0;
-                if (!_polling) SdkLog.Warn("CombatOdds", "玩家攻防覆盖层订阅每帧回调失败, 头顶攻防将不更新");
+                // RaiseLateUpdate 先执行 UpdateService 的全部订阅(包括自由相机)，
+                // 然后才触发此事件。标签用本帧最终机位，顺序不依赖 mod 初始化先后。
+                UpdateEvents.LateUpdate += Poll;
+                _polling = true;
+                ModContext.Current?.RegisterCleanup(Stop);
             }
             catch (Exception e) { SdkLog.Warn("CombatOdds", "玩家攻防悬浮轮询启动失败: " + e.Message); }
+        }
+
+        private void Stop()
+        {
+            UpdateEvents.LateUpdate -= Poll;
+            _polling = false;
+            foreach (var entry in _entries.Values) RemoveEntry(entry);
+            _entries.Clear();
+            HideTip();
+            try { _tip?.Dispose(); } catch { }
+            _tip = null;
         }
 
         /// <summary>
@@ -109,16 +120,21 @@ namespace CombatOddsMod
 
                     long id = player.player.Id;
                     active.Add(id);
-                    var pos = camera.WorldToScreenPoint(player.CharacterInst.characterObject.position);
-                    if (pos.z <= 0f) { Hide(id); continue; }
-                    pos.y = Screen.height - pos.y;
-                    var local = container.GlobalToLocal(new Vector2(pos.x, pos.y));
                     var entry = EnsureEntry(id);
                     if (entry == null) continue;
-
-                    // 位置: 每帧都摆(这正是"字跟不上角色"的修复点)。
-                    entry.Box.SetXY(local.x - entry.Box.width * 0.5f, local.y - VerticalOffset - entry.Box.height);
-                    entry.Box.visible = local.x >= 0 && local.y >= 0 && local.x <= rootW && local.y <= rootH;
+                    Vector3 pos;
+                    if (!TryProjectSpriteTop(entry, player.CharacterInst.characterAnimator, camera, out pos) || pos.z <= 0f)
+                    {
+                        entry.Box.visible = false;
+                        if (_hoverId == id) HideTip();
+                        continue;
+                    }
+                    pos.y = Screen.height - pos.y;
+                    var screenPoint = new Vector2(pos.x, pos.y);
+                    var local = container.GlobalToLocal(screenPoint);
+                    // 可见范围要在 GRoot 坐标系比较，不能把容器局部坐标与 root 尺寸混用。
+                    var rootPoint = GRoot.inst.GlobalToLocal(screenPoint);
+                    entry.Box.visible = rootPoint.x >= 0 && rootPoint.y >= 0 && rootPoint.x <= rootW && rootPoint.y <= rootH;
 
                     // 压在最上层: com_PlayerAttrInfos 是与游戏自己那份头顶名牌(UICom_PlayerAttrInfo)
                     // 共用的容器, 游戏后加的名牌会盖住我们的字。只在真的不在最上层时才重排
@@ -154,9 +170,9 @@ namespace CombatOddsMod
                         // 悬停浮框内容直接存进 Box.data(ShowTip 就取它), 不再另存一份, 避免两处状态不一致。
                         entry.Box.data = BuildTip(Players.SafeNick(player) ?? ("P" + id), atk, finalAtk, def, hp, bonuses);
 
-                        // 尺寸变了, 用新宽度重摆一次居中(否则这一帧会偏半个差值)。
-                        entry.Box.SetXY(local.x - entry.Box.width * 0.5f, local.y - VerticalOffset - entry.Box.height);
                     }
+                    // 文字维持固定字号；只有与实际顶部之间的小间距使用 UI 单位。
+                    entry.Box.SetXY(local.x - entry.Box.width * 0.5f, local.y - HeadGap - entry.Box.height);
                 }
 
                 var stale = new List<long>();
@@ -164,6 +180,45 @@ namespace CombatOddsMod
                 foreach (long id in stale) Hide(id);
             }
             catch (Exception e) { SdkLog.Warn("CombatOdds", "更新棋盘玩家攻防显示失败: " + e.Message); }
+        }
+
+        private static bool TryProjectSpriteTop(Entry entry, Component animator, Camera camera, out Vector3 screen)
+        {
+            screen = Vector3.zero;
+            // 把 Unity 调用放在独立方法里：HybridCLR 在解析未支持的引擎调用时，
+            // 异常可能发生在方法入口，外层仍能捕获，避免一名角色影响整层标签。
+            try { return ProjectSpriteTop(entry, animator, camera, out screen); }
+            catch (Exception e)
+            {
+                if (!entry.AnchorWarningLogged)
+                {
+                    entry.AnchorWarningLogged = true;
+                    SdkLog.Warn("CombatOdds", "角色 " + entry.Id + " 顶部锚点读取失败: " + e.Message);
+                }
+                return false;
+            }
+        }
+
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private static bool ProjectSpriteTop(Entry entry, Component animator, Camera camera, out Vector3 screen)
+        {
+            screen = Vector3.zero;
+            if (entry.SpriteOwner != animator || entry.SpriteRenderer == null)
+            {
+                entry.SpriteOwner = animator;
+                entry.SpriteRenderer = animator.GetComponent(typeof(SpriteRenderer)) as SpriteRenderer;
+            }
+            var renderer = entry.SpriteRenderer;
+            if (renderer == null || renderer.sprite == null) return false;
+            var bounds = renderer.sprite.bounds;
+            if (bounds.size.y <= 0f) return false;
+            // sprite.bounds 在图像本地坐标里，包含 pivot 偏移。
+            // flipY 时显示的顶部来自原图下边缘，flipX 时中心 x 也要镜像。
+            var top = new Vector3(renderer.flipX ? -bounds.center.x : bounds.center.x,
+                renderer.flipY ? -bounds.min.y : bounds.max.y, bounds.center.z);
+            var world = renderer.transform.TransformPoint(top);
+            screen = camera.WorldToScreenPoint(world);
+            return true;
         }
 
         private static string BuildTip(string name, int baseAtk, int finalAtk, int def, int hp, List<RelicAtkBonus.Bonus> bonuses)

@@ -67,7 +67,7 @@
 
 ## API 版本协商
 
-- SDK 当前版本: `SdkVersion.Current = "2.3.1"` (与 csproj Version 一致)
+- SDK 当前版本: `SdkVersion.Current = "2.3.2"` (与 csproj Version 一致)
 - 加载器声明的当前版本: `doorstop_config.json` 的 `sdkVersion` (发布时同步更新)
 - mod 声明 `SdkVersion`: 高于当前 → 加载器拒绝加载该 mod
 - 运行时防御: `SdkVersion.Accepts("1.5.0")` / `SdkVersion.Compare(a, b)`

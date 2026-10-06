@@ -104,8 +104,7 @@ cd combatvalidate; dotnet run -c Release
 pwsh -File modding\msvc\tools\deploy-combatodds.ps1
 ```
 
-`CombatOddsMod` **尚未**加入 `tools/builtin-mods.json`（内置发布清单）——
-待下面的游戏内验证通过后再加入。
+`CombatOddsMod` 已加入 `tools/builtin-mods.json`（内置发布清单），随加载器发布。
 
 ---
 
@@ -143,6 +142,17 @@ pwsh -File modding\msvc\tools\deploy-combatodds.ps1
 
 ---
 
+## 5.2 2.3.2 更新
+
+- 头顶标签取 `SpriteRenderer.sprite.bounds` 的顶部点，经 `renderer.transform` 转为世界坐标，再用最终相机投影；`HeadGap = 8`，替代旧的角色根节点投影后固定上移 112（root + 112）。
+- `UpdateEvents.LateUpdate` 在 `FreeCameraMod` 的订阅回调执行后触发，标签按该帧最终相机位置投影。
+- SDK `Players.BuffsOf` 优先读取实时 `buffContainer._buffDict`，仅在该实时容器缺失时回退到快照；实时字典为空表示当前无 buff，不回填旧快照。
+- 部署脚本同步 `sdkVersion`，保留玩家现有配置，不重置其他设置。
+
+验证状态：此前构建与测试已通过，用户已确认护盾与加载修复；新版头顶锚点尚无明确真机确认，仍需进游戏目视验证。
+
+---
+
 ## 6. 进游戏验证清单（完成阶段 1 的唯一剩余步骤）
 
 前提：游戏已装 CesiumLoader 加载器，`doorstop_config.json` 里 `console=true`（能看控制台）。
@@ -157,7 +167,7 @@ pwsh -File modding\msvc\tools\deploy-combatodds.ps1
    - **出现但位置/大小不对** → 调 `RuntimeFightOverlayReflector.CreateLabel` 里的 `SetSize/SetXY`
      与 `textFormat`（这就是企鹅鹅点名的"显示在哪里"，需真机迭代）。
 4. 对照读数与实际战斗结果，抽查几次 `max(1,Atk-Def)` 是否吻合；有目标 buff 时确认易伤/减伤/免疫一行出现。
-5. 位置/可读性满意后，把 `CombatOddsMod` 加入 `tools/builtin-mods.json`，随加载器发布。
+5. 确认位置与可读性，并记录 2.3.2 新版头顶锚点的真机验证结果；`CombatOddsMod` 已在内置发布清单中。
 
 > 该验证需要真机运行游戏，**无法在离线分析环境完成**。除此之外的所有部分
 >（计算、事件驱动、buff 修正、覆盖层编排逻辑）均已离线单测/对拍通过。

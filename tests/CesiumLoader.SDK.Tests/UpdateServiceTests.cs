@@ -57,6 +57,29 @@ namespace CesiumLoader.SDK.Tests
         }
 
         [Fact]
+        public void LateUpdateEvent_ProjectsUsingFinalCameraAfterAllSubscribers()
+        {
+            float cameraPosition = 0;
+            float projectedFrom = -1;
+            Action projectLabel = () => projectedFrom = cameraPosition;
+            // 标签先注册，自由相机后注册，也必须看到本帧最终机位。
+            CesiumLoader.SDK.Events.UpdateEvents.LateUpdate += projectLabel;
+            try
+            {
+                UpdateService.SubscribeLateUpdate(() => cameraPosition = 100, _owner);
+                UpdateService.RaiseLateUpdate();
+                Assert.Equal(100f, projectedFrom);
+                cameraPosition = 0;
+                UpdateService.RaiseLateUpdate();
+                Assert.Equal(100f, projectedFrom);
+            }
+            finally
+            {
+                CesiumLoader.SDK.Events.UpdateEvents.LateUpdate -= projectLabel;
+            }
+        }
+
+        [Fact]
         public void MultipleSubscribers_AllRunInOrder()
         {
             var order = new List<int>();
