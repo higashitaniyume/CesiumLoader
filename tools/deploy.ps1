@@ -13,7 +13,7 @@
     游戏 exe 所在目录。默认自动探测 Steam 安装位置。
 
 .PARAMETER Configuration
-    使用哪个构建配置的产物 (默认 Release)。
+    使用哪个构建配置的产物 (默认 Debug)。
 
 .PARAMETER Build
     部署前先构建解决方案 (MSBuild Release x64)。
@@ -38,7 +38,7 @@
 [CmdletBinding()]
 param(
     [string] $GameDir,
-    [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Release',
+    [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Debug',
     [switch] $Build,
     [switch] $Launch,
     [int] $SteamAppId = 2622000,

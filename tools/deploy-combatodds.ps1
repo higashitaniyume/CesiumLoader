@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     步骤:
-      1. dotnet build mods\CombatOddsMod (Release)
+      1. dotnet build mods\CombatOddsMod (Debug)
       2. 校验游戏目录已装加载器(version.dll + AstralParty_ModLoader\)
       3. 复制 CombatOddsMod.dll + CombatOddsMod.json 到
          <游戏exe目录>\AstralParty_ModLoader\mods\CombatOddsMod\
@@ -21,11 +21,11 @@ param(
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot   # modding\msvc
 
-Write-Host "== 构建 CombatOddsMod (Release) =="
-dotnet build (Join-Path $repo 'mods\CombatOddsMod\CombatOddsMod.csproj') -c Release --nologo | Out-Null
+Write-Host "== 构建 CombatOddsMod (Debug) =="
+dotnet build (Join-Path $repo 'mods\CombatOddsMod\CombatOddsMod.csproj') -c Debug --nologo | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "构建失败" }
 
-$dll = Join-Path $repo 'mods\CombatOddsMod\bin\Release\netstandard2.0\CombatOddsMod.dll'
+$dll = Join-Path $repo 'mods\CombatOddsMod\bin\Debug\netstandard2.0\CombatOddsMod.dll'
 $json = Join-Path $repo 'mods\CombatOddsMod\CombatOddsMod.json'
 if (-not (Test-Path $dll)) { throw "找不到产物: $dll" }
 if (-not (Test-Path $json)) { throw "找不到 sidecar: $json" }

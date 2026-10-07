@@ -153,6 +153,14 @@ pwsh -File modding\msvc\tools\deploy-combatodds.ps1
 
 ---
 
+## 5.3 2.3.3 更新
+
+- 凤凰 Boss 的 `MapEvent / Skill#105311` 已从通用受伤 buff 修正中排除；服务器已结算的地图事件不再被错误显示为“灰烬xN 已匹配”。
+- 普通战斗仍按实时灰烬层数计算减伤。
+- `[凤凰探针]`、`[灰烬诊断]` 仅在 Debug 构建编译；Release DLL 不包含探针实现和调用。
+
+---
+
 ## 6. 进游戏验证清单（完成阶段 1 的唯一剩余步骤）
 
 前提：游戏已装 CesiumLoader 加载器，`doorstop_config.json` 里 `console=true`（能看控制台）。

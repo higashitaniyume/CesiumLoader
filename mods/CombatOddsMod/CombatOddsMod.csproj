@@ -8,6 +8,7 @@
     <RootNamespace>CombatOddsMod</RootNamespace>
     <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <DefineConstants Condition="'$(Configuration)' == 'Debug'">$(DefineConstants);COMBATODDS_DEBUG_PROBES</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
