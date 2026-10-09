@@ -26,7 +26,7 @@ namespace HandViewerMod
         int lastQueryRevision = -1;
         public static void Main() { SdkManifest.ExportSidecar(); Run(new ModEntry(), tag: "HandViewer"); }
         public override string Name => "手牌查看";
-        public const string ModVersion = "1.0.5";
+        public const string ModVersion = "1.0.7";
         public const string UserAgent = "AstralParty.Toys Mod/" + ModVersion + " (HandViewerMod)";
         public override string Version => ModVersion;
         public override void OnInitialize()
@@ -35,10 +35,12 @@ namespace HandViewerMod
             autoRefresh = Config?.GetBool("AutoRefresh", true) ?? true;
             string endpoint = Config?.GetString("ServiceUrl", "https://astralpartycards.hiynet.com/") ?? "https://astralpartycards.hiynet.com/";
             int timeout = Math.Max(5, Math.Min(60, Config?.GetInt("TimeoutSeconds", 20) ?? 20));
+            bool doubleRow = Config?.GetBool("DoubleRow", true) ?? true;
             Config?.Set("Enabled", enabled); Config?.Set("AutoRefresh", autoRefresh);
-            Config?.Set("ServiceUrl", endpoint); Config?.Set("TimeoutSeconds", timeout); Config?.Save();
+            Config?.Set("ServiceUrl", endpoint); Config?.Set("TimeoutSeconds", timeout);
+            Config?.Set("DoubleRow", doubleRow); Config?.Save();
             query = new HandQueryController(code => new UnityHandRequest(endpoint, code, timeout));
-            ui = new HandViewerUi(query);
+            ui = new HandViewerUi(query, doubleRow);
             GameEvents.HandChanged += HandChanged;
             GameEvents.HeroAttrUpdated += AttrChanged;
             SdkLog.Info("HandViewer", "已启用：支持的 PVE 对局有观战码时自动查询；观战码不写日志。");

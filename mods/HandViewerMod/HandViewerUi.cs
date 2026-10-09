@@ -32,7 +32,9 @@ namespace HandViewerMod
         readonly HandQueryController query;
         string lastDiagnostic;
         public string UnavailableReason { get; set; }
-        public HandViewerUi(HandQueryController query) { this.query = query; }
+        readonly int handRows;
+        public HandViewerUi(HandQueryController query, bool doubleRow)
+        { this.query = query; this.handRows = doubleRow ? 2 : 1; }
         void Diagnose(string message)
         {
             if (lastDiagnostic == message) return;
@@ -178,12 +180,19 @@ namespace HandViewerMod
                 binding.Content.AddChild(placeholder); binding.ContentWidth = width;
                 binding.Content.SetSize(width, height); return;
             }
-            float x = 0;
-            foreach (var group in groups)
+            const float rowGap = 2;
+            const float columnGap = 4;
+            float cardHeight = Math.Max(1, (height - rowGap * (handRows - 1)) / handRows);
+            int cardsPerRow = HandStripModel.CardsPerRow(groups.Count, handRows == 2);
+            float x = 0, maxWidth = 0;
+            for (int index = 0; index < groups.Count; index++)
             {
+                if (index % cardsPerRow == 0) x = 0;
+                float y = (index / cardsPerRow) * (cardHeight + rowGap);
+                var group = groups[index];
                 var data = group.Card;
                 var cell = new GComponent();
-                float width = height * 0.62f;
+                float width = cardHeight * 0.62f;
                 try
                 {
                     var config = StaticConfigure.Card.InfoDict[data.cardId];
@@ -196,7 +205,7 @@ namespace HandViewerMod
                         description = action.CardDescription(binding.Model.PlayerId, handData);
                     CommonUIManager.RendererCard(card, view, name, description, "", "", handData.BattleCost, config.CardType, config.CardTargetType);
                     if (card.height <= 0 || card.width <= 0) throw new InvalidOperationException("卡面尺寸为空");
-                    float scale = height / card.height; width = card.width * scale;
+                    float scale = cardHeight / card.height; width = card.width * scale;
                     card.SetScale(scale, scale); card.touchable = false;
                     cell.tooltips = name + " ×" + group.Count + "\n费用 " + handData.BattleCost
                         + " · 净化 " + data.purifyNum + (data.isTemp ? " · 临时牌" : "") + "\n" + description;
@@ -216,27 +225,32 @@ namespace HandViewerMod
                         // without depending on full-card controllers or contextual skill descriptions.
                         var config = StaticConfigure.Card.InfoDict[data.cardId];
                         var image = new TextureLoader { touchable = false, fill = FillType.Scale, url = config.GetImage() };
-                        image.SetSize(width, height); cell.AddChild(image);
+                        image.SetSize(width, cardHeight); cell.AddChild(image);
                         cell.tooltips = config.NameID.GetLocal(UIStringType.Card) + " ×" + group.Count;
                     }
                     catch (Exception imageError)
                     {
                         SdkLog.Warn("HandViewer", "[card] 卡图失败 id=" + data.cardId + " " + imageError.GetType().Name + ": " + imageError.Message);
-                        cell.AddChild(Text("卡图不可用", width, height, 14));
+                        cell.AddChild(Text("卡图不可用", width, cardHeight, 10));
                     }
                 }
-                cell.SetSize(width, height); cell.SetXY(x, 0);
+                cell.SetSize(width, cardHeight); cell.SetXY(x, y);
                 if (group.Count > 1)
                 {
-                    float badgeWidth = group.Count >= 10 ? 32 : 24;
-                    var bg = new GGraph(); bg.SetSize(badgeWidth, 25); bg.SetXY(Math.Max(0, width - badgeWidth), 0);
-                    bg.DrawRect(badgeWidth, 25, 1, Color.white, new Color(0.05f, 0.07f, 0.12f, 0.95f)); bg.touchable = false;
+                    float badgeHeight = Math.Min(cardHeight, 14);
+                    float badgeWidth = Math.Min(width, group.Count >= 10 ? 20 : 15);
+                    var bg = new GGraph(); bg.SetSize(badgeWidth, badgeHeight); bg.SetXY(Math.Max(0, width - badgeWidth), 0);
+                    bg.DrawRect(badgeWidth, badgeHeight, 1, Color.white, new Color(0.05f, 0.07f, 0.12f, 0.95f)); bg.touchable = false;
                     cell.AddChild(bg);
-                    var count = Text(group.Count.ToString(), badgeWidth, 25, 20); count.SetXY(bg.x + 3, 0); cell.AddChild(count);
+                    var count = Text(group.Count.ToString(), badgeWidth, badgeHeight, 11);
+                    count.align = AlignType.Center; count.verticalAlign = VertAlignType.Middle;
+                    count.SetXY(bg.x, 0); cell.AddChild(count);
                 }
-                binding.Content.AddChild(cell); x += width + 4;
+                binding.Content.AddChild(cell);
+                maxWidth = Math.Max(maxWidth, x + width);
+                x += width + columnGap;
             }
-            binding.ContentWidth = Math.Max(1, x - 4); binding.Content.SetSize(binding.ContentWidth, height);
+            binding.ContentWidth = Math.Max(1, maxWidth); binding.Content.SetSize(binding.ContentWidth, height);
         }
         static UIBattleInfoPanel Find(GObject node, int depth)
         {

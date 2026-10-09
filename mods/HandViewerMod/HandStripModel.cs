@@ -10,6 +10,8 @@ namespace HandViewerMod
 
     public sealed class HandStripModel
     {
+        public static int CardsPerRow(int count, bool doubleRow)
+            => count <= 0 ? 1 : (count - 1) / (doubleRow ? 2 : 1) + 1;
         public long PlayerId { get; private set; }
         public bool Open { get; private set; }
         public void Bind(long playerId)

@@ -40,6 +40,18 @@ public class HandStripTests
         model.Bind(13); Assert.False(model.Open);
         model.Bind(0); Assert.False(model.Toggle());
     }
+    [Theory]
+    [InlineData(7, false, 7)]
+    [InlineData(7, true, 4)]
+    [InlineData(6, true, 3)]
+    [InlineData(1, true, 1)]
+    [InlineData(0, true, 1)]
+    public void RowLayoutSupportsSingleAndDoubleRows(int count, bool doubleRow, int expected)
+    {
+        int columns = HandStripModel.CardsPerRow(count, doubleRow);
+        Assert.Equal(expected, columns);
+        if (count > 0) Assert.True((count - 1) / columns < (doubleRow ? 2 : 1));
+    }
     [Fact]
     public void FourPlayersStayIndependent()
     {
