@@ -1,0 +1,9 @@
+{
+  "name": "astral-party-spectator-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": { "dev": "vite", "check": "tsc --noEmit", "build": "tsc --noEmit && vite build" },
+  "dependencies": { "react": "^19.1.0", "react-dom": "^19.1.0" },
+  "devDependencies": { "@types/react": "^19.1.0", "@types/react-dom": "^19.1.0", "@vitejs/plugin-react": "^4.4.1", "vite": "^6.3.5", "typescript": "^5.8.3", "tailwindcss": "^4.1.7", "@tailwindcss/vite": "^4.1.7" }
+}

@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><StartupObject>Program</StartupObject><TargetFramework>net8.0</TargetFramework><LangVersion>latest</LangVersion><Nullable>disable</Nullable></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../mods/SpectatorAuthHandoffMod/ModEntry.cs" Link="ModEntry.cs" />
+    <Compile Include="../../loader/CesiumLoader.SDK/Configuration/CesiumJson.cs" Link="CesiumJson.cs" />
+    <Compile Include="../../loader/CesiumLoader.SDK/Configuration/CesiumJsonIgnoreAttribute.cs" Link="CesiumJsonIgnoreAttribute.cs" />
+  </ItemGroup>
+</Project>

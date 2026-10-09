@@ -450,7 +450,7 @@ namespace CesiumLoader.SDK.Gameplay
 
         private static void OnHeroCardChange(RoomHeroCardChangeS2C model, int errId, bool isDispatch)
         {
-            if (model == null || errId != 0 || model.Cards == null || model.Cards.Count == 0) return;
+            if (model == null || errId != 0 || model.Cards == null) return;
             HandChanged?.Invoke(model.PlayerId, model.Cards);
         }
 

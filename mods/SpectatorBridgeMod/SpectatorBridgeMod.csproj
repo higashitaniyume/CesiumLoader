@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>netstandard2.0</TargetFramework><LangVersion>latest</LangVersion><Nullable>disable</Nullable><AssemblyName>SpectatorBridgeMod</AssemblyName></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../../loader/CesiumLoader.SDK/CesiumLoader.SDK.csproj" /></ItemGroup>
+  <ItemGroup>
+    <Reference Include="AstralParty.Runtime"><HintPath>../../../../extracted_dlls/AstralParty.Runtime.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.CoreModule"><HintPath>../../../../extracted_dlls/UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UniTask"><HintPath>../../../../extracted_dlls/UniTask.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Google.Protobuf.Runtime"><HintPath>../../../../extracted_dlls/Google.Protobuf.Runtime.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+</Project>

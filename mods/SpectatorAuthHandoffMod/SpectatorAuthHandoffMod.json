@@ -1,0 +1,10 @@
+{
+  "id": "SpectatorAuthHandoffMod",
+  "name": "Spectator authentication handoff",
+  "version": "0.1.1",
+  "author": "local prototype",
+  "description": "Explicit nonce marker only: temporary own-account CN authentication handoff to a local standalone client.",
+  "sdkVersion": "2.3.2",
+  "permissions": 257,
+  "dependencies": []
+}

@@ -43,6 +43,14 @@ CesiumLoader.sln
     └── smoke-speedctl.ps1          跑变速控制文件通道冒烟测试
 ```
 
+## 2.3.4：手牌查看与观战工具源码
+
+默认发布包新增 [HandViewerMod](docs/mod-HandViewerMod.md)（1.0.5）：升星右侧四色 `>` 展开四人独立手牌条，同牌数量角标，使用游戏内卡面资源。
+
+**默认联网行为：**进入支持的运行中 PVE 对局（MapType 4/12）会自动将观战码发送到 `https://astralpartycards.hiynet.com/` 查询整房快照；不发送本机账号认证。可在模组设置禁用，或将 `Enabled` 设为 `false` 并重启游戏。服务地址可通过 `ServiceUrl` 配置；UA 为 `AstralParty.Toys Mod/1.0.5 (HandViewerMod)`。实验性功能，最终卡面与布局尚未完整真机验证。
+
+同时提交 `SpectatorBridgeMod`、`SpectatorAuthHandoffMod` 及独立观战客户端/API 源码与离线测试。它们保持可选，不加入默认安装包；不包含个人凭证、认证交接文件或游戏协议 DLL。
+
 ## 原理 (Doorstop 式引导)
 
 UnityPlayer.dll 在进程启动时依赖 version.dll (导入 GetFileVersionInfoSizeA /

@@ -1,0 +1,10 @@
+{
+  "id": "SpectatorBridgeMod",
+  "name": "PVE 观战 API 桥接",
+  "version": "0.1.1",
+  "author": "local prototype",
+  "description": "使用官方 PVE 观战流程，导出当前关注玩家在观战界面可见的手牌。",
+  "sdkVersion": "2.3.2",
+  "permissions": 259,
+  "dependencies": []
+}
