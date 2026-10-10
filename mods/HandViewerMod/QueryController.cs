@@ -106,7 +106,7 @@ namespace HandViewerMod
         readonly Func<string, IHandRequest> start;
         IHandRequest request;
         string room, code;
-        bool dirty;
+        bool dirty, viewing;
         long due, retryAt;
         int failures;
         public HandSnapshot Snapshot { get; private set; }
@@ -121,12 +121,24 @@ namespace HandViewerMod
             if (room == id && code == watchCode) return;
             DisposeRequest();
             room = id; code = watchCode; Snapshot = null; IsStale = false; failures = 0; retryAt = 0;
-            dirty = !string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(watchCode);
-            due = now; Status = dirty ? "等待查询" : "等待对局观战码"; Revision++;
+            dirty = viewing && !string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(watchCode);
+            due = now; Status = !viewing ? "手牌已收起，暂停查询" : dirty ? "等待查询" : "等待对局观战码"; Revision++;
+        }
+        public void SetViewing(bool visible, long now)
+        {
+            if (viewing == visible) return;
+            viewing = visible;
+            if (visible) Refresh(now);
+            else
+            {
+                DisposeRequest(); dirty = false;
+                IsStale = Snapshot != null;
+                Status = "手牌已收起，暂停查询"; Revision++;
+            }
         }
         public void MarkDirty(long now)
         {
-            if (string.IsNullOrEmpty(room) || string.IsNullOrEmpty(code)) return;
+            if (!viewing || string.IsNullOrEmpty(room) || string.IsNullOrEmpty(code)) return;
             if (!dirty) due = now + 600;
             dirty = true;
             if (Snapshot != null && !IsStale) { IsStale = true; Revision++; }
@@ -134,6 +146,7 @@ namespace HandViewerMod
         public void Refresh(long now) { MarkDirty(now); due = now; }
         public void Tick(long now)
         {
+            if (!viewing) return;
             if (request != null)
             {
                 bool completed = false;

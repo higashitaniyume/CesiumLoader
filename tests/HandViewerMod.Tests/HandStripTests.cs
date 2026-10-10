@@ -53,6 +53,32 @@ public class HandStripTests
         if (count > 0) Assert.True((count - 1) / columns < (doubleRow ? 2 : 1));
     }
     [Fact]
+    public void AutomaticallyCollapsesAtConfiguredDeadlineAndReopenRestartsTimer()
+    {
+        var model = new HandStripModel(); model.Bind(1);
+        model.Toggle(100, 5); model.Tick(5099); Assert.True(model.Open);
+        model.Tick(5100); Assert.False(model.Open);
+        model.Toggle(6000, 5); model.Tick(10999); Assert.True(model.Open);
+        model.Tick(11000); Assert.False(model.Open);
+    }
+    [Fact]
+    public void ZeroSecondsKeepsHandOpenAndManualCloseClearsPreviousTimer()
+    {
+        var model = new HandStripModel(); model.Bind(1);
+        model.Toggle(0, 5); model.Toggle(1000, 5); model.Toggle(2000, 0);
+        model.Tick(long.MaxValue); Assert.True(model.Open);
+        model.Bind(2); model.Toggle(0, 0); model.Tick(long.MaxValue); Assert.True(model.Open);
+    }
+    [Fact]
+    public void CollapseDeadlinesAreIndependentForEachPlayer()
+    {
+        var first = new HandStripModel(); first.Bind(1); first.Toggle(0, 5);
+        var second = new HandStripModel(); second.Bind(2); second.Toggle(2000, 5);
+        first.Tick(5000); second.Tick(5000);
+        Assert.False(first.Open); Assert.True(second.Open);
+        second.Tick(7000); Assert.False(second.Open);
+    }
+    [Fact]
     public void FourPlayersStayIndependent()
     {
         var models = new HandStripModel[4];

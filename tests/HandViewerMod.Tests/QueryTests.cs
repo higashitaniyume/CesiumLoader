@@ -59,12 +59,12 @@ namespace HandViewerMod.Tests
         [Theory] [InlineData("")] [InlineData("not json")] [InlineData("[]")] [InlineData("{}")]
         public void RejectsBadResponse(string json) => Assert.ThrowsAny<Exception>(() => HandSnapshot.Parse(json, Room));
         [Fact] public void RejectsOversizedResponse() => Assert.ThrowsAny<Exception>(() => HandSnapshot.Parse(new string(' ', 1024 * 1024 + 1), Room));
-        [Fact] public void EntersWithCodeStartsAutomaticallyAndSharesSnapshot()
+        [Fact] public void VisibleHandStartsQueryAndSharesSnapshot()
         {
             int calls = 0; var request = new Request();
             using (var controller = new HandQueryController(code => { Assert.Equal("synthetic-code", code); calls++; return request; }))
             {
-                controller.SetRoom(Room, "synthetic-code", 0); controller.Tick(0);
+                controller.SetViewing(true, 0); controller.SetRoom(Room, "synthetic-code", 0); controller.Tick(0);
                 for (int i = 1; i < 10; i++) controller.Tick(i);
                 Assert.Equal(1, calls); Assert.True(controller.Running);
                 request.Done = true; controller.Tick(10);
@@ -76,8 +76,8 @@ namespace HandViewerMod.Tests
             int calls = 0;
             using (var controller = new HandQueryController(_ => { calls++; return new Request(); }))
             {
-                controller.SetRoom(Room, null, 0); controller.Tick(0); Assert.Equal(0, calls);
-                controller.SetRoom(Room, "synthetic", 10); controller.Tick(10); Assert.Equal(1, calls);
+                controller.SetViewing(true, 0); controller.SetRoom(Room, null, 0); controller.Tick(0); Assert.Equal(0, calls);
+                controller.SetViewing(true, 0); controller.SetRoom(Room, "synthetic", 10); controller.Tick(10); Assert.Equal(1, calls);
             }
         }
         [Fact] public void DirtyDuringRequestCausesOnlyOneFollowup()
@@ -85,7 +85,7 @@ namespace HandViewerMod.Tests
             int calls = 0; var first = new Request();
             using (var controller = new HandQueryController(_ => { calls++; return calls == 1 ? first : new Request(); }))
             {
-                controller.SetRoom(Room, "test", 0); controller.Tick(0);
+                controller.SetViewing(true, 0); controller.SetRoom(Room, "test", 0); controller.Tick(0);
                 controller.MarkDirty(100); controller.MarkDirty(200); first.Done = true; controller.Tick(300);
                 controller.Tick(1000); Assert.Equal(1, calls);
                 controller.Tick(1800); Assert.Equal(2, calls);
@@ -97,7 +97,7 @@ namespace HandViewerMod.Tests
             int calls = 0;
             using (var controller = new HandQueryController(_ => { calls++; return new Request { Done = true, Code = status, RetryAfter = "10" }; }))
             {
-                controller.SetRoom(Room, "test", 0); controller.Tick(0); controller.Tick(1);
+                controller.SetViewing(true, 0); controller.SetRoom(Room, "test", 0); controller.Tick(0); controller.Tick(1);
                 controller.Tick(10000); Assert.Equal(1, calls);
                 controller.Tick(10001); Assert.Equal(2, calls);
             }
@@ -107,7 +107,7 @@ namespace HandViewerMod.Tests
             var request = new Request(); int calls = 0;
             using (var controller = new HandQueryController(_ => { calls++; return request; }))
             {
-                controller.SetRoom(Room, "test", 0); controller.Tick(0);
+                controller.SetViewing(true, 0); controller.SetRoom(Room, "test", 0); controller.Tick(0);
                 controller.SetRoom(null, null, 1); request.Done = true; controller.Tick(2);
                 Assert.True(request.Disposed); Assert.Null(controller.Snapshot); Assert.Equal(1, calls);
             }
@@ -117,7 +117,7 @@ namespace HandViewerMod.Tests
             int calls = 0;
             using (var controller = new HandQueryController(_ => { calls++; throw new Exception(); }))
             {
-                controller.SetRoom(Room, "test", 0);
+                controller.SetViewing(true, 0); controller.SetRoom(Room, "test", 0);
                 for (int i = 0; i < 1000; i++) controller.Tick(i);
                 Assert.Equal(1, calls);
             }
@@ -134,9 +134,63 @@ namespace HandViewerMod.Tests
             var request = new Request { Done = true };
             using (var controller = new HandQueryController(_ => request))
             {
-                controller.SetRoom(Room, "test", 0); controller.Tick(0); controller.Tick(1);
+                controller.SetViewing(true, 0); controller.SetRoom(Room, "test", 0); controller.Tick(0); controller.Tick(1);
                 Assert.False(controller.IsStale);
                 controller.MarkDirty(2); Assert.True(controller.IsStale);
+            }
+        }
+        [Fact] public void CollapsedHandsNeverQueryEvenOnEventsOrManualRefresh()
+        {
+            int calls = 0;
+            using (var controller = new HandQueryController(_ => { calls++; return new Request(); }))
+            {
+                controller.SetRoom(Room, "test", 0);
+                controller.MarkDirty(1); controller.Refresh(2); controller.Tick(10000);
+                Assert.Equal(0, calls);
+                controller.SetViewing(true, 10001); controller.Tick(10001);
+                Assert.Equal(1, calls);
+            }
+        }
+        [Fact] public void ClosingCancelsRequestAndReopeningQueriesFreshData()
+        {
+            int calls = 0; var first = new Request();
+            using (var controller = new HandQueryController(_ => { calls++; return calls == 1 ? first : new Request(); }))
+            {
+                controller.SetRoom(Room, "test", 0); controller.SetViewing(true, 0); controller.Tick(0);
+                controller.MarkDirty(1); controller.SetViewing(false, 2);
+                Assert.True(first.Disposed); Assert.False(controller.Running);
+                first.Done = true; controller.MarkDirty(3); controller.Tick(10000);
+                Assert.Equal(1, calls); Assert.Null(controller.Snapshot);
+                controller.SetViewing(true, 10001); controller.Tick(10001);
+                Assert.Equal(2, calls);
+            }
+        }
+        [Fact] public void ClosingPausesFailureRetriesAndKeepsCachedSnapshotStale()
+        {
+            int calls = 0;
+            using (var controller = new HandQueryController(_ => {
+                calls++; return new Request { Done = true, Code = calls == 1 ? 200 : 503, RetryAfter = "10" };
+            }))
+            {
+                controller.SetRoom(Room, "test", 0); controller.SetViewing(true, 0);
+                controller.Tick(0); controller.Tick(1);
+                controller.Refresh(1501); controller.Tick(1501); controller.Tick(1502);
+                controller.SetViewing(false, 1503); controller.Tick(30000);
+                Assert.Equal(2, calls); Assert.NotNull(controller.Snapshot); Assert.True(controller.IsStale);
+                controller.SetViewing(true, 30001); controller.Tick(30001);
+                Assert.Equal(3, calls);
+            }
+        }
+        [Fact] public void RemainingVisibleHandDoesNotCancelSharedRequest()
+        {
+            var request = new Request(); int calls = 0;
+            using (var controller = new HandQueryController(_ => { calls++; return request; }))
+            {
+                controller.SetRoom(Room, "test", 0); controller.SetViewing(true, 0); controller.Tick(0);
+                controller.SetViewing(true, 1); controller.Tick(1);
+                Assert.False(request.Disposed); Assert.Equal(1, calls);
+                request.Done = true; controller.Tick(2); controller.Tick(5000);
+                Assert.NotNull(controller.Snapshot); Assert.Equal(1, calls);
             }
         }
         [Fact] public void EmptyCardChangeStillNotifiesSdkSubscribers()

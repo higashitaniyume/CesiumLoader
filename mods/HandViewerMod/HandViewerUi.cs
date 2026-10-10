@@ -17,7 +17,7 @@ namespace HandViewerMod
         sealed class Binding
         {
             public UIBattleInfo_Button_PlayerInfo Owner;
-            public readonly HandStripModel Model = new HandStripModel();
+            public HandStripModel Model = new HandStripModel();
             public GComponent Button, Strip, Content;
             public GTextField Arrow;
             public Color ButtonColor;
@@ -32,9 +32,31 @@ namespace HandViewerMod
         readonly HandQueryController query;
         string lastDiagnostic;
         public string UnavailableReason { get; set; }
-        readonly int handRows;
-        public HandViewerUi(HandQueryController query, bool doubleRow)
-        { this.query = query; this.handRows = doubleRow ? 2 : 1; }
+        readonly int handRows, autoCollapseSeconds;
+        public HandViewerUi(HandQueryController query, bool doubleRow, int autoCollapseSeconds)
+        { this.query = query; this.handRows = doubleRow ? 2 : 1; this.autoCollapseSeconds = autoCollapseSeconds; }
+        public void Tick(long now)
+        {
+            foreach (var binding in bindings)
+            {
+                binding.Model.Tick(now);
+                if (!binding.Model.Open) binding.Strip.visible = false;
+            }
+            UpdateViewing(now);
+        }
+        void UpdateViewing(long now)
+        {
+            bool visible = false;
+            foreach (var binding in bindings)
+            {
+                if (!binding.Model.Open || binding.Button.isDisposed || !binding.Button.onStage) continue;
+                bool shown = true;
+                for (GObject node = binding.Button; node != null; node = node.parent)
+                    if (!node.visible || node.scaleX == 0 || node.scaleY == 0) { shown = false; break; }
+                if (shown) { visible = true; break; }
+            }
+            query.SetViewing(visible, now);
+        }
         void Diagnose(string message)
         {
             if (lastDiagnostic == message) return;
@@ -66,8 +88,8 @@ namespace HandViewerMod
                         || bindings[i].Button.parent != panel) rebuild = true;
             if (rebuild)
             {
-                var opened = new List<long>();
-                foreach (var binding in bindings) if (binding.Model.Open) opened.Add(binding.Model.PlayerId);
+                var opened = new Dictionary<long, HandStripModel>();
+                foreach (var binding in bindings) if (binding.Model.Open) opened[binding.Model.PlayerId] = binding.Model;
                 ClearBindings();
                 var colors = new[] { new Color(0.9f, 0.18f, 0.2f), new Color(0.18f, 0.75f, 0.3f),
                     new Color(0.15f, 0.4f, 0.95f), new Color(1f, 0.82f, 0.12f) };
@@ -77,7 +99,7 @@ namespace HandViewerMod
                     if (owner == null) continue;
                     var binding = new Binding { Owner = owner, ButtonColor = colors[slot] };
                     binding.Model.Bind(owner.PlayerData?.player.Id ?? 0);
-                    if (opened.Contains(binding.Model.PlayerId)) binding.Model.Toggle();
+                    if (opened.TryGetValue(binding.Model.PlayerId, out var previous)) binding.Model = previous;
                     binding.Button = new GComponent { opaque = true }; binding.Button.SetSize(28, 32);
                     binding.Arrow = Text(">", 28, 32, 26);
                     binding.Arrow.stroke = 2;
@@ -91,10 +113,12 @@ namespace HandViewerMod
                     binding.Button.onClick.Add(context =>
                     {
                         context.StopPropagation();
-                        bool opened = binding.Model.Toggle();
+                        long now = DateTime.UtcNow.Ticks / 10000;
+                        bool opened = binding.Model.Toggle(now, autoCollapseSeconds);
                         SdkLog.Info("HandViewer", "[hud] 三角点击: slot=" + bindings.IndexOf(binding) + " open=" + opened);
-                        if (opened && string.IsNullOrEmpty(UnavailableReason)) query.Refresh(DateTime.UtcNow.Ticks / 10000);
                         binding.Strip.visible = binding.Model.Open;
+                        UpdateViewing(now);
+                        if (opened && string.IsNullOrEmpty(UnavailableReason)) query.Refresh(now);
                     });
                     binding.Strip.onClick.Add(context => context.StopPropagation());
                     binding.Strip.AddEventListener("onMouseWheel", context =>
@@ -269,6 +293,6 @@ namespace HandViewerMod
             }
             bindings.Clear();
         }
-        public void Dispose() { ClearBindings(); }
+        public void Dispose() { ClearBindings(); query.SetViewing(false, DateTime.UtcNow.Ticks / 10000); }
     }
 }

@@ -39,4 +39,4 @@ foreach ($file in $files) {
 }
 foreach ($file in $files) { Copy-Item -LiteralPath $file.Source -Destination $file.Target -Force }
 Write-Host "已安装到 $modTarget；旧文件备份在 $backup"
-Write-Host '启动延迟约 30 秒；进入 PVE 对局有观战码后自动查询。尚需真机验证 UI 和 HTTPS。'
+Write-Host '启动延迟约 30 秒；PVE 手牌展开可见时查询，默认 5 秒自动收回（AutoCollapseSeconds=0 不收回）。尚需真机验证 UI 和 HTTPS。'

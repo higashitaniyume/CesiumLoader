@@ -10,7 +10,7 @@ using party.model;
 using party.protocol;
 
 [assembly: ModManifest("手牌查看", HandViewerMod.ModEntry.ModVersion, "CesiumLoader",
-    "进入 PVE 对局后自动用观战码查询官方观战手牌；升星右侧三角展开四人独立手牌条，同牌角标计数",
+    "升星右侧三角展开四人独立手牌条，仅展开可见时用观战码查询；可配置自动收回，同牌角标计数",
     Permissions = ModPermission.ReadGameState | ModPermission.UI | ModPermission.Network, SdkVersion = "2.3.2")]
 
 namespace HandViewerMod
@@ -21,12 +21,12 @@ namespace HandViewerMod
         HandViewerUi ui;
         bool enabled, autoRefresh;
         long nextPoll;
-        string lastRoom, lastCode;
+        string lastRoom;
         string lastRoomDiagnostic, lastUiError;
         int lastQueryRevision = -1;
         public static void Main() { SdkManifest.ExportSidecar(); Run(new ModEntry(), tag: "HandViewer"); }
         public override string Name => "手牌查看";
-        public const string ModVersion = "1.0.7";
+        public const string ModVersion = "1.0.8";
         public const string UserAgent = "AstralParty.Toys Mod/" + ModVersion + " (HandViewerMod)";
         public override string Version => ModVersion;
         public override void OnInitialize()
@@ -36,14 +36,15 @@ namespace HandViewerMod
             string endpoint = Config?.GetString("ServiceUrl", "https://astralpartycards.hiynet.com/") ?? "https://astralpartycards.hiynet.com/";
             int timeout = Math.Max(5, Math.Min(60, Config?.GetInt("TimeoutSeconds", 20) ?? 20));
             bool doubleRow = Config?.GetBool("DoubleRow", true) ?? true;
+            int autoCollapseSeconds = Math.Max(0, Config?.GetInt("AutoCollapseSeconds", 5) ?? 5);
             Config?.Set("Enabled", enabled); Config?.Set("AutoRefresh", autoRefresh);
             Config?.Set("ServiceUrl", endpoint); Config?.Set("TimeoutSeconds", timeout);
-            Config?.Set("DoubleRow", doubleRow); Config?.Save();
+            Config?.Set("DoubleRow", doubleRow); Config?.Set("AutoCollapseSeconds", autoCollapseSeconds); Config?.Save();
             query = new HandQueryController(code => new UnityHandRequest(endpoint, code, timeout));
-            ui = new HandViewerUi(query, doubleRow);
+            ui = new HandViewerUi(query, doubleRow, autoCollapseSeconds);
             GameEvents.HandChanged += HandChanged;
             GameEvents.HeroAttrUpdated += AttrChanged;
-            SdkLog.Info("HandViewer", "已启用：支持的 PVE 对局有观战码时自动查询；观战码不写日志。");
+            SdkLog.Info("HandViewer", "已启用：手牌展开可见时查询，全部收起后暂停；自动收回 " + autoCollapseSeconds + " 秒（0 为不收回）；观战码不写日志。");
         }
         static long Now => DateTime.UtcNow.Ticks / 10000;
         void HandChanged(long id, IReadOnlyList<CardInfo> cards) { if (enabled && autoRefresh) query?.MarkDirty(Now); }
@@ -94,7 +95,7 @@ namespace HandViewerMod
                         SdkLog.Warn("HandViewer", "[room] 房间读取失败，等待下次重试");
                     }
                 }
-                if (lastRoom != roomId || lastCode != code) { ui.Dispose(); lastRoom = roomId; lastCode = code; }
+                if (lastRoom != roomId) { ui.Dispose(); lastRoom = roomId; }
                 query.SetRoom(roomId, code, now);
                 // HUD availability is independent of spectator-code and network availability.
                 try { ui.Poll(); lastUiError = null; }
@@ -108,6 +109,7 @@ namespace HandViewerMod
                     }
                 }
             }
+            ui.Tick(now);
             query.Tick(now);
             if (lastQueryRevision != query.Revision)
             {

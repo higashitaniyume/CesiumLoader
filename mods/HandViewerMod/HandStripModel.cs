@@ -14,16 +14,22 @@ namespace HandViewerMod
             => count <= 0 ? 1 : (count - 1) / (doubleRow ? 2 : 1) + 1;
         public long PlayerId { get; private set; }
         public bool Open { get; private set; }
+        long closeAt;
         public void Bind(long playerId)
         {
             if (PlayerId == playerId) return;
-            PlayerId = playerId; Open = false;
+            PlayerId = playerId; Open = false; closeAt = 0;
         }
-        public bool Toggle()
+        public bool Toggle(long now = 0, int autoCollapseSeconds = 0)
         {
             if (PlayerId == 0) return false;
             Open = !Open;
+            closeAt = Open && autoCollapseSeconds > 0 ? now + autoCollapseSeconds * 1000L : 0;
             return Open;
+        }
+        public void Tick(long now)
+        {
+            if (Open && closeAt > 0 && now >= closeAt) { Open = false; closeAt = 0; }
         }
         public static List<HandCardGroup> Group(PlayerHand hand)
         {
