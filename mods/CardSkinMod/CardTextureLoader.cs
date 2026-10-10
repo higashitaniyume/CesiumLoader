@@ -15,7 +15,8 @@ namespace CardSkinMod
     /// </summary>
     public sealed class CardTextureLoader : IDisposable
     {
-        private readonly Dictionary<string, NTexture> _textureCache = new Dictionary<string, NTexture>(StringComparer.OrdinalIgnoreCase);
+        // FairyGUI 校验 nativeTexture.name == loader.url；同一文件绑定多个资源名时必须各有纹理。
+        private readonly Dictionary<string, NTexture> _textureCache = new Dictionary<string, NTexture>(StringComparer.Ordinal);
 
         // 反射解析方法缓存
         private static bool _methodsResolved;
@@ -59,20 +60,21 @@ namespace CardSkinMod
         /// <summary>
         /// 加载或从缓存中获取文件的 NTexture
         /// </summary>
-        public NTexture GetOrCreateTexture(string filePath)
+        public NTexture GetOrCreateTexture(string filePath, string assetKey = null)
         {
             if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
             {
                 return null;
             }
 
-            if (_textureCache.TryGetValue(filePath, out var cached))
+            string cacheKey = (assetKey ?? string.Empty) + "\n" + filePath;
+            if (_textureCache.TryGetValue(cacheKey, out var cached))
             {
                 if (cached != null && !cached.disposed && cached.nativeTexture != null)
                 {
                     return cached;
                 }
-                _textureCache.Remove(filePath);
+                _textureCache.Remove(cacheKey);
             }
 
             EnsureMethodsResolved();
@@ -80,7 +82,8 @@ namespace CardSkinMod
             NTexture loaded = LoadFromFile(filePath);
             if (loaded != null)
             {
-                _textureCache[filePath] = loaded;
+                loaded.nativeTexture.name = assetKey ?? string.Empty;
+                _textureCache[cacheKey] = loaded;
             }
             return loaded;
         }

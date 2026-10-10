@@ -4,7 +4,12 @@
 
 ---
 
-## 1.1.1 行为说明
+## 1.1.2 行为说明
+
+- 修复出牌展示和手牌重新排列时因加载回调拒收自定义纹理、旧贴图被清空而产生的短暂黑卡面。
+- 自定义纹理按资源名命名并缓存；同一文件对应多个资源名时分别创建纹理，避免普通版与 SFW 版共享名字造成校验失败。
+- 可见卡面的更新通过加载成功回调保留原始 URL，并与游戏加载器配对维护贴图引用。
+- Release 构建和离线测试已通过，游戏内黑帧消失仍待真机验证。
 
 - 静态异画、视频异画及对应异画图标全部保留原版，不会被基础卡牌皮肤或异画文件覆盖。
 - 普通手牌、事件、命运和地图事件仍可替换；大厅图鉴与放大预览也支持，场景切换后自动恢复缓存。
@@ -89,7 +94,7 @@ graph TD
 
     G[对局进行中: 抽牌/洗牌/出牌] --> H[GameEvents.HandChanged 事件触发]
     H --> I[CardSkinApplier.ApplyToHandCardPanel & ApplyToFightWindow]
-    I --> J[UI 层直写: 刷新 loader_FrontCard/FullCard.texture]
+    I --> J[UI 层加载成功回调: 保留 URL 并刷新卡面]
 ```
 
 - **防止贴图被 GC/释放**：在生成 `NTexture` 时设置 `nTex.destroyMethod = DestroyMethod.None`，避免在切关卡或窗口重构时被 FairyGUI 意外销毁。

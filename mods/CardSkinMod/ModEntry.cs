@@ -16,7 +16,7 @@ namespace CardSkinMod
 {
     public sealed class ModEntry : ModBase
     {
-        public const string ModVersion = "1.1.1";
+        public const string ModVersion = "1.1.2";
 
         public override string Name => "手牌卡面皮肤";
         public override string Version => ModVersion;

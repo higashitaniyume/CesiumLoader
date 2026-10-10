@@ -18,6 +18,8 @@ namespace CardSkinMod
         private bool _catalogReady;
         private bool _forceFullCard;
         private FieldInfo _textureCacheField;
+        private static readonly MethodInfo ExternalLoadSuccess = typeof(GLoader).GetMethod(
+            "onExternalLoadSuccess", BindingFlags.NonPublic | BindingFlags.Instance);
         private readonly Dictionary<string, NTexture> _injected = new Dictionary<string, NTexture>();
         private long _nextWarning;
 
@@ -85,7 +87,7 @@ namespace CardSkinMod
                 {
                     // 只注入图片素材；数字、中文名和视频 key 用配置映射/可见控件处理。
                     if (!entry.Key.StartsWith("UT_", StringComparison.OrdinalIgnoreCase) || catalog.IsProtectedAsset(entry.Key)) continue;
-                    var texture = _loader.GetOrCreateTexture(entry.Value);
+                    var texture = _loader.GetOrCreateTexture(entry.Value, entry.Key);
                     if (texture == null) continue;
                     if (!cache.TryGetValue(entry.Key, out var old) || old != texture)
                     {
@@ -207,18 +209,45 @@ namespace CardSkinMod
         private void ApplyFile(UICom_Card card, string file)
         {
             if (string.IsNullOrEmpty(file)) return;
-            var texture = _loader.GetOrCreateTexture(file);
-            if (texture != null) ApplyToComCard(card, texture);
+            var texture = _loader.GetOrCreateTexture(file, card.loader_FrontCard?.url ?? card.loader_FullCard?.url);
+            if (texture == null) return;
+            ApplyCardLayout(card, texture);
+            ApplyLoaderTexture(card.loader_FrontCard, _loader.GetOrCreateTexture(file, card.loader_FrontCard?.url));
+            ApplyLoaderTexture(card.loader_FullCard, _loader.GetOrCreateTexture(file, card.loader_FullCard?.url));
         }
 
         public void ApplyToComCard(UICom_Card card, NTexture texture)
         {
             if (card == null || card.isDisposed || texture == null || texture.disposed || IsProtectedCard(card)) return;
+            ApplyCardLayout(card, texture);
+            ApplyLoaderTexture(card.loader_FrontCard, texture);
+            ApplyLoaderTexture(card.loader_FullCard, texture);
+        }
+
+        private void ApplyCardLayout(UICom_Card card, NTexture texture)
+        {
             if ((_forceFullCard || texture.height > texture.width * 1.15f) && card.frontState != null && card.frontState.selectedIndex != 2)
                 card.frontState.selectedIndex = 2;
-            // 避免每轮重设相同贴图，减少引用计数变化和布局重算。
-            if (card.loader_FrontCard != null && card.loader_FrontCard.texture != texture) card.loader_FrontCard.texture = texture;
-            if (card.loader_FullCard != null && card.loader_FullCard.texture != texture) card.loader_FullCard.texture = texture;
+        }
+
+        private static void ApplyLoaderTexture(GLoader loader, NTexture texture)
+        {
+            if (loader == null || texture == null || loader.texture == texture) return;
+            if (string.IsNullOrEmpty(loader.url))
+            {
+                // 无资源地址的控件使用直接贴图，同时与 TextureLoader.FreeExternal 的 ReleaseRef 配对。
+                loader.ClearContent();
+                texture.AddRef();
+                loader.texture = texture;
+                return;
+            }
+            if (ExternalLoadSuccess == null || texture.nativeTexture == null
+                || !string.Equals(texture.nativeTexture.name, loader.url, StringComparison.Ordinal)) return;
+            // 使用游戏正常的加载成功入口，保留 url、源图尺寸与重载监听。
+            // 不能使用 GLoader.texture setter：它会清空 url，导致下一次重排先清旧卡面。
+            loader.ClearContent();
+            texture.AddRef();
+            ExternalLoadSuccess.Invoke(loader, new object[] { texture });
         }
 
         private bool IsProtectedCard(UICom_Card card)
