@@ -1,0 +1,1 @@
+{"id":"AutoThanksMod","name":"自动感谢","version":"1.0.1","author":"CesiumLoader","description":"队友治疗你、给你牌或转星币给你时，自动发送原版快捷回复：感谢！支持独立开关和真实时间冷却，回放/观战不发送。","permissions":11,"sdkVersion":"2.3.0","dependencies":[]}

@@ -2,6 +2,8 @@
 
 Astral Party (Steam appid 2622000, Unity 2021.3.45f2 IL2CPP + HybridCLR) 的 Mod 加载器与 SDK。
 
+新增内置模组 [自动感谢 AutoThanksMod](docs/mod-AutoThanksMod.md)：队友治疗你、给你牌或转星币给你时自动发送原版「感谢！」快捷回复，支持独立开关与真实时间冷却。
+
 全部代码收在一个 Visual Studio 2022 解决方案里，按职责分成三个顶层目录：
 **`loader/`(加载器本体与 SDK)、`mods/`(随加载器分发的 mod)、`mcp/`(供 AI agent 接管对局的 MCP)**。
 
@@ -20,6 +22,7 @@ CesiumLoader.sln
 │   ├── CombatOddsMod\               内置 mod (战斗胜率助手)
 │   ├── HandViewerMod\               内置 mod (手牌查看助手)
 │   ├── CardSkinMod\                 内置 mod (手牌与卡面自定义皮肤)
+│   ├── AutoThanksMod\               内置 mod (队友治疗/给牌时自动感谢)
 │   ├── CameraProbeMod\              相机探针
 │   ├── DiagnosticsMod\              诊断导出
 │   └── ExtremeDifficultyMod\        极限难度 (未列入 sln)
