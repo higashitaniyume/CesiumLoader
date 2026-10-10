@@ -18,6 +18,8 @@ CesiumLoader.sln
 │   ├── FreeCameraMod\               内置 mod (自由相机 / 滚轮缩放)
 │   ├── SpeedHackMod\                内置 mod (变速热键)
 │   ├── CombatOddsMod\               内置 mod (战斗胜率助手)
+│   ├── HandViewerMod\               内置 mod (手牌查看助手)
+│   ├── CardSkinMod\                 内置 mod (手牌与卡面自定义皮肤)
 │   ├── CameraProbeMod\              相机探针
 │   ├── DiagnosticsMod\              诊断导出
 │   └── ExtremeDifficultyMod\        极限难度 (未列入 sln)
@@ -42,6 +44,12 @@ CesiumLoader.sln
     ├── deploy-agentmod.ps1         部署 AI 接管桥接 mod + MCP server (可选安装, 不进 builtin-mods.json)
     └── smoke-speedctl.ps1          跑变速控制文件通道冒烟测试
 ```
+
+## 2.4.0：手牌与卡面自定义皮肤与独立默认皮肤包
+
+随加载器分发内置模组 [CardSkinMod](mods/CardSkinMod/README.md)（1.1.1）：支持手牌、事件卡、命运卡、地图事件及大厅图鉴的自定义卡面贴图替换，支持多方案管理与一键切换；未指定卡面优雅回退至游戏原图；静态与视频异画保留原版。
+
+默认皮肤包（`cesium-default-skins.zip`）独立分发，避免加载器包体积过大；解压至游戏目录即可使用默认卡面方案。模组本身随加载器包提供，未安装皮肤包时正常运行并使用游戏原版卡面。
 
 ## 2.3.5：手牌单双排切换
 

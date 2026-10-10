@@ -12,8 +12,8 @@ namespace CesiumLoader.SDK.Tests
         {
             // 本次扩展保持向后兼容 → 不升 major。发布时三处版本号同步递增:
             // SdkVersion.Current / SdkVersion.LoaderVersion / CesiumLoader.SDK.csproj 的 <Version>。
-            Assert.Equal("2.3.2", SdkVersion.Current);
-            Assert.Equal("2.3.2", SdkVersion.LoaderVersion);
+            Assert.Equal("2.4.0", SdkVersion.Current);
+            Assert.Equal("2.4.0", SdkVersion.LoaderVersion);
         }
 
         [Theory]
