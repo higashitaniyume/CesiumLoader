@@ -12,6 +12,7 @@
       6. 构建 cesium CLI 自包含单文件 → sdk-staging\ + README.txt
       7. 打包 zip: cesium-loader-<版本>.zip / cesium-loader.zip
                    cesium-sdk-tools-<版本>.zip / cesium-sdk-tools.zip
+                   cesium-default-skins-<版本>.zip / cesium-default-skins.zip
 
     符号(.pdb): 每一份随包 dll 都配一个同目录同名 .pdb(version.pdb / bootstrap / SDK / 各 mod),
     并且都进清单做哈希校验。理由: 用户端崩溃只有一个栈帧地址时, 没有 pdb 就只能看到偏移;
@@ -239,6 +240,8 @@ $readme = @(
     "  把 dll 的崩溃栈还原成文件行号用, 删掉不影响运行; 调试器会自动在 dll 同目录找它。",
     "- AstralParty_ModLoader\logs\          → 日志目录",
     "解压到游戏 exe 目录即完成安装。",
+    "默认皮肤单独提供: cesium-default-skins.zip，解压到同一游戏 exe 目录。",
+    "加载器包包含 CardSkinMod，但不包含 skins；未安装皮肤时使用游戏原图。",
     "从旧版升级: 请删除游戏目录下的 winmm.dll (旧代理), 换成 version.dll。",
     "⚠ 与本加载器互斥: 旧版独立变速器也使用 version.dll(speedhack-rs) —— 不要同时安装!",
     "  CesiumLoader 已内置变速引擎(加载器功能, 非 mod): 改 doorstop_config.json 的",
@@ -318,6 +321,9 @@ Compress-Archive -Path 'staging\*' -DestinationPath $loaderZip -CompressionLevel
 Copy-Item $loaderZip $loaderLatest -Force
 Compress-Archive -Path 'sdk-staging\*' -DestinationPath $sdkZip -CompressionLevel Optimal
 Copy-Item $sdkZip $sdkLatest -Force
+
+# 独立默认皮肤包：与 CI 共用校验，加载器包禁止包含 skins。
+& (Join-Path $PSScriptRoot 'package-default-skins.ps1') -Version $version -OutputDir $OutputDir
 
 Write-Host ''
 Get-ChildItem $OutputDir -File | Select-Object Name, @{n='KB';e={[math]::Round($_.Length/1KB,1)}}, @{n='SHA256';e={(Get-FileHash $_.FullName -Algorithm SHA256).Hash.Substring(0,16)}} | Format-Table -AutoSize | Out-String -Width 200 | Write-Host

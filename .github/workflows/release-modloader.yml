@@ -22,7 +22,7 @@ env:
   SOLUTION: CesiumLoader.sln
   APP_NAME: cesium-loader
   # AI agent 接管(AstralParty.AgentMod + AstralParty.Mcp.exe)是**实验性、真机没验完**的可选能力,
-  # 2026-10-02 起默认**不产出** cesium-agent-mcp*.zip —— Release 上只有加载器与 SDK 工具包。
+  # 默认不产出 cesium-agent-mcp*.zip；Release 必需资产为加载器、默认皮肤与 SDK 工具包。
   # 想重新发这个包: 把这里改成 'true'(代码与打包步骤都还在, 不需要改别的地方)。
   PUBLISH_AGENT_PACKAGE: 'false'
 
@@ -178,6 +178,8 @@ jobs:
             "  详情与验证边界: https://github.com/higashitaniyume/CesiumLoader/blob/master/docs/mod-HandViewerMod.md",
             "- AstralParty_ModLoader\logs\          → 日志目录",
             "解压到游戏 exe 目录即完成安装。",
+            "默认皮肤单独提供: cesium-default-skins.zip，解压到同一游戏 exe 目录。",
+            "加载器包包含 CardSkinMod，但不包含 skins；未安装皮肤时使用游戏原图。",
             "从旧版升级: 请删除游戏目录下的 winmm.dll (旧代理), 换成 version.dll。",
             "⚠ 与本加载器互斥: 旧版独立变速器也使用 version.dll(speedhack-rs) —— 不要同时安装!",
             "  CesiumLoader 已内置变速引擎(加载器功能, 非 mod): 改 doorstop_config.json 的",
@@ -350,6 +352,12 @@ jobs:
           }
           Get-ChildItem *.zip | Select-Object Name, Length
 
+      - name: Package default skins and verify release assets
+        shell: pwsh
+        run: |
+          & ./tools/package-default-skins.ps1 -Version "${{ steps.version.outputs.version }}" -OutputDir "."
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
@@ -378,7 +386,11 @@ jobs:
         run: |
           set -euo pipefail
           ls -la artifacts/
-          test "$(find artifacts -maxdepth 1 -type f -name '*.zip' | wc -l)" -ge 1
+          version="${GITHUB_REF_NAME#modloader-}"
+          for package in cesium-loader cesium-default-skins cesium-sdk-tools; do
+            test -s "artifacts/$package.zip"
+            test -s "artifacts/$package-$version.zip"
+          done
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
