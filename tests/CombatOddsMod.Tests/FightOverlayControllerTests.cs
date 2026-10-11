@@ -41,10 +41,6 @@ namespace CombatOddsMod.Tests
 
             public void AddChildToPane(object pane, object label) { AddCalls++; Parent[label] = pane; }
             public void SetText(object label, string text) { LastText = text; }
-            public object CreateUnitLabel(bool attacker) { CreateCalls++; return new object(); }
-            public void AddUnitLabel(object pane, object label, bool attacker) { AddCalls++; Parent[label] = pane; }
-            public void SetUnitText(object label, string text) { LastText = text; }
-            public void SetUnitVisible(object label, bool visible) { LastVisible = visible; }
             public void SetVisible(object label, bool visible) { LastVisible = visible; }
         }
 

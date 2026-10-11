@@ -47,7 +47,6 @@ namespace CombatOddsMod
         private static string _hud;              // 当前 HUD 文本(供 OnGUI/覆盖层渲染)
         private static string _lastLogged;       // 控制台去重
         private static FightOverlayController _overlay;  // FightWindow 内嵌覆盖层(真机验证)
-        private static FightUnitThresholdOverlay _thresholdOverlay;
         private static Battle _lastBattle;
         private static readonly Dictionary<int, CombatMath.BuffDamageEffect> _buffTable = CombatMath.DefaultBuffTable();
 
@@ -160,7 +159,7 @@ namespace CombatOddsMod
             GameEvents.StartAutoHook();
 
             // FightWindow 内嵌覆盖层(FairyGUI 反射, 需进游戏目视确认位置; 失败自动降级到控制台)。
-            try { _overlay = new FightOverlayController(new RuntimeFightOverlayReflector()); _thresholdOverlay = new FightUnitThresholdOverlay(new RuntimeFightOverlayReflector()); }
+            try { _overlay = new FightOverlayController(new RuntimeFightOverlayReflector()); }
             catch (Exception e) { SdkLog.Warn("CombatOdds", "覆盖层初始化失败(仅用控制台): " + e.Message); }
 
             // 主 HUD 攻击力加成(星币锤/手电筒/美工刀): 在左下角攻击力右侧显示, 可悬浮看明细。
@@ -225,7 +224,7 @@ namespace CombatOddsMod
             try
             {
                 if (_lastBattle == null) return;
-                SdkLog.Info("CombatOdds", "出牌后重新计算战斗骰点阈值；来源=" + source);
+                SdkLog.Info("CombatOdds", "出牌后重新计算战斗概率；来源=" + source);
                 OnBattleUpdate(_lastBattle);
             }
             catch { }
@@ -428,13 +427,6 @@ namespace CombatOddsMod
                         sb.Append('\n').Append(C("🛡 目标减伤 受伤" + dmgAdjust, Green)).Append(Dim(BuffTail(badj.Applied)));
                 }
 
-                if (_thresholdOverlay != null)
-                {
-                    string attackerThreshold = BuildAttackerThresholdText(atk, def, badj, finalAtk, bonnieBonus, attackerThrew);
-                    string defenderThreshold = BuildDefenderThresholdText(atk, def, badj, finalAtk, bonnieBonus, attackerThrew);
-                    _thresholdOverlay.Update(_cfg.InGameOverlay, attackerThreshold, defenderThreshold);
-                }
-
                 Publish(sb.ToString());
             }
             catch (Exception e)
@@ -473,7 +465,6 @@ namespace CombatOddsMod
             _hud = null;
             _lastLogged = null;
             if (_overlay != null) { try { _overlay.Hide(); } catch { } }
-            if (_thresholdOverlay != null) { try { _thresholdOverlay.Hide(); } catch { } }
         }
 
         /// <summary>OnGUI 绘制(仅当安装了 UI 渲染后端时才会被 SDK 调用)。</summary>
@@ -485,43 +476,6 @@ namespace CombatOddsMod
 
         // ============================== 辅助 ==============================
 
-        private static CombatMath.RangeBattleThresholds RangeThresholds(BattleRole atk, BattleRole def,
-            CombatMath.BuffAdjustment badj, int finalAtk, int bonnieBonus, bool attackerThrew)
-        {
-            return CombatMath.RequiredRangeBattleRolls(SafeInt(() => atk.MinAtk) + bonnieBonus,
-                SafeInt(() => atk.MaxAtk) + bonnieBonus, SafeInt(() => def.MinDef), SafeInt(() => def.MaxDef),
-                HpOf(def.PlayerId), finalAtk, SafeInt(() => atk.Point), attackerThrew, badj.Delta, JudgeFaces());
-        }
-
-        private static string RollThresholdText(string label, int threshold, string color, string unreachable)
-        {
-            return threshold <= JudgeFaces()
-                ? label + " [size=38][color=" + color + "]≥ " + threshold + "[/color][/size]"
-                : unreachable;
-        }
-
-        private static string BuildAttackerThresholdText(BattleRole atk, BattleRole def, CombatMath.BuffAdjustment badj, int finalAtk, int bonnieBonus, bool attackerThrew)
-        {
-            const string title = "[color=#FFD24A]攻击者[/color]\n";
-            if (badj.Immune) return title + "目标免疫这一击";
-            if (attackerThrew) return title + "最终攻击已锁定 " + finalAtk;
-            var t = RangeThresholds(atk, def, badj, finalAtk, bonnieBonus, attackerThrew);
-            return title + RollThresholdText("可能击杀骰", t.AttackRollToPossiblyKill, "#FFE45C", "本击无法击杀") + "\n"
-                + RollThresholdText("保证击杀骰", t.AttackRollToGuaranteeKill, "#FFE45C", "无法保证击杀（受攻防范围影响）");
-        }
-
-        private static string BuildDefenderThresholdText(BattleRole atk, BattleRole def, CombatMath.BuffAdjustment badj, int finalAtk, int bonnieBonus, bool attackerThrew)
-        {
-            const string title = "[color=#6DE0A2]防御者[/color]\n";
-            if (badj.Immune) return title + "免疫这一击";
-            var t = RangeThresholds(atk, def, badj, finalAtk, bonnieBonus, attackerThrew);
-            string defend = RollThresholdText("可能存活防御骰", t.DefenseRollToPossiblySurvive, "#72F0A2", "防御无法存活") + "\n"
-                + RollThresholdText("保证存活防御骰", t.DefenseRollToGuaranteeSurvive, "#72F0A2", "防御无法保证存活（受范围影响）");
-            string dodge = attackerThrew
-                ? RollThresholdText("闪避判定骰", t.DodgeRollToSucceed, "#72B7FF", "闪避无法成功")
-                : "闪避阈值待攻击方投骰";
-            return title + defend + "\n" + dodge;
-        }
         private static int JudgeFaces()
         {
             try

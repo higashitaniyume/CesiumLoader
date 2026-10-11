@@ -20,60 +20,8 @@ namespace CombatOddsMod
         void AddChildToPane(object pane, object label);
         /// <summary>设置标签文本。</summary>
         void SetText(object label, string text);
-        /// <summary>创建并挂载攻击者/防御者专属标签。</summary>
-        object CreateUnitLabel(bool attacker);
-        void AddUnitLabel(object pane, object label, bool attacker);
-        void SetUnitText(object label, string text);
-        void SetUnitVisible(object label, bool visible);
         /// <summary>显隐标签。</summary>
         void SetVisible(object label, bool visible);
-    }
-
-    /// <summary>左右单位所需骰点标签控制器。</summary>
-    public sealed class FightUnitThresholdOverlay
-    {
-        private readonly IFightOverlayReflector _r;
-        private object _attacker;
-        private object _defender;
-        private object _pane;
-
-        public FightUnitThresholdOverlay(IFightOverlayReflector reflector)
-        {
-            _r = reflector ?? throw new ArgumentNullException(nameof(reflector));
-        }
-
-        public void Update(bool enabled, string attackerText, string defenderText)
-        {
-            if (!enabled || !_r.IsFightShowing()) { Hide(); return; }
-            var pane = _r.GetFightPane();
-            if (pane == null) { Hide(); return; }
-            if (!ReferenceEquals(pane, _pane))
-            {
-                _attacker = null;
-                _defender = null;
-                _pane = pane;
-            }
-            UpdateOne(pane, ref _attacker, true, attackerText);
-            UpdateOne(pane, ref _defender, false, defenderText);
-        }
-
-        public void Hide()
-        {
-            if (_attacker != null) _r.SetUnitVisible(_attacker, false);
-            if (_defender != null) _r.SetUnitVisible(_defender, false);
-        }
-
-        private void UpdateOne(object pane, ref object label, bool attacker, string text)
-        {
-            if (label == null)
-            {
-                label = _r.CreateUnitLabel(attacker);
-                if (label == null) return;
-                _r.AddUnitLabel(pane, label, attacker);
-            }
-            _r.SetUnitText(label, text ?? string.Empty);
-            _r.SetUnitVisible(label, !string.IsNullOrEmpty(text));
-        }
     }
 
     /// <summary>

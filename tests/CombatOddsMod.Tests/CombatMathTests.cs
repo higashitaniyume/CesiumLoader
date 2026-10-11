@@ -443,67 +443,6 @@ namespace CombatOddsMod.Tests
             Assert.Single(player.ContextOnly);
         }
         [Fact]
-        public void RequiredRangeBattleRolls_LockedAttack_UsesDefenderHpAndFinalAttack()
-        {
-            // 攻击区间 2..5，防御区间 3..8，防守方 HP=6。
-            // 可能击杀需 5+r >= 6+3+1；保证击杀需 2+r >= 6+8+6。
-            // 攻击已锁定17：可能存活需 17 < 6+8+r，保证存活需 17 < 6+3+r。
-            var t = CombatMath.RequiredRangeBattleRolls(2, 5, 3, 8, 6, 17, 3, true);
-            Assert.Equal(5, t.AttackRollToPossiblyKill);
-            Assert.Equal(18, t.AttackRollToGuaranteeKill);
-            Assert.Equal(4, t.DefenseRollToPossiblySurvive);
-            Assert.Equal(9, t.DefenseRollToGuaranteeSurvive);
-            Assert.Equal(4, t.DodgeRollToSucceed);
-        }
-
-        [Fact]
-        public void RequiredRangeBattleRolls_UnthrownAttack_UsesBestAndWorstAttackExtremes()
-        {
-            // 未投攻击为 8..12+d6 => 9..18，finalAttack 占位值99不能参与计算。
-            var t = CombatMath.RequiredRangeBattleRolls(8, 12, 2, 4, 3, 99, 0, false);
-            Assert.Equal(1, t.AttackRollToPossiblyKill); // 所有合法骰点都有可能击杀，阈值下限为1。
-            Assert.Equal(5, t.AttackRollToGuaranteeKill);
-            Assert.Equal(3, t.DefenseRollToPossiblySurvive);
-            Assert.Equal(14, t.DefenseRollToGuaranteeSurvive);
-        }
-
-        [Theory]
-        [InlineData(-2, 7, 20, 2, 7)]
-        [InlineData(0, 5, 18, 4, 9)]
-        [InlineData(2, 3, 16, 6, 11)]
-        public void RequiredRangeBattleRolls_DamageAdjustment_ShiftsStrictHpBoundaries(
-            int damageAdjust, int possibleKill, int guaranteeKill, int possibleSurvive, int guaranteeSurvive)
-        {
-            var t = CombatMath.RequiredRangeBattleRolls(2, 5, 3, 8, 6, 17, 3, true, damageAdjust);
-            Assert.Equal(possibleKill, t.AttackRollToPossiblyKill);
-            Assert.Equal(guaranteeKill, t.AttackRollToGuaranteeKill);
-            Assert.Equal(possibleSurvive, t.DefenseRollToPossiblySurvive);
-            Assert.Equal(guaranteeSurvive, t.DefenseRollToGuaranteeSurvive);
-        }
-
-        [Fact]
-        public void RequiredRangeBattleRolls_FixedRange_EqualityKillsAndNeedsOneMoreToSurvive()
-        {
-            // A=9、HP=6、基础防御2：防御掷1时总防御3，恰好归零；掷2才存活。
-            var t = CombatMath.RequiredRangeBattleRolls(8, 8, 2, 2, 6, 9, 6, true);
-            Assert.Equal(1, t.AttackRollToPossiblyKill);
-            Assert.Equal(6, t.AttackRollToGuaranteeKill);
-            Assert.Equal(2, t.DefenseRollToPossiblySurvive);
-            Assert.Equal(2, t.DefenseRollToGuaranteeSurvive);
-            Assert.Equal(6, t.DodgeRollToSucceed);
-        }
-
-        [Fact]
-        public void RequiredRangeBattleRolls_CustomJudgeFaces_UsesSingleJudgeDie()
-        {
-            var t = CombatMath.RequiredRangeBattleRolls(2, 5, 3, 8, 6, 17, 10, true, judgeFaces: 10);
-            Assert.Equal(5, t.AttackRollToPossiblyKill);
-            Assert.Equal(22, t.AttackRollToGuaranteeKill);
-            Assert.Equal(4, t.DefenseRollToPossiblySurvive);
-            Assert.Equal(9, t.DefenseRollToGuaranteeSurvive);
-            Assert.Equal(10, t.DodgeRollToSucceed);
-        }
-        [Fact]
         public void KnownSkillLabels_MatchObservedCharacterSkills()
         {
             Assert.Equal("梅加斯·轨道轰炸", CombatMath.KnownSkillLabel(12203));

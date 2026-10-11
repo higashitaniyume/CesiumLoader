@@ -281,38 +281,6 @@ namespace CombatOddsMod
             else randomTerms = new[] { width, judgeFaces };
         }
 
-        public struct RangeBattleThresholds
-        {
-            public int AttackRollToPossiblyKill;
-            public int AttackRollToGuaranteeKill;
-            public int DefenseRollToPossiblySurvive;
-            public int DefenseRollToGuaranteeSurvive;
-            public int DodgeRollToSucceed;
-        }
-
-        /// <summary>
-        /// 范围 + 单骰模型的可能/保证阈值。存活必须满足 A + damageAdjust &lt; HP + D。
-        /// 可能取最有利的范围结果，保证取最不利的范围结果；使用防守者血量。
-        /// </summary>
-        public static RangeBattleThresholds RequiredRangeBattleRolls(int attackMin, int attackMax,
-            int defenseMin, int defenseMax, int defenderHp, int finalAttack, int attackerPoint,
-            bool attackerThrew, int damageAdjust = 0, int judgeFaces = DefaultJudgeDiceFaces)
-        {
-            if (attackMax < attackMin) { int t = attackMin; attackMin = attackMax; attackMax = t; }
-            if (defenseMax < defenseMin) { int t = defenseMin; defenseMin = defenseMax; defenseMax = t; }
-            if (judgeFaces <= 0) judgeFaces = DefaultJudgeDiceFaces;
-            int lowAttack = attackerThrew ? finalAttack : attackMin + 1;
-            int highAttack = attackerThrew ? finalAttack : attackMax + judgeFaces;
-            return new RangeBattleThresholds
-            {
-                AttackRollToPossiblyKill = Math.Max(1, defenderHp + defenseMin + 1 - attackMax - damageAdjust),
-                AttackRollToGuaranteeKill = Math.Max(1, defenderHp + defenseMax + judgeFaces - attackMin - damageAdjust),
-                DefenseRollToPossiblySurvive = Math.Max(1, lowAttack + damageAdjust - defenderHp - defenseMax + 1),
-                DefenseRollToGuaranteeSurvive = Math.Max(1, highAttack + damageAdjust - defenderHp - defenseMin + 1),
-                DodgeRollToSucceed = attackerPoint >= judgeFaces ? judgeFaces : attackerPoint + 1
-            };
-        }
-
         // —— 实时可读, 数据来源 Buff.bin/STRBuff 反编译
         // =====================================================================
         //
