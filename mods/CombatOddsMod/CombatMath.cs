@@ -7,9 +7,9 @@ namespace CombatOddsMod
     /// 战斗概率计算核心 —— <b>纯逻辑, 零游戏/SDK 依赖, 可完全离线单测</b>。
     ///
     /// 机制来源(反编译 party.model.BattleRole / UI.FightWindow / Global.bin 验证):
-    ///  - 攻/防最终值 = 基础值(InitAtk/InitDef) + 各出牌骰子之和; 服务器把区间下发为 Min/Max。
+    ///  - 攻/防最终值 = Min..Max 范围内的随机整数 + 一颗判定骰；范围随机项暂按等概率建模。
     ///  - 防御方在攻方投骰后做"防御 / 闪避"二选一(FightLogic.ReadyFightChoice)。
-    ///  - 防御: 受伤 = max(0, 最终攻击 − 防御总值); 防御总值 = 防御基础 + 防御骰之和。
+    ///  - 防御: 受伤 = max(0, 最终攻击 − 防御总值); 防御总值 = 防御范围随机值 + 单颗判定骰。
     ///  - 闪避: 掷一颗判定骰(GAME_JUDGE_DICE_LIMIT=6, 即 d6), 点数 > 攻方骰点则闪避成功、不受伤;
     ///          攻方骰点 == 骰上限(6) 时需掷出 = 6 才成功(UI.FightWindow.RefreshDodgeInfo 的 ">"/"=" 语义)。
     ///          闪避失败则承受未防御的攻击。
@@ -85,10 +85,10 @@ namespace CombatOddsMod
         /// 防御结算。finalAttack = 攻方已锁定的最终攻击值(攻方先投骰, 此刻已知)。
         /// defenseFlat = 防御基础(InitDef + 已确定加成), defenseDice = 防御骰面数列表(每颗 1..faces)。
         /// defenderHp = 当前血量。
-        /// minChip = 最小保底伤害(命中时至少扣这么多): 11 局真实回放对拍显示, Atk&lt;=Def 时防守方
-        ///   仍几乎必掉 1 血(65/82 为 1), 故默认 1; 传 0 可退回纯 max(0,Atk-Def)。
+        /// minChip 为显式可选的保底伤害，默认 0；普通战斗不假设保底 1。
+        ///   默认基线 max(0,Atk-Def)，存活严格要求 Atk &lt; HP+Def。
         /// </summary>
-        public static DefendResult Defend(int finalAttack, int defenderHp, int defenseFlat, IReadOnlyList<int> defenseDice, int minChip = 1, int damageAdjust = 0, bool immune = false)
+        public static DefendResult Defend(int finalAttack, int defenderHp, int defenseFlat, IReadOnlyList<int> defenseDice, int minChip = 0, int damageAdjust = 0, bool immune = false)
         {
             int min;
             var dist = Distribution(defenseFlat, defenseDice, out min);
@@ -194,7 +194,7 @@ namespace CombatOddsMod
         /// 对攻/防两侧骰池做联合卷积求 max(0, atk − def) 的分布。
         /// </summary>
         public static AttackResult Attack(int attackFlat, IReadOnlyList<int> attackDice,
-            int defenseFlat, IReadOnlyList<int> defenseDice, int targetHp, int minChip = 1, int damageAdjust = 0, bool immune = false)
+            int defenseFlat, IReadOnlyList<int> defenseDice, int targetHp, int minChip = 0, int damageAdjust = 0, bool immune = false)
         {
             int atkMin;
             var atk = Distribution(attackFlat, attackDice, out atkMin);
@@ -256,67 +256,60 @@ namespace CombatOddsMod
         }
 
         /// <summary>
-        /// 返回 count 颗 d6 的骰面数组(每颗 6 面)。11 局回放实测: 攻/防/闪的随机项都是 d6(点数 1..6),
-        /// 攻方投骰 Val(5038) 与防守方 Val(5040) 均在 1..6; (Def-InitDef) 92% 落在 1..6(单 d6),
-        /// 少数 7..12 为叠加第二颗 d6。因此战斗随机项应建模为 InitDef/base + N×d6, 而非区间均匀近似。
+        /// 范围随机整数 + 一颗判定骰。范围内整数暂按等概率；两项独立。
+        /// randomTerms 是卷积输入，范围项只是数学上的等效均匀项，不是玩家额外投出的骰子。
+        /// knownPoint 指定时仅固定判定骰；最终攻击已锁定时应直接使用最终值，不再调用本方法。
         /// </summary>
-        public static int[] DiceD6(int count)
+        public static void RangeWithJudgeDice(int rangeMin, int rangeMax, out int flat,
+            out int[] randomTerms, int judgeFaces = DefaultJudgeDiceFaces, int? knownPoint = null)
         {
-            if (count < 0) count = 0;
-            var a = new int[count];
-            for (int i = 0; i < count; i++) a[i] = 6;
-            return a;
+            if (rangeMax < rangeMin) { int t = rangeMin; rangeMin = rangeMax; rangeMax = t; }
+            if (judgeFaces <= 0) judgeFaces = DefaultJudgeDiceFaces;
+            int width = rangeMax - rangeMin + 1;
+            if (width == 1)
+            {
+                flat = rangeMin + (knownPoint.HasValue ? knownPoint.Value : 0);
+                randomTerms = knownPoint.HasValue ? new int[0] : new[] { judgeFaces };
+                return;
+            }
+            flat = rangeMin - 1;
+            if (knownPoint.HasValue)
+            {
+                flat += knownPoint.Value;
+                randomTerms = new[] { width };
+            }
+            else randomTerms = new[] { width, judgeFaces };
+        }
+
+        public struct RangeBattleThresholds
+        {
+            public int AttackRollToPossiblyKill;
+            public int AttackRollToGuaranteeKill;
+            public int DefenseRollToPossiblySurvive;
+            public int DefenseRollToGuaranteeSurvive;
+            public int DodgeRollToSucceed;
         }
 
         /// <summary>
-        /// 由基础值与总值区间推断"基础 + N×d6"模型。initFlat=已知确定基础(InitDef/攻方当前基础);
-        /// max=可达上限。N = ceil((max-initFlat)/6), 至少 1(游戏默认必掷 1 颗 d6); 无区间信息时 N=1。
-        /// 返回 flat=initFlat, dice=N×d6。这是 d6 模型下的精确骰池(非近似)。
+        /// 范围 + 单骰模型的可能/保证阈值。存活必须满足 A + damageAdjust &lt; HP + D。
+        /// 可能取最有利的范围结果，保证取最不利的范围结果；使用防守者血量。
         /// </summary>
-        public static void D6ModelFromRange(int initFlat, int max, out int flat, out int[] dice)
+        public static RangeBattleThresholds RequiredRangeBattleRolls(int attackMin, int attackMax,
+            int defenseMin, int defenseMax, int defenderHp, int finalAttack, int attackerPoint,
+            bool attackerThrew, int damageAdjust = 0, int judgeFaces = DefaultJudgeDiceFaces)
         {
-            flat = initFlat;
-            int rollMax = max - initFlat;               // 掷骰可达的最大加成
-            int n = rollMax <= 6 ? 1 : (rollMax + 5) / 6; // ceil(rollMax/6), 下限 1
-            if (n < 1) n = 1;
-            if (n > 4) n = 4;                            // 防御性上限
-            dice = DiceD6(n);
-        }
-
-        public struct BattleThresholds
-        {
-            public int AttackRollToKillAtCurrentDefense;
-            public int AttackRollToGuaranteeKill;
-            public int DefenseRollToAvoidKnockdown;
-            public int DodgeRollToSucceed;
-            public bool KillReachable;
-            public bool DefenseReachable;
-            public bool DodgeReachable;
-        }
-
-        /// <summary>按当前攻防面板计算最低保证骰点；骰点均按 1..judgeFaces 处理。</summary>
-        public static BattleThresholds RequiredBattleRolls(int attackerInitAtk, int attackerHp, int defenderMaxDef,
-            int defenderHp, int attackerCurrentAtk, int defenderInitDef, int attackerPoint,
-            int damageAdjust = 0, int judgeFaces = DefaultJudgeDiceFaces)
-        {
+            if (attackMax < attackMin) { int t = attackMin; attackMin = attackMax; attackMax = t; }
+            if (defenseMax < defenseMin) { int t = defenseMin; defenseMin = defenseMax; defenseMax = t; }
             if (judgeFaces <= 0) judgeFaces = DefaultJudgeDiceFaces;
-            int killTotal = defenderHp + defenderMaxDef - attackerCurrentAtk - damageAdjust;
-            int killRoll = killTotal;
-            int currentDefenseKillRoll = defenderInitDef + defenderHp - attackerCurrentAtk - damageAdjust;
-            if (currentDefenseKillRoll < 1) currentDefenseKillRoll = 1;
-            if (killRoll < 1) killRoll = 1;
-            int defenseTotal = attackerCurrentAtk + damageAdjust - attackerHp + 1;
-            int defenseRoll = defenseTotal - defenderInitDef;
-            int dodgeRoll = attackerPoint >= judgeFaces ? judgeFaces : attackerPoint + 1;
-            return new BattleThresholds
+            int lowAttack = attackerThrew ? finalAttack : attackMin + 1;
+            int highAttack = attackerThrew ? finalAttack : attackMax + judgeFaces;
+            return new RangeBattleThresholds
             {
-                AttackRollToKillAtCurrentDefense = currentDefenseKillRoll,
-                AttackRollToGuaranteeKill = killRoll,
-                DefenseRollToAvoidKnockdown = defenseRoll < 1 ? 1 : defenseRoll,
-                DodgeRollToSucceed = dodgeRoll,
-                KillReachable = killRoll >= 1 && killRoll <= judgeFaces,
-                DefenseReachable = defenseRoll <= judgeFaces,
-                DodgeReachable = dodgeRoll >= 1 && dodgeRoll <= judgeFaces
+                AttackRollToPossiblyKill = Math.Max(1, defenderHp + defenseMin + 1 - attackMax - damageAdjust),
+                AttackRollToGuaranteeKill = Math.Max(1, defenderHp + defenseMax + judgeFaces - attackMin - damageAdjust),
+                DefenseRollToPossiblySurvive = Math.Max(1, lowAttack + damageAdjust - defenderHp - defenseMax + 1),
+                DefenseRollToGuaranteeSurvive = Math.Max(1, highAttack + damageAdjust - defenderHp - defenseMin + 1),
+                DodgeRollToSucceed = attackerPoint >= judgeFaces ? judgeFaces : attackerPoint + 1
             };
         }
 

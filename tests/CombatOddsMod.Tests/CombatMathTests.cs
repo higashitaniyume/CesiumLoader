@@ -58,7 +58,7 @@ namespace CombatOddsMod.Tests
         [Fact]
         public void C204Example_Defend_Knockdown_Is10Percent()
         {
-            var r = CombatMath.Defend(finalAttack: 13, defenderHp: 6, defenseFlat: 3, defenseDice: new[] { 6, 10 });
+            var r = CombatMath.Defend(finalAttack: 13, defenderHp: 6, defenseFlat: 3, defenseDice: new[] { 6, 10 }, minChip: 1);
             Assert.Equal(0.10, r.KnockdownProb, 6);       // 保底伤害 1 < 6, 不改被击倒率
             Assert.Equal(1, r.MinDamage);                 // 防御 19 时 13-19<0, 命中保底 => 1(回放校准)
             Assert.Equal(8, r.MaxDamage);                 // 防御 5 时 13-5 = 8
@@ -93,45 +93,110 @@ namespace CombatOddsMod.Tests
             Assert.True(def.KnockdownProb < dodge.KnockdownProb);
         }
 
-        // ============================ d6 模型(回放校准: 战斗随机项是 d6) ============================
+        // ============================ 均匀整数区间 + 单颗判定骰 ============================
 
         [Fact]
-        public void DiceD6_ReturnsCountOfSixes()
+        public void RangeWithJudgeDice_WideRange_IsConvolutionWithSingleD6()
         {
-            Assert.Empty(CombatMath.DiceD6(0));
-            Assert.Equal(new[] { 6 }, CombatMath.DiceD6(1));
-            Assert.Equal(new[] { 6, 6 }, CombatMath.DiceD6(2));
+            int flat; int[] randomTerms; int min;
+            CombatMath.RangeWithJudgeDice(2, 23, out flat, out randomTerms);
+            var d = CombatMath.Distribution(flat, randomTerms, out min);
+            Assert.Equal(3, min);
+            Assert.Equal(29, min + d.Length - 1);
+            Assert.Equal(1.0, Sum(d), 12);
+            Assert.Equal(1.0 / 132.0, d[0], 12);
+            Assert.Equal(1.0 / 132.0, d[d.Length - 1], 12);
+            Assert.Equal(6.0 / 132.0, d[5], 12);
         }
 
         [Fact]
-        public void D6ModelFromRange_InfersDiceCountByCeilDivSix()
+        public void RangeWithJudgeDice_KnownPoint_OnlyRangeRemainsRandom()
         {
-            int flat; int[] dice;
-            // 上限=基础+6 => 单 d6
-            CombatMath.D6ModelFromRange(3, 9, out flat, out dice);
-            Assert.Equal(3, flat);
-            Assert.Equal(new[] { 6 }, dice);
-            // 上限=基础+12 => 两颗 d6
-            CombatMath.D6ModelFromRange(2, 14, out flat, out dice);
-            Assert.Equal(2, flat);
-            Assert.Equal(new[] { 6, 6 }, dice);
-            // 无区间信息(上限<=基础) => 仍默认单 d6(游戏必掷一颗)
-            CombatMath.D6ModelFromRange(5, 5, out flat, out dice);
-            Assert.Equal(new[] { 6 }, dice);
+            int flat; int[] randomTerms; int min;
+            CombatMath.RangeWithJudgeDice(2, 23, out flat, out randomTerms, knownPoint: 4);
+            var d = CombatMath.Distribution(flat, randomTerms, out min);
+            Assert.Equal(6, min);
+            Assert.Equal(27, min + d.Length - 1);
+            Assert.Equal(1.0, Sum(d), 12);
+            foreach (var p in d) Assert.Equal(1.0 / 22.0, p, 12);
         }
 
         [Fact]
-        public void D6ModelFromRange_SingleD6_MatchesUniformD6Distribution()
+        public void RangeWithJudgeDice_FixedRange_HasOnlyOneJudgeDie()
         {
-            // 防御 = 3 + d6, 攻 13, 血 6 => 受伤 = max(1,13-(3+r)), r=1..6 => 9,8,7,6,5,4
-            // 被击倒(>=6): r<=4 => 4/6。
-            int flat; int[] dice;
-            CombatMath.D6ModelFromRange(3, 9, out flat, out dice);
-            var d = CombatMath.Defend(13, 6, flat, dice);
-            Assert.False(d.Approx);                         // d6 骰池是精确分布
-            Assert.Equal(4.0 / 6.0, d.KnockdownProb, 12);
-            Assert.Equal(4, d.MinDamage);                   // r=6 => 13-9=4
-            Assert.Equal(9, d.MaxDamage);                   // r=1 => 13-4=9
+            int flat; int[] randomTerms; int min;
+            CombatMath.RangeWithJudgeDice(5, 5, out flat, out randomTerms);
+            Assert.Equal(5, flat);
+            Assert.Equal(new[] { 6 }, randomTerms);
+            var d = CombatMath.Distribution(flat, randomTerms, out min);
+            Assert.Equal(6, min);
+            Assert.Equal(6, d.Length);
+            foreach (var p in d) Assert.Equal(1.0 / 6.0, p, 12);
+        }
+
+        [Theory]
+        [InlineData(2, 23, 3, 8, 6)]
+        [InlineData(4, 4, 2, 2, 3)]
+        [InlineData(-2, 5, 0, 3, 4)]
+        public void RangeBattle_AttackAndDefend_MatchIndependentFourWayEnumeration(
+            int attackMin, int attackMax, int defenseMin, int defenseMax, int defenderHp)
+        {
+            int attackFlat; int[] attackTerms; int defenseFlat; int[] defenseTerms;
+            CombatMath.RangeWithJudgeDice(attackMin, attackMax, out attackFlat, out attackTerms);
+            CombatMath.RangeWithJudgeDice(defenseMin, defenseMax, out defenseFlat, out defenseTerms);
+            var attack = CombatMath.Attack(attackFlat, attackTerms, defenseFlat, defenseTerms,
+                defenderHp, minChip: 0);
+
+            // 独立枚举区间整数和两颗判定骰，不使用 Distribution 推导期望值。
+            double totalDamage = 0, totalKills = 0, defendDamage = 0, defendKnockdowns = 0;
+            int outcomes = 0, minDamage = int.MaxValue, maxDamage = int.MinValue;
+            for (int a = attackMin; a <= attackMax; a++)
+                for (int ap = 1; ap <= 6; ap++)
+                {
+                    int finalAttack = a + ap;
+                    var defend = CombatMath.Defend(finalAttack, defenderHp, defenseFlat, defenseTerms, minChip: 0);
+                    double lockedDamage = 0, lockedKills = 0;
+                    int defenseOutcomes = 0;
+                    for (int d = defenseMin; d <= defenseMax; d++)
+                        for (int dp = 1; dp <= 6; dp++)
+                        {
+                            int finalDefense = d + dp;
+                            int damage = Math.Max(0, finalAttack - finalDefense);
+                            bool knockedDown = !(finalAttack < defenderHp + finalDefense);
+                            totalDamage += damage;
+                            lockedDamage += damage;
+                            if (knockedDown) { totalKills++; lockedKills++; }
+                            minDamage = Math.Min(minDamage, damage);
+                            maxDamage = Math.Max(maxDamage, damage);
+                            outcomes++;
+                            defenseOutcomes++;
+                        }
+                    Assert.Equal(lockedDamage / defenseOutcomes, defend.ExpectedDamage, 12);
+                    Assert.Equal(lockedKills / defenseOutcomes, defend.KnockdownProb, 12);
+                    Assert.False(defend.Approx);
+                    defendDamage += defend.ExpectedDamage;
+                    defendKnockdowns += defend.KnockdownProb;
+                }
+            int attackOutcomes = (attackMax - attackMin + 1) * 6;
+            Assert.Equal(totalDamage / outcomes, attack.ExpectedDamage, 12);
+            Assert.Equal(totalKills / outcomes, attack.KillProb, 12);
+            Assert.Equal(minDamage, attack.MinDamage);
+            Assert.Equal(maxDamage, attack.MaxDamage);
+            Assert.Equal(totalDamage / outcomes, defendDamage / attackOutcomes, 12);
+            Assert.Equal(totalKills / outcomes, defendKnockdowns / attackOutcomes, 12);
+        }
+
+        [Theory]
+        [InlineData(8, 0.0)]
+        [InlineData(9, 1.0)]
+        [InlineData(10, 1.0)]
+        public void Battle_EqualityAtHpPlusDefense_IsKnockdown(int finalAttack, double expectedKnockdown)
+        {
+            // HP=6、防御=3，只有 A<9 才存活；A=9 已击倒。
+            var attack = CombatMath.Attack(finalAttack, null, 3, null, targetHp: 6, minChip: 0);
+            var defend = CombatMath.Defend(finalAttack, 6, 3, null, minChip: 0);
+            Assert.Equal(expectedKnockdown, attack.KillProb, 12);
+            Assert.Equal(expectedKnockdown, defend.KnockdownProb, 12);
         }
 
         // ============================ 闪避边界 ============================
@@ -176,15 +241,30 @@ namespace CombatOddsMod.Tests
         [Fact]
         public void Defend_MinChipDamage_CalibratedToReplays()
         {
-            // 11 局回放对拍: Atk<=Def 时防守方仍几乎必掉 1 血(命中保底)。默认 minChip=1。
-            var r = CombatMath.Defend(3, 6, 10, null);   // 防 10 > 攻 3
+            // 显式启用旧保底模型：Atk<=Def 时仍受1点伤害；默认模型无保底。
+            var r = CombatMath.Defend(3, 6, 10, null, minChip: 1);   // 防 10 > 攻 3
             Assert.Equal(1.0, r.ExpectedDamage, 12);
             Assert.Equal(1, r.MinDamage);
             Assert.Equal(1, r.MaxDamage);
-            // 传 minChip:0 时退回旧口径(0 伤害)。
+            // 显式 minChip:0 时无保底伤害。
             var r0 = CombatMath.Defend(3, 6, 10, null, minChip: 0);
             Assert.Equal(0.0, r0.ExpectedDamage, 12);
             Assert.Equal(0, r0.MaxDamage);
+        }
+
+        [Fact]
+        public void AttackAndDefend_DefaultNoChip_DefenseAboveAttackPreservesOneHp()
+        {
+            var attack = CombatMath.Attack(3, null, 10, null, targetHp: 1);
+            var defend = CombatMath.Defend(3, 1, 10, null);
+            Assert.Equal(0.0, attack.ExpectedDamage, 12);
+            Assert.Equal(0.0, attack.KillProb, 12);
+            Assert.Equal(0, attack.MinDamage);
+            Assert.Equal(0, attack.MaxDamage);
+            Assert.Equal(0.0, defend.ExpectedDamage, 12);
+            Assert.Equal(0.0, defend.KnockdownProb, 12);
+            Assert.Equal(0, defend.MinDamage);
+            Assert.Equal(0, defend.MaxDamage);
         }
 
         // ============================ 攻击:期望伤害 + 击杀率 ============================
@@ -363,16 +443,65 @@ namespace CombatOddsMod.Tests
             Assert.Single(player.ContextOnly);
         }
         [Fact]
-        public void RequiredBattleRolls_ComputesGuaranteeThresholds()
+        public void RequiredRangeBattleRolls_LockedAttack_UsesDefenderHpAndFinalAttack()
         {
-            var t = CombatMath.RequiredBattleRolls(2, 8, 6, 22, 2, 2, 2, 0, 6);
-            Assert.Equal(22, t.AttackRollToKillAtCurrentDefense);
-            Assert.Equal(26, t.AttackRollToGuaranteeKill);
-            Assert.False(t.KillReachable);
-            Assert.Equal(1, t.DefenseRollToAvoidKnockdown);
-            Assert.True(t.DefenseReachable);
-            Assert.Equal(3, t.DodgeRollToSucceed);
-            Assert.True(t.DodgeReachable);
+            // 攻击区间 2..5，防御区间 3..8，防守方 HP=6。
+            // 可能击杀需 5+r >= 6+3+1；保证击杀需 2+r >= 6+8+6。
+            // 攻击已锁定17：可能存活需 17 < 6+8+r，保证存活需 17 < 6+3+r。
+            var t = CombatMath.RequiredRangeBattleRolls(2, 5, 3, 8, 6, 17, 3, true);
+            Assert.Equal(5, t.AttackRollToPossiblyKill);
+            Assert.Equal(18, t.AttackRollToGuaranteeKill);
+            Assert.Equal(4, t.DefenseRollToPossiblySurvive);
+            Assert.Equal(9, t.DefenseRollToGuaranteeSurvive);
+            Assert.Equal(4, t.DodgeRollToSucceed);
+        }
+
+        [Fact]
+        public void RequiredRangeBattleRolls_UnthrownAttack_UsesBestAndWorstAttackExtremes()
+        {
+            // 未投攻击为 8..12+d6 => 9..18，finalAttack 占位值99不能参与计算。
+            var t = CombatMath.RequiredRangeBattleRolls(8, 12, 2, 4, 3, 99, 0, false);
+            Assert.Equal(1, t.AttackRollToPossiblyKill); // 所有合法骰点都有可能击杀，阈值下限为1。
+            Assert.Equal(5, t.AttackRollToGuaranteeKill);
+            Assert.Equal(3, t.DefenseRollToPossiblySurvive);
+            Assert.Equal(14, t.DefenseRollToGuaranteeSurvive);
+        }
+
+        [Theory]
+        [InlineData(-2, 7, 20, 2, 7)]
+        [InlineData(0, 5, 18, 4, 9)]
+        [InlineData(2, 3, 16, 6, 11)]
+        public void RequiredRangeBattleRolls_DamageAdjustment_ShiftsStrictHpBoundaries(
+            int damageAdjust, int possibleKill, int guaranteeKill, int possibleSurvive, int guaranteeSurvive)
+        {
+            var t = CombatMath.RequiredRangeBattleRolls(2, 5, 3, 8, 6, 17, 3, true, damageAdjust);
+            Assert.Equal(possibleKill, t.AttackRollToPossiblyKill);
+            Assert.Equal(guaranteeKill, t.AttackRollToGuaranteeKill);
+            Assert.Equal(possibleSurvive, t.DefenseRollToPossiblySurvive);
+            Assert.Equal(guaranteeSurvive, t.DefenseRollToGuaranteeSurvive);
+        }
+
+        [Fact]
+        public void RequiredRangeBattleRolls_FixedRange_EqualityKillsAndNeedsOneMoreToSurvive()
+        {
+            // A=9、HP=6、基础防御2：防御掷1时总防御3，恰好归零；掷2才存活。
+            var t = CombatMath.RequiredRangeBattleRolls(8, 8, 2, 2, 6, 9, 6, true);
+            Assert.Equal(1, t.AttackRollToPossiblyKill);
+            Assert.Equal(6, t.AttackRollToGuaranteeKill);
+            Assert.Equal(2, t.DefenseRollToPossiblySurvive);
+            Assert.Equal(2, t.DefenseRollToGuaranteeSurvive);
+            Assert.Equal(6, t.DodgeRollToSucceed);
+        }
+
+        [Fact]
+        public void RequiredRangeBattleRolls_CustomJudgeFaces_UsesSingleJudgeDie()
+        {
+            var t = CombatMath.RequiredRangeBattleRolls(2, 5, 3, 8, 6, 17, 10, true, judgeFaces: 10);
+            Assert.Equal(5, t.AttackRollToPossiblyKill);
+            Assert.Equal(22, t.AttackRollToGuaranteeKill);
+            Assert.Equal(4, t.DefenseRollToPossiblySurvive);
+            Assert.Equal(9, t.DefenseRollToGuaranteeSurvive);
+            Assert.Equal(10, t.DodgeRollToSucceed);
         }
         [Fact]
         public void KnownSkillLabels_MatchObservedCharacterSkills()
@@ -399,8 +528,8 @@ namespace CombatOddsMod.Tests
         public void Defend_WithVulnerability_RaisesKnockdown()
         {
             // 攻13, 防基础3+1×d6, 血6。裸算 vs +2 易伤(标记x2)对比击倒率。
-            var baseR = CombatMath.Defend(13, 6, 3, CombatMath.DiceD6(1));
-            var buffed = CombatMath.Defend(13, 6, 3, CombatMath.DiceD6(1), 1, 2, false);
+            var baseR = CombatMath.Defend(13, 6, 3, new[] { 6 });
+            var buffed = CombatMath.Defend(13, 6, 3, new[] { 6 }, 1, 2, false);
             Assert.True(buffed.KnockdownProb >= baseR.KnockdownProb);
             Assert.True(buffed.ExpectedDamage > baseR.ExpectedDamage);
         }
@@ -417,8 +546,8 @@ namespace CombatOddsMod.Tests
         public void Attack_WithVulnerability_RaisesKill()
         {
             // 我方攻锁定10, 目标防基础4+1×d6, 目标血5。+2 易伤应提高击杀率。
-            var baseR = CombatMath.Attack(10, null, 4, CombatMath.DiceD6(1), 5);
-            var buffed = CombatMath.Attack(10, null, 4, CombatMath.DiceD6(1), 5, 1, 2, false);
+            var baseR = CombatMath.Attack(10, null, 4, new[] { 6 }, 5);
+            var buffed = CombatMath.Attack(10, null, 4, new[] { 6 }, 5, 1, 2, false);
             Assert.True(buffed.KillProb >= baseR.KillProb);
             Assert.True(buffed.ExpectedDamage > baseR.ExpectedDamage);
         }

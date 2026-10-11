@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text;
 using CesiumLoader.SDK.Gameplay;
@@ -30,17 +30,15 @@ namespace CombatOddsMod
     ///   · UiService 覆盖层 + OnGUI 回调登记 —— 已就位; 游戏内可视化覆盖层需渲染后端,
     ///     属于下一阶段(FairyGUI 注入 / IMGUI 泵), 需进游戏迭代验证。
     ///
-    /// 精度说明(已用 11 局真实回放对拍校准 CombatMath):
-    ///   · 攻击/防御构成: Atk = 基础+骰点、Def = InitDef+防御骰点 —— 回放逐帧精确吻合。
-    ///   · 伤害基线 = max(1, Atk-Def): 命中保底 1(回放里 Atk&lt;=Def 时防守方仍几乎必掉 1 血);
-    ///     干净样本精确率由 max(0,·) 的 54% 提升到 68%。余下 +1~+3 为效果类附加伤害。
-    ///   · 闪避被击倒率: 精确(单颗 d6 对阈值), 规则 defPoint&gt;atkPoint 在回放中 37/43 一致,
-    ///     少数例外为保证闪避的特殊效果。
-    ///   · 防御/攻击随机项 = 基础 + N×d6(回放实测: 投骰 Val 恒 1..6, Def-InitDef 92% 落 1..6 单 d6,
-    ///     少数 7..12 为叠加第二颗 d6)。故用 d6 模型的【精确】骰池, 已弃用旧的区间均匀近似(不再标 "≈")。
-    ///     骰子颗数按可达上限推断, 默认单 d6。
-    ///   · 目标身上"受到伤害±N"类 buff(标记/狂暴/护盾免疫等)通过 Players.BuffsOf 实时读取并计入;
-    ///     未在 buff 表内的效果不影响伤害, 不予处理。
+    /// 计算模型与限制:
+    ///   · 攻击 = MinAtk..MaxAtk 的随机整数 + 一颗判定骰，防御同理使用 MinDef..MaxDef。
+    ///     范围内整数暂按等概率且与判定骰独立；不能从上限推断为 N 颗 d6。
+    ///   · 最终攻击锁定后直接使用 Atk；伤害基线 max(0, Atk-Def)，不假设保底 1。
+    ///     存活严格要求 Atk &lt; HP + Def；相等会被击倒。
+    ///   · 击杀率以目标选择防御为条件，不混合闪避，也不是整场获胜率。
+    ///   · 闪避按单颗判定骰计算，保证闪避等特殊效果不在通用模型内。
+    ///   · 已登记的受伤 buff 通过 Players.BuffsOf 读取并计入；未登记效果无法保证已覆盖。
+    ///   · 旧回放拟合结果不证明本模型的范围等概率假设，当前需继续真机核对。
     /// </summary>
     public static partial class ModEntry
     {
@@ -354,13 +352,13 @@ namespace CombatOddsMod
                     int initDef = SafeInt(() => def.InitDef);
                     int maxDef = SafeInt(() => def.MaxDef);
 
-                    // 防御骰: InitDef + N×d6(默认单 d6, 精确骰池)。
+                    // 防御 = MinDef..MaxDef 的范围随机值 + 一颗判定骰。
                     int flat; int[] dice;
-                    CombatMath.D6ModelFromRange(initDef, System.Math.Max(maxDef, initDef + 6), out flat, out dice);
+                    CombatMath.RangeWithJudgeDice(SafeInt(() => def.MinDef), maxDef, out flat, out dice, JudgeFaces());
 
                     if (attackerThrew)
                     {
-                        var d = CombatMath.Defend(finalAtk, hp, flat, dice, 1, dmgAdjust, targetImmune);
+                        var d = CombatMath.Defend(finalAtk, hp, flat, dice, 0, dmgAdjust, targetImmune);
                         int dodgeFailDmg = _cfg.DodgeKeepsBaseDefense ? Math.Max(0, finalAtk - initDef) : finalAtk;
                         var dodge = CombatMath.Dodge(finalAtk, hp, atkPoint, JudgeFaces(), dodgeFailDmg, dmgAdjust, targetImmune);
 
@@ -381,9 +379,9 @@ namespace CombatOddsMod
                     }
                     else
                     {
-                        // 攻方未投: 阈值未知无法算闪; 用最大攻做保守防御估计。
-                        int atkMax = SafeInt(() => atk.MaxAtk);
-                        var d = CombatMath.Defend(atkMax, hp, flat, dice, 1, dmgAdjust, targetImmune);
+                        // 攻方未投：最大范围值 + 判定骰上限，作为最坏攻击。
+                        int atkMax = SafeInt(() => atk.MaxAtk) + bonnieBonus + JudgeFaces();
+                        var d = CombatMath.Defend(atkMax, hp, flat, dice, 0, dmgAdjust, targetImmune);
                         sb.Append(Big(C("⏳ 等对方投骰", Gray)));
                         sb.Append('\n').Append(Dim(defName + " " + hp + "血, 最坏被击倒 " + PctPlain(d.KnockdownProb)));
                     }
@@ -396,26 +394,25 @@ namespace CombatOddsMod
                 {
                     int targetHp = HpOf(def.PlayerId);
                     int maxDef = SafeInt(() => def.MaxDef);
-                    int tgtInitDef = SafeInt(() => def.InitDef);
 
-                    // 我方攻击: 未投则 = 当前基础 + N×d6(默认单 d6); 已投则锁定 finalAtk。
+                    // 未投：攻击范围随机值 + 单颗判定骰；已投：最终攻击锁定，不能再加骰点。
                     int aFlat; int[] aDice;
                     if (attackerThrew) { aFlat = finalAtk; aDice = new int[0]; }
                     else
                     {
-                        int rawAtk = SafeInt(() => atk.Atk) + bonnieBonus;
-                        int rawMaxAtk = SafeInt(() => atk.MaxAtk) + bonnieBonus;
-                        CombatMath.D6ModelFromRange(rawAtk, rawMaxAtk, out aFlat, out aDice);
+                        CombatMath.RangeWithJudgeDice(SafeInt(() => atk.MinAtk) + bonnieBonus,
+                            SafeInt(() => atk.MaxAtk) + bonnieBonus, out aFlat, out aDice, JudgeFaces());
                     }
 
-                    // 目标防御: InitDef + N×d6(d6 模型, 精确骰池)。
+                    // 目标选择防御：防御范围随机值 + 单颗判定骰。
                     int dFlat; int[] dDice;
-                    CombatMath.D6ModelFromRange(tgtInitDef, System.Math.Max(maxDef, tgtInitDef + 6), out dFlat, out dDice);
+                    CombatMath.RangeWithJudgeDice(SafeInt(() => def.MinDef), maxDef, out dFlat, out dDice, JudgeFaces());
 
-                    var r = CombatMath.Attack(aFlat, aDice, dFlat, dDice, targetHp, 1, dmgAdjust, targetImmune);
+                    var r = CombatMath.Attack(aFlat, aDice, dFlat, dDice, targetHp, 0, dmgAdjust, targetImmune);
                     if (bonnieBonus > 0) sb.Append('\n').Append(C("邦妮标记目标攻击+3", Orange));
                     if (showDefender) sb.Append('\n');
                     sb.Append(Big("🎯 击杀 " + C(PctPlain(r.KillProb), KillColor(r.KillProb))));
+                    sb.Append(Dim("（目标防御）"));
                     sb.Append('\n').Append(Dim(atkName + " > " + defName + " " + targetHp + "血 · 期望伤害 " + Fmt1(r.ExpectedDamage)));
                     if (SafeBool(() => def.CanNotFightBack)) sb.Append(Dim("  (无法反击)"));
                 }
@@ -488,29 +485,42 @@ namespace CombatOddsMod
 
         // ============================== 辅助 ==============================
 
+        private static CombatMath.RangeBattleThresholds RangeThresholds(BattleRole atk, BattleRole def,
+            CombatMath.BuffAdjustment badj, int finalAtk, int bonnieBonus, bool attackerThrew)
+        {
+            return CombatMath.RequiredRangeBattleRolls(SafeInt(() => atk.MinAtk) + bonnieBonus,
+                SafeInt(() => atk.MaxAtk) + bonnieBonus, SafeInt(() => def.MinDef), SafeInt(() => def.MaxDef),
+                HpOf(def.PlayerId), finalAtk, SafeInt(() => atk.Point), attackerThrew, badj.Delta, JudgeFaces());
+        }
+
+        private static string RollThresholdText(string label, int threshold, string color, string unreachable)
+        {
+            return threshold <= JudgeFaces()
+                ? label + " [size=38][color=" + color + "]≥ " + threshold + "[/color][/size]"
+                : unreachable;
+        }
+
         private static string BuildAttackerThresholdText(BattleRole atk, BattleRole def, CombatMath.BuffAdjustment badj, int finalAtk, int bonnieBonus, bool attackerThrew)
         {
-            int hp = HpOf(def.PlayerId);
-            int init = SafeInt(() => atk.InitAtk) + bonnieBonus;
-            int maxDef = SafeInt(() => def.MaxDef);
-            var t = CombatMath.RequiredBattleRolls(init, hp, maxDef, hp, finalAtk, SafeInt(() => def.InitDef), SafeInt(() => atk.Point), badj.Delta, JudgeFaces());
-            string kill = "击杀骰 [size=42][color=#FFE45C]≥ " + t.AttackRollToKillAtCurrentDefense + "[/color][/size]";
-            return "[color=#FFD24A]攻击者[/color]\n" + kill;
+            const string title = "[color=#FFD24A]攻击者[/color]\n";
+            if (badj.Immune) return title + "目标免疫这一击";
+            if (attackerThrew) return title + "最终攻击已锁定 " + finalAtk;
+            var t = RangeThresholds(atk, def, badj, finalAtk, bonnieBonus, attackerThrew);
+            return title + RollThresholdText("可能击杀骰", t.AttackRollToPossiblyKill, "#FFE45C", "本击无法击杀") + "\n"
+                + RollThresholdText("保证击杀骰", t.AttackRollToGuaranteeKill, "#FFE45C", "无法保证击杀（受攻防范围影响）");
         }
 
         private static string BuildDefenderThresholdText(BattleRole atk, BattleRole def, CombatMath.BuffAdjustment badj, int finalAtk, int bonnieBonus, bool attackerThrew)
         {
-            int defenderHp = HpOf(def.PlayerId);
-            int attackerHp = HpOf(atk.PlayerId);
-            int initDef = SafeInt(() => def.InitDef);
-            int maxDef = SafeInt(() => def.MaxDef);
-            var t = CombatMath.RequiredBattleRolls(SafeInt(() => atk.InitAtk) + bonnieBonus, attackerHp, maxDef, defenderHp,
-                finalAtk, initDef, SafeInt(() => atk.Point), badj.Delta, JudgeFaces());
-            string defend = t.DefenseReachable && t.DefenseRollToAvoidKnockdown >= 1
-                ? "防御骰 [size=38][color=#72F0A2]≥ " + t.DefenseRollToAvoidKnockdown + "[/color][/size] 不被击倒" : "防御无法保证不被击倒";
-            string dodge = t.DodgeReachable
-                ? "闪避判定骰 [size=38][color=#72B7FF]≥ " + t.DodgeRollToSucceed + "[/color][/size] 成功" : "闪避无法成功";
-            return "[color=#6DE0A2]防御者[/color]\n" + defend + "\n" + dodge;
+            const string title = "[color=#6DE0A2]防御者[/color]\n";
+            if (badj.Immune) return title + "免疫这一击";
+            var t = RangeThresholds(atk, def, badj, finalAtk, bonnieBonus, attackerThrew);
+            string defend = RollThresholdText("可能存活防御骰", t.DefenseRollToPossiblySurvive, "#72F0A2", "防御无法存活") + "\n"
+                + RollThresholdText("保证存活防御骰", t.DefenseRollToGuaranteeSurvive, "#72F0A2", "防御无法保证存活（受范围影响）");
+            string dodge = attackerThrew
+                ? RollThresholdText("闪避判定骰", t.DodgeRollToSucceed, "#72B7FF", "闪避无法成功")
+                : "闪避阈值待攻击方投骰";
+            return title + defend + "\n" + dodge;
         }
         private static int JudgeFaces()
         {
