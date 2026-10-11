@@ -178,7 +178,7 @@ namespace HandViewerMod
                     + "\n采样：" + (query.Snapshot?.sampledUtc ?? "—") + "\n手牌过多时滚轮横向查看";
                 if (binding.Model.Open)
                 {
-                    string signature = HandStripModel.Signature(hand) + "/" + UnavailableReason;
+                    string signature = HandStripModel.Signature(hand) + "/" + UnavailableReason + (hand == null ? "/" + query.Status : "");
                     if (signature != binding.Signature || binding.Height != height)
                     { Render(binding, hand, height); binding.Signature = signature; }
                     binding.Strip.SetSize(Math.Min(available, binding.ContentWidth), height);
@@ -195,8 +195,8 @@ namespace HandViewerMod
             var groups = HandStripModel.Group(hand);
             if (groups.Count == 0)
             {
-                string text = hand == null ? (UnavailableReason ?? "等待手牌") : !hand.handKnown ? "手牌未知" : "空手牌（0）";
-                float width = string.IsNullOrEmpty(UnavailableReason) ? 150 : 290;
+                string text = hand == null ? (UnavailableReason ?? query.Status) : !hand.handKnown ? "手牌未知" : "空手牌（0）";
+                float width = hand == null || !string.IsNullOrEmpty(UnavailableReason) ? 290 : 150;
                 var bg = new GGraph(); bg.SetSize(width, height);
                 bg.DrawRect(width, height, 1, Color.white, new Color(0.04f, 0.06f, 0.1f, 0.92f));
                 bg.touchable = false; binding.Content.AddChild(bg);

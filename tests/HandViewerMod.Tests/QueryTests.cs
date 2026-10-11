@@ -102,6 +102,64 @@ namespace HandViewerMod.Tests
                 controller.Tick(10001); Assert.Equal(2, calls);
             }
         }
+        [Theory]
+        [InlineData("你没有权限获得卡牌信息", "你没有权限获得卡牌信息")]
+        [InlineData("{\"message\":\"你没有权限获得卡牌信息\",\"error\":\"forbidden\"}", "你没有权限获得卡牌信息")]
+        [InlineData("{\"detail\":\"权限不足\"}", "权限不足")]
+        [InlineData("{\"error\":\"权限不足\"}", "权限不足")]
+        [InlineData("{\"error\":{\"message\":\"权限不足\"}}", "权限不足")]
+        public void DisplaysServerErrorMessage(string body, string expected)
+        {
+            var request = new Request { Done = true, Code = 403, Text = body };
+            using var controller = new HandQueryController(_ => request);
+            controller.SetViewing(true, 0); controller.SetRoom(Room, "test", 0);
+            controller.Tick(0); controller.Tick(1);
+            Assert.Equal("查询失败 HTTP 403：" + expected + "（稍后重试）", controller.Status);
+            Assert.True(request.Disposed); Assert.False(controller.Running);
+        }
+        [Theory]
+        [InlineData("")]
+        [InlineData("{\"code\":403}")]
+        [InlineData("{broken")]
+        [InlineData("<html>Forbidden</html>")]
+        public void MissingServerMessageKeepsHttpFallback(string body)
+        {
+            using var controller = new HandQueryController(_ => new Request { Done = true, Code = 403, Text = body });
+            controller.SetViewing(true, 0); controller.SetRoom(Room, "test", 0);
+            controller.Tick(0); controller.Tick(1);
+            Assert.Equal("查询失败 HTTP 403（稍后重试）", controller.Status);
+        }
+        [Fact] public void BusinessErrorWithHttp200DisplaysServerMessage()
+        {
+            using var controller = new HandQueryController(_ => new Request { Done = true, Text = "{\"message\":\"权限不足\",\"code\":403}" });
+            controller.SetViewing(true, 0); controller.SetRoom(Room, "test", 0);
+            controller.Tick(0); controller.Tick(1);
+            Assert.Equal("查询失败：权限不足（稍后重试）", controller.Status);
+            Assert.Null(controller.Snapshot);
+        }
+        [Fact] public void ServerErrorKeepsOldSnapshotAndRecoversOnRetry()
+        {
+            int calls = 0;
+            using var controller = new HandQueryController(_ => new Request { Done = true,
+                Code = ++calls == 2 ? 403 : 200, Text = calls == 2 ? "权限不足" : Valid });
+            controller.SetViewing(true, 0); controller.SetRoom(Room, "test", 0);
+            controller.Tick(0); controller.Tick(1);
+            var snapshot = controller.Snapshot;
+            controller.Refresh(1501); controller.Tick(1501); controller.Tick(1502);
+            Assert.Same(snapshot, controller.Snapshot); Assert.True(controller.IsStale);
+            Assert.Equal("查询失败 HTTP 403：权限不足（显示旧快照，稍后重试）", controller.Status);
+            controller.Tick(3501); Assert.Equal(2, calls);
+            controller.Tick(3502); controller.Tick(3503);
+            Assert.Equal(3, calls); Assert.Equal("已采样", controller.Status); Assert.False(controller.IsStale);
+        }
+        [Fact] public void ServerMessageIsBoundedAndControlCharactersAreRemoved()
+        {
+            using var controller = new HandQueryController(_ => new Request { Done = true, Code = 403, Text = "拒绝\n" + new string('长', 600) });
+            controller.SetViewing(true, 0); controller.SetRoom(Room, "test", 0);
+            controller.Tick(0); controller.Tick(1);
+            Assert.Contains("拒绝 长", controller.Status); Assert.Contains("…", controller.Status);
+            Assert.DoesNotContain("\n", controller.Status); Assert.True(controller.Status.Length < 600);
+        }
         [Fact] public void RoomChangeDisposesOldRequestAndRejectsLateResult()
         {
             var request = new Request(); int calls = 0;

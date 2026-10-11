@@ -160,12 +160,22 @@ namespace HandViewerMod
                         int seconds;
                         long delay = (status == 429 || status == 503) && int.TryParse(request.RetryAfter, out seconds)
                             ? Math.Max(1, Math.Min(300, seconds)) * 1000L : Backoff();
-                        Fail(now, delay, "查询失败 HTTP " + status);
+                        var message = ServerMessage(request.Text);
+                        Fail(now, delay, "查询失败 HTTP " + status + (message == null ? "" : "：" + message));
                     }
                     else
                     {
-                        Snapshot = HandSnapshot.Parse(request.Text, room);
-                        IsStale = dirty; failures = 0; retryAt = now + 1500; Status = "已采样"; Revision++;
+                        var text = request.Text;
+                        try
+                        {
+                            Snapshot = HandSnapshot.Parse(text, room);
+                            IsStale = dirty; failures = 0; retryAt = now + 1500; Status = "已采样"; Revision++;
+                        }
+                        catch
+                        {
+                            var message = ServerMessage(text);
+                            Fail(now, Backoff(), message == null ? "查询失败：网络或响应数据不可用" : "查询失败：" + message);
+                        }
                     }
                 }
                 catch { completed = true; Fail(now, Backoff(), "查询失败：网络或响应数据不可用"); }
@@ -175,6 +185,44 @@ namespace HandViewerMod
             dirty = false;
             try { request = start(code); if (request == null) throw new Exception(); Status = "查询中…"; Revision++; }
             catch { Fail(now, Backoff(), "无法启动 HTTP 请求"); }
+        }
+        static string ServerMessage(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text) || text.Length > 1024 * 1024) return null;
+            text = text.Trim();
+            string message = null;
+            if (text.StartsWith("{") || text.StartsWith("[") || text.StartsWith("\""))
+            {
+                try
+                {
+                    object raw;
+                    if (CesiumJson.TryDeserialize(text, out raw)) message = MessageField(raw, 0);
+                }
+                catch { }
+            }
+            else if (!text.StartsWith("<")) message = text;
+            if (string.IsNullOrWhiteSpace(message)) return null;
+            // Bound tooltip length and remove control characters; display as plain text.
+            var clean = new System.Text.StringBuilder();
+            foreach (char c in message)
+            {
+                if (clean.Length >= 512) { clean.Append("…"); break; }
+                clean.Append(char.IsControl(c) ? ' ' : c);
+            }
+            var result = clean.ToString().Trim();
+            return result.Length == 0 ? null : result;
+        }
+        static string MessageField(object value, int depth)
+        {
+            if (value is string text) return string.IsNullOrWhiteSpace(text) ? null : text;
+            if (depth >= 3 || !(value is Dictionary<string, object> fields)) return null;
+            foreach (var key in new[] { "message", "detail", "error" })
+                if (fields.TryGetValue(key, out var child))
+                {
+                    var message = MessageField(child, depth + 1);
+                    if (message != null) return message;
+                }
+            return null;
         }
         long Backoff() { return Math.Min(60000, 2000L << Math.Min(5, failures)); }
         void Fail(long now, long delay, string message)
