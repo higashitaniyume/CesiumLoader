@@ -28,6 +28,7 @@ namespace AutoThanksMod
         private readonly object _gate = new object();
         private readonly Queue<Notice> _pending = new Queue<Notice>();
         private readonly ThanksPolicy _policy = new ThanksPolicy();
+        private readonly SettlementLikes _likes = new SettlementLikes();
         private SayPhraseNotifyS2CRPC _rpc;
         private SayPhraseNotifyS2CRPC.OnSayPhraseNotifyS2CServerDelegate _original, _wrapped;
         private long _generation;
@@ -37,11 +38,14 @@ namespace AutoThanksMod
         private long _nextConfigRead, _nextWarning;
         private bool _enabled = true, _healing = true, _cards = true, _transfers = true;
         private int _cooldown = 2;
+        private int _thankDelay = ThanksPolicy.DefaultDelayMilliseconds;
+        private bool _autoLike = true;
+        private int _likeInterval = LikePolicy.DefaultIntervalMilliseconds;
 
         public override string Name { get { return "自动感谢"; } }
-        public override string Version { get { return "1.0.1"; } }
+        public override string Version { get { return "1.1.0"; } }
         public override string Author { get { return "CesiumLoader"; } }
-        public override string Description { get { return "队友治疗你、给你牌或转星币给你时，自动发送快捷回复：感谢！"; } }
+        public override string Description { get { return "队友帮助后延迟发送感谢，游戏结束后按间隔自动点赞其他真人玩家。"; } }
 
         public override void OnInitialize()
         {
@@ -53,10 +57,13 @@ namespace AutoThanksMod
                 if (!config.Has("thankForCards")) config.Set("thankForCards", true);
                 if (!config.Has("thankForTransfers")) config.Set("thankForTransfers", true);
                 if (!config.Has("cooldownSeconds")) config.Set("cooldownSeconds", 2);
+                if (!config.Has("thankDelayMilliseconds")) config.Set("thankDelayMilliseconds", ThanksPolicy.DefaultDelayMilliseconds);
+                if (!config.Has("autoLikeOnGameEnd")) config.Set("autoLikeOnGameEnd", true);
+                if (!config.Has("likeIntervalMilliseconds")) config.Set("likeIntervalMilliseconds", LikePolicy.DefaultIntervalMilliseconds);
                 config.Save();
             }
             ReadConfig();
-            Log.Info("自动感谢已初始化：治疗/给牌/转星币触发原版感谢短语，回放和观战不发送。");
+            Log.Info("自动感谢已初始化：队友帮助后延迟发送感谢，结算时逐个点赞其他真人玩家，回放和观战不发送。");
         }
 
         public override void OnUpdate()
@@ -71,26 +78,51 @@ namespace AutoThanksMod
                     ReadConfig();
                 }
                 var gm = SimpleSingletonProvider<GameLogicManager>.inst;
-                if (!_enabled || !IsLiveBattle(gm))
+                if (!IsParticipantContext(gm))
                 {
-                    StopListening();
-                    _sessionRoom = null;
-                    _sessionAccount = 0;
-                    _policy.Reset();
+                    ResetSession();
                     return;
                 }
                 long accountId = gm.account.GetPlayerID(); // IsSelf/GetSelfPlayerData can follow a spectator target.
                 var room = gm.room.curRoomInfo;
-                if (!ReferenceEquals(room, _sessionRoom) || accountId != _sessionAccount)
+                var state = gm.room.roomController.roomStateType;
+                if (_sessionRoom != null && (!ReferenceEquals(room, _sessionRoom) || accountId != _sessionAccount))
+                    ResetSession();
+                if (state == RoomStateType.SETTLEMENT)
                 {
                     StopListening();
                     _policy.Reset();
+                    // Only a previously observed real RUNNING battle can arm automatic likes.
+                    // Keep this guard in addition to IsReplay/IsWatcher; settlement alone must never arm them.
+                    if (_enabled && _autoLike && ReferenceEquals(room, _sessionRoom) && accountId == _sessionAccount)
+                    {
+                        var panel = SimpleSingletonProvider<UIManager>.inst.currentPanel as BattleSettlementPanel;
+                        long target;
+                        if (_likes.Tick(panel, gm.battle, accountId, now, _likeInterval, out target))
+                            Log.Info("已触发原版结算点赞：玩家=" + target + "，间隔=" + _likeInterval + "ms");
+                    }
+                    return;
+                }
+                if (state != RoomStateType.RUNNING || !gm.battle.clientFinishReady)
+                {
+                    ResetSession();
+                    return;
+                }
+                if (!ReferenceEquals(room, _sessionRoom) || accountId != _sessionAccount)
+                {
+                    ResetSession();
                     _sessionRoom = room;
                     _sessionAccount = accountId;
                 }
+                if (!_enabled)
+                {
+                    StopListening();
+                    _policy.Reset();
+                    return;
+                }
                 EnsureHooked();
                 Notice notice;
-                while (TryTake(out notice))
+                while (TryTakeReady(DateTime.UtcNow.Ticks, out notice))
                 {
                     now = DateTime.UtcNow.Ticks;
                     var sender = gm.battle.GetPlayerDataById(notice.Sender);
@@ -100,7 +132,7 @@ namespace AutoThanksMod
                     bool blocked = gm.lockExpressionPlayerID.Contains(notice.Sender);
                     int chatId;
                     if (!_policy.TryGetChatId(notice.Sender, notice.Recipient, accountId, notice.Type,
-                        sameTeam, blocked, _healing, _cards, _transfers, notice.ReceivedTicks, now, _cooldown, out chatId)) continue;
+                        sameTeam, blocked, _healing, _cards, _transfers, notice.ReceivedTicks, now, _cooldown, out chatId, _thankDelay)) continue;
                     if (!Permissions.Require(ModPermission.GameActions, "AutoThanksMod.SendShortChat")) continue;
                     _policy.MarkAttempt(now);
                     var result = gm.communicate.RequestRoomShortChatC2S(chatId);
@@ -117,16 +149,15 @@ namespace AutoThanksMod
                 if (now >= _nextWarning)
                 {
                     _nextWarning = now + 10 * ThanksPolicy.TicksPerSecond;
-                    Log.Warn("自动感谢暂未执行：" + e.Message);
+                    Log.Warn("自动感谢/结算点赞暂未执行：" + e.Message);
                 }
             }
         }
 
-        private static bool IsLiveBattle(GameLogicManager gm)
+        private static bool IsParticipantContext(GameLogicManager gm)
         {
             if (gm?.room?.curRoomInfo == null || gm.account == null || gm.battle == null || gm.communicate == null ||
-                !gm.room.IsInRoom || gm.room.roomController == null ||
-                gm.room.roomController.roomStateType != RoomStateType.RUNNING || !gm.battle.clientFinishReady) return false;
+                !gm.room.IsInRoom || gm.room.roomController == null) return false;
             if (SimpleSingletonProvider<Core.Scene.SceneManager>.inst.currentType.Value != SceneType.Battle) return false;
             if (gm.replay?.Session != null && gm.replay.Session.IsReplay) return false;
             if (gm.watch != null && gm.watch.PlayerIsWatcher()) return false;
@@ -143,6 +174,11 @@ namespace AutoThanksMod
             _transfers = config?.GetBool("thankForTransfers", true) ?? true;
             int cooldown = config?.GetInt("cooldownSeconds", 2) ?? 2;
             _cooldown = cooldown < 0 ? 0 : (cooldown > 30 ? 30 : cooldown);
+            _thankDelay = ThanksPolicy.ClampDelayMilliseconds(config?.GetInt("thankDelayMilliseconds", ThanksPolicy.DefaultDelayMilliseconds)
+                ?? ThanksPolicy.DefaultDelayMilliseconds);
+            _autoLike = config?.GetBool("autoLikeOnGameEnd", true) ?? true;
+            _likeInterval = LikePolicy.ClampIntervalMilliseconds(config?.GetInt("likeIntervalMilliseconds", LikePolicy.DefaultIntervalMilliseconds)
+                ?? LikePolicy.DefaultIntervalMilliseconds);
         }
 
         private void EnsureHooked()
@@ -183,11 +219,15 @@ namespace AutoThanksMod
             }
         }
 
-        private bool TryTake(out Notice notice)
+        private bool TryTakeReady(long nowTicks, out Notice notice)
         {
             lock (_gate)
             {
-                if (_pending.Count == 0) { notice = default(Notice); return false; }
+                notice = default(Notice);
+                // A clock correction must not leave a future-dated head blocking all later notices.
+                while (_pending.Count != 0 && _pending.Peek().ReceivedTicks > nowTicks) _pending.Dequeue();
+                if (_pending.Count == 0 || !ThanksPolicy.IsDelayElapsed(_pending.Peek().ReceivedTicks, nowTicks, _thankDelay))
+                    return false;
                 notice = _pending.Dequeue();
                 return true;
             }
@@ -203,11 +243,18 @@ namespace AutoThanksMod
             _wrapped = null;
         }
 
-        public override void OnUnload()
+        private void ResetSession()
         {
             StopListening();
             _sessionRoom = null;
+            _sessionAccount = 0;
             _policy.Reset();
+            _likes.Reset();
+        }
+
+        public override void OnUnload()
+        {
+            ResetSession();
         }
     }
 }

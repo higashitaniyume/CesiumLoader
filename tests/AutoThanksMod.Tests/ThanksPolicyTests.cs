@@ -11,10 +11,10 @@ namespace AutoThanksMod.Tests
 
         private bool Accept(out int chatId, long sender = 2, long recipient = 1, long account = 1,
             int type = 3, bool sameTeam = true, bool blocked = false, bool healing = true, bool cards = true, bool transfers = true,
-            long now = Now, long received = Now, int cooldown = 2)
+            long now = Now, long received = Now, int cooldown = 2, int delay = 0)
         {
             return _policy.TryGetChatId(sender, recipient, account, type, sameTeam, blocked, healing, cards, transfers,
-                received, now, cooldown, out chatId);
+                received, now, cooldown, out chatId, delay);
         }
 
         [Theory]
@@ -118,6 +118,109 @@ namespace AutoThanksMod.Tests
             Assert.False(Accept(out _, type: 1, recipient: 3));
             Assert.False(Accept(out _, type: 1, sameTeam: false));
             Assert.False(Accept(out _, type: 1, blocked: true));
+        }
+
+        [Theory]
+        [InlineData(-1, 0)]
+        [InlineData(0, 0)]
+        [InlineData(1000, 1000)]
+        [InlineData(3000, 3000)]
+        [InlineData(3001, 3000)]
+        [InlineData(int.MaxValue, 3000)]
+        public void DelayConfigurationIsClamped(int input, int expected)
+        {
+            Assert.Equal(expected, ThanksPolicy.ClampDelayMilliseconds(input));
+            Assert.Equal(1000, ThanksPolicy.DefaultDelayMilliseconds);
+        }
+
+        [Fact]
+        public void QueueDelayCheckUsesTheSameBoundaryWithoutExtendingEventValidity()
+        {
+            Assert.False(ThanksPolicy.IsDelayElapsed(Now, Now - 1, 0));
+            Assert.True(ThanksPolicy.IsDelayElapsed(Now, Now, 0));
+            Assert.True(ThanksPolicy.IsDelayElapsed(Now, Now, int.MinValue));
+            Assert.False(ThanksPolicy.IsDelayElapsed(Now, Now + 9999999, 1000));
+            Assert.True(ThanksPolicy.IsDelayElapsed(Now, Now + 10000000, 1000));
+            Assert.False(ThanksPolicy.IsDelayElapsed(Now, Now + 29999999, int.MaxValue));
+            Assert.True(ThanksPolicy.IsDelayElapsed(Now, Now + 30000000, int.MaxValue));
+            Assert.True(ThanksPolicy.IsDelayElapsed(Now, Now + 6 * ThanksPolicy.TicksPerSecond, 3000));
+            Assert.False(Accept(out _, now: Now + 6 * ThanksPolicy.TicksPerSecond, delay: 3000));
+        }
+
+        [Fact]
+        public void LegacyCallWithoutDelayStillThanksImmediately()
+        {
+            Assert.True(_policy.TryGetChatId(2, 1, 1, 3, true, false, true, true, true,
+                Now, Now, 2, out int id));
+            Assert.Equal(50001, id);
+        }
+
+        [Theory]
+        [InlineData(1)]
+        [InlineData(1000)]
+        [InlineData(3000)]
+        [InlineData(int.MaxValue)]
+        public void NotificationMustReachTheExactDelayBoundary(int delay)
+        {
+            long boundary = Now + ThanksPolicy.ClampDelayMilliseconds(delay) * 10000L;
+            Assert.False(Accept(out int id, now: boundary - 1, delay: delay));
+            Assert.Equal(0, id);
+            Assert.True(Accept(out id, now: boundary, delay: delay));
+            Assert.Equal(50001, id);
+            Assert.True(Accept(out _, now: boundary + 1, delay: delay));
+        }
+
+        [Fact]
+        public void ZeroAndNegativeDelaysAreImmediateButFutureNotificationsRemainInvalid()
+        {
+            Assert.True(Accept(out _, delay: 0));
+            Assert.True(Accept(out _, delay: int.MinValue));
+            Assert.False(Accept(out _, delay: int.MinValue, received: Now + 1));
+        }
+
+        [Theory]
+        [InlineData(1000, 2, 20000000)]
+        [InlineData(3000, 1, 30000000)]
+        [InlineData(3000, 0, 30000000)]
+        public void DelayAndCooldownMustBothExpire(int delay, int cooldown, long elapsed)
+        {
+            _policy.MarkAttempt(Now);
+            Assert.False(Accept(out _, now: Now + elapsed - 1, delay: delay, cooldown: cooldown));
+            Assert.True(Accept(out _, now: Now + elapsed, delay: delay, cooldown: cooldown));
+        }
+
+        [Fact]
+        public void DelayStartsAtNotificationReceiptRatherThanPreviousAttempt()
+        {
+            _policy.MarkAttempt(Now - 10 * ThanksPolicy.TicksPerSecond);
+            Assert.False(Accept(out _, now: Now + 9999999, delay: 1000));
+            Assert.True(Accept(out _, now: Now + ThanksPolicy.TicksPerSecond, delay: 1000));
+        }
+
+        [Fact]
+        public void MaximumDelayDoesNotExtendNotificationLifetime()
+        {
+            Assert.True(Accept(out _, now: Now + 3 * ThanksPolicy.TicksPerSecond, delay: 3000));
+            Assert.True(Accept(out _, now: Now + 5 * ThanksPolicy.TicksPerSecond, delay: 3000));
+            Assert.False(Accept(out int id, now: Now + 5 * ThanksPolicy.TicksPerSecond + 1, delay: 3000));
+            Assert.Equal(0, id);
+        }
+
+        [Fact]
+        public void ResetClearsCooldownButStillHonorsNotificationDelay()
+        {
+            _policy.MarkAttempt(Now);
+            _policy.Reset();
+            Assert.False(Accept(out _, now: Now + 9999999, delay: 1000, cooldown: 30));
+            Assert.True(Accept(out _, now: Now + ThanksPolicy.TicksPerSecond, delay: 1000, cooldown: 30));
+        }
+
+        [Fact]
+        public void WaitingForDelayDoesNotReserveAnAttempt()
+        {
+            Assert.False(Accept(out _, now: Now + 9999999, delay: 1000));
+            Assert.True(Accept(out _, now: Now + ThanksPolicy.TicksPerSecond, delay: 1000));
+            Assert.True(Accept(out _, type: 2, now: Now + ThanksPolicy.TicksPerSecond, delay: 1000));
         }
 
         [Fact]

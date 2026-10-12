@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <Nullable>disable</Nullable>
+    <NuGetAudit>false</NuGetAudit>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <Compile Include="../../mods/AutoThanksMod/SettlementLikes.cs" Link="Product/SettlementLikes.cs" />
+    <Compile Include="../../mods/AutoThanksMod/LikePolicy.cs" Link="Product/LikePolicy.cs" />
+    <Compile Include="../../mods/AutoThanksMod/ThanksPolicy.cs" Link="Product/ThanksPolicy.cs" />
+    <Compile Include="../../../../decomp/_full/FairyGUI/EventBridge.cs" Link="Game/EventBridge.cs" />
+    <Compile Include="../../../../decomp/_full/FairyGUI/EventListener.cs" Link="Game/EventListener.cs" />
+    <AssemblyMetadata Include="RuntimeAssemblyPath" Value="$(MSBuildProjectDirectory)/../../../../extracted_dlls/AstralParty.Runtime.dll" />
+  </ItemGroup>
+</Project>

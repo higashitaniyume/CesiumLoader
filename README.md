@@ -2,7 +2,7 @@
 
 Astral Party (Steam appid 2622000, Unity 2021.3.45f2 IL2CPP + HybridCLR) 的 Mod 加载器与 SDK。
 
-新增内置模组 [自动感谢 AutoThanksMod](docs/mod-AutoThanksMod.md)：队友治疗你、给你牌或转星币给你时自动发送原版「感谢！」快捷回复，支持独立开关与真实时间冷却。
+内置模组 [自动感谢 AutoThanksMod](docs/mod-AutoThanksMod.md)（1.1.0）：队友治疗你、给你牌或转星币给你后，默认等待 1 秒发送原版「感谢！」，延迟最多可配置 3 秒；结算后自动点赞其他真人，默认逐人间隔 500ms，可自定义。支持独立开关与真实时间冷却，回放与观战不发送。
 
 全部代码收在一个 Visual Studio 2022 解决方案里，按职责分成三个顶层目录：
 **`loader/`(加载器本体与 SDK)、`mods/`(随加载器分发的 mod)、`mcp/`(供 AI agent 接管对局的 MCP)**。
@@ -22,7 +22,7 @@ CesiumLoader.sln
 │   ├── CombatOddsMod\               内置 mod (战斗胜率助手)
 │   ├── HandViewerMod\               内置 mod (手牌查看助手)
 │   ├── CardSkinMod\                 内置 mod (手牌与卡面自定义皮肤)
-│   ├── AutoThanksMod\               内置 mod (队友治疗/给牌时自动感谢)
+│   ├── AutoThanksMod\               内置 mod (队友帮助后延迟感谢 / 结算逐人点赞)
 │   ├── CameraProbeMod\              相机探针
 │   ├── DiagnosticsMod\              诊断导出
 │   └── ExtremeDifficultyMod\        极限难度 (未列入 sln)
@@ -47,6 +47,12 @@ CesiumLoader.sln
     ├── deploy-agentmod.ps1         部署 AI 接管桥接 mod + MCP server (可选安装, 不进 builtin-mods.json)
     └── smoke-speedctl.ps1          跑变速控制文件通道冒烟测试
 ```
+
+## 2.4.4：感谢延迟与结算自动点赞
+
+[AutoThanksMod](docs/mod-AutoThanksMod.md) 更新至 1.1.0：感谢延迟默认 1000ms、上限 3000ms；结算自动点赞默认开启，逐人间隔默认 500ms，可配置 100–30000ms。保留原版点赞动画、按钮锁定与成功聊天反馈，处理 PVP 赢家页和四人页的手动点赞去重。回放、观战和退出对局不发送。
+
+加载器、SDK 和 CLI 版本同步为 2.4.4。通过 Release 构建与 110 项自动感谢离线测试，分发 DLL/PDB 同次构建并校验匹配；服务器接受及 HybridCLR 运行效果仍需真机对局验证。
 
 ## 2.4.2：自动感谢与手牌按需查询
 

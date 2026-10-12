@@ -4,18 +4,31 @@ namespace AutoThanksMod
     internal sealed class ThanksPolicy
     {
         internal const long TicksPerSecond = 10000000;
+        internal const int DefaultDelayMilliseconds = 1000;
+
+        internal static int ClampDelayMilliseconds(int delayMilliseconds)
+        {
+            if (delayMilliseconds < 0) return 0;
+            if (delayMilliseconds > 3000) return 3000;
+            return delayMilliseconds;
+        }
+        internal static bool IsDelayElapsed(long receivedTicks, long nowTicks, int delayMilliseconds)
+        {
+            return nowTicks - receivedTicks >= ClampDelayMilliseconds(delayMilliseconds) * (TicksPerSecond / 1000);
+        }
+
         private long _lastAttempt;
         private bool _hasAttempt;
 
         internal bool TryGetChatId(long sender, long recipient, long accountId, int triggerType,
             bool sameTeam, bool blocked, bool healingEnabled, bool cardsEnabled, bool transfersEnabled,
-            long receivedTicks, long nowTicks, int cooldownSeconds, out int chatId)
+            long receivedTicks, long nowTicks, int cooldownSeconds, out int chatId, int delayMilliseconds = 0)
         {
             chatId = 0;
             if (accountId == 0 || recipient != accountId || sender == 0 || sender == accountId ||
                 !sameTeam || blocked) return false;
             long age = nowTicks - receivedTicks;
-            if (age < 0 || age > 5 * TicksPerSecond) return false;
+            if (!IsDelayElapsed(receivedTicks, nowTicks, delayMilliseconds) || age > 5 * TicksPerSecond) return false;
             int candidate;
             if (triggerType == 3 && healingEnabled) candidate = 50001; // TriggerPhrase.CureFriend
             else if (triggerType == 2 && cardsEnabled) candidate = 50002; // TriggerPhrase.GiveCard
