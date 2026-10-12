@@ -15,7 +15,7 @@ namespace CombatOddsMod
     /// <summary>在棋盘角色头顶显示实时攻防, 悬停时显示属性说明。</summary>
     internal sealed class PlayerAttrOverlay
     {
-        private const float HeadGap = 8f;
+        private const float HeadGap = 2f;
         private const int TipSortingOrder = 30000;
         private const int FontSize = 28;
         private const int TipFontSize = 22;
@@ -273,8 +273,9 @@ namespace CombatOddsMod
                 foreach (var entry in _entries.Values)
                 {
                     if (entry.Box == null || !entry.Box.visible) continue;
-                    var p = entry.Box.LocalToGlobal(Vector2.zero);
-                    if (point.x >= p.x && point.x <= p.x + entry.Box.width && point.y >= p.y && point.y <= p.y + entry.Box.height)
+                    // 在控件局部坐标里命中检测，由 FairyGUI 统一处理根节点和父容器缩放。
+                    var p = entry.Box.GlobalToLocal(point);
+                    if (p.x >= 0f && p.x <= entry.Box.width && p.y >= 0f && p.y <= entry.Box.height)
                     { hit = entry; break; }
                 }
                 if (hit != null) ShowTip(hit);
@@ -296,10 +297,8 @@ namespace CombatOddsMod
                 var raw = _mousePosition?.GetValue(null);
                 if (raw is Vector3 p)
                 {
-                    var point = new Vector2(p.x, Screen.height - p.y);
-                    float scale = GRoot.contentScaleFactor;
-                    if (scale > 0 && (scale < 0.999f || scale > 1.001f)) { point.x /= scale; point.y /= scale; }
-                    return point;
+                    // GlobalToLocal 接收 Stage 全局坐标；这里只翻转 Y，不预先除 UI 缩放。
+                    return new Vector2(p.x, Screen.height - p.y);
                 }
             }
             catch { }
