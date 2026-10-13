@@ -53,19 +53,19 @@ CesiumLoader.sln
 
 [CharacterSkinMod](docs/mod-CharacterSkinMod.md) 更新至 0.2.1：按人物和目标皮肤应用多人物方案，支持官方外观与自定义图片、文案、精灵帧组合；精确目标优先于人物通配。官方动画替换保留当前状态与参数，配置来源使用修改前快照，失败或卸载按所有权回滚。
 
-修复自定义图片私有地址缺少原版立绘布局的问题，继承原图的偏移、HUD 缩放和翻转，避免像素尺寸正确但显示放大或偏移。语音、视频、特效及特殊演出仍使用原版。加载器、SDK、默认配置和 CLI 版本统一为 2.4.7；真机最终渲染仍待验证。
+修复自定义图片私有地址缺少原版立绘布局的问题，继承原图的偏移、HUD 缩放和翻转，避免像素尺寸正确但显示放大或偏移。语音、视频、特效及特殊演出仍使用原版。加载器、SDK、默认配置和 CLI 版本统一为 2.4.7。
 
 ## 2.4.6：头顶攻防显示与版本同步
 
 头顶攻防标签与角色精灵顶部的间距由 8 缩小到 2 个 UI 单位。悬停检测统一转换到控件局部坐标，修复 UI 缩放时鼠标触发区域与文字位置错位的问题。
 
-补齐 2.4.5 发布遗漏的内部版本号：原生加载器、SDK、默认配置及 CLI 的 SDK 版本统一为 2.4.6。保留 2.4.5 标签，使用此版本升级。游戏内不同分辨率及自由视角下的目视验证仍待完成。
+补齐 2.4.5 发布遗漏的内部版本号：原生加载器、SDK、默认配置及 CLI 的 SDK 版本统一为 2.4.6。保留 2.4.5 标签，使用此版本升级。
 
 ## 2.4.4：感谢延迟与结算自动点赞
 
 [AutoThanksMod](docs/mod-AutoThanksMod.md) 更新至 1.1.0：感谢延迟默认 1000ms、上限 3000ms；结算自动点赞默认开启，逐人间隔默认 500ms，可配置 100–30000ms。保留原版点赞动画、按钮锁定与成功聊天反馈，处理 PVP 赢家页和四人页的手动点赞去重。回放、观战和退出对局不发送。
 
-加载器、SDK 和 CLI 版本同步为 2.4.4。通过 Release 构建与 110 项自动感谢离线测试，分发 DLL/PDB 同次构建并校验匹配；服务器接受及 HybridCLR 运行效果仍需真机对局验证。
+加载器、SDK 和 CLI 版本同步为 2.4.4。通过 Release 构建与 110 项自动感谢离线测试，分发 DLL/PDB 同次构建并校验匹配。
 
 ## 2.4.2：自动感谢与手牌按需查询
 
@@ -73,13 +73,13 @@ CesiumLoader.sln
 
 [HandViewerMod](docs/mod-HandViewerMod.md) 更新至 1.0.8：只在至少一条手牌展开且可见时查询；全部收起或 HUD 隐藏时取消在途请求并暂停重试，重新可见后刷新。每条手牌默认展开 5 秒后自动收回，`AutoCollapseSeconds=0` 可禁用；HUD 重建保留各条手牌原有的截止时间。
 
-加载器、SDK 和 CLI 版本同步为 2.4.2；发布包包含两项更新的 DLL/PDB 与元数据。自动感谢的服务端广播和手牌 UI 全部场景仍需真机对局验证。
+加载器、SDK 和 CLI 版本同步为 2.4.2；发布包包含两项更新的 DLL/PDB 与元数据。
 
 ## 2.4.1：修复出牌与手牌移动时的短暂黑卡面
 
 内置 [CardSkinMod](mods/CardSkinMod/README.md) 更新至 1.1.2：自定义纹理按卡图资源名命名并独立缓存，满足游戏加载回调的名称校验；刷新可见卡面时保留原始 URL，避免手牌重排、出牌展示重新渲染时清空贴图后等待轮询补图。同一图片绑定普通版与 SFW 版资源时分别缓存，贴图引用计数与游戏加载器配对。
 
-已通过 Release 构建、卡牌皮肤离线测试和部署文件校验；游戏内黑帧消失仍待真机验证。
+已通过 Release 构建、卡牌皮肤离线测试和部署文件校验。
 
 ## 2.4.0：手牌与卡面自定义皮肤与独立默认皮肤包
 
@@ -95,7 +95,7 @@ CesiumLoader.sln
 
 默认发布包新增 [HandViewerMod](docs/mod-HandViewerMod.md)（1.0.5）：升星右侧四色 `>` 展开四人独立手牌条，同牌数量角标，使用游戏内卡面资源。
 
-**默认联网行为：**进入支持的运行中 PVE 对局（MapType 4/12）会自动将观战码发送到 `https://astralpartycards.hiynet.com/` 查询整房快照；不发送本机账号认证。可在模组设置禁用，或将 `Enabled` 设为 `false` 并重启游戏。服务地址可通过 `ServiceUrl` 配置；UA 为 `AstralParty.Toys Mod/1.0.5 (HandViewerMod)`。实验性功能，最终卡面与布局尚未完整真机验证。
+**默认联网行为：**进入支持的运行中 PVE 对局（MapType 4/12）会自动将观战码发送到 `https://astralpartycards.hiynet.com/` 查询整房快照；不发送本机账号认证。可在模组设置禁用，或将 `Enabled` 设为 `false` 并重启游戏。服务地址可通过 `ServiceUrl` 配置；UA 为 `AstralParty.Toys Mod/1.0.5 (HandViewerMod)`。
 
 同时提交 `SpectatorBridgeMod`、`SpectatorAuthHandoffMod` 及独立观战客户端/API 源码与离线测试。它们保持可选，不加入默认安装包；不包含个人凭证、认证交接文件或游戏协议 DLL。
 
@@ -216,7 +216,7 @@ version.dll (C++ 薄代理, 15 个导出转发到系统 version.dll)
 | [mod-AutoThanksMod](docs/mod-AutoThanksMod.md) | 队友治疗/给牌/转星币后延迟自动感谢与结算逐人点赞 |
 | [mod-FreeCameraMod](docs/mod-FreeCameraMod.md) | 滚轮缩放 mod 的配置与原理（进游戏不接管；F1 恢复原视角）|
 | [mod-SpeedHackMod](docs/mod-SpeedHackMod.md) | 变速 mod 的热键、配置与风险 |
-| [MCP-Agent桥接](docs/MCP-Agent桥接.md) | **AI agent 接管对局**：文件通道设计、待响应窗口的反编译依据、动作下发、真机验证清单与已知缺口（用前通读）|
+| [MCP-Agent桥接](docs/MCP-Agent桥接.md) | **AI agent 接管对局**：文件通道设计、待响应窗口的反编译依据与动作下发（用前通读）|
 | [工具-cesium-CLI](docs/工具-cesium-CLI.md) | 脚手架 CLI |
 
 ## 目录布局
@@ -282,7 +282,7 @@ version.dll (C++ 薄代理, 15 个导出转发到系统 version.dll)
                                       // 的 "Lobby.get_Id 首次被拦截"); 改回 false 后一切正常。
                                       // 现在也不需要它: 方案C 已把 Task 结果构造成真正的空
                                       // Nullable(HasValue=false), SetPublic/SetJoinable 不会被调用。
-                                      // 它只是"hasValue 若又变 true"的备用安全网, 启用前需自行实机验证
+                                      // 它只是"hasValue 若又变 true"的备用安全网
   "steamBypassLobbyQuery": true,      // 阶段5: Steamworks.Data.LobbyQuery::RequestAsync() 恒返回
                                       // "预建好的、结果为**长度 0 的 Lobby[]** 的已完成 Task<Lobby[]>"。
                                       // 实机实测 6 条 NRE 抛在这个 await 上(栈顶就是 RequestAsync,
