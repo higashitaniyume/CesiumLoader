@@ -19,10 +19,34 @@ namespace CardSkinMod
                 if (!IsProtectedAsset(entry.Key)) _assets[entry.Key] = entry.Value;
         }
 
+        private readonly Dictionary<string, CardAnimation> _animations = new Dictionary<string, CardAnimation>(StringComparer.OrdinalIgnoreCase);
+        public bool TryGetAnimation(string key, out CardAnimation animation)
+        {
+            animation = null;
+            return !string.IsNullOrEmpty(key) && _animations.TryGetValue(key, out animation);
+        }
+        private readonly HashSet<string> _alternateAnimations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        public bool IsAlternateAnimation(string key) => !string.IsNullOrEmpty(key) && _alternateAnimations.Contains(key);
+        public void RegisterAlternate(int id, params string[] keys)
+        {
+            foreach (string key in keys)
+                if (!string.IsNullOrEmpty(key) && (_model.TryGetExactAnimation(key, out var animation)
+                    || _model.TryGetExactAnimation(id.ToString(), out animation)
+                    || _model.TryGetExactAnimation("UT_Item_AltArt_" + id, out animation)
+                    || _model.TryGetExactAnimation("UT_IAltArt_" + id, out animation)))
+                { _animations[key] = animation; _alternateAnimations.Add(key); }
+        }
         public IReadOnlyDictionary<string, string> AssetFiles => _assets;
 
         public void Register(int id, string name, string image, string imageSfw = null)
         {
+            bool hasAnimation = _model.TryGetAnimationForCard(id, name, image, out var animation);
+            if (hasAnimation && !string.IsNullOrEmpty(image)) _animations[image] = animation;
+            if (!string.IsNullOrEmpty(imageSfw))
+            {
+                if (_model.TryGetExactAnimation(imageSfw, out var sfwAnimation)) _animations[imageSfw] = sfwAnimation;
+                else if (hasAnimation) _animations[imageSfw] = animation;
+            }
             if (!_model.TryGetSkinForCard(id, name, image, out var file)) return;
             Bind(image, file);
             if (!string.IsNullOrEmpty(imageSfw))

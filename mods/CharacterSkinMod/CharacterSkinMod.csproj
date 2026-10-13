@@ -11,6 +11,7 @@
 <Compile Include="../../shared/CharacterSkins/CharacterSkinManifest.cs" Link="CharacterSkinManifest.cs" />
 <Compile Include="../../shared/CharacterSkins/CharacterSkinScheme.cs" Link="CharacterSkinScheme.cs" />
 <Compile Include="../CardSkinMod/CardTextureLoader.cs" Link="CardTextureLoader.cs" />
+<Compile Include="../CardSkinMod/CardAnimation.cs" Link="CardAnimation.cs" />
 <Compile Include="../CharacterProbeMod/ProbeReflection.cs" Link="ProbeReflection.cs" />
 <None Update="CharacterSkinMod.json" CopyToOutputDirectory="PreserveNewest" />
 </ItemGroup></Project>

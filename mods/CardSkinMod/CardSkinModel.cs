@@ -41,6 +41,24 @@ namespace CardSkinMod
         private readonly Dictionary<string, string> _cardNameToPath = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, string> _assetKeyToPath = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
+        private readonly Dictionary<string, CardAnimation> _animations = new Dictionary<string, CardAnimation>(StringComparer.OrdinalIgnoreCase);
+        public int AnimationCount => _animations.Count;
+        public bool TryGetExactAnimation(string key, out CardAnimation animation)
+        {
+            animation = null;
+            return !string.IsNullOrEmpty(key) && _animations.TryGetValue(key, out animation);
+        }
+        public bool TryGetAnimationForCard(int id, string name, string asset, out CardAnimation animation)
+        {
+            return TryGetExactAnimation(asset, out animation)
+                || TryGetExactAnimation(id.ToString(), out animation)
+                || TryGetExactAnimation("UT_HandCard_" + id, out animation)
+                || TryGetExactAnimation("UT_Event_" + id, out animation)
+                || TryGetExactAnimation("UT_Destiny_" + id, out animation)
+                || TryGetExactAnimation("UT_MapEvent_" + id, out animation)
+                || TryGetExactAnimation(name, out animation);
+        }
+
         public string SkinName { get; private set; } = "";
         public string DirectoryPath { get; private set; } = "";
         public SkinMetadata Metadata { get; private set; } = new SkinMetadata();
@@ -51,6 +69,7 @@ namespace CardSkinMod
         /// </summary>
         public bool LoadSkinDirectory(string skinDir, string skinName = null)
         {
+            _animations.Clear();
             _cardIdToPath.Clear();
             _cardNameToPath.Clear();
             _assetKeyToPath.Clear();
@@ -75,6 +94,12 @@ namespace CardSkinMod
             foreach (var file in files)
             {
                 string ext = Path.GetExtension(file);
+                if (string.Equals(ext, ".cardanim", StringComparison.OrdinalIgnoreCase))
+                {
+                    string binding = Path.GetFileNameWithoutExtension(file);
+                    if (binding.Length > 0 && CardAnimation.TryLoad(file, out var animation)) _animations[binding] = animation;
+                    continue;
+                }
                 if (!SupportedExtensions.Contains(ext)) continue;
 
                 string baseName = Path.GetFileNameWithoutExtension(file).Trim();

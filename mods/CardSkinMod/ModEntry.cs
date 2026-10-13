@@ -9,14 +9,14 @@ using GameLogic;
 using party.model;
 
 [assembly: ModManifest("手牌卡面皮肤", CardSkinMod.ModEntry.ModVersion, "CesiumLoader",
-    "自定义手牌、事件、命运、地图事件及图鉴卡面，支持素材名、ID和中文名，静态和视频异画保留原版，未指定卡面保留原版",
+    "自定义手牌、事件、命运、地图事件及图鉴卡面，支持素材名、ID和中文名，支持序列帧动态卡面与显式动态异画，静态异画及未指定卡面保留原版",
     Permissions = ModPermission.ReadGameState | ModPermission.UI, SdkVersion = "2.3.2")]
 
 namespace CardSkinMod
 {
     public sealed class ModEntry : ModBase
     {
-        public const string ModVersion = "1.1.2";
+        public const string ModVersion = "1.2.0";
 
         public override string Name => "手牌卡面皮肤";
         public override string Version => ModVersion;
@@ -29,7 +29,6 @@ namespace CardSkinMod
         private string _activeSkin = "default";
         private bool _forceFullCard = true;
 
-        private long _nextPoll;
         private long _nextCachePoll;
 
         public static void Main()
@@ -96,8 +95,6 @@ namespace CardSkinMod
             if (!_enabled || _applier == null) return;
 
             long now = DateTime.UtcNow.Ticks / 10000;
-            if (now < _nextPoll) return;
-            _nextPoll = now + 200; // 每 200ms 检测一次
 
             try
             {
