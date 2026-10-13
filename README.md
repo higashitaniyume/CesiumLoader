@@ -2,7 +2,7 @@
 
 Astral Party (Steam appid 2622000, Unity 2021.3.45f2 IL2CPP + HybridCLR) 的 Mod 加载器与 SDK。
 
-内置模组 [自动感谢 AutoThanksMod](docs/mod-AutoThanksMod.md)（1.1.0）：队友治疗你、给你牌或转星币给你后，默认等待 1 秒发送原版「感谢！」，延迟最多可配置 3 秒；结算后自动点赞其他真人，默认逐人间隔 500ms，可自定义。支持独立开关与真实时间冷却，回放与观战不发送。
+推荐使用配套桌面工具箱 [AstralParty.Toys](https://github.com/higashitaniyume/AstralParty.Toys)（`winget install Hiynet.AstralParty.Toys`）一键安装、更新、配置加载器与 8 个内置模组（[角色皮肤 CharacterSkinMod](docs/mod-CharacterSkinMod.md)、[卡面皮肤 CardSkinMod](mods/CardSkinMod/README.md)、[看手牌 HandViewerMod](docs/mod-HandViewerMod.md)、[自动感谢 AutoThanksMod](docs/mod-AutoThanksMod.md)、胜率助手 CombatOddsMod、自由相机 FreeCameraMod、变速热键 SpeedHackMod、行为日志 ActivityLogMod）。
 
 全部代码收在一个 Visual Studio 2022 解决方案里，按职责分成三个顶层目录：
 **`loader/`(加载器本体与 SDK)、`mods/`(随加载器分发的 mod)、`mcp/`(供 AI agent 接管对局的 MCP)**。
@@ -22,6 +22,7 @@ CesiumLoader.sln
 │   ├── CombatOddsMod\               内置 mod (战斗胜率助手)
 │   ├── HandViewerMod\               内置 mod (手牌查看助手)
 │   ├── CardSkinMod\                 内置 mod (手牌与卡面自定义皮肤)
+│   ├── CharacterSkinMod\            内置 mod (角色外观 / 多人物皮肤方案与精灵动画替换)
 │   ├── AutoThanksMod\               内置 mod (队友帮助后延迟感谢 / 结算逐人点赞)
 │   ├── CameraProbeMod\              相机探针
 │   ├── DiagnosticsMod\              诊断导出
@@ -176,7 +177,7 @@ version.dll (C++ 薄代理, 15 个导出转发到系统 version.dll)
 |---|---|
 | **Mod 能力声明 + 警告** | mod 在 `[ModManifest(Permissions=...)]` 声明会用到的能力（读对局/操作游戏/写文件），sidecar 同步导出。已取消权限门控：任何 mod 都能调用 SDK 全部 API；声明「操作游戏」的 mod 在加载时与工具列表里显示 ⚠️ 警告（仅提示来源可信，不阻止） |
 | **模组元数据标准 + 依赖解析** | `mods\{ModId}\{ModId}.json` sidecar（id/版本/能力/SDK 版本/依赖，与 DLL 同文件夹）；加载器按依赖**拓扑排序**加载，缺失依赖/版本不符/循环依赖的 mod 被跳过并报告（`modmeta.cpp` 纯标准库，可单测） |
-| **API 版本协商** | SDK 声明版本 `2.3.2`；mod 声明 `SdkVersion`，要求高于当前的 mod 被拒绝加载。`doorstop_config.json` 的 `sdkVersion` 声明当前版本 |
+| **API 版本协商** | SDK 声明版本 `2.4.7`；mod 声明 `SdkVersion`，要求高于当前的 mod 被拒绝加载。`doorstop_config.json` 的 `sdkVersion` 声明当前版本 |
 | **事件驱动化** | `GameEvents.StartAutoHook()` 内部每 1 秒维持 RPC 挂钩，mod 无需每秒轮询；`ModBase.Run` 不传 tick 则不空转 |
 | **IL2CPP 互操作安全封装** | `il2cpp_safe.h` 收敛全部互操作点：函数指针空检查、参数/返回值校验、托管异常转译成可读错误，防止原生崩溃拖垮游戏 |
 | **调试与故障体验** | mod 入口异常写 `logs\mod-errors-<会话>.log`（SDK `SdkLog.ReportCrash` + 原生 `write_mod_error` 双写）；`cesium verify` 离线预检兼容性；**每次启动一套日志文件**（引导/activity/错误三个文件共用会话标识 `<yyyyMMdd>-<HHmmss>-<pid>`） |
@@ -209,9 +210,13 @@ version.dll (C++ 薄代理, 15 个导出转发到系统 version.dll)
 | [SDK-Unity调用与ECall隔离](docs/SDK-Unity调用与ECall隔离.md) | **改 SDK 前必读**：ECall 机制与隔离约定 |
 | [平台约束-第三方库与AOT裁剪](docs/平台约束-第三方库与AOT裁剪.md) | **引第三方库前必读**：托管第三方库为何加载不起来、游戏内置 Newtonsoft 的裁剪面、存在性权威判定方法 |
 | [steam-bypass](docs/steam-bypass.md) | **脱离 Steam 运行**：加载器原生绕过（6 hook）的四阶段原理、配置全表、已验证测试矩阵、已知损失与回退方法 |
+| [mod-CharacterSkinMod](docs/mod-CharacterSkinMod.md) | 角色外观、多人物皮肤方案与精灵动画替换 |
+| [CardSkinMod](mods/CardSkinMod/README.md) | 手牌、事件卡、命运卡及图鉴自定义卡面皮肤 |
+| [mod-HandViewerMod](docs/mod-HandViewerMod.md) | 四人手牌条展开、单双排切换与按需查询 |
+| [mod-AutoThanksMod](docs/mod-AutoThanksMod.md) | 队友治疗/给牌/转星币后延迟自动感谢与结算逐人点赞 |
 | [mod-FreeCameraMod](docs/mod-FreeCameraMod.md) | 滚轮缩放 mod 的配置与原理（进游戏不接管；F1 恢复原视角）|
-| [MCP-Agent桥接](docs/MCP-Agent桥接.md) | **AI agent 接管对局**：文件通道设计、待响应窗口的反编译依据、动作下发、真机验证清单与已知缺口（用前通读）|
 | [mod-SpeedHackMod](docs/mod-SpeedHackMod.md) | 变速 mod 的热键、配置与风险 |
+| [MCP-Agent桥接](docs/MCP-Agent桥接.md) | **AI agent 接管对局**：文件通道设计、待响应窗口的反编译依据、动作下发、真机验证清单与已知缺口（用前通读）|
 | [工具-cesium-CLI](docs/工具-cesium-CLI.md) | 脚手架 CLI |
 
 ## 目录布局
@@ -289,7 +294,7 @@ version.dll (C++ 薄代理, 15 个导出转发到系统 version.dll)
                                       // / :567-573 正常执行。全游戏只有这 2 处调用(:384/:554), 影响面为零。
                                       // **独立开关**: 与上面几个 steamBypass* 互不影响。
                                       // false = 恢复原版行为(退房/解散/被踢时 await 之后仍被跳过)
-  "sdkVersion": "2.3.2"               // 当前 SDK 版本(校验 mod 的 SdkVersion)
+  "sdkVersion": "2.4.7"               // 当前 SDK 版本(校验 mod 的 SdkVersion)
 }
 ```
 
@@ -324,9 +329,7 @@ pwsh -NoProfile -File tools\package-modloader.ps1
 - `bin\Release\version.dll` — C++ 加载器 (Doorstop 代理 + 变速引擎)
 - `loader\CesiumLoader.Bootstrap\bin\Release\netstandard2.0\CesiumLoader.Bootstrap.dll`
 - `loader\CesiumLoader.SDK\bin\Release\netstandard2.0\CesiumLoader.SDK.dll`
-- `mods\ActivityLogMod\bin\Release\netstandard2.0\ActivityLogMod.dll` — 内置 mod (行为日志)
-- `mods\FreeCameraMod\bin\Release\netstandard2.0\FreeCameraMod.dll` — 内置 mod (自由相机: 滚轮缩放)
-- `mods\SpeedHackMod\bin\Release\netstandard2.0\SpeedHackMod.dll` — 内置 mod (变速热键)
+- `mods\{ModId}\bin\Release\netstandard2.0\{ModId}.dll` — 8 个内置 mod（`ActivityLogMod` / `FreeCameraMod` / `SpeedHackMod` / `CombatOddsMod` / `HandViewerMod` / `CardSkinMod` / `CharacterSkinMod` / `AutoThanksMod`）
 - `tools\cesium\bin\Release\net8.0\cesium.exe` — mod 脚手架与包分发 CLI
 
 每个 dll 旁边还有同名 `.pdb` 符号（同一次构建产出，`package-modloader.ps1` 会成对复制并一起打包）。
@@ -379,7 +382,7 @@ dotnet run --project tools\cesium -c Release -- package MyMod -o MyMod-1.0.0.zip
 ```csharp
 [assembly: CesiumLoader.SDK.ModManifest("我的Mod", "1.0.0", "小明", "描述",
     Permissions = CesiumLoader.SDK.ModPermission.ReadGameState,  // 声明会用到的能力(仅展示/警告)
-    SdkVersion = "2.3.0")]                                        // API 版本协商
+    SdkVersion = "2.4.7")]                                        // API 版本协商
 ```
 
 **入口 (纯事件驱动, 无轮询):**
@@ -438,8 +441,8 @@ SDK API 一览:
 但要保证 SDK / mods / dist / 文档里的 `2.x.y` 字符串彼此一致：
 
 ```
-git tag modloader-2.3.2
-git push origin modloader-2.3.2
+git tag modloader-2.4.7
+git push origin modloader-2.4.7
 ```
 
 `release-modloader.yml` 会:
@@ -454,17 +457,18 @@ git push origin modloader-2.3.2
 5. 组装 SDK 工具包 (cesium.exe + SDK DLL + SDK 符号 + 文档 + 示例源码)
 
 产物 (Release 资产):
-- `cesium-loader-2.3.2.zip` — 加载器部署包 (带版本号; 含各 dll 的同名 .pdb 符号,
+- `cesium-loader-2.4.7.zip` — 加载器部署包 (带版本号; 含各 dll 的同名 .pdb 符号,
   体积几乎全来自原生 `version.pdb`)
 - `cesium-loader.zip` — 固定名, 供 `releases/latest/download/cesium-loader.zip` 使用
-- `cesium-sdk-tools-2.3.2.zip` — SDK 工具包 (带版本号)
+- `cesium-sdk-tools-2.4.7.zip` — SDK 工具包 (带版本号)
 - `cesium-sdk-tools.zip` — 固定名, 供 `releases/latest/download/cesium-sdk-tools.zip` 使用
+- `cesium-default-skins.zip` — 独立默认卡牌皮肤包（解压至游戏目录即可使用默认卡面方案）
 
 > 🔎 **为什么要带 `.pdb`**: 用户端崩溃给出的只是地址(或一个没有行号的栈), 有符号才能还原到
 > 具体文件行号 —— mod 的异常栈尤其需要。符号与 dll 是**强绑定**的(PDB 里存着 dll 的 GUID),
 > 因此只能"同一次构建产出的那一对"配套发布, 删掉 `.pdb` 不影响加载器与 mod 运行。
 
-AstralParty.Toys 的 Mod 管理功能从这个 URL 下载安装:
+AstralParty.Toys（可通过 `winget install Hiynet.AstralParty.Toys` 或 GitHub Releases 安装）的 Mod 管理功能从这个 URL 下载安装:
 `https://github.com/higashitaniyume/CesiumLoader/releases/latest/download/cesium-loader.zip`
 
 mod 开发者从这个 URL 下载 SDK 工具包:
