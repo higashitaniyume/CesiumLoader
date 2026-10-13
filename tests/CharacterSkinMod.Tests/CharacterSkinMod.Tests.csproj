@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net8.0</TargetFramework><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings><IsPackable>false</IsPackable></PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <ProjectReference Include="../../loader/CesiumLoader.SDK/CesiumLoader.SDK.csproj" />
+    <Compile Include="../../mods/CharacterSkinMod/SchemeRuntimePlan.cs" Link="SchemeRuntimePlan.cs" />
+    <Compile Include="../../mods/CharacterSkinMod/SkinLayoutAliases.cs" Link="SkinLayoutAliases.cs" />
+    <Reference Include="AstralParty.Runtime"><HintPath>../../../../extracted_dlls/AstralParty.Runtime.dll</HintPath></Reference>
+    <Reference Include="Google.Protobuf.Runtime"><HintPath>../../../../extracted_dlls/Google.Protobuf.Runtime.dll</HintPath></Reference>
+    <Compile Include="../../shared/CharacterSkins/CharacterSkinManifest.cs" Link="CharacterSkinManifest.cs" />
+    <Compile Include="../../shared/CharacterSkins/CharacterSkinScheme.cs" Link="CharacterSkinScheme.cs" />
+  </ItemGroup>
+</Project>
