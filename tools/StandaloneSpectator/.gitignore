@@ -1,4 +1,0 @@
-bin/
-obj/
-*.auth.json
-*.token

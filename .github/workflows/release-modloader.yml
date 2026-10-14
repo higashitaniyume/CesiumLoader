@@ -173,11 +173,7 @@ jobs:
             "- AstralParty_ModLoader\mods\{ModId}\{ModId}.json → mod sidecar (id/版本/权限/enabled 开关/依赖)",
             "- *.pdb (version / bootstrap / sdk / mods\*) → 符号文件(与同名 dll 配对): 把崩溃栈还原成文件行号用, 删掉不影响运行",
             "  随包内置: " + ($modList -join " / "),
-            "HandViewerMod 默认启用: 支持的 PVE 对局中仅手牌展开可见时发送观战码到 https://astralpartycards.hiynet.com/ 查询手牌。",
-             "  全部收起或 HUD 隐藏时取消请求并暂停查询；默认展开 5 秒自动收回，AutoCollapseSeconds=0 不自动收回。",
              "AutoThanksMod 默认启用: 队友治疗、给牌或转星币给你时自动发送原版感谢短语，默认 2 秒真实时间冷却。",
-            "  不希望发送观战码: 进入对局前禁用 HandViewerMod, 或设置 Enabled=false 后重启。",
-            "  详情与验证边界: https://github.com/higashitaniyume/CesiumLoader/blob/master/docs/mod-HandViewerMod.md",
             "- AstralParty_ModLoader\logs\          → 日志目录",
             "解压到游戏 exe 目录即完成安装。",
             "默认皮肤单独提供: cesium-default-skins.zip，解压到同一游戏 exe 目录。",
@@ -246,7 +242,8 @@ jobs:
           } else {
             Write-Warning "符号缺失, SDK 工具包不含 CesiumLoader.SDK.pdb"
           }
-          Copy-Item "docs/*.md" "sdk-staging/docs/" -Force
+          git -c core.quotepath=false ls-files -- 'docs/*.md' | ForEach-Object { Copy-Item -LiteralPath $_ -Destination 'sdk-staging/docs/' -Force }
+          if ($LASTEXITCODE -ne 0) { throw '无法枚举 SDK 文档' }
           Copy-Item "mods/ActivityLogMod/ModEntry.cs", "mods/ActivityLogMod/AssemblyInfo.cs", "mods/ActivityLogMod/ActivityLogMod.csproj" "sdk-staging/examples/ActivityLogMod/" -Force
           # SDK 工具包说明
           $readme = @(

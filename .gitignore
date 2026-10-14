@@ -428,3 +428,21 @@ tools/reference/
 tests/native/*.exe
 tests/native/*.obj
 
+# Local-only optional components
+/mods/HandViewerMod/
+/mods/SpectatorBridgeMod/
+/mods/SpectatorAuthHandoffMod/
+/tests/HandViewerMod.Tests/
+/tests/SpectatorBridgeSmoke/
+/tests/SpectatorAuthHandoffSmoke/
+/tests/StandaloneClientSmoke/
+/tests/StandaloneCredentialSmoke/
+/tests/StandaloneProtocolSmoke/
+/tests/StandaloneStateSmoke/
+/tests/StandaloneTransportSmoke/
+/tools/StandaloneSpectator/
+/tools/SpectatorApi/
+/tools/deploy-handviewer.ps1
+/docs/mod-HandViewerMod.md
+/docs/研究-看手牌功能.md
+/dist/modloader/AstralParty_ModLoader/mods/HandViewerMod/

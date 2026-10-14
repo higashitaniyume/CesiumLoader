@@ -235,8 +235,6 @@ $readme = @(
     "- AstralParty_ModLoader\sdk\           → SDK 依赖",
     "- AstralParty_ModLoader\mods\          → 用户 mod (每 mod 一个文件夹: mods\{ModId}\{ModId}.dll)",
     "  随包内置: $modList",
-    "HandViewerMod 默认启用: 支持的 PVE 对局中仅手牌展开可见时发送观战码到 https://astralpartycards.hiynet.com/ 查询手牌。",
-    "  全部收起或 HUD 隐藏时取消请求并暂停查询；默认展开 5 秒自动收回，AutoCollapseSeconds=0 不自动收回。",
     "AutoThanksMod 默认启用: 队友治疗、给牌或转星币给你时自动发送原版感谢短语，默认 2 秒真实时间冷却。",
     "- AstralParty_ModLoader\mods\{ModId}\{ModId}.json → mod sidecar (id/版本/权限/enabled 开关/依赖)",
     "- *.pdb (version.pdb / bootstrap / sdk / mods\*) → 符号文件(与同名 dll 配对):",
@@ -288,7 +286,8 @@ if (Test-Path -LiteralPath 'dist\modloader\AstralParty_ModLoader\sdk\CesiumLoade
 {
     Copy-Item 'dist\modloader\AstralParty_ModLoader\sdk\CesiumLoader.SDK.pdb' 'sdk-staging\CesiumLoader.SDK.pdb' -Force
 }
-Copy-Item 'docs\*.md' 'sdk-staging\docs\' -Force
+git -c core.quotepath=false ls-files -- 'docs/*.md' | ForEach-Object { Copy-Item -LiteralPath $_ -Destination 'sdk-staging/docs/' -Force }
+if ($LASTEXITCODE -ne 0) { throw '无法枚举 SDK 文档' }
 Copy-Item 'mods\ActivityLogMod\ModEntry.cs', 'mods\ActivityLogMod\AssemblyInfo.cs', 'mods\ActivityLogMod\ActivityLogMod.csproj' 'sdk-staging\examples\ActivityLogMod\' -Force
 $sdkReadme = @(
     "cesium SDK 工具包 $version",

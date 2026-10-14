@@ -58,7 +58,6 @@ winget install Hiynet.AstralParty.Toys
 | 模组 | 功能 |
 | --- | --- |
 | [AutoThanksMod](docs/mod-AutoThanksMod.md) | 队友治疗、给牌、转星币后自动感谢，结算逐人点赞 |
-| [HandViewerMod](docs/mod-HandViewerMod.md) | 四人手牌条、单双排切换与按需查询 |
 | [CardSkinMod](mods/CardSkinMod/README.md) | 自定义卡面、多方案与 PNG 序列帧动态卡面 |
 | [CharacterSkinMod](docs/mod-CharacterSkinMod.md) | 角色外观、多人物皮肤方案与精灵动画 |
 | [CombatOddsMod](docs/mod-CombatOddsMod.md) | 战斗胜率分析、头顶攻防数字与悬停详情 |
@@ -66,7 +65,6 @@ winget install Hiynet.AstralParty.Toys
 | [SpeedHackMod](docs/mod-SpeedHackMod.md) | 游戏内调整倍率，切换正常速度与上次倍率 |
 | ActivityLogMod | 记录出牌、投骰、回合等行为并转发到控制台 |
 
-<!-- HandViewerMod 默认在支持的 PVE 对局中，将观战码发送到 `https://astralpartycards.hiynet.com/` 查询手牌，不发送本机账号认证。可在模组配置中禁用，详见 [手牌模组说明](docs/mod-HandViewerMod.md)。 -->
 
 ## 配置与运行
 
