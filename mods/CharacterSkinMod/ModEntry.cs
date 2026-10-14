@@ -50,8 +50,8 @@ namespace CharacterSkinMod
         }
         private sealed class Actor
         {
-            public CharacterAnimator Component; public SpriteRenderer Renderer; public Target Target;
-            public Sprite Original; public Sprite Applied; public string Action; public double Started;
+            public Component Component; public SpriteRenderer Renderer; public Target Target;
+            public Sprite Original; public Sprite Applied; public string Action; public string LastCustomFile; public double Started;
             public UnityEngine.Object OriginalController; public UnityEngine.Object AppliedController;
             public object[] OriginalStates;
         }
@@ -379,22 +379,24 @@ namespace CharacterSkinMod
         }
         private void Discover()
         {
-            var old = new Dictionary<int, Actor>(); foreach (var a in _actors) if (a.Component != null) old[a.Component.GetInstanceID()] = a;
+            var old = new Dictionary<int, Actor>(); foreach (var a in _actors) if (a.Renderer != null) old[a.Renderer.GetInstanceID()] = a;
             var discovered = new List<Actor>();
             foreach (var component in UnityEngine.Object.FindObjectsOfType<CharacterAnimator>())
             {
-                old.TryGetValue(component.GetInstanceID(), out var actor);
+                var mapRenderer = component.GetComponent<SpriteRenderer>();
+                Actor actor = null;
+                if (mapRenderer != null) old.TryGetValue(mapRenderer.GetInstanceID(), out actor);
                 var player = component.owner?.player;
                 if (component.owner != null && (player == null || player.Hero == null || player.standingPainting == null)) continue;
                 var currentAnimator = ProbeReflection.Read(component, "animator");
                 var currentController = currentAnimator == null ? null : ProbeReflection.Read(currentAnimator, "runtimeAnimatorController") as UnityEngine.Object;
                 Target target = player != null ? Match(player.Hero.HeroId, player.standingPainting.ItemID) : actor != null && actor.AppliedController != null && currentController == actor.AppliedController ? actor.Target : MatchUi(component);
                 var renderer = component.GetComponent<SpriteRenderer>();
-                if (target == null || renderer == null) { if (actor != null) RestoreActor(actor); old.Remove(component.GetInstanceID()); continue; }
+                if (target == null || renderer == null) { if (actor != null) RestoreActor(actor); old.Remove(mapRenderer == null ? 0 : mapRenderer.GetInstanceID()); continue; }
                 if (actor == null) actor = new Actor { Component = component, Renderer = renderer };
                 if (actor.Target != target) { RestoreActor(actor); actor.Target = target; actor.Action = null; actor.Applied = null; }
                 if (!_actors.Contains(actor)) _actors.Add(actor);
-                discovered.Add(actor); old.Remove(component.GetInstanceID());
+                discovered.Add(actor); old.Remove(mapRenderer == null ? 0 : mapRenderer.GetInstanceID());
                 var animator = ProbeReflection.Read(component, "animator");
                 if (target.SourceController != null && animator != null)
                 {
@@ -407,6 +409,28 @@ namespace CharacterSkinMod
                         actor.AppliedController = target.SourceController;
                         SetController(animator, target.SourceController, actor.OriginalStates); _controllerApplications++;
                     }
+                }
+            }
+            var renderers = new HashSet<int>();
+            foreach (var actor in discovered) renderers.Add(actor.Renderer.GetInstanceID());
+            foreach (var battle in UnityEngine.Object.FindObjectsOfType<BattleActor>())
+            {
+                var data = ProbeReflection.Read(battle, "playerData") as BattlePlayerData;
+                var player = data == null ? null : data.player;
+                if (player == null || player.Hero == null || player.standingPainting == null || battle.actorRenderer == null) continue;
+                var target = Match(player.Hero.HeroId, player.standingPainting.ItemID);
+                if (target == null || target.Package == null) continue;
+                var battleRenderer = battle.actorRenderer.GetComponent<SpriteRenderer>();
+                if (battleRenderer == null) continue;
+                foreach (var renderer in new[] { battleRenderer })
+                {
+                    if (!renderers.Add(renderer.GetInstanceID())) continue;
+                    Actor actor = null;
+                    foreach (var candidate in old.Values) if (candidate.Renderer == renderer) { actor = candidate; break; }
+                    if (actor == null) actor = new Actor { Component = battle, Renderer = renderer };
+                    else old.Remove(renderer.GetInstanceID());
+                    if (actor.Target != target) { RestoreActor(actor); actor.Target = target; actor.Action = null; actor.Applied = null; actor.LastCustomFile = null; }
+                    discovered.Add(actor);
                 }
             }
             foreach (var actor in old.Values) RestoreActor(actor);
@@ -457,7 +481,7 @@ namespace CharacterSkinMod
         private void RestoreActor(Actor actor)
         {
             if (actor.Renderer != null && actor.Applied != null && actor.Renderer.sprite == actor.Applied) actor.Renderer.sprite = actor.Original;
-            var animator = actor.Component == null ? null : ProbeReflection.Read(actor.Component, "animator");
+            var animator = actor.Component is CharacterAnimator ? ProbeReflection.Read(actor.Component, "animator") : null;
             if (animator != null && actor.AppliedController != null && ProbeReflection.Read(animator, "runtimeAnimatorController") as UnityEngine.Object == actor.AppliedController)
                 SetController(animator, actor.OriginalController, States(animator));
             actor.AppliedController = null; actor.OriginalController = null;
@@ -465,30 +489,65 @@ namespace CharacterSkinMod
         public override void OnLateUpdate()
         {
             if (!_ready) return;
-            try { foreach (var a in _actors) if (a.Target.Package != null && a.Renderer != null && a.Component != null && a.Component.gameObject.activeInHierarchy) ApplyActor(a); }
+            try { Discover(); foreach (var a in _actors) if (a.Target.Package != null && a.Renderer != null && a.Component != null && a.Renderer.gameObject.activeInHierarchy) ApplyActor(a); }
             catch (Exception ex) { Fail(ex); }
+        }
+        private static CharacterAnimation FindAnimation(CharacterSkinManifest manifest, string action)
+        {
+            if (manifest == null || manifest.Animations == null || string.IsNullOrEmpty(action)) return null;
+            foreach (var pair in manifest.Animations)
+                if (string.Equals(pair.Key, action, StringComparison.OrdinalIgnoreCase)) return pair.Value;
+            return null;
         }
         private void ApplyActor(Actor a)
         {
             Sprite source = a.Renderer.sprite;
             if (source == null || source == a.Applied) return;
             a.Original = source;
-            string action = source.name; int underscore = action.LastIndexOf('_'); if (underscore > 0) action = action.Substring(0, underscore);
+            string sourceAction = AnimationPlayback.ActionName(source.name);
             double now = Time.time;
-            if (!string.Equals(action, a.Action, StringComparison.Ordinal)) { a.Action = action; a.Started = now; }
             string file = null; var m = a.Target.Package.Manifest;
-            bool mapped = m.SpriteMappings.TryGetValue(source.name, out file);
-            if (!mapped)
+            CharacterAnimation animation = FindAnimation(m, sourceAction);
+            string action = sourceAction;
+
+            // A complete custom sequence owns the renderer until it finishes. This prevents a
+            // short sequence from falling back to an original frame and gives a long one a
+            // chance to reach its last frame when the game's controller advances early.
+            if (!string.Equals(a.Action, sourceAction, StringComparison.Ordinal) && !string.IsNullOrEmpty(a.Action))
             {
-                CharacterAnimation animation = null;
-                foreach (var pair in m.Animations) if (string.Equals(pair.Key, action, StringComparison.OrdinalIgnoreCase)) { animation = pair.Value; break; }
-                if (animation == null) { a.Applied = null; return; }
-                double elapsed = Math.Max(0, now - a.Started) * 1000, length = 0;
-                for (int i = 0; i < animation.Frames.Count; i++) length += animation.DurationsMs.Count == 0 ? 1000.0 / animation.Fps : animation.DurationsMs[i];
-                elapsed = animation.Loop ? elapsed % length : Math.Min(elapsed, length - 0.001); int frame = 0;
-                while (frame < animation.Frames.Count - 1) { double duration = animation.DurationsMs.Count == 0 ? 1000.0 / animation.Fps : animation.DurationsMs[frame]; if (elapsed < duration) break; elapsed -= duration; frame++; }
-                file = animation.Frames[frame];
+                CharacterAnimation previous = FindAnimation(m, a.Action);
+                double previousElapsed = Math.Max(0, now - a.Started) * 1000;
+                if (AnimationPlayback.ShouldFinish(previous, previousElapsed))
+                {
+                    action = a.Action;
+                    animation = previous;
+                }
             }
+            if (!string.Equals(action, a.Action, StringComparison.Ordinal)) { a.Action = action; a.Started = now; a.LastCustomFile = null; }
+
+            // A whole-action sequence takes precedence over SpriteMappings. Mappings remain
+            // useful for individual original frames when no sequence was supplied.
+            bool mapped = animation == null && m.SpriteMappings.TryGetValue(source.name, out file);
+            if (animation == null && !mapped && string.Equals(a.Action, sourceAction, StringComparison.Ordinal) && !string.IsNullOrEmpty(a.LastCustomFile))
+            {
+                // The original controller may expose more frames than the package mapped.
+                // Hold the last custom frame for this action instead of revealing the original.
+                file = a.LastCustomFile;
+                mapped = true;
+            }
+            if (animation != null)
+            {
+                double elapsed = Math.Max(0, now - a.Started) * 1000;
+                file = animation.Frames[AnimationPlayback.Frame(animation, elapsed)];
+            }
+            if (animation == null && !mapped)
+            {
+                if (a.Applied != null) { a.Renderer.sprite = a.Applied; return; }
+                var idle = FindAnimation(m, "Idle");
+                if (idle == null) return;
+                file = idle.Frames[0];
+            }
+            if (mapped) a.LastCustomFile = file;
             string path = CharacterSkinRules.SafePath(a.Target.Package.Root, file);
             bool originalLayout = mapped && m.UseOriginalSpriteLayout;
             string key = path + ":" + m.HeroId + ":" + a.Target.Plan.Applied.ItemID + (originalLayout ? ":" + source.GetInstanceID() : "");

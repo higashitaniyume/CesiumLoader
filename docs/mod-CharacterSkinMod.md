@@ -24,10 +24,11 @@
 - FairyGUI 图片缓存和可见 GLoader 的资源替换：立绘、SFW、头像、HUD、准备图、窄幅图、半身图、地块标志。CharacterMap 为角色共用地址，影响该角色的倒计时和小地图头像。
 - Name/Nick/Biography/Lines 角色共用文案及皮肤长短描述。没有原文案 ID 时拒绝应用并写入失败状态。
 - PNG/JPG 动作帧序列、逐帧时长、FPS、循环、自定义 pivot/PPU/缩放，原精灵名 SpriteMappings。
+- 整段 `Animations` 优先于 `SpriteMappings`：非循环动作帧较少时播完后停在自定义末帧，循环动作重复自定义序列；非循环动作帧较多时，若游戏控制器提前切换动作，会继续播放当前自定义序列直到结束，再接管此时游戏正在显示的动作。可能延后或跳过期间的短动作，不改变游戏事件时序。部分 SpriteMappings 在同动作已有成功映射后，缺失帧沿用最近一张自定义图片；未匹配的过渡动作保留上一张自定义精灵；首次没有可用精灵时采用自定义 Idle 首帧，包没有 Idle 且没有历史自定义帧时仍保留原图。额外映射图片只有被原动画引用才显示，长序列需使用 Animations。建议用 FPS/逐帧时长使总时长接近原动作。本次新增行为通过离线测试；2026-10-14 用户完成实机验证并确认渲染正常。
 - 0.1.2 新增 UseOriginalSpriteLayout：仅对 SpriteMappings 生效，使用被替换原帧的归一化 pivot 与 PPU，仍应用 Layout.Scale。供保持原画布尺寸的逐帧皮肤模板使用；映射跟随原动画时序，独立动作序列继续使用布局设置。
 - 已制作蓝海晴默认皮肤 100114001 示例 ZIP：17 个标准图片槽位加升星插图、23 个原动作、905 张精灵帧。通过 Toys 导入/导出和 SDK CesiumJson 清单读取校验，原尺寸、锚点和文件来源记录在 source-metadata.json。示例包未自动启用，游戏中的映射布局仍待下一次启动验证。
 - 保留人物 Animator 组件、CharacterAnimator 事件流程与 Transform；有官方来源时替换实际控制器并保持状态与 normalizedTime。OnUpdate 恢复原精灵，OnLateUpdate 应用自制精灵；独立自定义动作仍由精灵名推断与 Time.time 计时，连续同动作重触发和暂停需真机核对。
-- 地图人物按 owner 与目标皮肤匹配；复用人物时更新规则及包。无 owner 的 UI 优先原图集匹配，再按原控制器匹配，不明或歧义时保持原版并警告。
+- 每帧 LateUpdate 发现并接管地图与战斗人物。BattleActor 按其 playerData 的 HeroId/ItemID 匹配，替换 actorRenderer 本体 SpriteRenderer，保留 Timeline、位移、特效和游戏事件。此补丁 Release 构建通过、角色皮肤离线测试 39 项全部通过；2026-10-14 用户完成实机验证并确认渲染正常。地图人物按 owner 与目标皮肤匹配；复用人物时更新规则及包。无 owner 的 UI 优先原图集匹配，再按原控制器匹配，不明或歧义时保持原版并警告。
 - Toys 新建、ZIP 导入导出、删除（移入 .deleted）、启用停用、多角色并行、图片选择、动画导入预览、文案及清单编辑。
 
 ## 新建时从游戏导出所选官方皮肤模板
