@@ -25,6 +25,9 @@ namespace CardSkinMod
         private static bool _methodsResolved;
         private static MethodInfo _loadImageMethod;
         private static MethodInfo _getTextureMethod;
+        private static bool _loadImageNonReadable;
+        private static bool _requestNonReadable;
+        public static bool LoadsNonReadable => _loadImageNonReadable;
 
         public static void EnsureMethodsResolved()
         {
@@ -37,7 +40,9 @@ namespace CardSkinMod
                 var imgConvType = RuntimeAssemblyService.FindTypeBySimpleName("ImageConversion");
                 if (imgConvType != null)
                 {
-                    _loadImageMethod = imgConvType.GetMethod("LoadImage", new[] { typeof(Texture2D), typeof(byte[]) });
+                    _loadImageMethod = imgConvType.GetMethod("LoadImage", new[] { typeof(Texture2D), typeof(byte[]), typeof(bool) })
+                        ?? imgConvType.GetMethod("LoadImage", new[] { typeof(Texture2D), typeof(byte[]) });
+                    _loadImageNonReadable = _loadImageMethod != null && _loadImageMethod.GetParameters().Length == 3;
                 }
             }
             catch (Exception ex)
@@ -51,7 +56,9 @@ namespace CardSkinMod
                 var uwrTexType = RuntimeAssemblyService.FindTypeBySimpleName("UnityWebRequestTexture");
                 if (uwrTexType != null)
                 {
-                    _getTextureMethod = uwrTexType.GetMethod("GetTexture", new[] { typeof(string) });
+                    _getTextureMethod = uwrTexType.GetMethod("GetTexture", new[] { typeof(string), typeof(bool) })
+                        ?? uwrTexType.GetMethod("GetTexture", new[] { typeof(string) });
+                    _requestNonReadable = _getTextureMethod != null && _getTextureMethod.GetParameters().Length == 2;
                 }
             }
             catch (Exception ex)
@@ -65,7 +72,7 @@ namespace CardSkinMod
         /// </summary>
         public NTexture GetOrCreateTexture(string filePath, string assetKey = null, int expectedWidth = 0, int expectedHeight = 0)
         {
-            if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
+            if (string.IsNullOrEmpty(filePath))
             {
                 return null;
             }
@@ -107,7 +114,9 @@ namespace CardSkinMod
                     bool owned = false;
                     try
                     {
-                        bool ok = (bool)_loadImageMethod.Invoke(null, new object[] { tex, bytes });
+                        // Animated frames are never read back on the CPU; release the readable copy.
+                        bool ok = (bool)_loadImageMethod.Invoke(null, _loadImageNonReadable
+                            ? new object[] { tex, bytes, true } : new object[] { tex, bytes });
                         if (ok && tex != null)
                         {
                             var nTex = new NTexture(tex) { destroyMethod = DestroyMethod.None };
@@ -122,7 +131,8 @@ namespace CardSkinMod
                 if (_getTextureMethod != null)
                 {
                     string fileUrl = "file:///" + Path.GetFullPath(filePath).Replace('\\', '/');
-                    object req = _getTextureMethod.Invoke(null, new object[] { fileUrl });
+                    object req = _getTextureMethod.Invoke(null, _requestNonReadable
+                        ? new object[] { fileUrl, true } : new object[] { fileUrl });
                     if (req != null)
                     {
                         try
@@ -168,6 +178,11 @@ namespace CardSkinMod
                 SdkLog.Error("CardSkin", "加载卡图文件失败: " + filePath + " " + ex.Message);
                 return null;
             }
+        }
+
+        public void ReleaseFile(string filePath, string assetKey)
+        {
+            DestroyCachedTexture((assetKey ?? string.Empty) + "\n" + filePath);
         }
 
         public void RetainFiles(string first, string second)

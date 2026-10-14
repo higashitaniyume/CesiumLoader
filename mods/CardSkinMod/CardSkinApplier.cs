@@ -23,21 +23,34 @@ namespace CardSkinMod
             "onExternalLoadSuccess", BindingFlags.NonPublic | BindingFlags.Instance);
         private readonly Dictionary<string, NTexture> _injected = new Dictionary<string, NTexture>();
         private long _nextWarning;
-        private readonly CardAnimationPlayer _animations = new CardAnimationPlayer();
+        private long _nextDiscovery;
+        private int _lastUpdateFrame = -1;
+        private bool _updatingAnimations;
+        private Dictionary<string, NTexture> _currentTextureCache;
+        private object _cardConfig, _eventConfig, _destinyConfig, _mapEventConfig;
+        private readonly List<KeyValuePair<UICom_Card, AnimatedCard>> _animationSnapshot = new List<KeyValuePair<UICom_Card, AnimatedCard>>();
+        private readonly List<UICom_Card> _unusedAnimations = new List<UICom_Card>();
+        private readonly List<string> _unusedAnimationKeys = new List<string>();
+        private readonly CardAnimationPlayer _animations;
         private sealed class AnimatedCard
         {
             public CardAnimation Animation;
             public string Key;
             public int Video;
             public int Layout;
+            public string FrontUrl, FullUrl, FrontAssetKey, FullAssetKey, FrontSequenceKey, FullSequenceKey;
+            public NTexture FrontTexture, FullTexture;
+            public int FrameIndex = -1;
+            public bool Applied;
         }
         private readonly Dictionary<UICom_Card, AnimatedCard> _animatedCards = new Dictionary<UICom_Card, AnimatedCard>();
         private readonly HashSet<UICom_Card> _visitedAnimations = new HashSet<UICom_Card>();
         private readonly HashSet<string> _animationInjected = new HashSet<string>(StringComparer.Ordinal);
         private readonly HashSet<string> _activeAnimationKeys = new HashSet<string>(StringComparer.Ordinal);
 
-        public CardSkinApplier(CardSkinModel model, CardTextureLoader loader, bool forceFullCard)
+        public CardSkinApplier(CardSkinModel model, CardTextureLoader loader, bool forceFullCard, int animationCacheMiB = 512)
         {
+            _animations = new CardAnimationPlayer(animationCacheMiB);
             _model = model;
             _loader = loader;
             _forceFullCard = forceFullCard;
@@ -52,8 +65,14 @@ namespace CardSkinMod
             {
                 // 先等卡牌配置就绪，避免尚未识别异画时把原始文件误注入。
                 if (StaticConfigure.Card == null) return;
-                // 配置可能晚于模组初始化就绪；每轮重建绑定，不依赖是否正在对局。
-                var catalog = new CardSkinCatalog(_model);
+                // 配表可能晚到或替换；只在对象变更时重建，避免每秒重复整表映射。
+                var catalog = _catalog;
+                if (!_catalogReady || !ReferenceEquals(_cardConfig, StaticConfigure.Card)
+                    || !ReferenceEquals(_eventConfig, StaticConfigure.Event)
+                    || !ReferenceEquals(_destinyConfig, StaticConfigure.Destiny)
+                    || !ReferenceEquals(_mapEventConfig, StaticConfigure.MapEvent))
+                {
+                catalog = new CardSkinCatalog(_model);
                 if (StaticConfigure.Card != null)
                 {
                     foreach (var config in StaticConfigure.Card.Infos)
@@ -89,6 +108,12 @@ namespace CardSkinMod
                 }
                 _catalog = catalog;
                 _catalogReady = true;
+                _cardConfig = StaticConfigure.Card;
+                _eventConfig = StaticConfigure.Event;
+                _destinyConfig = StaticConfigure.Destiny;
+                _mapEventConfig = StaticConfigure.MapEvent;
+                _nextDiscovery = 0;
+                }
 
                 var tm = SimpleSingletonProvider<TextureManager>.inst;
                 if (tm == null) return;
@@ -102,6 +127,10 @@ namespace CardSkinMod
                 {
                     // 只注入图片素材；数字、中文名和视频 key 用配置映射/可见控件处理。
                     if (!entry.Key.StartsWith("UT_", StringComparison.OrdinalIgnoreCase) || catalog.IsProtectedAsset(entry.Key)) continue;
+                    // The animated frame already owns this resource key. Do not replace it with
+                    // its static poster every second; the animation update maintains it instead.
+                    if (catalog.TryGetAnimation(entry.Key, out _) && cache.TryGetValue(entry.Key, out var animated)
+                        && _animations.OwnsTexture(animated) && animated.nativeTexture != null) continue;
                     var texture = _loader.GetOrCreateTexture(entry.Value, entry.Key);
                     if (texture == null) continue;
                     if (!cache.TryGetValue(entry.Key, out var old) || old != texture)
@@ -123,41 +152,95 @@ namespace CardSkinMod
             catch { return null; }
         }
 
-        public void ApplyToHandCardPanel()
-        {
-            try
-            {
-                var ui = GameLogicManager.inst?.battle?.handCard?.UIObject;
-                if (ui?.container_Card != null) VisitCards(ui.container_Card, 0);
-            }
-            catch (Exception ex) { Warn("刷新手牌失败: " + ex.Message); }
-        }
+        // Hand events invalidate discovery; never re-enter card enumeration from load callbacks.
+        public void ApplyToHandCardPanel() { _nextDiscovery = 0; }
 
         // 保留原入口，统一扫描包括战斗窗口在内的可见界面。
         public void ApplyToFightWindow() => ApplyToVisibleCards();
 
         public void ApplyToVisibleCards()
         {
-            if (!_catalogReady) return;
+            if (!_catalogReady || _updatingAnimations) return;
+            int frame = UnityEngine.Time.frameCount;
+            if (_lastUpdateFrame == frame) return;
+            _lastUpdateFrame = frame;
+            long now = DateTime.UtcNow.Ticks / 10000;
+            _animations.BeginUpdate(now);
+            _updatingAnimations = true;
             try
             {
-                _visitedAnimations.Clear();
                 _activeAnimationKeys.Clear();
-                var root = GRoot.inst;
-                if (root != null) VisitCards(root, 0);
-                var unused = new List<UICom_Card>();
-                foreach (var pair in _animatedCards)
-                    if (!_visitedAnimations.Contains(pair.Key)) unused.Add(pair.Key);
-                RemoveUnusedAnimationCache();
-                foreach (var card in unused) { ResetAnimatedLoaders(card); _animatedCards.Remove(card); }
+                _currentTextureCache = _textureCacheField?.GetValue(SimpleSingletonProvider<TextureManager>.inst) as Dictionary<string, NTexture>;
+                bool discover = now >= _nextDiscovery;
+                if (discover)
+                {
+                    _nextDiscovery = now + 100;
+                    _visitedAnimations.Clear();
+                    var root = GRoot.inst;
+                    if (root != null) VisitCards(root, 0);
+                    _unusedAnimations.Clear();
+                    foreach (var pair in _animatedCards)
+                        if (!_visitedAnimations.Contains(pair.Key)) _unusedAnimations.Add(pair.Key);
+                    foreach (var card in _unusedAnimations) { ResetAnimatedLoaders(card); _animatedCards.Remove(card); }
+                }
+                // Snapshot because applying a GLoader texture can invoke game completion callbacks.
+                _animationSnapshot.Clear();
+                foreach (var pair in _animatedCards) _animationSnapshot.Add(pair);
+                bool removed = false;
+                foreach (var pair in _animationSnapshot)
+                {
+                    if (!_animatedCards.TryGetValue(pair.Key, out var current) || current != pair.Value) continue;
+                    if (!IsVisibleCard(pair.Key) || !SameAnimationBinding(pair.Key, current) || _animations.IsFailed(current.Animation))
+                    {
+                        ResetAnimatedLoaders(pair.Key);
+                        _animatedCards.Remove(pair.Key);
+                        _nextDiscovery = 0;
+                        removed = true;
+                        continue;
+                    }
+                    ApplyAnimatedFrame(pair.Key, current);
+                }
+                if (discover || removed) RemoveUnusedAnimationCache();
                 _animations.Sweep();
+                _animations.Pump();
             }
             catch (Exception ex) { Warn("刷新可见卡面失败: " + ex.Message); }
+            finally { _animationSnapshot.Clear(); _unusedAnimations.Clear(); _updatingAnimations = false; }
+        }
+
+        private static bool IsVisibleCard(UICom_Card card)
+        {
+            if (card == null || card.isDisposed || !card.onStage) return false;
+            GObject node = card;
+            for (int depth = 0; node != null && depth <= 20; depth++)
+            {
+                if (node.isDisposed || !node.visible || (node.group != null && !node.group.visible)) return false;
+                var parent = node.parent;
+                if (parent != null && !parent.IsChildInView(node)) return false;
+                node = parent;
+            }
+            return node == null;
+        }
+
+        private static bool SameAnimationBinding(UICom_Card card, AnimatedCard state)
+        {
+            if (card == null || card.isDisposed || card.loader_FrontCard?.isDisposed == true || card.loader_FullCard?.isDisposed == true) return false;
+            if (!string.Equals(card.loader_FrontCard?.url, state.FrontUrl, StringComparison.Ordinal)
+                || !string.Equals(card.loader_FullCard?.url, state.FullUrl, StringComparison.Ordinal)) return false;
+            // Video rerenders can change only VideoKey while keeping both old image URLs.
+            if (card.isVideo != null && card.isVideo.selectedIndex != 0)
+            {
+                string key = card.frontState?.selectedIndex == 1 ? card.video_FrontCard?.VideoKey : card.video_FullCard?.VideoKey;
+                if (string.IsNullOrEmpty(key) || !string.Equals(key, state.Key, StringComparison.Ordinal)) return false;
+            }
+            return true;
         }
 
         private void VisitCards(GObject node, int depth)
         {
-            if (node == null || node.isDisposed || !node.visible || depth > 20) return;
+            if (node == null || node.isDisposed || !node.visible || depth > 20
+                || (node.group != null && !node.group.visible)
+                || (node.parent != null && !node.parent.IsChildInView(node))) return;
             if (node is UIHandCard_Button_Card handCard)
             {
                 ApplyToCardButton(handCard);
@@ -200,7 +283,7 @@ namespace CardSkinMod
             for (int i = 0; i < list.numChildren; i++)
             {
                 var item = list.GetChildAt(i) as UINewGameLibrary_Button_Card;
-                if (item == null || !(item.data is int index) || !(item.com_card is UICom_Card card)) continue;
+                if (item == null || !(item.data is int index) || !(item.com_card is UICom_Card card) || !IsVisibleCard(card)) continue;
                 string file = null;
                 if (ui.label.selectedIndex == 1 && index >= 0 && index < window.CardInfos.Count)
                 {
@@ -267,16 +350,54 @@ namespace CardSkinMod
 
         private bool TryApplyAnimation(UICom_Card card, string key, bool alternate)
         {
-            if (!_catalog.TryGetAnimation(key, out var animation)) return false;
+            if (!IsVisibleCard(card) || !_catalog.TryGetAnimation(key, out var animation)) return false;
+            if (_animations.IsFailed(animation))
+            {
+                ResetAnimatedLoaders(card);
+                _animatedCards.Remove(card);
+                return false;
+            }
             if ((alternate || IsProtectedCard(card)) && !_catalog.IsAlternateAnimation(key)) return false;
-            var frontTexture = _animations.GetFrame(animation, card.loader_FrontCard?.url ?? key);
-            var fullTexture = _animations.GetFrame(animation, card.loader_FullCard?.url ?? key);
-            if (frontTexture == null || fullTexture == null) return false;
             if (!_animatedCards.TryGetValue(card, out var state) || state.Animation != animation
-                || (card.isVideo != null && card.isVideo.selectedIndex != 0))
-                _animatedCards[card] = new AnimatedCard { Animation = animation, Key = key,
-                    Video = card.isVideo?.selectedIndex ?? 0, Layout = card.frontState?.selectedIndex ?? 0 };
+                || !string.Equals(state.Key, key, StringComparison.Ordinal) || !SameAnimationBinding(card, state))
+            {
+                if (state != null) { ResetAnimatedLoaders(card); _animatedCards.Remove(card); }
+                string front = card.loader_FrontCard?.url, full = card.loader_FullCard?.url;
+                state = new AnimatedCard { Animation = animation, Key = key,
+                    Video = card.isVideo?.selectedIndex ?? 0, Layout = card.frontState?.selectedIndex ?? 0,
+                    FrontUrl = front, FullUrl = full,
+                    FrontAssetKey = string.IsNullOrEmpty(front) ? key : front,
+                    FullAssetKey = string.IsNullOrEmpty(full) ? key : full };
+                state.FrontSequenceKey = animation.ManifestPath + "\n" + state.FrontAssetKey;
+                state.FullSequenceKey = animation.ManifestPath + "\n" + state.FullAssetKey;
+                _animatedCards[card] = state;
+            }
             _visitedAnimations.Add(card);
+            ApplyAnimatedFrame(card, state);
+            return true;
+        }
+
+        private void ApplyAnimatedFrame(UICom_Card card, AnimatedCard state)
+        {
+            var animation = state.Animation;
+            int index = _animations.FrameIndex(animation);
+            // Refresh demand even for one-frame animations and fetch newly prepared frames immediately.
+            var frontTexture = _animations.GetFrame(animation, state.FrontAssetKey, state.FrontSequenceKey);
+            var fullTexture = state.FrontAssetKey == state.FullAssetKey ? frontTexture
+                : _animations.GetFrame(animation, state.FullAssetKey, state.FullSequenceKey);
+            if (frontTexture == null || fullTexture == null) return;
+            if (state.Applied && state.FrameIndex == index && state.FrontTexture == frontTexture && state.FullTexture == fullTexture && state.FrontTexture != null && !state.FrontTexture.disposed
+                && state.FullTexture != null && !state.FullTexture.disposed
+                && card.loader_FrontCard?.texture == state.FrontTexture && card.loader_FullCard?.texture == state.FullTexture
+                && (card.isVideo == null || card.isVideo.selectedIndex == 0)
+                && card.video_FrontCard?.visible != true && card.video_FullCard?.visible != true
+                && (card.frontState == null || card.frontState.selectedIndex == 0))
+            {
+                InjectAnimationFrame(state.FrontUrl, state.FrontTexture, animation);
+                InjectAnimationFrame(state.FullUrl, state.FullTexture, animation);
+                return;
+            }
+            // Both frames are ready; until then the existing poster/video remains intact.
             // Stop both native movie targets, including late game callbacks after a render reorder.
             if ((card.isVideo != null && card.isVideo.selectedIndex != 0)
                 || card.video_FrontCard?.visible == true || card.video_FullCard?.visible == true)
@@ -291,30 +412,34 @@ namespace CardSkinMod
             if (card.frontState != null) card.frontState.selectedIndex = 0;
             ApplyLoaderTexture(card.loader_FrontCard, frontTexture);
             ApplyLoaderTexture(card.loader_FullCard, fullTexture);
-            InjectAnimationFrame(card.loader_FrontCard?.url, frontTexture, animation);
-            InjectAnimationFrame(card.loader_FullCard?.url, fullTexture, animation);
-            return true;
+            state.FrontUrl = card.loader_FrontCard?.url;
+            state.FullUrl = card.loader_FullCard?.url;
+            state.FrontTexture = frontTexture;
+            state.FullTexture = fullTexture;
+            state.FrameIndex = index;
+            state.Applied = true;
+            InjectAnimationFrame(state.FrontUrl, frontTexture, animation);
+            InjectAnimationFrame(state.FullUrl, fullTexture, animation);
         }
 
         private void InjectAnimationFrame(string key, NTexture texture, CardAnimation animation)
         {
             if (string.IsNullOrEmpty(key) || !_catalog.TryGetAnimation(key, out var bound) || bound != animation) return;
-            var tm = SimpleSingletonProvider<TextureManager>.inst;
-            var cache = _textureCacheField?.GetValue(tm) as Dictionary<string, NTexture>;
+            var cache = _currentTextureCache;
             if (cache == null) return;
-            cache[key] = texture;
-            _injected[key] = texture;
+            if (!cache.TryGetValue(key, out var current) || current != texture) cache[key] = texture;
+            if (!_injected.TryGetValue(key, out var injected) || injected != texture) _injected[key] = texture;
             _animationInjected.Add(key);
             _activeAnimationKeys.Add(key);
         }
 
         private void RemoveUnusedAnimationCache()
         {
-            var cache = _textureCacheField?.GetValue(SimpleSingletonProvider<TextureManager>.inst) as Dictionary<string, NTexture>;
-            var remove = new List<string>();
+            var cache = _currentTextureCache;
+            _unusedAnimationKeys.Clear();
             foreach (string key in _animationInjected)
-                if (!_activeAnimationKeys.Contains(key)) remove.Add(key);
-            foreach (string key in remove)
+                if (!_activeAnimationKeys.Contains(key)) _unusedAnimationKeys.Add(key);
+            foreach (string key in _unusedAnimationKeys)
             {
                 if (cache != null && _injected.TryGetValue(key, out var ours)
                     && cache.TryGetValue(key, out var current) && current == ours) cache.Remove(key);
@@ -326,11 +451,13 @@ namespace CardSkinMod
         private void ResetAnimatedLoaders(UICom_Card card)
         {
             if (card == null || card.isDisposed) return;
-            // A pooled component already rendered for another card belongs to the game again.
-            if (!_animations.OwnsTexture(card.loader_FrontCard?.texture) && !_animations.OwnsTexture(card.loader_FullCard?.texture)) return;
-            ResetLoader(card.loader_FrontCard);
-            ResetLoader(card.loader_FullCard);
-            if (!_animatedCards.TryGetValue(card, out var original)) return;
+            // A pooled/rebound card belongs to the game again: never restore its old content/video.
+            if (!_animatedCards.TryGetValue(card, out var original) || !original.Applied || !SameAnimationBinding(card, original)) return;
+            bool frontOwned = _animations.OwnsTexture(card.loader_FrontCard?.texture);
+            bool fullOwned = _animations.OwnsTexture(card.loader_FullCard?.texture);
+            if (!frontOwned && !fullOwned) return;
+            if (frontOwned) ResetLoader(card.loader_FrontCard);
+            if (fullOwned) ResetLoader(card.loader_FullCard);
             if (card.frontState != null) card.frontState.selectedIndex = original.Layout;
             if (card.isVideo != null) card.isVideo.selectedIndex = original.Video;
             if (original.Video != 0)

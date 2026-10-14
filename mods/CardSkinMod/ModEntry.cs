@@ -50,7 +50,8 @@ namespace CardSkinMod
 
             _model = new CardSkinModel();
             _loader = new CardTextureLoader();
-            _applier = new CardSkinApplier(_model, _loader, _forceFullCard);
+            _applier = new CardSkinApplier(_model, _loader, _forceFullCard,
+                Config?.GetInt("AnimationCacheMiB", 512) ?? 512);
 
             if (!_enabled)
             {
@@ -83,9 +84,8 @@ namespace CardSkinMod
 
             try
             {
-                // 手牌变动时立即触发一次 UI 刷新
+                // 让下一次引擎更新立即重扫，避免加载回调重入动画枚举。
                 _applier.ApplyToHandCardPanel();
-                _applier.ApplyToFightWindow();
             }
             catch { }
         }
