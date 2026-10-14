@@ -1,531 +1,153 @@
+<div align="center">
+
 # CesiumLoader
 
-Astral Party (Steam appid 2622000, Unity 2021.3.45f2 IL2CPP + HybridCLR) 的 Mod 加载器与 SDK。
+## 感谢您选择并使用 CesiumLoader！
 
-推荐使用配套桌面工具箱 [AstralParty.Toys](https://github.com/higashitaniyume/AstralParty.Toys)（`winget install Hiynet.AstralParty.Toys`）一键安装、更新、配置加载器与 8 个内置模组（[角色皮肤 CharacterSkinMod](docs/mod-CharacterSkinMod.md)、[卡面皮肤 CardSkinMod](mods/CardSkinMod/README.md)、[看手牌 HandViewerMod](docs/mod-HandViewerMod.md)、[自动感谢 AutoThanksMod](docs/mod-AutoThanksMod.md)、胜率助手 CombatOddsMod、自由相机 FreeCameraMod、变速热键 SpeedHackMod、行为日志 ActivityLogMod）。
+**Astral Party 的模组加载器与开发 SDK**
 
-全部代码收在一个 Visual Studio 2022 解决方案里，按职责分成三个顶层目录：
-**`loader/`(加载器本体与 SDK)、`mods/`(随加载器分发的 mod)、`mcp/`(供 AI agent 接管对局的 MCP)**。
+原生引导 · 托管模组 · 事件 API · 开发工具
 
-```
-CesiumLoader.sln
-├── loader\                          加载器代码 (部署时产出 version.dll + AstralParty_ModLoader\)
-│   ├── CesiumLoader\                C++ DLL 加载器 (产出 version.dll, Doorstop 式代理 + 变速引擎)
-│   │   ├── modmeta.cpp/h            mod 元数据(sidecar)解析 + 依赖拓扑排序 (纯标准库, 可单测)
-│   │   └── il2cpp_safe.h            IL2CPP 互操作安全封装 (空检查/异常转译)
-│   ├── CesiumLoader.Bootstrap\      C# 托管引导程序 (netstandard2.0, 零引用, 编排 SDK/mods)
-│   └── CesiumLoader.SDK\            C# SDK (netstandard2.0, 供 mod 引用)
-├── mods\                            预置 mod (随加载器发布包一起分发)
-│   ├── ActivityLogMod\              C# 示例 mod (行为日志)
-│   ├── FreeCameraMod\               内置 mod (自由相机 / 滚轮缩放)
-│   ├── SpeedHackMod\                内置 mod (变速热键)
-│   ├── CombatOddsMod\               内置 mod (战斗胜率助手)
-│   ├── HandViewerMod\               内置 mod (手牌查看助手)
-│   ├── CardSkinMod\                 内置 mod (手牌与卡面自定义皮肤)
-│   ├── CharacterSkinMod\            内置 mod (角色外观 / 多人物皮肤方案与精灵动画替换)
-│   ├── AutoThanksMod\               内置 mod (队友帮助后延迟感谢 / 结算逐人点赞)
-│   ├── CameraProbeMod\              相机探针
-│   ├── DiagnosticsMod\              诊断导出
-│   └── ExtremeDifficultyMod\        极限难度 (未列入 sln)
-├── mcp\                             AI agent 接管对局 (桥接 mod + MCP server, 详见 mcp\README.md)
-│   ├── Shared\AgentBridgeLayout.cs   mod 与 server 共用的文件通道契约 (唯一来源)
-│   ├── AstralParty.AgentMod\         游戏内桥接 mod (状态快照 / 待响应窗口 / 动作下发)
-│   ├── AstralParty.Mcp.Core\         MCP 协议 + 工具面 (net8.0, 零 NuGet 依赖)
-│   └── AstralParty.Mcp\              stdio MCP server (AstralParty.Mcp.exe)
-├── third_party\                     随仓库入库的第三方依赖 (vendored: 不要包管理器, 克隆即可编译, 见其 README)
-│   ├── minhook\                     MinHook (inline hook 库, 变速引擎使用, BSD-2-Clause)
-│   ├── fmt\                         fmt (字符串格式化, header-only, MIT)
-│   ├── spdlog\                      spdlog (日志, header-only, MIT)
-│   └── nlohmann_json\               nlohmann/json (JSON/JSONC 解析, 单头文件, MIT)
-├── smoke\SpeedCtlSmoke\             冒烟测试宿主 (变速控制文件通道, 不依赖游戏)
-├── tests\                           托管单测 (SDK / mod) + 原生单测 (tests\native)
-├── dist\modloader\                  预编译托管产物 (SDK + 内置 mod + doorstop_config.json,
-│                                    必须入库 —— CI 只校验不重建, 见「发布」)
-└── tools\
-    ├── cesium\                     模组脚手架与包分发 CLI (new/build/package/list/verify)
-    ├── builtin-mods.json           内置 mod 清单的唯一来源 (CI 与打包脚本共用)
-    ├── package-modloader.ps1       构建 + 组装 + 打包 Release 压缩包
-    ├── deploy-agentmod.ps1         部署 AI 接管桥接 mod + MCP server (可选安装, 不进 builtin-mods.json)
-    └── smoke-speedctl.ps1          跑变速控制文件通道冒烟测试
+[![Release](https://img.shields.io/github/v/release/higashitaniyume/CesiumLoader?style=flat-square&label=release)](https://github.com/higashitaniyume/CesiumLoader/releases)
+[![Release CI](https://img.shields.io/github/actions/workflow/status/higashitaniyume/CesiumLoader/release-modloader.yml?style=flat-square&label=Release%20CI)](https://github.com/higashitaniyume/CesiumLoader/actions/workflows/release-modloader.yml)
+[![Loader License](https://img.shields.io/badge/loader-AGPL--3.0-555?style=flat-square)](LICENSE)
+[![SDK License](https://img.shields.io/badge/SDK-MIT-555?style=flat-square)](loader/CesiumLoader.SDK/LICENSE)
+
+![C++](https://img.shields.io/badge/C%2B%2B-00599C?style=flat-square&logo=cplusplus&logoColor=white)
+![.NET Standard 2.0](https://img.shields.io/badge/.NET%20Standard-2.0-512BD4?style=flat-square&logo=dotnet&logoColor=white)
+![Unity](https://img.shields.io/badge/Unity-222?style=flat-square&logo=unity&logoColor=white)
+![HybridCLR](https://img.shields.io/badge/HybridCLR-555?style=flat-square)
+![MSVC v145](https://img.shields.io/badge/VS%202026-MSVC%20v145-555?style=flat-square)
+
+[下载加载器](https://github.com/higashitaniyume/CesiumLoader/releases/latest) · [SDK 工具包](https://github.com/higashitaniyume/CesiumLoader/releases/latest/download/cesium-sdk-tools.zip) · [SDK 文档](docs/SDK-概览.md) · [AstralParty.Toys](https://github.com/higashitaniyume/AstralParty.Toys)
+
+</div>
+
+---
+
+为 Astral Party 的 **Unity IL2CPP + HybridCLR** 运行环境提供模组加载、依赖解析、日志与变速能力。原生 `version.dll` 代理在游戏启动时引导，待热更程序集就绪后加载 SDK 与托管模组。
+
+目标环境：Windows x64，Astral Party（Steam App ID `2622000`，Unity `2021.3.45f2`）。版本变更见 [Release 记录](https://github.com/higashitaniyume/CesiumLoader/releases)。
+
+## 安装
+
+推荐通过配套桌面工具 [AstralParty.Toys](https://github.com/higashitaniyume/AstralParty.Toys) 安装、更新和配置：
+
+```powershell
+winget install Hiynet.AstralParty.Toys
 ```
 
-## 2.4.10：战斗辅助头顶显示配置说明
+手动安装：退出游戏，将 [cesium-loader.zip](https://github.com/higashitaniyume/CesiumLoader/releases/latest/download/cesium-loader.zip) 解压到游戏主程序所在目录。默认卡牌皮肤可另行下载 [cesium-default-skins.zip](https://github.com/higashitaniyume/CesiumLoader/releases/latest/download/cesium-default-skins.zip)，同样解压到游戏目录。
 
-战斗辅助模组已有 `ShowBoardPlayerAttrs` 开关，默认开启。配置设为 `false` 可关闭棋盘角色头顶的攻击、防御数字及悬停详情，保存后重启游戏生效；其他战斗辅助功能不受影响。本版补充配置说明，未新增该开关。
-
-加载器、SDK、默认配置和 CLI 版本统一为 2.4.10。
-
-## 2.4.9：人物战斗动画修补与动态卡面性能优化
-
-人物皮肤补齐 BattleActor 战斗精灵接管，未匹配过渡动作保持自定义画面，并修正数字帧后缀解析；39 项角色皮肤测试通过，用户已实机确认渲染正常。动态卡面采用整套序列缓存、每帧解码调度和可见控件复用，默认动画缓存预算 512 MiB，详见 [性能优化说明](docs/卡面动画性能优化.md)。卡面性能优化的实际 FPS 改善仍需游戏内验证。
-
-加载器、SDK、默认配置和 CLI 版本统一为 2.4.9。
-
-## 2.4.8：动态卡面正式支持
-
-内置 [CardSkinMod](mods/CardSkinMod/README.md) 更新至 1.2.0：普通卡面与显式绑定的异画支持 PNG 序列帧动画。配套 [AstralParty.Toys](https://github.com/higashitaniyume/AstralParty.Toys) 1.1.0 可导入视频/GIF，先选择裁剪范围，再将每帧统一输出为 `404×400` PNG；模组直接播放序列帧，无需游戏读取视频/GIF。
-
-动态卡面固定使用普通卡框，包括显式动态异画；`ForceFullCard` 仅影响静态图片。普通卡牌 ID/中文名的动态绑定不会覆盖异画，异画必须使用异画 ID 或完整图片/视频资源名明确绑定。损坏动画回退至静态图片或原版卡面，静态异画继续保留原版。
-
-用户已真机确认动态卡面正常。加载器、SDK、默认配置和 CLI 版本统一为 2.4.8；发布包包含 CardSkinMod 1.2.0 及成对的 DLL/PDB。
-
-## 2.4.7：多人物皮肤方案与立绘布局
-
-[CharacterSkinMod](docs/mod-CharacterSkinMod.md) 更新至 0.2.1：按人物和目标皮肤应用多人物方案，支持官方外观与自定义图片、文案、精灵帧组合；精确目标优先于人物通配。官方动画替换保留当前状态与参数，配置来源使用修改前快照，失败或卸载按所有权回滚。
-
-修复自定义图片私有地址缺少原版立绘布局的问题，继承原图的偏移、HUD 缩放和翻转，避免像素尺寸正确但显示放大或偏移。语音、视频、特效及特殊演出仍使用原版。加载器、SDK、默认配置和 CLI 版本统一为 2.4.7。
-
-## 2.4.6：头顶攻防显示与版本同步
-
-头顶攻防标签与角色精灵顶部的间距由 8 缩小到 2 个 UI 单位。悬停检测统一转换到控件局部坐标，修复 UI 缩放时鼠标触发区域与文字位置错位的问题。
-
-补齐 2.4.5 发布遗漏的内部版本号：原生加载器、SDK、默认配置及 CLI 的 SDK 版本统一为 2.4.6。保留 2.4.5 标签，使用此版本升级。
-
-## 2.4.4：感谢延迟与结算自动点赞
-
-[AutoThanksMod](docs/mod-AutoThanksMod.md) 更新至 1.1.0：感谢延迟默认 1000ms、上限 3000ms；结算自动点赞默认开启，逐人间隔默认 500ms，可配置 100–30000ms。保留原版点赞动画、按钮锁定与成功聊天反馈，处理 PVP 赢家页和四人页的手动点赞去重。回放、观战和退出对局不发送。
-
-加载器、SDK 和 CLI 版本同步为 2.4.4。通过 Release 构建与 110 项自动感谢离线测试，分发 DLL/PDB 同次构建并校验匹配。
-
-## 2.4.2：自动感谢与手牌按需查询
-
-新增内置 [AutoThanksMod](docs/mod-AutoThanksMod.md)（1.0.1）：队友治疗、给牌或转星币给你时自动发送原版「感谢！」，三种触发均可独立关闭，默认共用 2 秒真实时间冷却；回放与观战不发送。
-
-[HandViewerMod](docs/mod-HandViewerMod.md) 更新至 1.0.8：只在至少一条手牌展开且可见时查询；全部收起或 HUD 隐藏时取消在途请求并暂停重试，重新可见后刷新。每条手牌默认展开 5 秒后自动收回，`AutoCollapseSeconds=0` 可禁用；HUD 重建保留各条手牌原有的截止时间。
-
-加载器、SDK 和 CLI 版本同步为 2.4.2；发布包包含两项更新的 DLL/PDB 与元数据。
-
-## 2.4.1：修复出牌与手牌移动时的短暂黑卡面
-
-内置 [CardSkinMod](mods/CardSkinMod/README.md) 更新至 1.1.2：自定义纹理按卡图资源名命名并独立缓存，满足游戏加载回调的名称校验；刷新可见卡面时保留原始 URL，避免手牌重排、出牌展示重新渲染时清空贴图后等待轮询补图。同一图片绑定普通版与 SFW 版资源时分别缓存，贴图引用计数与游戏加载器配对。
-
-已通过 Release 构建、卡牌皮肤离线测试和部署文件校验。
-
-## 2.4.0：手牌与卡面自定义皮肤与独立默认皮肤包
-
-随加载器分发内置模组 [CardSkinMod](mods/CardSkinMod/README.md)（1.1.1）：支持手牌、事件卡、命运卡、地图事件及大厅图鉴的自定义卡面贴图替换，支持多方案管理与一键切换；未指定卡面优雅回退至游戏原图；静态与视频异画保留原版。
-
-默认皮肤包（`cesium-default-skins.zip`）独立分发，避免加载器包体积过大；解压至游戏目录即可使用默认卡面方案。模组本身随加载器包提供，未安装皮肤包时正常运行并使用游戏原版卡面。
-
-## 2.3.5：手牌单双排切换
-
-内置 HandViewerMod 更新至 1.0.7，新增 `DoubleRow` 双排显示开关（默认开启）：开启为半高双排，关闭恢复原尺寸单排，双排共同横向滚动。启动一次新版后，可在 Toys 的模组配置中修改，重启游戏生效。
-
-## 2.3.4：手牌查看与观战工具源码
-
-默认发布包新增 [HandViewerMod](docs/mod-HandViewerMod.md)（1.0.5）：升星右侧四色 `>` 展开四人独立手牌条，同牌数量角标，使用游戏内卡面资源。
-
-**默认联网行为：**进入支持的运行中 PVE 对局（MapType 4/12）会自动将观战码发送到 `https://astralpartycards.hiynet.com/` 查询整房快照；不发送本机账号认证。可在模组设置禁用，或将 `Enabled` 设为 `false` 并重启游戏。服务地址可通过 `ServiceUrl` 配置；UA 为 `AstralParty.Toys Mod/1.0.5 (HandViewerMod)`。
-
-同时提交 `SpectatorBridgeMod`、`SpectatorAuthHandoffMod` 及独立观战客户端/API 源码与离线测试。它们保持可选，不加入默认安装包；不包含个人凭证、认证交接文件或游戏协议 DLL。
-
-## 原理 (Doorstop 式引导)
-
-UnityPlayer.dll 在进程启动时依赖 version.dll (导入 GetFileVersionInfoSizeA /
-GetFileVersionInfoA / VerQueryValueA, 经 dumpbin 确认), 而 version.dll 不在
-KnownDLLs 列表——把本 DLL 命名为 `version.dll` 放在游戏 exe 同目录,
-Windows 加载器会优先加载它(BepInEx/Doorstop 生态通用的代理方式)。
-与旧的 winmm.dll 劫持相比: 导出面从 180 个缩到 15 个、更接近系统 DLL 的
-标准接口、杀软误报概率更低。
-
-分层:
-
-```
-version.dll (C++ 薄代理, 15 个导出转发到系统 version.dll)
-  └─ DllMain 直接启动引导线程 (开头 Sleep 1.5s 避开 loader lock):
-       1. 读取 AstralParty_ModLoader\doorstop_config.json (enabled 开关/超时/控制台)
-       2. 等待 GameAssembly.dll (60s) → 解析 il2cpp_* 导出
-       3. 等待 il2cpp domain (30s) + thread_attach
-       4. 等待 HybridCLR 热更 (AstralParty.Runtime 出现, 60s)
-       5. 设置环境变量 CESIUM_* 目录 + 本次启动的日志文件路径
-       6. 编排层:
-          - 默认 (useManagedBootstrap=false): 原生加载 sdk\*.dll → mods\ 下
-            每 mod 文件夹的 {ModId}.dll, 逐个 Assembly.Load(byte[]) +
-            调用 {文件名}.ModEntry.Main(), 控制台按行业标准分级彩色输出
-            (先列出要加载的 mod, 再逐个 ✔ 成功 / ✘ 失败, 末尾总结)
-          - 实验 (useManagedBootstrap=true): Assembly.Load(byte[]) 加载
-            bootstrap\CesiumLoader.Bootstrap.dll 并调用 Bootstrap.Main(),
-            由托管代码编排一切
-       7. 启动 activity-mod-<会话>.log → 控制台 转发线程
-  └─ CesiumLoader.Bootstrap.dll (C# 托管引导, 零引用, 可脱离游戏单元测试):
-       1. 按文件名排序加载 sdk\*.dll (不调入口)
-       2. 按文件名排序加载 mods\ 下的 {ModId}.dll 并调用 {文件名}.ModEntry.Main()
-       3. 单个 mod 失败不中断其他 mod
+```text
+游戏目录/
+├── version.dll
+└── AstralParty_ModLoader/
+    ├── doorstop_config.json     加载器配置
+    ├── sdk/                    SDK 程序集
+    ├── bootstrap/              托管引导程序
+    ├── mods/{ModId}/           模组 DLL、元数据与配置
+    ├── logs/                   每次启动独立的引导、行为与错误日志
+    └── speed/                  变速控制文件通道
 ```
 
-设计要点:
-- **配置驱动**: `doorstop_config.json` 的 `enabled=false` 可完全禁用加载器
-  (不弹控制台、不加载任何东西), 游戏原样运行。
-- **原生编排是默认路径**: HybridCLR 的 AOT 裁剪会移除游戏未用到的部分反射 API
-  (实测 `Assembly.GetType(string,bool)` 抛 MethodNotFind), 因此 SDK/mods 加载
-  默认走原生 il2cpp API —— 这些 API 在 GameAssembly.dll 里永远存在, 已验证可靠。
-- **托管 Bootstrap 是实验特性**: `useManagedBootstrap=true` 时启用; 依赖游戏恰好
-  保留了所需反射 API, 当前已知 `Assembly.GetType` 不可用, 托管编排可能失败。
-- **DllMain 直接引导**: 不在 loader lock 下做危险操作, 线程开头 Sleep 1.5s
-  避开进程初始化敏感期; 即使游戏从不调用代理导出也能可靠引导。
+新增模组解压至 `mods/`，保持 `{ModId}/{ModId}.dll` 布局；安装或修改配置后重启游戏。旧版 `winmm.dll` 加载器需先移除，避免重复引导。兼容旧版直接放在 `mods/` 根目录的 DLL。
 
-## 变速引擎 (SpeedHack)
+## 内置模组
 
-加载器内置 CheatEngine 式变速能力（借鉴 [speedhack-rs](https://github.com/Hirtol/speedhack-rs)）：
-- 引导线程启动后用 **MinHook** inline hook 4 个系统时间函数（`GetTickCount` /
-  `GetTickCount64` / `timeGetTime` / `QueryPerformanceCounter`），按倍率缩放返回值。
-- 通过 `ap_speed_set` / `ap_speed_get` / `ap_speed_active` 导出暴露（原生调用方可用），
-  以及**变速控制文件通道**（`<speed>\request.txt` / `state.txt`）暴露给 mod ——
-  本作的热更程序集无法 P/Invoke，所以 SDK 的 `CesiumLoader.SDK.SpeedHack` 走文件。
-- 缩放算法与 speedhack-rs 的 `TimeState` 等价：切换倍率时重设时间基准，
-  保证虚拟时间连续不跳变。
-- 变速是加载器内置功能（不是 mod）：`doorstop_config.json` 的
-  `speedhackBaseSpeed` 控制（1.0=正常，2.0=全程 2 倍速），游戏启动即应用；
-  AstralParty.Toys 的模组页面提供可视化开关。
-- 游戏内实时调整用内置 mod **变速 (SpeedHackMod)**：`Delete`（键位可在 AstralParty.Toys 的 mod 配置里改，
-  支持鼠标侧键）在 `1.0x` 与"刚才的倍率"之间
-  切换（再按一次切回），`Alt+=` / `Alt+-` 调倍率（`1.0` 起，默认每次 0.5，按住连续调，调完自动写回配置）。
-- **时间连续性**：`speed == 1.0` 同样走虚拟时间公式（此时是精确的整数平移），**不做**"直接返回真实时间"
-  的快捷路径 —— 否则从 2x 切回 1.0x 的瞬间游戏看到的时钟会倒退（主线程卡住约十秒，画面冻结但声音还在）。
-  设成 `1.0` 时 hook 仍保持安装（`state.txt` 里 `active=1`），只是斜率变成 1。
-- 控制文件通道的目录 `speed\` 会镜像一份到 `%LocalAppData%\AstralParty_ModLoader\speed`，两处都监听、都写。
+| 模组 | 功能 |
+| --- | --- |
+| [AutoThanksMod](docs/mod-AutoThanksMod.md) | 队友治疗、给牌、转星币后自动感谢，结算逐人点赞 |
+| [HandViewerMod](docs/mod-HandViewerMod.md) | 四人手牌条、单双排切换与按需查询 |
+| [CardSkinMod](mods/CardSkinMod/README.md) | 自定义卡面、多方案与 PNG 序列帧动态卡面 |
+| [CharacterSkinMod](docs/mod-CharacterSkinMod.md) | 角色外观、多人物皮肤方案与精灵动画 |
+| [CombatOddsMod](docs/mod-CombatOddsMod.md) | 战斗胜率分析、头顶攻防数字与悬停详情 |
+| [FreeCameraMod](docs/mod-FreeCameraMod.md) | 滚轮沿视线缩放，默认 `F1` 恢复视角 |
+| [SpeedHackMod](docs/mod-SpeedHackMod.md) | 游戏内调整倍率，切换正常速度与上次倍率 |
+| ActivityLogMod | 记录出牌、投骰、回合等行为并转发到控制台 |
 
-> ⚠️ 变速影响游戏感知的所有时间（动画/演出/回合/网络超时），**别把倍率调太高**（建议 ≤3x）。
-> 倍率范围 `[1.0, 100]`：`1.0` = 正常，**低于 1 倍（减速）被硬性禁止** ——
-> 请求解析（`parse_speed`）、引擎设置（`speedhack_set_speed`）、
-> SDK（`SetSpeed`/`ClampSpeed`/`StepSpeed`）与 AstralParty.Toys 前端逐层拦截，且一律**不改动引擎状态**；
-> 把 `config.json` 的 `minSpeed` 写成 `0.1` 也会被 SDK 抬回 `1.0`。
+<!-- HandViewerMod 默认在支持的 PVE 对局中，将观战码发送到 `https://astralpartycards.hiynet.com/` 查询手牌，不发送本机账号认证。可在模组配置中禁用，详见 [手牌模组说明](docs/mod-HandViewerMod.md)。 -->
 
-## 模组生态能力
+## 配置与运行
 
-| 特性 | 说明 |
-|---|---|
-| **Mod 能力声明 + 警告** | mod 在 `[ModManifest(Permissions=...)]` 声明会用到的能力（读对局/操作游戏/写文件），sidecar 同步导出。已取消权限门控：任何 mod 都能调用 SDK 全部 API；声明「操作游戏」的 mod 在加载时与工具列表里显示 ⚠️ 警告（仅提示来源可信，不阻止） |
-| **模组元数据标准 + 依赖解析** | `mods\{ModId}\{ModId}.json` sidecar（id/版本/能力/SDK 版本/依赖，与 DLL 同文件夹）；加载器按依赖**拓扑排序**加载，缺失依赖/版本不符/循环依赖的 mod 被跳过并报告（`modmeta.cpp` 纯标准库，可单测） |
-| **API 版本协商** | SDK 声明版本 `2.4.9`；mod 声明 `SdkVersion`，要求高于当前的 mod 被拒绝加载。`doorstop_config.json` 的 `sdkVersion` 声明当前版本 |
-| **事件驱动化** | `GameEvents.StartAutoHook()` 内部每 1 秒维持 RPC 挂钩，mod 无需每秒轮询；`ModBase.Run` 不传 tick 则不空转 |
-| **IL2CPP 互操作安全封装** | `il2cpp_safe.h` 收敛全部互操作点：函数指针空检查、参数/返回值校验、托管异常转译成可读错误，防止原生崩溃拖垮游戏 |
-| **调试与故障体验** | mod 入口异常写 `logs\mod-errors-<会话>.log`（SDK `SdkLog.ReportCrash` + 原生 `write_mod_error` 双写）；`cesium verify` 离线预检兼容性；**每次启动一套日志文件**（引导/activity/错误三个文件共用会话标识 `<yyyyMMdd>-<HHmmss>-<pid>`） |
-| **脚手架与包分发** | `tools\cesium` CLI：`new`（生成项目+程序集级元数据）/ `build` / `package`（zip 分发）/ `list` / `verify`（模拟加载器判定） |
-| **相机接管** | `CameraService` + `ICameraBackend` 接缝：解析/读写/快照还原；`CameraState` 可 JSON 持久化；`CinemachineService` 反射接入 Cinemachine（玩家没装也安全降级） |
-| **输入与光标** | `InputService`：按键/鼠标查询 + mod 间输入独占仲裁 + 光标锁定还原；后端为「Unity 反射 → Win32」两级兜底 |
-| **UI 登记** | `UiService`：通知 / 窗口 / 覆盖层 / OnGUI 回调，注册与渲染分离（无渲染后端时登记仍然可见）；mod 卸载自动全部移除 |
-| **场景与协程** | `SceneService`（查询 + 事件订阅 + **事件不触发时的每帧兜底补发**）；`CoroutineService`（不依赖 GameObject 的协程，按真实时间等待） |
-| **运行时反射** | `RuntimeAssemblyService`：按名找程序集/类型/成员，`SafeInvoke*` / `SafeGet*` 失败返回 `null`、`false` 并记日志 |
-| **诊断转储** | `SdkDiagnostics.Dump()` 一次性落盘运行时+相机+场景+UI+计数器；`DumpJson()` 给工具读；IL2CPP/HybridCLR 不可用时也报告原因而非留空 |
-| **ECall 隔离** | `UnityCall`：Unity 引擎调用全部两层隔离（`RawXxx` 只含 ECall + 安全方法只含 try/catch），保证"Unity 不可用时降级返回默认值"的契约真正成立。详见 `docs\SDK-Unity调用与ECall隔离.md` |
+通过 Toys 编辑加载器与模组配置，或直接修改 `AstralParty_ModLoader/doorstop_config.json`。常用配置：
 
-## SDK 文档
+| 字段 | 用途 |
+| --- | --- |
+| `enabled` | 加载器总开关 |
+| `consoleEnabled` / `consoleTopmost` | 控制台显示与置顶 |
+| `forwardActivityLog` | 将模组行为日志转发到控制台 |
+| `speedhackBaseSpeed` | 启动时的基础倍率，`1.0` 为正常速度 |
+| `speedControlEnabled` | 允许通过文件通道调整倍率 |
+| `useManagedBootstrap` | 实验性托管编排；默认使用原生编排 |
+
+**变速范围为 1–100 倍，建议不超过 3 倍。** 变速影响动画、演出、回合与网络超时；切换倍率时保持虚拟时间连续。默认 `Delete` 切换正常速度与上次倍率，`Alt` + `=` / `Alt` + `-` 调整倍率，热键可在 Toys 中修改。
+
+Steam 绕过涉及多个独立开关，推荐通过 Toys 选择启动方式。原理、配置与回退方法见 [Steam 绕过说明](docs/steam-bypass.md)。
+
+日志按启动会话分别保存，文件名包含时间与进程 ID；排障时保留对应会话的日志及同次构建的 DLL/PDB。
+
+## 开发模组
+
+下载 [SDK 工具包](https://github.com/higashitaniyume/CesiumLoader/releases/latest/download/cesium-sdk-tools.zip)，内含自包含 `cesium.exe`、SDK 程序集与符号、文档和示例。编译模组仍需本机安装 .NET SDK。
+
+```powershell
+cesium new MyMod --author YourName --desc "My first mod"
+cesium build MyMod
+cesium package MyMod -o MyMod-1.0.0.zip
+cesium verify <mods_dir>
+```
+
+模组使用 `netstandard2.0`，以 `{ModId}.ModEntry.Main()` 为入口。脚手架自动生成 SDK 引用、程序集元数据与分发布局；直接使用游戏类型时，将所需热更程序集放入项目 `refs/`。
+
+SDK 提供生命周期、游戏事件、玩家数据、相机、输入、UI、场景、协程、诊断与游戏操作 API。加载器依据元数据检查 SDK 版本与依赖，并按依赖顺序加载；单个模组失败会记录日志，不中断其他模组。能力声明用于展示提示，不限制 API 调用。
+
+**HybridCLR 热更侧受 AOT 裁剪约束，无法任意使用 P/Invoke 或完整 .NET BCL。** 开发前请阅读平台约束与 Unity 调用说明。
 
 | 文档 | 内容 |
-|---|---|
-| [SDK-概览](docs/SDK-概览.md) | 整体分层、快速上手 |
-| [SDK-生命周期与日志](docs/SDK-生命周期与日志.md) | `ModBase` / `ModContext` / 清理顺序 / 日志分级 |
-| [SDK-配置与元数据](docs/SDK-配置与元数据.md) | `ModConfig`、sidecar、依赖解析 |
-| [SDK-能力声明与元数据](docs/SDK-能力声明与元数据.md) | `Permissions` 声明与警告 |
-| [SDK-事件](docs/SDK-事件.md) | `GameEvents` / `CameraEvents` / `UpdateService` |
-| [SDK-玩家与名字](docs/SDK-玩家与名字.md) | `Players.*` / `Names.*` |
-| [SDK-相机](docs/SDK-相机.md) | 相机解析、读写、快照还原、Cinemachine |
-| [SDK-输入与光标](docs/SDK-输入与光标.md) | 按键/鼠标、输入独占、光标锁定 |
-| [SDK-UI](docs/SDK-UI.md) | 通知 / 窗口 / 覆盖层 / OnGUI |
-| [SDK-场景与协程](docs/SDK-场景与协程.md) | 场景查询订阅、兜底补发、协程 |
-| [SDK-诊断](docs/SDK-诊断.md) | 三类 dump、落盘、反射工具、排查清单 |
-| [SDK-操作](docs/SDK-操作.md) | `GameActions`：像玩家一样发送 C2S 指令（⚠️ 真实影响对局）|
-| [SDK-变速](docs/SDK-变速.md) | 变速引擎（倍率下限 1.0、控制文件通道）|
-| [SDK-Unity调用与ECall隔离](docs/SDK-Unity调用与ECall隔离.md) | **改 SDK 前必读**：ECall 机制与隔离约定 |
-| [平台约束-第三方库与AOT裁剪](docs/平台约束-第三方库与AOT裁剪.md) | **引第三方库前必读**：托管第三方库为何加载不起来、游戏内置 Newtonsoft 的裁剪面、存在性权威判定方法 |
-| [steam-bypass](docs/steam-bypass.md) | **脱离 Steam 运行**：加载器原生绕过（6 hook）的四阶段原理、配置全表、已验证测试矩阵、已知损失与回退方法 |
-| [mod-CharacterSkinMod](docs/mod-CharacterSkinMod.md) | 角色外观、多人物皮肤方案与精灵动画替换 |
-| [CardSkinMod](mods/CardSkinMod/README.md) | 手牌、事件卡、命运卡及图鉴自定义卡面皮肤 |
-| [mod-HandViewerMod](docs/mod-HandViewerMod.md) | 四人手牌条展开、单双排切换与按需查询 |
-| [mod-AutoThanksMod](docs/mod-AutoThanksMod.md) | 队友治疗/给牌/转星币后延迟自动感谢与结算逐人点赞 |
-| [mod-FreeCameraMod](docs/mod-FreeCameraMod.md) | 滚轮缩放 mod 的配置与原理（进游戏不接管；F1 恢复原视角）|
-| [mod-SpeedHackMod](docs/mod-SpeedHackMod.md) | 变速 mod 的热键、配置与风险 |
-| [MCP-Agent桥接](docs/MCP-Agent桥接.md) | **AI agent 接管对局**：文件通道设计、待响应窗口的反编译依据与动作下发（用前通读）|
-| [工具-cesium-CLI](docs/工具-cesium-CLI.md) | 脚手架 CLI |
+| --- | --- |
+| [SDK 概览](docs/SDK-概览.md) · [生命周期与日志](docs/SDK-生命周期与日志.md) | 开始开发、初始化与清理 |
+| [配置与元数据](docs/SDK-配置与元数据.md) · [能力声明](docs/SDK-能力声明与元数据.md) | 配置、版本、依赖与能力描述 |
+| [事件](docs/SDK-事件.md) · [玩家与名字](docs/SDK-玩家与名字.md) | 对局事件与数据查询 |
+| [相机](docs/SDK-相机.md) · [输入与光标](docs/SDK-输入与光标.md) · [UI](docs/SDK-UI.md) | 交互与覆盖层 |
+| [场景与协程](docs/SDK-场景与协程.md) · [变速](docs/SDK-变速.md) | 场景、调度与时间控制 |
+| [操作](docs/SDK-操作.md) · [诊断](docs/SDK-诊断.md) | 游戏指令与排障 |
+| [Unity 调用与 ECall 隔离](docs/SDK-Unity调用与ECall隔离.md) · [平台约束](docs/平台约束-第三方库与AOT裁剪.md) | 运行时兼容要求 |
+| [cesium CLI](docs/工具-cesium-CLI.md) | 脚手架、打包与离线预检 |
+| [MCP 桥接](mcp/README.md) · [桥接设计](docs/MCP-Agent桥接.md) | 可选 AI 接管组件，默认发布包不包含 |
 
-## 目录布局
+## 构建与发布
 
-游戏 exe 所在目录 (部署后)：
+需要 Visual Studio 2026（MSVC v145 工具链）、Windows 10/11 SDK 与 .NET SDK 8 或更高版本。在本仓库根目录、VS 2026 开发者终端中执行：
 
-```
-游戏目录\
-├── version.dll                  ← 加载器 (本解决方案产物, Doorstop 代理)
-└── AstralParty_ModLoader\
-    ├── doorstop_config.json     ← 加载器配置 (enabled 总开关等)
-    ├── bootstrap\               ← 托管引导程序 (CesiumLoader.Bootstrap.dll)
-    ├── sdk\                     ← SDK 依赖 (CesiumLoader.SDK.dll)
-    ├── mods\                    ← 用户 mod (每 mod 一个文件夹: mods\{ModId}\{ModId}.dll)
-    │   └── ActivityLogMod\      ← 示例 mod 文件夹 (DLL + sidecar 同文件夹)
-    │       ├── ActivityLogMod.dll
-    │       └── ActivityLogMod.json   ← sidecar (id/版本/权限/enabled/依赖)
-    ├── logs\                    ← 每次启动一套: cesium-loader-<会话>.log
-    │                               + activity-mod-<会话>.log + mod-errors-<会话>.log
-    │                               (会话 = <yyyyMMdd>-<HHmmss>-<pid>, 见 docs\SDK-生命周期与日志.md)
-    └── speed\                   ← 变速控制文件通道 (request.txt / state.txt)
-```
-
-> 兼容旧布局: 直接放在 `mods\` 根下的 `.dll`（旧版平铺）仍会被加载, 平滑升级无需迁移。
-
-## doorstop_config.json
-
-所有字段可选, 缺失/损坏时用默认值, 不会阻止游戏启动:
-
-```json
-{
-  "enabled": true,                    // false = 完全禁用加载器, 游戏原样运行
-  "useManagedBootstrap": false,       // false=原生编排(默认,可靠); true=托管 Bootstrap 编排(实验)
-  "bootstrapAssembly": "CesiumLoader.Bootstrap.dll",
-  "bootstrapType": "CesiumLoader.Bootstrap.Bootstrap",
-  "bootstrapMethod": "Main",
-  "gameAssemblyTimeoutSec": 60,       // GameAssembly.dll 等待超时
-  "domainTimeoutSec": 30,             // il2cpp domain 等待超时
-  "hybridclrTimeoutSec": 60,          // HybridCLR 热更等待超时
-  "consoleEnabled": true,             // 分配控制台窗口
-  "consoleTopmost": false,            // 控制台窗口置顶(默认 false)
-  "forwardActivityLog": true,         // mod 日志转发到控制台
-  "speedhackBaseSpeed": 1.0,          // 变速(加载器内置): 1.0=正常, 2.0=全程2倍速; 低于 1.0 按 1.0 处理(不允许减速)
-  "speedControlEnabled": true,        // 变速控制文件通道(mod 热键变速用; false=关掉)
-  "steamBypassEnabled": true,         // Steam 自杀门绕过(阶段1): 把 AOT 类 SteamManager.Awake() 换成 no-op
-  "steamBypassRestartCheck": true,    // 阶段1 附加保险: steam_api64!SteamAPI_RestartAppIfNecessary 恒返回 0
-  "steamBypassMatchmaking": true,     // 阶段2 大厅匹配绕过: CreateLobbyAsync/JoinLobbyAsync 恒返回"已完成的空 Task"
-                                      // (修 Steam 全关时点创建房间/加入房间毫无反应; 只受本开关控制)
-  "steamBypassLobbyHasValue": true,   // 阶段3: Nullable`1<Lobby>::get_HasValue() 恒返回 false
-                                      // **实测作废(保留但无效)**: HybridCLR 解释器把 Nullable.HasValue
-                                      // 当内建指令内联, 该 hook 从不被命中(hook 无害, 但不是解法)。
-                                      // 只在 steamBypassMatchmaking=true 时有意义
-  "steamBypassTaskCtorMode": "auto",  // 方案C(主): 造空 Task 时 Task`1..ctor(T) 的调用方式 ——
-                                      // "auto"(默认, 先 direct 原生 ABI 直调 ctor 的 methodPointer,
-                                      //   探针校验失败自动退回 invoke 并记日志) / "direct" / "invoke"。
-                                      // 绕过 il2cpp_runtime_invoke 对 Nullable<Lobby> 的错误编组
-                                      // (它把 hasValue 弄成非零 -> val.HasValue 误判 true -> SetPublic NRE)。
-                                      // 日志会分别打印 direct / invoke 两条路径的 hasValue 诊断。
-  "steamBypassLobbyMethods": false,   // 方案B(备用安全网): Lobby.SetPublic()/SetJoinable(bool) 挂 no-op,
-                                      // Lobby.Id 是属性则 get_Id() 恒返回 0(是字段则只记日志)。
-                                      // **默认 false, 不要改回 true**: 实机证明 true 会让游戏启动早期
-                                      // 崩溃(0xC0000005 / GameAssembly.dll, 崩溃前最后一条日志是方案B
-                                      // 的 "Lobby.get_Id 首次被拦截"); 改回 false 后一切正常。
-                                      // 现在也不需要它: 方案C 已把 Task 结果构造成真正的空
-                                      // Nullable(HasValue=false), SetPublic/SetJoinable 不会被调用。
-                                      // 它只是"hasValue 若又变 true"的备用安全网
-  "steamBypassLobbyQuery": true,      // 阶段5: Steamworks.Data.LobbyQuery::RequestAsync() 恒返回
-                                      // "预建好的、结果为**长度 0 的 Lobby[]** 的已完成 Task<Lobby[]>"。
-                                      // 实机实测 6 条 NRE 抛在这个 await 上(栈顶就是 RequestAsync,
-                                      // **不是** SteamMatchmaking.LobbyList 取值本身 —— 此前文档标为
-                                      // "未实测"的那一点已据此更正); 危害是 **await 之后的代码全部不执行**
-                                      // -> 退房/解散/被踢后本地房间状态不清、被踢提示不弹、不返回房间列表页。
-                                      // 返回长度 0 的数组后 RoomLogic.cs:385 的 array.Length > 0 为 false
-                                      // -> 跳过 Steam 大厅清理 -> :398 UpdateRoomByExit / :401 ClearRoomInfo
-                                      // / :567-573 正常执行。全游戏只有这 2 处调用(:384/:554), 影响面为零。
-                                      // **独立开关**: 与上面几个 steamBypass* 互不影响。
-                                      // false = 恢复原版行为(退房/解散/被踢时 await 之后仍被跳过)
-  "sdkVersion": "2.4.9"               // 当前 SDK 版本(校验 mod 的 SdkVersion)
-}
-```
-
-## 构建
-
-要求: Visual Studio 2022 (v143) + Windows SDK 10.0.26100 + .NET SDK 8/9/10。
-
-```
-# 1. NuGet 还原 (首次)
+```powershell
 dotnet restore CesiumLoader.sln
-
-# 2. 命令行构建 (或直接用 VS2022 打开 sln 按 F7)
 MSBuild CesiumLoader.sln /p:Configuration=Release /p:Platform=x64
-
-# 3. 单元测试 (SDK, 不依赖游戏; 覆盖控制文件通道 / 倍率下限 / 时间连续性)
-dotnet test tests\CesiumLoader.SDK.Tests\CesiumLoader.SDK.Tests.csproj -c Release
-
-# 3b. AI 接管桥接的测试 (不开游戏; MCP 侧用假桥接目录跑完整命令往返)
-dotnet test tests\AstralParty.AgentMod.Tests\AstralParty.AgentMod.Tests.csproj -c Release
-dotnet test tests\AstralParty.Mcp.Tests\AstralParty.Mcp.Tests.csproj -c Release
-
-# 4. 冒烟测试: 变速控制文件通道 (真实 version.dll + 宿主进程, 不依赖游戏 ——
-#    控制文件通道在"等 GameAssembly.dll"之前就已就绪, 所以不需要游戏)
-pwsh -NoProfile -File tools\smoke-speedctl.ps1
-
-# 5. 构建 + 组装 dist + 打包 Release 压缩包 (托管部分走 dotnet build,
-#    内置 mod 清单读 tools\builtin-mods.json; 产物在 dist\release\)
-pwsh -NoProfile -File tools\package-modloader.ps1
+dotnet test tests/CesiumLoader.SDK.Tests/CesiumLoader.SDK.Tests.csproj -c Release
+pwsh -NoProfile -File tools/smoke-speedctl.ps1
+pwsh -NoProfile -File tools/package-modloader.ps1
 ```
 
-产物:
-- `bin\Release\version.dll` — C++ 加载器 (Doorstop 代理 + 变速引擎)
-- `loader\CesiumLoader.Bootstrap\bin\Release\netstandard2.0\CesiumLoader.Bootstrap.dll`
-- `loader\CesiumLoader.SDK\bin\Release\netstandard2.0\CesiumLoader.SDK.dll`
-- `mods\{ModId}\bin\Release\netstandard2.0\{ModId}.dll` — 8 个内置 mod（`ActivityLogMod` / `FreeCameraMod` / `SpeedHackMod` / `CombatOddsMod` / `HandViewerMod` / `CardSkinMod` / `CharacterSkinMod` / `AutoThanksMod`）
-- `tools\cesium\bin\Release\net8.0\cesium.exe` — mod 脚手架与包分发 CLI
+| 目录 | 职责 |
+| --- | --- |
+| `loader/` | C++ 原生加载器、C# Bootstrap 与 SDK |
+| `mods/` | 内置模组与可选实验组件 |
+| `mcp/` | 游戏内桥接模组与 MCP server |
+| `tools/` | CLI、打包与部署脚本 |
+| `tests/` / `smoke/` | 单元测试与变速冒烟测试 |
+| `dist/modloader/` | 用于发布的预编译托管产物 |
+| `third_party/` | 随仓库提供的第三方依赖 |
 
-每个 dll 旁边还有同名 `.pdb` 符号（同一次构建产出，`package-modloader.ps1` 会成对复制并一起打包）。
+发布由 `modloader-<版本>` 标签触发。CI 构建原生加载器、Bootstrap 与 CLI，SDK 和内置模组使用 `dist/` 中的预编译产物；内置清单统一读取 `tools/builtin-mods.json`。更新 SDK 或模组后先运行打包脚本，将 DLL 与同次构建的 PDB 一起更新并提交。
 
-## SDK 工具包下载
+Release 提供加载器包、SDK 工具包及独立默认皮肤包，加载器与工具包均有版本化名称和固定下载名称。**先发布 CesiumLoader，再发布 Toys**，确保 Toys 内嵌最新加载器。部署包细节见 [发布包布局](docs/发布包布局.md)。
 
-mod 开发者无需克隆仓库——直接从 Release 下载 **SDK 工具包**（`cesium-sdk-tools.zip`，
-win-x64 自包含，开箱即用）：
+## 许可
 
-```
-https://github.com/higashitaniyume/CesiumLoader/releases/latest/download/cesium-sdk-tools.zip
-```
+Copyright © 2026 Yume Higashitani。
 
-包含:
-- `cesium.exe` — mod 脚手架与包分发 CLI (自包含, 无需本机 .NET)
-- `CesiumLoader.SDK.dll` — mod 开发引用 (编译期绑定, 需配合游戏热更程序集)
-- `CesiumLoader.SDK.pdb` — SDK 符号 (调试时可单步进 SDK 内部并看到行号)
-- `docs\` — SDK 文档 (概览/事件/玩家/操作/变速/生命周期/配置/能力声明)
-- `examples\ActivityLogMod\` — 示例 mod 源码 (行为日志)
+- 加载器、Bootstrap、内置模组、MCP 与工具的原创代码采用 [GNU AGPL-3.0](LICENSE)。
+- `loader/CesiumLoader.SDK/` 中的 SDK 采用 [MIT License](loader/CesiumLoader.SDK/LICENSE)。第三方模组仅引用 SDK 时，可自行选择开源或闭源及分发协议；复制 AGPL 代码仍需遵守其条款。
+- SDK 工具包中的其他组件及随仓库分发的第三方库，各自遵循其许可证。
 
-快速开始:
-
-```
-cesium new MyMod --author 你 --desc "第一个mod"    # 生成项目模板
-cesium build MyMod                                  # 构建 (需本机 dotnet SDK)
-cesium package MyMod -o MyMod-1.0.0.zip             # 打包分发
-cesium verify <mods_dir>                            # 离线预检依赖/版本兼容
-cesium --help                                       # 全部命令与帮助
-```
-
-> 提示: `cesium new` 生成的项目自动附带 `refs\CesiumLoader.SDK.dll`（从工具包同目录复制），
-> 开箱即构建。mod 若直接用游戏类型（如 `RoomInfo`/`Battle`），把游戏热更 DLL 放进
-> 项目 `refs\` 目录即可自动引用（csproj 已配 `Condition`）。
-
-## 开发一个 mod
-
-**推荐用脚手架 CLI** (生成项目 + 程序集级元数据 + sidecar):
-
-```
-dotnet run --project tools\cesium -c Release -- new MyMod --author 小明 --desc "我的第一个mod"
-dotnet run --project tools\cesium -c Release -- build MyMod
-dotnet run --project tools\cesium -c Release -- package MyMod -o MyMod-1.0.0.zip
-```
-
-或手写: 新建 C# 类库 (netstandard2.0)，ProjectReference 到 `CesiumLoader.SDK`，
-并引用游戏热更程序集 (见 `ActivityLogMod.csproj` 的 Reference 模式)。
-
-**元数据 (程序集级声明, 权威位置 — AssemblyInfo.cs):**
-
-```csharp
-[assembly: CesiumLoader.SDK.ModManifest("我的Mod", "1.0.0", "小明", "描述",
-    Permissions = CesiumLoader.SDK.ModPermission.ReadGameState,  // 声明会用到的能力(仅展示/警告)
-    SdkVersion = "2.4.9")]                                        // API 版本协商
-```
-
-**入口 (纯事件驱动, 无轮询):**
-
-```csharp
-public static class ModEntry
-{
-    public static void Main()
-    {
-        CesiumLoader.SDK.ModBase.Run(OnInit);   // 不传 tick = 不轮询
-    }
-    static void OnInit()
-    {
-        CesiumLoader.SDK.GameEvents.CardUsed += (pid, card, remain) => /* ... */;
-        CesiumLoader.SDK.GameEvents.StartAutoHook();   // SDK 内部维持挂钩
-    }
-}
-```
-
-**能力声明**: `Permissions` 只是声明 mod 会用到的能力（读对局 / 操作游戏 / 写文件），
-供工具和加载器展示警告——已取消权限门控，任何 mod 都能调用 SDK 全部 API。
-声明「操作游戏」的 mod 在加载时与工具列表会显示 ⚠️ 警告，仅提示来源可信，不阻止。
-
-编译出的 mod 放进 `AstralParty_ModLoader\mods\`（每 mod 一个文件夹：`mods\{ModId}\{ModId}.dll` + 可选同名 `.json` sidecar），重启游戏生效。
-`cesium package` 打出的 zip 已是该布局，解压到 `mods\` 即完成安装。
-发布前用 `cesium verify <mods_dir>` 离线预检依赖与版本兼容性。
-
-> 提示: `cesium package` 会把 `bin\Release\netstandard2.0\{ModId}.pdb` 一起打进包里
-> （加载器按 `{ModId}.dll` 精确名加载，同目录多一个 `.pdb` 不影响加载）。
-> 这样别人拿你的 mod 报崩溃时，栈才能还原到你的源码行而不是一片偏移。
-> 想给别人调你的 mod，就别把 `.pdb` 删掉。
-
-SDK API 一览:
-- `ModBase.Run(init, tick=null, delayMs=30000, tag)` — 生命周期 (不传 tick 不轮询)
-- `GameEvents.*` — 16 个事件 + `StartAutoHook()` (SDK 内部维持挂钩, 事件驱动)
-- `Permissions.Has/Require` — 恒返回 true (权限门控已取消, 仅保留 API 兼容)
-- `SdkVersion.Accepts/Current` — API 版本协商
-- `SdkLog.ReportCrash/CrashGuard` — 故障报告 (完整堆栈写本次启动的 mod-errors 日志)
-- `Players.*` — 全部玩家 / 星币 / 手牌数 / 名字 / 是否自己 / 手牌内容
-- `Names.*` — 卡牌 / 遗物 / 技能 / 角色 / 战斗角色 名字解析
-- `SdkLog.Write(tag, line)` — 写日志 (转发到 loader 控制台)
-
-## 从旧版 (winmm.dll) 迁移
-
-旧版加载器叫 `winmm.dll`。升级到 Doorstop 式时:
-
-1. **删除游戏目录下的 `winmm.dll`** (旧代理), 放入新的 `version.dll`。
-   (两者并存会导致双引导线程 / 重复加载 mod!)
-2. 新布局增加 `AstralParty_ModLoader\bootstrap\` 与 `doorstop_config.json`。
-3. SDK/mods/logs 目录不变, 现有 mod 无需改动。
-
-## 发布 (GitHub Action)
-
-打 tag `modloader-<版本>` 自动构建并发布「解压即部署」的压缩包到 GitHub Release。
-**版本号取自 tag**（CI 把 `modloader-` 前缀去掉），所以打 tag 前不需要改任何版本文件，
-但要保证 SDK / mods / dist / 文档里的 `2.x.y` 字符串彼此一致：
-
-```
-git tag modloader-2.4.10
-git push origin modloader-2.4.10
-```
-
-`release-modloader.yml` 会:
-1. windows-latest 上 MSBuild **只构建原生加载器**（`loader\CesiumLoader\CesiumLoader.vcxproj`
-   `/p:Configuration=Release /p:Platform=x64`，不是整个 sln），无游戏依赖
-2. dotnet 现场构建 CesiumLoader.Bootstrap (自包含, 零引用) + cesium CLI (SDK 工具包)
-3. 用 `dist\modloader\` 里的预编译 SDK / 内置 mod (游戏热更 DLL 不入库, 故用 dist)；
-   内置 mod 清单读 `tools\builtin-mods.json`（与本地打包脚本同一来源），并逐项校验产物存在
-4. 打包成部署布局 + 生成 `cesium-loader.json` 清单 (版本 / SHA256 / 布局)；
-   连同每份 dll 的 `.pdb` 符号一起打包并写进清单（原生 `version.pdb` 与 `version.dll`
-   由同一次 msbuild 产出，托管符号取自 `dist\`）
-5. 组装 SDK 工具包 (cesium.exe + SDK DLL + SDK 符号 + 文档 + 示例源码)
-
-产物 (Release 资产):
-- `cesium-loader-2.4.10.zip` — 加载器部署包 (带版本号; 含各 dll 的同名 .pdb 符号,
-  体积几乎全来自原生 `version.pdb`)
-- `cesium-loader.zip` — 固定名, 供 `releases/latest/download/cesium-loader.zip` 使用
-- `cesium-sdk-tools-2.4.10.zip` — SDK 工具包 (带版本号)
-- `cesium-sdk-tools.zip` — 固定名, 供 `releases/latest/download/cesium-sdk-tools.zip` 使用
-- `cesium-default-skins.zip` — 独立默认卡牌皮肤包（解压至游戏目录即可使用默认卡面方案）
-
-> 🔎 **为什么要带 `.pdb`**: 用户端崩溃给出的只是地址(或一个没有行号的栈), 有符号才能还原到
-> 具体文件行号 —— mod 的异常栈尤其需要。符号与 dll 是**强绑定**的(PDB 里存着 dll 的 GUID),
-> 因此只能"同一次构建产出的那一对"配套发布, 删掉 `.pdb` 不影响加载器与 mod 运行。
-
-AstralParty.Toys（可通过 `winget install Hiynet.AstralParty.Toys` 或 GitHub Releases 安装）的 Mod 管理功能从这个 URL 下载安装:
-`https://github.com/higashitaniyume/CesiumLoader/releases/latest/download/cesium-loader.zip`
-
-mod 开发者从这个 URL 下载 SDK 工具包:
-`https://github.com/higashitaniyume/CesiumLoader/releases/latest/download/cesium-sdk-tools.zip`
-
-> 📌 **发布顺序：先发加载器，再发 Toys。** AstralParty.Toys 的发布流水线固定从
-> `releases/latest/download/cesium-loader.zip` 拉取并内嵌（覆盖 `Resources\ModLoader\`，
-> 含 `loader-version.json`，但不含 `doorstop_config.json`），所以加载器还没发布就先打 Toys 的 tag，
-> 会把上一版加载器打进去。
-
-更新 SDK / mod 后同步 dist（`dist\` 里预编译的托管产物必须入库，CI 只校验不重建）:
-
-```
-pwsh -NoProfile -File tools\package-modloader.ps1
-```
-
-⚠ **dll 与它的 `.pdb` 必须同一次刷新**：符号文件里记着 dll 的 GUID，分两次构建拼出来的
-"dll + 别人的 pdb"会被调试器直接拒绝加载（等于没符号）。`package-modloader.ps1` 已经成对复制，
-但手工替换 `dist\` 里的 dll 时，别忘了把旁边的 `.pdb` 一起换掉（`dist\agent\` 的 AI 接管包同理）。
-
-它会重建 SDK 与 `tools\builtin-mods.json` 里列出的每个内置 mod，组装
-`dist\modloader\AstralParty_ModLoader\`（sdk + mods + doorstop_config.json），
-再产出 `dist\release\*.zip` 与清单。跑完 `git status` 看一眼 dist 的改动一起提交即可。
-
-## 开源协议
-
-本仓库除 `loader/CesiumLoader.SDK/` 外的原创代码以 **GNU Affero General Public License v3.0（AGPL-3.0）** 发布，协议全文见根目录 [LICENSE](LICENSE)。加载器本体、Bootstrap、内置 mods、MCP 与工具均保留 AGPL-3.0。
-
-`loader/CesiumLoader.SDK/` 中的 SDK 源码单独以 **MIT License** 发布，协议全文见 [SDK LICENSE](loader/CesiumLoader.SDK/LICENSE)。SDK 的预编译程序集与 SDK 工具包也按 MIT 许可提供。
-
-Copyright (C) 2026 Yume Higashitani
-
-- AGPL 覆盖部分允许自由使用、修改、分发，包括商业用途；修改版和衍生作品须遵守 AGPL-3.0 的对应条款。若将其修改版作为网络服务提供，AGPL 第 13 条要求向远程交互用户提供相应源代码。
-- MIT 覆盖部分允许使用者使用、修改、分发、再许可和销售 SDK，包括将 SDK 用于闭源 mod；只需在 SDK 副本或实质部分中保留版权声明与 MIT 许可文本。
-- SDK 的 MIT 授权仅覆盖 SDK 本身，不会把加载器、Bootstrap、内置 mod、MCP、工具或其他 AGPL 文件重新授权为 MIT。SDK 工具包若包含其他组件，各组件仍适用其各自许可证。
-
-> **对 mod 作者的影响**：第三方 mod 可以自行选择闭源或开源，以及自己的分发协议；仅因引用或链接 MIT 许可的 `CesiumLoader.SDK.dll`，不要求 mod 使用 AGPL。若 mod 复制了仓库中 AGPL 覆盖部分的代码，仍须遵守该部分适用的 AGPL 条款。
-
-> 随源码分发的第三方库位于 `third_party\`（`fmt`、`spdlog`、`nlohmann_json`），各自适用其自带的
-> `LICENSE.txt`（均为 MIT），与本仓库其余部分的 AGPL-3.0 并存且不冲突。
+软件按许可证约定提供，不附带担保。
