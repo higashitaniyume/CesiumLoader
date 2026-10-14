@@ -4,7 +4,7 @@
 
 ## 感谢您选择并使用 CesiumLoader！
 
-**Astral Party 的模组加载器与开发 SDK**
+**此仓库是游戏 《Astral Party》的模组加载器与开发 SDK**
 
 原生引导 · 托管模组 · 事件 API · 开发工具
 
