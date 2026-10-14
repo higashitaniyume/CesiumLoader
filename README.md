@@ -49,6 +49,12 @@ CesiumLoader.sln
     └── smoke-speedctl.ps1          跑变速控制文件通道冒烟测试
 ```
 
+## 2.4.10：战斗辅助头顶显示配置说明
+
+战斗辅助模组已有 `ShowBoardPlayerAttrs` 开关，默认开启。配置设为 `false` 可关闭棋盘角色头顶的攻击、防御数字及悬停详情，保存后重启游戏生效；其他战斗辅助功能不受影响。本版补充配置说明，未新增该开关。
+
+加载器、SDK、默认配置和 CLI 版本统一为 2.4.10。
+
 ## 2.4.9：人物战斗动画修补与动态卡面性能优化
 
 人物皮肤补齐 BattleActor 战斗精灵接管，未匹配过渡动作保持自定义画面，并修正数字帧后缀解析；39 项角色皮肤测试通过，用户已实机确认渲染正常。动态卡面采用整套序列缓存、每帧解码调度和可见控件复用，默认动画缓存预算 512 MiB，详见 [性能优化说明](docs/卡面动画性能优化.md)。卡面性能优化的实际 FPS 改善仍需游戏内验证。
@@ -455,8 +461,8 @@ SDK API 一览:
 但要保证 SDK / mods / dist / 文档里的 `2.x.y` 字符串彼此一致：
 
 ```
-git tag modloader-2.4.9
-git push origin modloader-2.4.9
+git tag modloader-2.4.10
+git push origin modloader-2.4.10
 ```
 
 `release-modloader.yml` 会:
@@ -471,10 +477,10 @@ git push origin modloader-2.4.9
 5. 组装 SDK 工具包 (cesium.exe + SDK DLL + SDK 符号 + 文档 + 示例源码)
 
 产物 (Release 资产):
-- `cesium-loader-2.4.9.zip` — 加载器部署包 (带版本号; 含各 dll 的同名 .pdb 符号,
+- `cesium-loader-2.4.10.zip` — 加载器部署包 (带版本号; 含各 dll 的同名 .pdb 符号,
   体积几乎全来自原生 `version.pdb`)
 - `cesium-loader.zip` — 固定名, 供 `releases/latest/download/cesium-loader.zip` 使用
-- `cesium-sdk-tools-2.4.9.zip` — SDK 工具包 (带版本号)
+- `cesium-sdk-tools-2.4.10.zip` — SDK 工具包 (带版本号)
 - `cesium-sdk-tools.zip` — 固定名, 供 `releases/latest/download/cesium-sdk-tools.zip` 使用
 - `cesium-default-skins.zip` — 独立默认卡牌皮肤包（解压至游戏目录即可使用默认卡面方案）
 
