@@ -145,7 +145,7 @@ namespace CombatOddsMod.Tests
             CombatMath.RangeWithJudgeDice(attackMin, attackMax, out attackFlat, out attackTerms);
             CombatMath.RangeWithJudgeDice(defenseMin, defenseMax, out defenseFlat, out defenseTerms);
             var attack = CombatMath.Attack(attackFlat, attackTerms, defenseFlat, defenseTerms,
-                defenderHp, minChip: 0);
+                defenderHp);
 
             // 独立枚举区间整数和两颗判定骰，不使用 Distribution 推导期望值。
             double totalDamage = 0, totalKills = 0, defendDamage = 0, defendKnockdowns = 0;
@@ -154,15 +154,15 @@ namespace CombatOddsMod.Tests
                 for (int ap = 1; ap <= 6; ap++)
                 {
                     int finalAttack = a + ap;
-                    var defend = CombatMath.Defend(finalAttack, defenderHp, defenseFlat, defenseTerms, minChip: 0);
+                    var defend = CombatMath.Defend(finalAttack, defenderHp, defenseFlat, defenseTerms);
                     double lockedDamage = 0, lockedKills = 0;
                     int defenseOutcomes = 0;
                     for (int d = defenseMin; d <= defenseMax; d++)
                         for (int dp = 1; dp <= 6; dp++)
                         {
                             int finalDefense = d + dp;
-                            int damage = Math.Max(0, finalAttack - finalDefense);
-                            bool knockedDown = !(finalAttack < defenderHp + finalDefense);
+                            int damage = Math.Max(1, finalAttack - finalDefense);
+                            bool knockedDown = damage >= defenderHp;
                             totalDamage += damage;
                             lockedDamage += damage;
                             if (knockedDown) { totalKills++; lockedKills++; }
@@ -239,9 +239,9 @@ namespace CombatOddsMod.Tests
         }
 
         [Fact]
-        public void Defend_MinChipDamage_CalibratedToReplays()
+        public void Defend_MinChipDamage_DefaultOneWithExplicitZeroOverride()
         {
-            // 显式启用旧保底模型：Atk<=Def 时仍受1点伤害；默认模型无保底。
+            // 默认保底模型：Atk<=Def 时仍受1点伤害；显式 0 可用于非普通战斗模型。
             var r = CombatMath.Defend(3, 6, 10, null, minChip: 1);   // 防 10 > 攻 3
             Assert.Equal(1.0, r.ExpectedDamage, 12);
             Assert.Equal(1, r.MinDamage);
@@ -252,19 +252,54 @@ namespace CombatOddsMod.Tests
             Assert.Equal(0, r0.MaxDamage);
         }
 
-        [Fact]
-        public void AttackAndDefend_DefaultNoChip_DefenseAboveAttackPreservesOneHp()
+        [Theory]
+        [InlineData(3)]
+        [InlineData(0)]
+        [InlineData(-2)]
+        public void AttackAndDefend_DefaultChip_OneHpAlwaysKnockedDown(int finalAttack)
         {
-            var attack = CombatMath.Attack(3, null, 10, null, targetHp: 1);
-            var defend = CombatMath.Defend(3, 1, 10, null);
-            Assert.Equal(0.0, attack.ExpectedDamage, 12);
+            // 即使防御远高于攻击，普通命中仍保底 1；枚举防御骰不能降低击倒率。
+            var attack = CombatMath.Attack(finalAttack, null, 10, new[] { 6 }, targetHp: 1);
+            var defend = CombatMath.Defend(finalAttack, 1, 10, new[] { 6 });
+            Assert.Equal(1.0, attack.ExpectedDamage, 12);
+            Assert.Equal(1.0, attack.KillProb, 12);
+            Assert.Equal(1, attack.MinDamage);
+            Assert.Equal(1, attack.MaxDamage);
+            Assert.Equal(1.0, defend.ExpectedDamage, 12);
+            Assert.Equal(1.0, defend.KnockdownProb, 12);
+            Assert.Equal(1, defend.MinDamage);
+            Assert.Equal(1, defend.MaxDamage);
+        }
+
+        [Theory]
+        [InlineData(-1, false)]
+        [InlineData(0, true)]
+        public void OneHp_SpecialBuffCanCancelMinimumDamage(int damageAdjust, bool immune)
+        {
+            var attack = CombatMath.Attack(3, null, 10, new[] { 6 }, 1,
+                damageAdjust: damageAdjust, immune: immune);
+            var defend = CombatMath.Defend(3, 1, 10, new[] { 6 },
+                damageAdjust: damageAdjust, immune: immune);
+            var dodge = CombatMath.Dodge(3, 1, 3, damageOnFail: 0,
+                damageAdjust: damageAdjust, immune: immune);
             Assert.Equal(0.0, attack.KillProb, 12);
-            Assert.Equal(0, attack.MinDamage);
-            Assert.Equal(0, attack.MaxDamage);
-            Assert.Equal(0.0, defend.ExpectedDamage, 12);
+            Assert.Equal(0.0, attack.ExpectedDamage, 12);
             Assert.Equal(0.0, defend.KnockdownProb, 12);
-            Assert.Equal(0, defend.MinDamage);
-            Assert.Equal(0, defend.MaxDamage);
+            Assert.Equal(0.0, defend.ExpectedDamage, 12);
+            Assert.Equal(0.0, dodge.KnockdownProb, 12);
+            Assert.Equal(0.0, dodge.ExpectedDamage, 12);
+        }
+
+        [Theory]
+        [InlineData(1, 1.0 / 6)]
+        [InlineData(3, 0.5)]
+        [InlineData(6, 5.0 / 6)]
+        public void OneHp_DodgeCanSurviveButFailureStillHasMinimumDamage(int point, double failProb)
+        {
+            var dodge = CombatMath.Dodge(0, 1, point, damageOnFail: 0);
+            Assert.Equal(failProb, dodge.KnockdownProb, 12);
+            Assert.Equal(failProb, dodge.ExpectedDamage, 12);
+            Assert.Equal(1.0 - failProb, dodge.SuccessProb, 12);
         }
 
         // ============================ 攻击:期望伤害 + 击杀率 ============================

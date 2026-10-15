@@ -33,8 +33,8 @@ namespace CombatOddsMod
     /// 计算模型与限制:
     ///   · 攻击 = MinAtk..MaxAtk 的随机整数 + 一颗判定骰，防御同理使用 MinDef..MaxDef。
     ///     范围内整数暂按等概率且与判定骰独立；不能从上限推断为 N 颗 d6。
-    ///   · 最终攻击锁定后直接使用 Atk；伤害基线 max(0, Atk-Def)，不假设保底 1。
-    ///     存活严格要求 Atk &lt; HP + Def；相等会被击倒。
+    ///   · 最终攻击锁定后直接使用 Atk；伤害基线 max(1, Atk-Def)，普通命中保底 1。
+    ///     特殊 buff 在保底之后修正伤害；无特殊效果时，1 血目标选择防御必被击倒。
     ///   · 击杀率以目标选择防御为条件，不混合闪避，也不是整场获胜率。
     ///   · 闪避按单颗判定骰计算，保证闪避等特殊效果不在通用模型内。
     ///   · 已登记的受伤 buff 通过 Players.BuffsOf 读取并计入；未登记效果无法保证已覆盖。
@@ -357,8 +357,8 @@ namespace CombatOddsMod
 
                     if (attackerThrew)
                     {
-                        var d = CombatMath.Defend(finalAtk, hp, flat, dice, 0, dmgAdjust, targetImmune);
-                        int dodgeFailDmg = _cfg.DodgeKeepsBaseDefense ? Math.Max(0, finalAtk - initDef) : finalAtk;
+                        var d = CombatMath.Defend(finalAtk, hp, flat, dice, 1, dmgAdjust, targetImmune);
+                        int dodgeFailDmg = _cfg.DodgeKeepsBaseDefense ? Math.Max(1, finalAtk - initDef) : Math.Max(1, finalAtk);
                         var dodge = CombatMath.Dodge(finalAtk, hp, atkPoint, JudgeFaces(), dodgeFailDmg, dmgAdjust, targetImmune);
 
                         bool defBetter = d.KnockdownProb < dodge.KnockdownProb - 1e-4;
@@ -380,7 +380,7 @@ namespace CombatOddsMod
                     {
                         // 攻方未投：最大范围值 + 判定骰上限，作为最坏攻击。
                         int atkMax = SafeInt(() => atk.MaxAtk) + bonnieBonus + JudgeFaces();
-                        var d = CombatMath.Defend(atkMax, hp, flat, dice, 0, dmgAdjust, targetImmune);
+                        var d = CombatMath.Defend(atkMax, hp, flat, dice, 1, dmgAdjust, targetImmune);
                         sb.Append(Big(C("⏳ 等对方投骰", Gray)));
                         sb.Append('\n').Append(Dim(defName + " " + hp + "血, 最坏被击倒 " + PctPlain(d.KnockdownProb)));
                     }
@@ -407,7 +407,7 @@ namespace CombatOddsMod
                     int dFlat; int[] dDice;
                     CombatMath.RangeWithJudgeDice(SafeInt(() => def.MinDef), maxDef, out dFlat, out dDice, JudgeFaces());
 
-                    var r = CombatMath.Attack(aFlat, aDice, dFlat, dDice, targetHp, 0, dmgAdjust, targetImmune);
+                    var r = CombatMath.Attack(aFlat, aDice, dFlat, dDice, targetHp, 1, dmgAdjust, targetImmune);
                     if (bonnieBonus > 0) sb.Append('\n').Append(C("邦妮标记目标攻击+3", Orange));
                     if (showDefender) sb.Append('\n');
                     sb.Append(Big("🎯 击杀 " + C(PctPlain(r.KillProb), KillColor(r.KillProb))));

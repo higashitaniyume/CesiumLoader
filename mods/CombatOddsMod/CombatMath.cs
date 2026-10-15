@@ -9,7 +9,7 @@ namespace CombatOddsMod
     /// 机制来源(反编译 party.model.BattleRole / UI.FightWindow / Global.bin 验证):
     ///  - 攻/防最终值 = Min..Max 范围内的随机整数 + 一颗判定骰；范围随机项暂按等概率建模。
     ///  - 防御方在攻方投骰后做"防御 / 闪避"二选一(FightLogic.ReadyFightChoice)。
-    ///  - 防御: 受伤 = max(0, 最终攻击 − 防御总值); 防御总值 = 防御范围随机值 + 单颗判定骰。
+    ///  - 防御: 受伤 = max(1, 最终攻击 − 防御总值); 防御总值 = 防御范围随机值 + 单颗判定骰。
     ///  - 闪避: 掷一颗判定骰(GAME_JUDGE_DICE_LIMIT=6, 即 d6), 点数 > 攻方骰点则闪避成功、不受伤;
     ///          攻方骰点 == 骰上限(6) 时需掷出 = 6 才成功(UI.FightWindow.RefreshDodgeInfo 的 ">"/"=" 语义)。
     ///          闪避失败则承受未防御的攻击。
@@ -85,10 +85,10 @@ namespace CombatOddsMod
         /// 防御结算。finalAttack = 攻方已锁定的最终攻击值(攻方先投骰, 此刻已知)。
         /// defenseFlat = 防御基础(InitDef + 已确定加成), defenseDice = 防御骰面数列表(每颗 1..faces)。
         /// defenderHp = 当前血量。
-        /// minChip 为显式可选的保底伤害，默认 0；普通战斗不假设保底 1。
-        ///   默认基线 max(0,Atk-Def)，存活严格要求 Atk &lt; HP+Def。
+        /// minChip 为命中保底伤害，普通战斗默认 1；特殊效果在此后修正伤害。
+        ///   默认基线 max(1,Atk-Def)；无特殊效果时，1 血目标选择防御必被击倒。
         /// </summary>
-        public static DefendResult Defend(int finalAttack, int defenderHp, int defenseFlat, IReadOnlyList<int> defenseDice, int minChip = 0, int damageAdjust = 0, bool immune = false)
+        public static DefendResult Defend(int finalAttack, int defenderHp, int defenseFlat, IReadOnlyList<int> defenseDice, int minChip = 1, int damageAdjust = 0, bool immune = false)
         {
             int min;
             var dist = Distribution(defenseFlat, defenseDice, out min);
@@ -101,7 +101,7 @@ namespace CombatOddsMod
                 if (p == 0.0) continue;
                 int def = min + i;
                 int dmg = finalAttack - def;
-                if (dmg < minChip) dmg = (finalAttack > 0 ? minChip : 0); // 命中保底; 无攻击则 0
+                if (dmg < minChip) dmg = minChip; // 普通战斗命中保底
                 if (dmg < 0) dmg = 0;
                 dmg += damageAdjust;                 // buff 易伤/减伤修正
                 if (dmg < 0) dmg = 0;
@@ -140,13 +140,13 @@ namespace CombatOddsMod
         /// <summary>
         /// 闪避结算。attackerPoint = 攻方投出的骰点(闪避阈值)。judgeFaces = 判定骰面数(默认 6)。
         /// finalAttack = 攻方最终攻击; damageOnFail = 闪避失败时承受的伤害
-        /// (通常 = max(0, finalAttack − 防御基础); 由调用方按是否保留基础防御决定)。
+        /// (通常为全额攻击，保底 1；由调用方按是否保留基础防御决定，特殊 buff 随后修正)。
         /// </summary>
         public static DodgeResult Dodge(int finalAttack, int defenderHp, int attackerPoint,
             int judgeFaces = DefaultJudgeDiceFaces, int damageOnFail = -1, int damageAdjust = 0, bool immune = false)
         {
             if (judgeFaces <= 0) judgeFaces = DefaultJudgeDiceFaces;
-            if (damageOnFail < 0) damageOnFail = finalAttack; // 默认: 失败承受全额攻击(未防御)
+            if (damageOnFail < 0) damageOnFail = Math.Max(1, finalAttack); // 默认: 失败承受全额攻击(未防御)
 
             // 闪避成功的点数个数: 一般需掷 > attackerPoint; 当 attackerPoint 达到上限时需 = 上限。
             int successFaces;
@@ -160,7 +160,7 @@ namespace CombatOddsMod
             double success = (double)successFaces / judgeFaces;
             double fail = 1.0 - success;
 
-            int dmgFail = damageOnFail < 0 ? 0 : damageOnFail;
+            int dmgFail = Math.Max(1, damageOnFail);
             dmgFail += damageAdjust;                    // buff 易伤/减伤修正(闪避失败时才承受)
             if (dmgFail < 0) dmgFail = 0;
             if (immune) dmgFail = 0;                     // 护盾/免疫
@@ -191,10 +191,10 @@ namespace CombatOddsMod
         /// <summary>
         /// 我方攻击结算。攻方骰未定时给出 attackDice; 已锁定时用 attackFlat 且 attackDice 传 null。
         /// 目标防御同理(defenseFlat + defenseDice)。targetHp = 目标当前血量。
-        /// 对攻/防两侧骰池做联合卷积求 max(0, atk − def) 的分布。
+        /// 对攻/防两侧骰池做联合卷积求 max(1, atk − def) 的分布。
         /// </summary>
         public static AttackResult Attack(int attackFlat, IReadOnlyList<int> attackDice,
-            int defenseFlat, IReadOnlyList<int> defenseDice, int targetHp, int minChip = 0, int damageAdjust = 0, bool immune = false)
+            int defenseFlat, IReadOnlyList<int> defenseDice, int targetHp, int minChip = 1, int damageAdjust = 0, bool immune = false)
         {
             int atkMin;
             var atk = Distribution(attackFlat, attackDice, out atkMin);
@@ -214,7 +214,7 @@ namespace CombatOddsMod
                     if (pd == 0.0) continue;
                     int defVal = defMin + d;
                     int dmg = atkVal - defVal;
-                    if (dmg < minChip) dmg = (atkVal > 0 ? minChip : 0); // 命中保底(回放校准)
+                    if (dmg < minChip) dmg = minChip; // 普通战斗命中保底
                     if (dmg < 0) dmg = 0;
                     dmg += damageAdjust;                 // buff 易伤/减伤修正(目标身上)
                     if (dmg < 0) dmg = 0;
