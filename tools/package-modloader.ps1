@@ -126,14 +126,15 @@ if (-not $SkipBuild)
     $nativeDll = 'loader\CesiumLoader\bin\Release\version.dll'
     if (-not (Test-Path $nativeDll)) { throw "version.dll 未生成: $nativeDll" }
 
+    # 解包基线可能保留较旧时间戳；必须强制重编，避免增量缓存保留旧游戏枚举常量。
     Write-Step '2. 构建托管层 (Bootstrap / SDK / mods / cesium CLI)'
-    dotnet build 'loader\CesiumLoader.Bootstrap\CesiumLoader.Bootstrap.csproj' -c Release --nologo
+    dotnet build 'loader\CesiumLoader.Bootstrap\CesiumLoader.Bootstrap.csproj' -c Release -t:Rebuild --nologo
     if ($LASTEXITCODE -ne 0) { throw 'Bootstrap 构建失败' }
-    dotnet build 'loader\CesiumLoader.SDK\CesiumLoader.SDK.csproj' -c Release --nologo
+    dotnet build 'loader\CesiumLoader.SDK\CesiumLoader.SDK.csproj' -c Release -t:Rebuild --nologo
     if ($LASTEXITCODE -ne 0) { throw 'SDK 构建失败' }
     foreach ($mod in $BuiltInMods)
     {
-        dotnet build "mods\$mod\$mod.csproj" -c Release --nologo
+        dotnet build "mods\$mod\$mod.csproj" -c Release -t:Rebuild --nologo
         if ($LASTEXITCODE -ne 0) { throw "$mod 构建失败" }
     }
 

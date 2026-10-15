@@ -17,6 +17,14 @@ $output = (Resolve-Path -LiteralPath $output).Path
 if (-not (Test-Path -LiteralPath $source -PathType Container)) { throw "缺少默认皮肤目录: $source" }
 $images = @(Get-ChildItem -LiteralPath $source -Recurse -File | Where-Object { $_.Extension -in '.png', '.jpg', '.jpeg', '.bmp' })
 if ($images.Count -eq 0) { throw '默认皮肤目录中没有图片，拒绝发布空包' }
+# 清单来自当前官方资源的实际提取结果，防止发布时漏掉新卡或混回旧素材。
+$manifest = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'default-skins-manifest.json') -Raw | ConvertFrom-Json
+if ($manifest.images.Count -ne $images.Count) { throw '默认卡面数量与官方素材清单不一致' }
+foreach ($image in $manifest.images) {
+    $imagePath = Join-Path $source $image.file
+    if (-not (Test-Path -LiteralPath $imagePath -PathType Leaf)) { throw "默认包缺少卡面: $($image.file)" }
+    if ((Get-FileHash -LiteralPath $imagePath -Algorithm SHA256).Hash -ne $image.sha256) { throw "默认卡面与官方素材清单不一致: $($image.file)" }
+}
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 function Get-ZipFiles([string] $path) {
