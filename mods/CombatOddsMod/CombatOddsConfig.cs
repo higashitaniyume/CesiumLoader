@@ -33,5 +33,7 @@ namespace CombatOddsMod
         public bool ShowBoardPlayerAttrs = true;
         /// <summary>把每次攻击的攻击力加成明细打进加载器日志(星币/治愈/星光/血量/持有筹码 + 各筹码加成), 便于与结算伤害对拍。</summary>
         public bool LogAtkBonusDetail = true;
+        /// <summary>在左侧 HUD 所有玩家昵称上方显示各自的主动技能剩余冷却/总冷却。</summary>
+        public bool ShowSkillCooldown = true;
     }
 }

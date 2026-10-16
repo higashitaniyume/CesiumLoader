@@ -58,6 +58,7 @@ namespace CombatOddsMod
 
         // 主 HUD(左下角)攻击力后面的"筹码加成"追加显示。
         private static HudAtkBonusOverlay _hudBonus;
+        private static SkillCooldownOverlay _skillCooldown;
         private static PlayerAttrOverlay _playerAttrOverlay;
         private static object _atkPropBound;        // 已挂监听的 ATK 属性(用于换绑/解绑)
         private static Action<int> _atkListener;    // 保活引用, 便于 RemoveListener
@@ -111,6 +112,7 @@ namespace CombatOddsMod
                     _cfg.ShowRelicAtkBonus     = c.GetBool("ShowRelicAtkBonus", d.ShowRelicAtkBonus);
                     _cfg.ShowBoardPlayerAttrs  = c.GetBool("ShowBoardPlayerAttrs", d.ShowBoardPlayerAttrs);
                     _cfg.LogAtkBonusDetail     = c.GetBool("LogAtkBonusDetail", d.LogAtkBonusDetail);
+                    _cfg.ShowSkillCooldown     = c.GetBool("ShowSkillCooldown", d.ShowSkillCooldown);
 
                     // 全字段写回, 保证 config.json 始终含全部键 → Toys ⚙ 表单能把每一项都列出来。
                     c.Set("Enabled", _cfg.Enabled);
@@ -128,7 +130,8 @@ namespace CombatOddsMod
                     c.Set("ShowRelicAtkBonus", _cfg.ShowRelicAtkBonus);
                     c.Set("ShowBoardPlayerAttrs", _cfg.ShowBoardPlayerAttrs);
                     c.Set("LogAtkBonusDetail", _cfg.LogAtkBonusDetail);
-                    try { c.Save(); } catch { }
+                    c.Set("ShowSkillCooldown", _cfg.ShowSkillCooldown);
+                    if (!c.Save()) SdkLog.Warn("CombatOdds", "配置未能保存，请检查 mod 目录写入权限。");
                 }
             }
             catch (Exception e) { SdkLog.Warn("CombatOdds", "读配置失败, 用默认值: " + e.Message); }
@@ -143,7 +146,7 @@ namespace CombatOddsMod
 
         private static void OnInit()
         {
-            _ctx = ModContext.Current;
+            _ctx = ModRegistry.GetOrRegister(typeof(ModEntry).Assembly);
             LoadConfig();
             if (!_cfg.Enabled)
             {
@@ -161,6 +164,15 @@ namespace CombatOddsMod
             // FightWindow 内嵌覆盖层(FairyGUI 反射, 需进游戏目视确认位置; 失败自动降级到控制台)。
             try { _overlay = new FightOverlayController(new RuntimeFightOverlayReflector()); }
             catch (Exception e) { SdkLog.Warn("CombatOdds", "覆盖层初始化失败(仅用控制台): " + e.Message); }
+
+            try
+            {
+                _skillCooldown = new SkillCooldownOverlay();
+                _skillCooldown.SetEnabled(_cfg.ShowSkillCooldown);
+                _skillCooldown.Start();
+                _ctx?.RegisterCleanup(_skillCooldown.Dispose);
+            }
+            catch (Exception e) { SdkLog.Warn("CombatOdds", "技能 CD 覆盖层初始化失败: " + e.Message); }
 
             // 主 HUD 攻击力加成(星币锤/手电筒/美工刀): 在左下角攻击力右侧显示, 可悬浮看明细。
             try

@@ -51,6 +51,11 @@ namespace CesiumLoader.SDK.Mods
             RunAsync(init, tick, delayMs, tag).Forget();
         }
 
+        internal static ModContext RegisterLegacyCallbacks(Action init, Action tick)
+        {
+            return ModRegistry.GetOrRegister(init?.Method.DeclaringType?.Assembly ?? tick?.Method.DeclaringType?.Assembly);
+        }
+
         private static async UniTaskVoid RunAsync(Action init, Action tick, int delayMs, string tag)
         {
             SdkLog.Write(tag, "=== Main 被调用 ===");
@@ -61,7 +66,9 @@ namespace CesiumLoader.SDK.Mods
                 SdkLog.Write(tag, "启动延迟结束, 开始初始化");
 
                 // 新式路径依赖 ModContext; 旧式路径也顺带登记上下文, 让 Logger/Config 可用
-                try { ModRegistry.GetOrRegister(System.Reflection.Assembly.GetCallingAssembly()); } catch { }
+                // 异步恢复后的调用者属于 SDK/UniTask，不能用 GetCallingAssembly 找 mod。
+                // init 的声明类型始终属于实际 mod，反射调用与解释器执行也不依赖调用栈。
+                try { RegisterLegacyCallbacks(init, tick); } catch { }
 
                 Exception initError = null;
                 MainThread.Run(() =>

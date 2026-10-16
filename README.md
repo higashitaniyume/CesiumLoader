@@ -64,6 +64,7 @@ winget install Hiynet.AstralParty.Toys
 | [FreeCameraMod](docs/mod-FreeCameraMod.md) | 滚轮沿视线缩放，默认 `F1` 恢复视角 |
 | [SpeedHackMod](docs/mod-SpeedHackMod.md) | 游戏内调整倍率，切换正常速度与上次倍率 |
 | ActivityLogMod | 记录出牌、投骰、回合等行为并转发到控制台 |
+| [ForkDirectionMod](mods/ForkDirectionMod/README.md) | PVE 岔路三个相邻地块按顺序显示红 A、黄 B、蓝 C 与地块 ID |
 
 
 ## 配置与运行
@@ -82,6 +83,8 @@ winget install Hiynet.AstralParty.Toys
 **变速范围为 1–100 倍，建议不超过 3 倍。** 变速影响动画、演出、回合与网络超时；切换倍率时保持虚拟时间连续。默认 `Delete` 切换正常速度与上次倍率，`Alt` + `=` / `Alt` + `-` 调整倍率，热键可在 Toys 中修改。
 
 Steam 绕过涉及多个独立开关，推荐通过 Toys 选择启动方式。原理、配置与回退方法见 [Steam 绕过说明](docs/steam-bypass.md)。
+
+控制台遵循 Windows 的默认终端设置：系统选择 Windows Terminal 时由其承载；未安装、系统不支持接管或接管失败时，由 Windows 回退到传统 conhost。仅安装 Windows Terminal 不会覆盖用户显式选择的 Windows 控制台主机。`consoleTopmost` 仅作用于可见的传统控制台窗口，Windows Terminal 的窗口行为由终端自身管理。
 
 日志按启动会话分别保存，文件名包含时间与进程 ID；排障时保留对应会话的日志及同次构建的 DLL/PDB。
 

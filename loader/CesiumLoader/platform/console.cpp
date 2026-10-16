@@ -103,13 +103,10 @@ void log_line(const std::wstring& msg)
 
 // ---------- 控制台 ----------
 
-static HWND get_console_hwnd()
-{
-    return GetConsoleWindow();
-}
-
 void console_init(bool topmost)
 {
+    // 由 Windows 按默认终端设置选择宿主；Windows Terminal 不可用或接管失败时，
+    // 系统会回退到 conhost。不要直接启动 wt.exe，以免绕过用户的终端选择。
     BOOL ok = AllocConsole();
     if (!ok)
     {
@@ -120,9 +117,10 @@ void console_init(bool topmost)
     g_console_handle = GetStdHandle(STD_OUTPUT_HANDLE);
     log_line("[hijack] 控制台句柄: (AllocConsole=...)");
 
-    // 把控制台窗口置顶,避免被游戏窗口完全遮挡(可配置)
-    HWND hwnd = get_console_hwnd();
-    if (hwnd)
+    // ConPTY/Windows Terminal 下 GetConsoleWindow 返回隐藏的消息窗口，
+    // 不能把它显示或置顶。只操作可见的传统控制台窗口，终端窗口由宿主管理。
+    HWND hwnd = GetConsoleWindow();
+    if (hwnd && IsWindowVisible(hwnd))
     {
         if (topmost)
         {
@@ -137,7 +135,7 @@ void console_init(bool topmost)
     }
     else
     {
-        log_line("[hijack] 获取控制台窗口句柄失败(可能窗口被系统隐藏)");
+        log_line("[hijack] 控制台无可见传统窗口，显示与置顶由终端宿主管理");
     }
 }
 
