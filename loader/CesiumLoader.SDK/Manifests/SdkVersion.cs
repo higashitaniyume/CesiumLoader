@@ -14,7 +14,7 @@ namespace CesiumLoader.SDK.Manifests
         public const string Current = "2.5.1";
 
         /// <summary>加载器原生层版本(与 version.dll 构建对应)。</summary>
-        public const string LoaderVersion = "2.5.2";
+        public const string LoaderVersion = "2.5.3";
 
         /// <summary>最小可接受的 mod 声明的 SDK 版本。</summary>
         public static bool Accepts(string modSdkVersion)
