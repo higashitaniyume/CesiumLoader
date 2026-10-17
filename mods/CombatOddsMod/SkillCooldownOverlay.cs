@@ -30,11 +30,11 @@ namespace CombatOddsMod
 
         public void SetEnabled(bool enabled) { _enabled = enabled; }
 
-        /// <summary>把每条 CD 数据源与最终显示值写进日志(排查显示口径用)。</summary>
+        /// <summary>把每条 CD 数据与最终显示值写进日志(排查显示问题用)。</summary>
         public void SetLogDetail(bool enabled) { _cooldowns.LogDetail = enabled; }
 
-        /// <summary>是否向服务器查询队友的当前 CD(GetHeroInfoC2S); 关掉就只靠本地推算。</summary>
-        public void SetUseServerCd(bool enabled) { _cooldowns.UseServerCd = enabled; }
+        /// <summary>下一次刷新时向服务器查询所有人的冷却(出牌/释放技能后调用)。</summary>
+        public void RequestQueryAll() { _cooldowns.RequestQueryAll(); }
 
         public void Dispose()
         {
@@ -132,10 +132,9 @@ namespace CombatOddsMod
                 anchor.parent.AddChild(label);
                 _labels[index] = label;
             }
-            // 冷却只认服务器消息维护的表; 游戏自己的实时字段会被其他玩家的回合帧刷成 0,
-            // 在没有该玩家的数据时宁可不显示, 也不显示一个错误的数字。
+            // 冷却只认服务器查询的结果: 没有查到过就宁可不显示, 也不显示一个错误的数字。
             int remaining;
-            if (!_cooldowns.TryGetRemaining(player.player.Id, skillId, out remaining)) return;
+            if (!_cooldowns.TryGetRemaining(player.player.Id, out remaining)) return;
             // 决赛轮服务器会给所有玩家推 98, 那不是真实剩余冷却, 不显示。
             if (!SkillCooldownRules.IsPlausible(remaining)) return;
             remaining = Math.Max(0, remaining);
