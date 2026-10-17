@@ -87,8 +87,9 @@ namespace CombatOddsMod
         /// defenderHp = 当前血量。
         /// minChip 为命中保底伤害，普通战斗默认 1；特殊效果在此后修正伤害。
         ///   默认基线 max(1,Atk-Def)；无特殊效果时，1 血目标选择防御必被击倒。
+        /// maxDamage 为单次受伤上限(0 = 无上限)，例如宝藏桶"每次最多受到1点伤害"。
         /// </summary>
-        public static DefendResult Defend(int finalAttack, int defenderHp, int defenseFlat, IReadOnlyList<int> defenseDice, int minChip = 1, int damageAdjust = 0, bool immune = false)
+        public static DefendResult Defend(int finalAttack, int defenderHp, int defenseFlat, IReadOnlyList<int> defenseDice, int minChip = 1, int damageAdjust = 0, bool immune = false, int maxDamage = 0)
         {
             int min;
             var dist = Distribution(defenseFlat, defenseDice, out min);
@@ -105,6 +106,7 @@ namespace CombatOddsMod
                 if (dmg < 0) dmg = 0;
                 dmg += damageAdjust;                 // buff 易伤/减伤修正
                 if (dmg < 0) dmg = 0;
+                if (maxDamage > 0 && dmg > maxDamage) dmg = maxDamage; // 单次受伤上限
                 if (immune) dmg = 0;                 // 护盾/免疫: 这一击归零
                 expDmg += p * dmg;
                 if (dmg < minDmg) minDmg = dmg;
@@ -141,9 +143,10 @@ namespace CombatOddsMod
         /// 闪避结算。attackerPoint = 攻方投出的骰点(闪避阈值)。judgeFaces = 判定骰面数(默认 6)。
         /// finalAttack = 攻方最终攻击; damageOnFail = 闪避失败时承受的伤害
         /// (通常为全额攻击，保底 1；由调用方按是否保留基础防御决定，特殊 buff 随后修正)。
+        /// maxDamage 为单次受伤上限(0 = 无上限)。
         /// </summary>
         public static DodgeResult Dodge(int finalAttack, int defenderHp, int attackerPoint,
-            int judgeFaces = DefaultJudgeDiceFaces, int damageOnFail = -1, int damageAdjust = 0, bool immune = false)
+            int judgeFaces = DefaultJudgeDiceFaces, int damageOnFail = -1, int damageAdjust = 0, bool immune = false, int maxDamage = 0)
         {
             if (judgeFaces <= 0) judgeFaces = DefaultJudgeDiceFaces;
             if (damageOnFail < 0) damageOnFail = Math.Max(1, finalAttack); // 默认: 失败承受全额攻击(未防御)
@@ -163,6 +166,7 @@ namespace CombatOddsMod
             int dmgFail = Math.Max(1, damageOnFail);
             dmgFail += damageAdjust;                    // buff 易伤/减伤修正(闪避失败时才承受)
             if (dmgFail < 0) dmgFail = 0;
+            if (maxDamage > 0 && dmgFail > maxDamage) dmgFail = maxDamage; // 单次受伤上限
             if (immune) dmgFail = 0;                     // 护盾/免疫
             bool knockOnFail = defenderHp > 0 && dmgFail >= defenderHp;
 
@@ -192,9 +196,10 @@ namespace CombatOddsMod
         /// 我方攻击结算。攻方骰未定时给出 attackDice; 已锁定时用 attackFlat 且 attackDice 传 null。
         /// 目标防御同理(defenseFlat + defenseDice)。targetHp = 目标当前血量。
         /// 对攻/防两侧骰池做联合卷积求 max(1, atk − def) 的分布。
+        /// maxDamage 为单次受伤上限(0 = 无上限)。
         /// </summary>
         public static AttackResult Attack(int attackFlat, IReadOnlyList<int> attackDice,
-            int defenseFlat, IReadOnlyList<int> defenseDice, int targetHp, int minChip = 1, int damageAdjust = 0, bool immune = false)
+            int defenseFlat, IReadOnlyList<int> defenseDice, int targetHp, int minChip = 1, int damageAdjust = 0, bool immune = false, int maxDamage = 0)
         {
             int atkMin;
             var atk = Distribution(attackFlat, attackDice, out atkMin);
@@ -218,6 +223,7 @@ namespace CombatOddsMod
                     if (dmg < 0) dmg = 0;
                     dmg += damageAdjust;                 // buff 易伤/减伤修正(目标身上)
                     if (dmg < 0) dmg = 0;
+                    if (maxDamage > 0 && dmg > maxDamage) dmg = maxDamage; // 单次受伤上限
                     if (immune) dmg = 0;                 // 目标护盾/免疫
                     double p = pa * pd;
                     expDmg += p * dmg;
@@ -388,9 +394,17 @@ namespace CombatOddsMod
             public bool GeneralCombat;
             /// <summary>true=把这一击伤害直接归零(护盾/免疫)。</summary>
             public bool Immunity;
+            /// <summary>
+            /// true=该效果靠层数维持: 层数归零后即使图标还在(见 Buff.bin 的
+            /// IsShowIconProgressZero)也不再生效。一次性 buff(护盾等)用 false —— 它们
+            /// 的进度不是生效条件, 不能被"进度 0"误判成已结束。
+            /// </summary>
+            public bool LayerScoped;
+            /// <summary>单次受伤上限(0 = 无上限), 例如宝藏桶"每次最多受到1点伤害"。</summary>
+            public int DamageCap;
             public string Note;
-            public BuffDamageEffect(int id, string name, int perUnit, bool perLayer, bool general, bool immunity, string note)
-            { BuffId = id; Name = name; PerUnit = perUnit; PerLayer = perLayer; GeneralCombat = general; Immunity = immunity; Note = note; }
+            public BuffDamageEffect(int id, string name, int perUnit, bool perLayer, bool general, bool immunity, string note, bool layerScoped = false, int damageCap = 0)
+            { BuffId = id; Name = name; PerUnit = perUnit; PerLayer = perLayer; GeneralCombat = general; Immunity = immunity; Note = note; LayerScoped = layerScoped; DamageCap = damageCap; }
         }
 
         /// <summary>
@@ -423,7 +437,13 @@ namespace CombatOddsMod
 
             // —— 免疫/护盾(这一击归零) ——
             Add(new BuffDamageEffect(1071101, "护盾",     0, false, true,  true,  "下次受到伤害-99, 视为挡下这一击"));
-            Add(new BuffDamageEffect(10331101,"深度改造", 0, false, true,  true,  "受到伤害降为0"));
+            Add(new BuffDamageEffect(1071102, "护盾",    -3, false, true,  false, "下次受到伤害-3"));
+            // 幽魂暗巷科学怪人: 初始 3 层, 每击倒一个人工生命体移除 1 层。层数归零后图标
+            // 仍显示(IsShowIconProgressZero), 但 BOSS 已经可以被攻击, 免疫必须随层数一起结束。
+            Add(new BuffDamageEffect(10331101,"深度改造", 0, false, true,  true,  "受到伤害降为0(层数归零后失效)", layerScoped: true));
+
+            // —— 单次受伤上限 ——
+            Add(new BuffDamageEffect(10591101,"铁箍宝藏桶", 0, false, true, false, "每次最多受到1点伤害", damageCap: 1));
 
             // —— 语境限定(不进普通投牌结算, 只展示) ——
             Add(new BuffDamageEffect(1221202, "精准打击", +1, false, false, false, "只对【轨道轰炸】伤害+1"));
@@ -436,6 +456,7 @@ namespace CombatOddsMod
         public struct TargetBuff
         {
             public int BuffId;
+            /// <summary>buff 的原始进度(游戏里图标上的层数)。0 = 已归零: 效果结束, 图标可能仍在。</summary>
             public int Layers;
             public TargetBuff(int id, int layers) { BuffId = id; Layers = layers; }
         }
@@ -447,6 +468,8 @@ namespace CombatOddsMod
             public int Delta;
             /// <summary>是否免疫这一击(伤害归零)。</summary>
             public bool Immune;
+            /// <summary>单次受伤上限(0 = 无上限)。</summary>
+            public int MaxDamagePerHit;
             /// <summary>已计入的效果标签(如 "标记x2 +2")。</summary>
             public List<string> Applied;
             /// <summary>识别到但不计入普通投牌结算的语境限定效果(如 "精准打击")。</summary>
@@ -473,6 +496,7 @@ namespace CombatOddsMod
             {
                 Delta = 0,
                 Immune = false,
+                MaxDamagePerHit = 0,
                 Applied = new List<string>(),
                 ContextOnly = new List<string>(),
             };
@@ -481,7 +505,13 @@ namespace CombatOddsMod
             foreach (var tb in targetBuffs)
             {
                 if (!table.TryGetValue(tb.BuffId, out var eff) || eff == null) continue;
-                int layers = tb.Layers > 0 ? tb.Layers : 1;
+                int layers = Math.Max(0, tb.Layers);   // 原始进度, 0 = 已归零
+
+                // 层数归零 = 效果结束。游戏会为部分 buff 保留 0 层图标(IsShowIconProgressZero),
+                // 例如幽魂暗巷科学怪人的【深度改造】被三个人工生命体各削掉 1 层后仍是 0 层条目;
+                // 若继续按"至少 1 层"算, 会一直把一只已可攻击的 BOSS 判成免疫。
+                // 一次性 buff(护盾等)的进度不是生效条件, 不在此列。
+                if (layers == 0 && (eff.PerLayer || eff.LayerScoped)) continue;
 
                 if (eff.BuffId == 1140102 && !targetIsMonster)
                 {
@@ -492,6 +522,11 @@ namespace CombatOddsMod
                 {
                     adj.ContextOnly.Add(eff.Name + "（仅" + eff.Note + "）");
                     continue;
+                }
+                if (eff.DamageCap > 0 && (adj.MaxDamagePerHit == 0 || eff.DamageCap < adj.MaxDamagePerHit))
+                {
+                    adj.MaxDamagePerHit = eff.DamageCap;
+                    adj.Applied.Add(eff.Name + "(每击最多" + eff.DamageCap + ")");
                 }
                 if (eff.Immunity)
                 {

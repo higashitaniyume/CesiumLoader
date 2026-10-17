@@ -405,6 +405,100 @@ namespace CombatOddsMod.Tests
         }
 
         [Fact]
+        public void EvaluateTargetBuffs_DeepModification_ImmuneWhileLayersRemain()
+        {
+            // 幽魂暗巷科学怪人: 深度改造还有层数时这一击降为 0。
+            var t = CombatMath.DefaultBuffTable();
+            var adj = CombatMath.EvaluateTargetBuffs(new[] { new CombatMath.TargetBuff(10331101, 2) }, t);
+            Assert.True(adj.Immune);
+            Assert.Single(adj.Applied);
+        }
+
+        [Fact]
+        public void EvaluateTargetBuffs_DeepModification_ZeroLayersIsNoLongerImmune()
+        {
+            // 三段人工生命体都被击倒后深度改造归零(图标可能还在), BOSS 已可被攻击:
+            // 不能继续显示"目标免疫这一击"。—— 幽魂暗巷回归用例。
+            var t = CombatMath.DefaultBuffTable();
+            var adj = CombatMath.EvaluateTargetBuffs(new[] { new CombatMath.TargetBuff(10331101, 0) }, t);
+            Assert.False(adj.Immune);
+            Assert.Equal(0, adj.Delta);
+            Assert.Empty(adj.Applied);
+            Assert.Empty(adj.ContextOnly);
+        }
+
+        [Fact]
+        public void EvaluateTargetBuffs_ZeroLayers_StackBuffsStopCounting()
+        {
+            // 层数为 0 的按层效果不再计入(否则会凭空 +1/-1)。
+            var t = CombatMath.DefaultBuffTable();
+            var adj = CombatMath.EvaluateTargetBuffs(new[]
+            {
+                new CombatMath.TargetBuff(10006, 0),    // 标记 x0
+                new CombatMath.TargetBuff(10531201, 0), // 灰烬 x0
+            }, t);
+            Assert.Equal(0, adj.Delta);
+            Assert.Empty(adj.Applied);
+        }
+
+        [Fact]
+        public void EvaluateTargetBuffs_OneShotShield_ZeroProgressStillCounts()
+        {
+            // 一次性 buff(护盾)的进度不是生效条件: 即便读到 0 也要挡下这一击。
+            var t = CombatMath.DefaultBuffTable();
+            var adj = CombatMath.EvaluateTargetBuffs(new[] { new CombatMath.TargetBuff(1071101, 0) }, t);
+            Assert.True(adj.Immune);
+        }
+
+        [Fact]
+        public void EvaluateTargetBuffs_WeakShield_ReducesThree()
+        {
+            // 恋(PVP 被动 10711): 下次受到伤害 -3, 是减伤不是免疫。
+            var t = CombatMath.DefaultBuffTable();
+            var adj = CombatMath.EvaluateTargetBuffs(new[] { new CombatMath.TargetBuff(1071102, 1) }, t);
+            Assert.False(adj.Immune);
+            Assert.Equal(-3, adj.Delta);
+        }
+
+        [Fact]
+        public void EvaluateTargetBuffs_TreasureBarrel_CapsDamagePerHit()
+        {
+            // 宝藏桶(1059)机制 / 铁箍宝藏桶 buff: 每次最多受到 1 点伤害。
+            var t = CombatMath.DefaultBuffTable();
+            var adj = CombatMath.EvaluateTargetBuffs(new[] { new CombatMath.TargetBuff(10591101, 1) }, t);
+            Assert.Equal(1, adj.MaxDamagePerHit);
+            Assert.False(adj.Immune);
+        }
+
+        [Fact]
+        public void DamageCap_LimitsPerHitAndKnockdown()
+        {
+            // 宝藏桶 6 血: 即便攻 20 也只掉 1 点, 单次攻击杀不死。
+            var defend = CombatMath.Defend(20, 6, 0, null, 1, 0, false, 1);
+            Assert.Equal(1.0, defend.ExpectedDamage, 12);
+            Assert.Equal(1, defend.MaxDamage);
+            Assert.Equal(0.0, defend.KnockdownProb, 12);
+
+            var attack = CombatMath.Attack(20, null, 0, null, 6, 1, 0, false, 1);
+            Assert.Equal(1.0, attack.ExpectedDamage, 12);
+            Assert.Equal(0.0, attack.KillProb, 12);
+
+            // 1 血目标仍会被这一点击倒。
+            Assert.Equal(1.0, CombatMath.Attack(20, null, 0, null, 1, 1, 0, false, 1).KillProb, 12);
+
+            // 闪避失败同样受上限约束。
+            var dodge = CombatMath.Dodge(20, 6, 3, 6, -1, 0, false, 1);
+            Assert.Equal(1.0, dodge.ExpectedDamage / (1.0 - dodge.SuccessProb), 12);
+        }
+
+        [Fact]
+        public void DamageCap_DoesNotOverrideImmunity()
+        {
+            var res = CombatMath.Defend(20, 6, 0, null, 1, 0, true, 1);
+            Assert.Equal(0.0, res.ExpectedDamage, 12);
+        }
+
+        [Fact]
         public void EvaluateTargetBuffs_ContextOnly_NotCounted()
         {
             var t = CombatMath.DefaultBuffTable();

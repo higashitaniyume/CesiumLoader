@@ -355,6 +355,7 @@ namespace CombatOddsMod
 #endif
                 int dmgAdjust = badj.Delta;
                 bool targetImmune = badj.Immune;
+                int dmgCap = badj.MaxDamagePerHit;   // 单次受伤上限(0=无)
 
                 // --------- 防守方视角: 一眼看该防还是该闪 ---------
                 if (showDefender)
@@ -369,9 +370,9 @@ namespace CombatOddsMod
 
                     if (attackerThrew)
                     {
-                        var d = CombatMath.Defend(finalAtk, hp, flat, dice, 1, dmgAdjust, targetImmune);
+                        var d = CombatMath.Defend(finalAtk, hp, flat, dice, 1, dmgAdjust, targetImmune, dmgCap);
                         int dodgeFailDmg = _cfg.DodgeKeepsBaseDefense ? Math.Max(1, finalAtk - initDef) : Math.Max(1, finalAtk);
-                        var dodge = CombatMath.Dodge(finalAtk, hp, atkPoint, JudgeFaces(), dodgeFailDmg, dmgAdjust, targetImmune);
+                        var dodge = CombatMath.Dodge(finalAtk, hp, atkPoint, JudgeFaces(), dodgeFailDmg, dmgAdjust, targetImmune, dmgCap);
 
                         bool defBetter = d.KnockdownProb < dodge.KnockdownProb - 1e-4;
                         bool dodgeBetter = d.KnockdownProb > dodge.KnockdownProb + 1e-4;
@@ -392,7 +393,7 @@ namespace CombatOddsMod
                     {
                         // 攻方未投：最大范围值 + 判定骰上限，作为最坏攻击。
                         int atkMax = SafeInt(() => atk.MaxAtk) + bonnieBonus + JudgeFaces();
-                        var d = CombatMath.Defend(atkMax, hp, flat, dice, 1, dmgAdjust, targetImmune);
+                        var d = CombatMath.Defend(atkMax, hp, flat, dice, 1, dmgAdjust, targetImmune, dmgCap);
                         sb.Append(Big(C("⏳ 等对方投骰", Gray)));
                         sb.Append('\n').Append(Dim(defName + " " + hp + "血, 最坏被击倒 " + PctPlain(d.KnockdownProb)));
                     }
@@ -419,7 +420,7 @@ namespace CombatOddsMod
                     int dFlat; int[] dDice;
                     CombatMath.RangeWithJudgeDice(SafeInt(() => def.MinDef), maxDef, out dFlat, out dDice, JudgeFaces());
 
-                    var r = CombatMath.Attack(aFlat, aDice, dFlat, dDice, targetHp, 1, dmgAdjust, targetImmune);
+                    var r = CombatMath.Attack(aFlat, aDice, dFlat, dDice, targetHp, 1, dmgAdjust, targetImmune, dmgCap);
                     if (bonnieBonus > 0) sb.Append('\n').Append(C("邦妮标记目标攻击+3", Orange));
                     if (showDefender) sb.Append('\n');
                     sb.Append(Big("🎯 击杀 " + C(PctPlain(r.KillProb), KillColor(r.KillProb))));
@@ -437,6 +438,8 @@ namespace CombatOddsMod
                         sb.Append('\n').Append(C("⚠ 目标易伤 受伤+" + dmgAdjust, Orange)).Append(Dim(BuffTail(badj.Applied)));
                     else if (dmgAdjust < 0)
                         sb.Append('\n').Append(C("🛡 目标减伤 受伤" + dmgAdjust, Green)).Append(Dim(BuffTail(badj.Applied)));
+                    if (!targetImmune && dmgCap > 0)
+                        sb.Append('\n').Append(C("🛡 目标每击最多受伤" + dmgCap, Green)).Append(Dim(BuffTail(badj.Applied)));
                 }
 
                 Publish(sb.ToString());
@@ -513,10 +516,10 @@ namespace CombatOddsMod
                 }
                 if (!isMonster) return 0;
                 bool marked = false;
-                var buffs = Players.BuffsOf(defender.PlayerId);
-                if (buffs != null)
-                    foreach (var buff in buffs)
-                        if (buff.BuffId == 10006 && buff.Layers > 0) { marked = true; break; }
+                // 用原始进度: 标记归零后图标仍可能在, 不能算"带标记"。
+                var buffs = TargetBuffsOf(defender.PlayerId);
+                foreach (var buff in buffs)
+                    if (buff.BuffId == 10006 && buff.Layers > 0) { marked = true; break; }
                 return CombatMath.BonnieMarkedMonsterAttackBonus(pd.player.Hero.HeroId, isMonster, marked);
             }
             catch { return 0; }
@@ -553,13 +556,9 @@ namespace CombatOddsMod
 
             try
             {
-                var raw = Players.BuffsOf(targetId);
-                if (raw != null && raw.Count > 0)
-                {
-                    var tb = new List<CombatMath.TargetBuff>(raw.Count);
-                    foreach (var b in raw) tb.Add(new CombatMath.TargetBuff(b.BuffId, b.Layers));
+                var tb = TargetBuffsOf(targetId);
+                if (tb.Count > 0)
                     return CombatMath.EvaluateTargetBuffs(tb, _buffTable, context, causeId, targetIsMonster);
-                }
             }
             catch { }
             return new CombatMath.BuffAdjustment
@@ -569,6 +568,73 @@ namespace CombatOddsMod
                 Applied = new List<string>(),
                 ContextOnly = new List<string>(),
             };
+        }
+
+        /// <summary>
+        /// 读取目标身上的 buff 与<b>原始进度</b>。SDK 的 <see cref="Players.BuffsOf"/> 会把进度 0
+        /// 兜底成 1 层(方便展示), 但游戏在层数归零后仍可能保留该条目: 幽魂暗巷的科学怪人初始
+        /// 3 层【深度改造】, 三个人工生命体被击倒各移除 1 层后只剩 0 层图标, 而 BOSS 已经可以
+        /// 被攻击。照兜底层数算会一直显示"目标免疫这一击", 所以这里直接读 <c>Buff.Progress</c>。
+        /// 数据源顺序与 SDK 一致: 实时容器 → Hero 快照 → SDK 列表(最后兜底)。
+        /// </summary>
+        private static List<CombatMath.TargetBuff> TargetBuffsOf(long targetId)
+        {
+            var list = new List<CombatMath.TargetBuff>();
+            try
+            {
+                // 与游戏 buff 界面同源的实时容器优先; 容器存在但为空 = 真的没有 buff(不能回退旧快照)。
+                var live = Players.Get(targetId)?.buffContainer?._buffDict;
+                if (live != null)
+                {
+                    foreach (var pair in live)
+                    {
+                        var b = pair.Value;
+                        if (b == null) continue;
+                        list.Add(new CombatMath.TargetBuff(b.BuffId, b.Progress));
+                    }
+                    return list;
+                }
+
+                var hero = Players.Get(targetId)?.player?.Hero ?? RoomHeroOf(targetId);
+                if (hero?.Buffs != null)
+                {
+                    foreach (var pair in hero.Buffs)
+                    {
+                        var b = pair.Value;
+                        if (b == null) continue;
+                        list.Add(new CombatMath.TargetBuff(b.BuffId, b.Progress));
+                    }
+                    return list;
+                }
+            }
+            catch { }
+
+            // 两条路都取不到时退回 SDK 列表(层数已兜底 ≥1)。
+            try
+            {
+                foreach (var b in Players.BuffsOf(targetId))
+                    list.Add(new CombatMath.TargetBuff(b.BuffId, b.Layers));
+            }
+            catch { }
+            return list;
+        }
+
+        /// <summary>不在战斗玩家表里的单位(怪物/观战对象)从房间花名册取 Hero 快照。</summary>
+        private static Hero RoomHeroOf(long unitId)
+        {
+            try
+            {
+                var room = SimpleSingletonProvider<GameLogicManager>.inst?.room?.curRoomInfo;
+                if (room == null) return null;
+                if (room.Players != null)
+                    foreach (var p in room.Players)
+                        if (p != null && p.Id == unitId && p.Hero != null) return p.Hero;
+                if (room.Monsters != null)
+                    foreach (var m in room.Monsters)
+                        if (m != null && m.Id == unitId && m.Hero != null) return m.Hero;
+            }
+            catch { }
+            return null;
         }
 
 
