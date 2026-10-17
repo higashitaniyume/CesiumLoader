@@ -35,5 +35,9 @@ namespace CombatOddsMod
         public bool LogAtkBonusDetail = true;
         /// <summary>在左侧 HUD 所有玩家昵称上方显示各自的主动技能剩余冷却/总冷却。</summary>
         public bool ShowSkillCooldown = true;
+        /// <summary>把技能 CD 的每条数据源(回合帧/释放/修正)与最终显示值打进日志, 便于核对显示口径。</summary>
+        public bool LogCdDetail = false;
+        /// <summary>向服务器查询队友的当前 CD(GetHeroInfoC2S, 与打开玩家信息面板同一条请求); 关掉则只靠本地推算。</summary>
+        public bool UseServerCd = true;
     }
 }

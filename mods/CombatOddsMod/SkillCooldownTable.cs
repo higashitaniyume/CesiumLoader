@@ -52,12 +52,17 @@ namespace CombatOddsMod
     internal sealed class SkillCooldownTable
     {
         private readonly Dictionary<long, int> _remaining = new Dictionary<long, int>();
+        private readonly List<long> _players = new List<long>();
 
         internal int Count => _remaining.Count;
+
+        /// <summary>当前表里的玩家(递减/遍历用, 不要修改)。</summary>
+        internal IReadOnlyList<long> Players => _players;
 
         internal void Clear()
         {
             _remaining.Clear();
+            _players.Clear();
         }
 
         internal bool TryGet(long playerId, out int remaining)
@@ -68,6 +73,7 @@ namespace CombatOddsMod
         /// <summary>服务器给出的精确剩余冷却(回合开始帧、释放技能的帧、冷却修正)。</summary>
         internal void SetExact(long playerId, int remaining)
         {
+            if (!_remaining.ContainsKey(playerId)) _players.Add(playerId);
             _remaining[playerId] = SkillCooldownRules.Clamp(remaining);
         }
     }

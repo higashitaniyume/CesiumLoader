@@ -113,6 +113,13 @@ namespace CombatOddsMod
                     _cfg.ShowBoardPlayerAttrs  = c.GetBool("ShowBoardPlayerAttrs", d.ShowBoardPlayerAttrs);
                     _cfg.LogAtkBonusDetail     = c.GetBool("LogAtkBonusDetail", d.LogAtkBonusDetail);
                     _cfg.ShowSkillCooldown     = c.GetBool("ShowSkillCooldown", d.ShowSkillCooldown);
+                    // Debug 构建(deploy-combatodds.ps1 部署的那份)默认打开 CD 明细日志, 免去改配置。
+#if COMBATODDS_DEBUG_PROBES
+                    _cfg.LogCdDetail       = c.GetBool("LogCdDetail", true);
+#else
+                    _cfg.LogCdDetail       = c.GetBool("LogCdDetail", d.LogCdDetail);
+#endif
+                    _cfg.UseServerCd           = c.GetBool("UseServerCd", d.UseServerCd);
 
                     // 全字段写回, 保证 config.json 始终含全部键 → Toys ⚙ 表单能把每一项都列出来。
                     c.Set("Enabled", _cfg.Enabled);
@@ -131,6 +138,8 @@ namespace CombatOddsMod
                     c.Set("ShowBoardPlayerAttrs", _cfg.ShowBoardPlayerAttrs);
                     c.Set("LogAtkBonusDetail", _cfg.LogAtkBonusDetail);
                     c.Set("ShowSkillCooldown", _cfg.ShowSkillCooldown);
+                    c.Set("LogCdDetail", _cfg.LogCdDetail);
+                    c.Set("UseServerCd", _cfg.UseServerCd);
                     if (!c.Save()) SdkLog.Warn("CombatOdds", "配置未能保存，请检查 mod 目录写入权限。");
                 }
             }
@@ -169,6 +178,8 @@ namespace CombatOddsMod
             {
                 _skillCooldown = new SkillCooldownOverlay();
                 _skillCooldown.SetEnabled(_cfg.ShowSkillCooldown);
+                _skillCooldown.SetLogDetail(_cfg.LogCdDetail);
+                _skillCooldown.SetUseServerCd(_cfg.UseServerCd);
                 _skillCooldown.Start();
                 _ctx?.RegisterCleanup(_skillCooldown.Dispose);
             }
