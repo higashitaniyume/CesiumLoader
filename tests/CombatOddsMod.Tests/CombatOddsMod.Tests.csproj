@@ -23,6 +23,12 @@
     <Compile Include="..\..\mods\CombatOddsMod\FightOverlay.cs" Link="FightOverlay.cs" />
     <!-- 星币锤/手电筒/美工刀 的攻击力加成计算(纯逻辑, 零游戏依赖)。 -->
     <Compile Include="..\..\mods\CombatOddsMod\RelicAtkBonus.cs" Link="RelicAtkBonus.cs" />
+    <!-- 技能冷却表(纯逻辑: 帧取值规则 + 按玩家维护, 零游戏依赖)。 -->
+    <Compile Include="..\..\mods\CombatOddsMod\SkillCooldownTable.cs" Link="SkillCooldownTable.cs" />
+    <!-- 技能冷却会话(纯逻辑: 回合帧/释放技能/冷却修正 -> 剩余值与上限, 零游戏依赖)。 -->
+    <Compile Include="..\..\mods\CombatOddsMod\SkillCooldownSession.cs" Link="SkillCooldownSession.cs" />
+    <!-- 回调链包装策略(纯逻辑: 只装一次、包装捕获原始委托, 零游戏依赖)。 -->
+    <Compile Include="..\..\mods\CombatOddsMod\HookChain.cs" Link="HookChain.cs" />
   </ItemGroup>
 
 </Project>

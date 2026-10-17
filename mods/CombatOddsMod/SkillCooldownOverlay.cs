@@ -7,9 +7,10 @@ using UnityEngine;
 
 namespace CombatOddsMod
 {
-    /// <summary>左侧所有玩家头像昵称上方的主动技能冷却，读取各自的实时属性。</summary>
+    /// <summary>左侧所有玩家头像昵称上方的主动技能冷却，数据来自各自的技能冷却消息。</summary>
     internal sealed class SkillCooldownOverlay
     {
+        private readonly SkillCooldownTracker _cooldowns = new SkillCooldownTracker();
         private UI.UIBattleInfoPanel _panel;
         private readonly GTextField[] _labels = new GTextField[4];
         private readonly GTextField[] _names = new GTextField[4];
@@ -20,6 +21,7 @@ namespace CombatOddsMod
         public void Start()
         {
             if (_started) return;
+            _cooldowns.Start();
             Timers.inst.Add(0.1f, 0, Refresh);
             _started = true;
         }
@@ -30,6 +32,7 @@ namespace CombatOddsMod
         {
             if (_started) Timers.inst.Remove(Refresh);
             _started = false;
+            _cooldowns.Dispose();
             Reset();
         }
 
@@ -54,6 +57,7 @@ namespace CombatOddsMod
         {
             try
             {
+                _cooldowns.Poll();
                 if (!_enabled) { HideAll(); return; }
                 var gm = SimpleSingletonProvider<GameLogicManager>.inst;
                 if (gm == null || gm.battle == null)
@@ -120,9 +124,18 @@ namespace CombatOddsMod
                 anchor.parent.AddChild(label);
                 _labels[index] = label;
             }
-            int remaining = Math.Max(0, player.Property.activeSkillCD.Value);
+            // 冷却只认服务器消息维护的表; 游戏自己的实时字段会被其他玩家的回合帧刷成 0,
+            // 在没有该玩家的数据时宁可不显示, 也不显示一个错误的数字。
+            int remaining;
+            if (!_cooldowns.TryGetRemaining(player.player.Id, skillId, out remaining)) return;
+            // 决赛轮服务器会给所有玩家推 98, 那不是真实剩余冷却, 不显示。
+            if (!SkillCooldownRules.IsPlausible(remaining)) return;
+            remaining = Math.Max(0, remaining);
+            // 分母优先取该玩家这次实际施加的冷却上限(强化/天赋/遗物会让它和配表不同), 没有时用配表值。
+            int total = skill.Round;
+            if (_cooldowns.TryGetCap(player.player.Id, skillId, out int trackedCap)) total = trackedCap;
             label.color = remaining == 0 ? new Color32(0x5B, 0xE3, 0x7A, 0xFF) : new Color32(0xFF, 0xD2, 0x4A, 0xFF);
-            label.text = SkillCooldownText.Format(remaining, skill.Round);
+            label.text = SkillCooldownText.Format(remaining, total);
             // 相比原位置下移 8 像素，靠近昵称但保留原昵称不变。
             label.SetXY(anchor.x + (anchor.width - label.width) * 0.5f, anchor.y - label.height + 5f);
             label.visible = _panel.visible && slot.visible && anchor.visible;
