@@ -19,12 +19,21 @@ using UnityEngine;
 using UnityEngine.AddressableAssets;
 using UnityEngine.ResourceManagement.AsyncOperations;
 
-[assembly: ModManifest("角色皮肤", "0.2.1", "CesiumLoader", "多角色皮肤方案、官方动画与自定义资源覆盖", Permissions = ModPermission.ReadGameState | ModPermission.UI | ModPermission.ModifyGameState | ModPermission.FileWrite, SdkVersion = "2.4.3")]
+[assembly: ModManifest("角色皮肤", "0.2.6", "CesiumLoader", "多角色皮肤方案、官方动画与自定义资源覆盖", Permissions = ModPermission.ReadGameState | ModPermission.UI | ModPermission.ModifyGameState | ModPermission.FileWrite, SdkVersion = "2.4.3")]
 namespace CharacterSkinMod
 {
     public sealed class ModEntry : ModBase
     {
-        private sealed class Package { public CharacterSkinManifest Manifest; public string Root; }
+        private struct FrameGeometry { public float PivotX; public float PivotY; public float PixelsPerUnit; }
+        private sealed class FrameMetadata { public List<FrameMetadataEntry> Sprites { get; set; } }
+        private sealed class FrameMetadataEntry { public string Name { get; set; } public float[] Size { get; set; } public float[] Pivot { get; set; } public float PPU { get; set; } }
+        private sealed class Package
+        {
+            public CharacterSkinManifest Manifest; public string Root;
+            // 原帧尺寸/锚点缓存（source-metadata.json 或 legacy-animation-source.json）。
+            // 变体动作与沿用帧靠它拿到"该自定义帧对应的那张原帧"的 pivot/PPU。
+            public Dictionary<string, FrameGeometry> FrameGeometry;
+        }
         private sealed class Patch
         {
             public object Object; public PropertyInfo Property; public object Original; public object Applied;
@@ -51,9 +60,13 @@ namespace CharacterSkinMod
         private sealed class Actor
         {
             public Component Component; public SpriteRenderer Renderer; public Target Target;
-            public Sprite Original; public Sprite Applied; public string Action; public string LastCustomFile; public double Started;
+            public Sprite Original; public Sprite Applied;
+            public readonly ActorPlayback Playback = new ActorPlayback();
             public UnityEngine.Object OriginalController; public UnityEngine.Object AppliedController;
             public object[] OriginalStates;
+            // 位置抖动诊断：每个上报周期内记录精灵相对 transform 的纵向偏移与 transform
+            // 自身的纵向位置范围，用来区分"我们的锚点/尺寸在变""游戏在移动角色"和"贴图本身在动"。
+            public bool Sampled; public float OffsetMinY, OffsetMaxY, PositionMinY, PositionMaxY; public int Dropped;
         }
         private readonly Dictionary<string, Package> _packages = new Dictionary<string, Package>(StringComparer.OrdinalIgnoreCase);
         private readonly List<Target> _targets = new List<Target>();
@@ -79,7 +92,7 @@ namespace CharacterSkinMod
         private long _nextScan, _nextStatus;
         private int _imageApplications, _spriteApplications, _controllerApplications;
         public override string Name => "角色皮肤";
-        public override string Version => "0.2.1";
+        public override string Version => "0.2.6";
         public static void Main() { SdkManifest.ExportSidecar(); Run(new ModEntry(), tag: "CharacterSkin"); }
         public override void OnInitialize()
         {
@@ -141,8 +154,44 @@ namespace CharacterSkinMod
                 { "Version", Version }, { "UtcTicks", DateTime.UtcNow.Ticks }, { "State", _state }, { "Error", _error },
                 { "ActiveSchemeId", _scheme == null ? "" : _scheme.Id }, { "Rules", _scheme == null ? 0 : _scheme.Rules.Count },
                 { "Targets", _targets.Count }, { "Packages", _packages.Count }, { "Images", _images.Count }, { "LayoutAliases", _layoutAliases.Count }, { "Actors", _actors.Count }, { "Sprites", _sprites.Count },
-                { "ImageApplications", _imageApplications }, { "SpriteApplications", _spriteApplications }, { "ControllerApplications", _controllerApplications }, { "Warnings", _warnings.Count }, { "WarningMessages", new List<string>(_warnings) }
+                { "ImageApplications", _imageApplications }, { "SpriteApplications", _spriteApplications }, { "ControllerApplications", _controllerApplications }, { "Warnings", _warnings.Count }, { "WarningMessages", new List<string>(_warnings) },
+                { "PositionSamples", PositionSamples() }
             })));
+        }
+        // 每个上报周期（约 2 秒）给出每只角色的：精灵相对 transform 的纵向偏移范围、
+        // transform 自身纵向位置范围、以及被判定掉出扫描而被还原原图的次数。
+        // 偏移范围大 = 我们给的锚点/尺寸在变；位置范围大 = 游戏自己在移动角色；
+        // 两者都稳定但画面在抖 = 贴图内容在动。取样后清空，便于连续观察。
+        private List<object> PositionSamples()
+        {
+            var samples = new List<object>();
+            foreach (var a in _actors)
+            {
+                if (a.Renderer == null || !a.Sampled) continue;
+                samples.Add(new Dictionary<string, object> {
+                    { "Hero", a.Target.Plan.HeroId }, { "Action", a.Playback.Action },
+                    { "OffsetY", new List<object> { Math.Round(a.OffsetMinY, 3), Math.Round(a.OffsetMaxY, 3) } },
+                    { "PositionY", new List<object> { Math.Round(a.PositionMinY, 3), Math.Round(a.PositionMaxY, 3) } },
+                    { "Restored", a.Dropped }
+                });
+                a.Sampled = false; a.Dropped = 0;
+            }
+            return samples;
+        }
+        private void SamplePosition(Actor a)
+        {
+            if (a.Renderer == null) return;
+            float positionY = a.Renderer.transform.position.y;
+            float offsetY = a.Renderer.bounds.min.y - positionY;
+            if (!a.Sampled)
+            {
+                a.Sampled = true; a.OffsetMinY = a.OffsetMaxY = offsetY; a.PositionMinY = a.PositionMaxY = positionY;
+                return;
+            }
+            if (offsetY < a.OffsetMinY) a.OffsetMinY = offsetY;
+            if (offsetY > a.OffsetMaxY) a.OffsetMaxY = offsetY;
+            if (positionY < a.PositionMinY) a.PositionMinY = positionY;
+            if (positionY > a.PositionMaxY) a.PositionMaxY = positionY;
         }
         public override void OnUpdate()
         {
@@ -392,9 +441,9 @@ namespace CharacterSkinMod
                 var currentController = currentAnimator == null ? null : ProbeReflection.Read(currentAnimator, "runtimeAnimatorController") as UnityEngine.Object;
                 Target target = player != null ? Match(player.Hero.HeroId, player.standingPainting.ItemID) : actor != null && actor.AppliedController != null && currentController == actor.AppliedController ? actor.Target : MatchUi(component);
                 var renderer = component.GetComponent<SpriteRenderer>();
-                if (target == null || renderer == null) { if (actor != null) RestoreActor(actor); old.Remove(mapRenderer == null ? 0 : mapRenderer.GetInstanceID()); continue; }
+                if (target == null || renderer == null) { if (actor != null) { RestoreActor(actor); actor.Dropped++; } old.Remove(mapRenderer == null ? 0 : mapRenderer.GetInstanceID()); continue; }
                 if (actor == null) actor = new Actor { Component = component, Renderer = renderer };
-                if (actor.Target != target) { RestoreActor(actor); actor.Target = target; actor.Action = null; actor.Applied = null; }
+                if (actor.Target != target) { RestoreActor(actor); actor.Target = target; actor.Playback.Reset(); actor.Applied = null; }
                 if (!_actors.Contains(actor)) _actors.Add(actor);
                 discovered.Add(actor); old.Remove(mapRenderer == null ? 0 : mapRenderer.GetInstanceID());
                 var animator = ProbeReflection.Read(component, "animator");
@@ -429,11 +478,11 @@ namespace CharacterSkinMod
                     foreach (var candidate in old.Values) if (candidate.Renderer == renderer) { actor = candidate; break; }
                     if (actor == null) actor = new Actor { Component = battle, Renderer = renderer };
                     else old.Remove(renderer.GetInstanceID());
-                    if (actor.Target != target) { RestoreActor(actor); actor.Target = target; actor.Action = null; actor.Applied = null; actor.LastCustomFile = null; }
+                    if (actor.Target != target) { RestoreActor(actor); actor.Target = target; actor.Playback.Reset(); actor.Applied = null; }
                     discovered.Add(actor);
                 }
             }
-            foreach (var actor in old.Values) RestoreActor(actor);
+            foreach (var actor in old.Values) { RestoreActor(actor); actor.Dropped++; }
             _actors.Clear(); _actors.AddRange(discovered);
         }
         // AnimationModule is an AOT assembly absent from the extracted hot-update reference set.
@@ -492,65 +541,140 @@ namespace CharacterSkinMod
             try { Discover(); foreach (var a in _actors) if (a.Target.Package != null && a.Renderer != null && a.Component != null && a.Renderer.gameObject.activeInHierarchy) ApplyActor(a); }
             catch (Exception ex) { Fail(ex); }
         }
-        private static CharacterAnimation FindAnimation(CharacterSkinManifest manifest, string action)
+        // 游戏当前的角色动画速率。地图人物读 Animator.speed：它已经包含房间速度
+        // （BattleConfig.RoleAnimatorSpeed）、回放倍速、走路速度倍率，时停/暂停时为
+        // 0。战斗人物由 PlayableDirector 驱动，取其根 playable 同源的战斗速率。
+        private static float GameAnimationRate(Actor a)
         {
-            if (manifest == null || manifest.Animations == null || string.IsNullOrEmpty(action)) return null;
-            foreach (var pair in manifest.Animations)
-                if (string.Equals(pair.Key, action, StringComparison.OrdinalIgnoreCase)) return pair.Value;
-            return null;
+            try
+            {
+                if (a.Component is CharacterAnimator)
+                {
+                    var animator = ProbeReflection.Read(a.Component, "animator");
+                    if (animator != null && ProbeReflection.Read(animator, "speed") is float speed) return speed < 0f ? 0f : speed;
+                }
+                if (SimpleSingletonProvider<Core.Scene.SceneManager>.hasInstance) return Math.Max(0f, BattleConfig.RoleAnimatorSpeed);
+            }
+            catch { }
+            return 1f;
         }
         private void ApplyActor(Actor a)
         {
             Sprite source = a.Renderer.sprite;
             if (source == null || source == a.Applied) return;
             a.Original = source;
-            string sourceAction = AnimationPlayback.ActionName(source.name);
-            double now = Time.time;
-            string file = null; var m = a.Target.Package.Manifest;
-            CharacterAnimation animation = FindAnimation(m, sourceAction);
-            string action = sourceAction;
-
-            // A complete custom sequence owns the renderer until it finishes. This prevents a
-            // short sequence from falling back to an original frame and gives a long one a
-            // chance to reach its last frame when the game's controller advances early.
-            if (!string.Equals(a.Action, sourceAction, StringComparison.Ordinal) && !string.IsNullOrEmpty(a.Action))
+            var m = a.Target.Package.Manifest;
+            var decision = a.Playback.Step(m, source.name, Time.time, GameAnimationRate(a));
+            if (!string.IsNullOrEmpty(decision.MissingAction))
+                Warn("动作缺少自定义内容，沿用最近的自定义帧: " + decision.MissingAction + "（角色 " + a.Target.Plan.HeroId + "，包 " + m.Id + "）");
+            if (decision.Kind == PlaybackKind.HoldApplied)
             {
-                CharacterAnimation previous = FindAnimation(m, a.Action);
-                double previousElapsed = Math.Max(0, now - a.Started) * 1000;
-                if (AnimationPlayback.ShouldFinish(previous, previousElapsed))
+                if (a.Applied != null) a.Renderer.sprite = a.Applied;
+                SamplePosition(a);
+                return;
+            }
+            if (string.IsNullOrEmpty(decision.File)) { SamplePosition(a); return; }
+            ApplyFrame(a, decision.File, source, m, decision.OriginalLayout, decision.LayoutName);
+            SamplePosition(a);
+        }
+        // 读包内的原帧尺寸/锚点表（source-metadata.json，旧式包为 legacy-animation-source.json）。
+        // 只在第一次需要时读一次；读不到就退回运行时原帧的锚点。
+        private void EnsureFrameGeometry(Package package)
+        {
+            if (package == null || package.FrameGeometry != null) return;
+            package.FrameGeometry = new Dictionary<string, FrameGeometry>(StringComparer.Ordinal);
+            foreach (string file in new[] { "source-metadata.json", "legacy-animation-source.json" })
+            {
+                Guard("读取原帧锚点", () =>
                 {
-                    action = a.Action;
-                    animation = previous;
-                }
+                    string path = Path.Combine(package.Root, file);
+                    if (!File.Exists(path)) return;
+                    var metadata = CesiumJson.Deserialize<FrameMetadata>(File.ReadAllText(path));
+                    if (metadata == null || metadata.Sprites == null) return;
+                    foreach (var entry in metadata.Sprites)
+                    {
+                        if (entry == null || string.IsNullOrEmpty(entry.Name) || entry.Pivot == null || entry.Pivot.Length < 2) continue;
+                        if (!(entry.PPU > 0f)) continue;
+                        if (package.FrameGeometry.ContainsKey(entry.Name)) continue;
+                        package.FrameGeometry.Add(entry.Name, new FrameGeometry { PivotX = entry.Pivot[0], PivotY = entry.Pivot[1], PixelsPerUnit = entry.PPU });
+                    }
+                });
+                if (package.FrameGeometry.Count > 0) return;
             }
-            if (!string.Equals(action, a.Action, StringComparison.Ordinal)) { a.Action = action; a.Started = now; a.LastCustomFile = null; }
-
-            // A whole-action sequence takes precedence over SpriteMappings. Mappings remain
-            // useful for individual original frames when no sequence was supplied.
-            bool mapped = animation == null && m.SpriteMappings.TryGetValue(source.name, out file);
-            if (animation == null && !mapped && string.Equals(a.Action, sourceAction, StringComparison.Ordinal) && !string.IsNullOrEmpty(a.LastCustomFile))
-            {
-                // The original controller may expose more frames than the package mapped.
-                // Hold the last custom frame for this action instead of revealing the original.
-                file = a.LastCustomFile;
-                mapped = true;
-            }
-            if (animation != null)
-            {
-                double elapsed = Math.Max(0, now - a.Started) * 1000;
-                file = animation.Frames[AnimationPlayback.Frame(animation, elapsed)];
-            }
-            if (animation == null && !mapped)
-            {
-                if (a.Applied != null) { a.Renderer.sprite = a.Applied; return; }
-                var idle = FindAnimation(m, "Idle");
-                if (idle == null) return;
-                file = idle.Frames[0];
-            }
-            if (mapped) a.LastCustomFile = file;
+        }
+        private bool TryFrameGeometry(Package package, string frameName, out FrameGeometry geometry)
+        {
+            geometry = default(FrameGeometry);
+            if (package == null || string.IsNullOrEmpty(frameName)) return false;
+            EnsureFrameGeometry(package);
+            return package.FrameGeometry.TryGetValue(frameName, out geometry);
+        }
+        private static readonly char[] FrameSeparators = { '/', '\\' };
+        // 从自定义帧路径还原它替换的原精灵名：模板导出与逐帧替换的文件名就是原精灵名
+        // （animations/Idle/Idle_00007.png）；用户导入的独立序列是 0000.png 之类的编号。
+        private static string FrameName(string file)
+        {
+            if (string.IsNullOrEmpty(file)) return "";
+            int slash = file.LastIndexOfAny(FrameSeparators);
+            string name = slash >= 0 ? file.Substring(slash + 1) : file;
+            int dot = name.LastIndexOf('.');
+            if (dot > 0) name = name.Substring(0, dot);
+            return AnimationPlayback.FrameIndex(name) >= 0 ? name : "";
+        }
+        // 一只精灵的锚点只能有一个来源，否则同一动作里会在两套锚点之间跳：
+        // 包内模板锚点（自定义图就是按这套画布导出的）优先，只有包内查不到时才用
+        // 运行时原帧的锚点（手工制作的包）。UseOriginalSpriteLayout=false 的包整体用 Layout。
+        private readonly HashSet<string> _anchorChecked = new HashSet<string>(StringComparer.Ordinal);
+        private void CheckAnchor(Actor a, CharacterSkinManifest m, string frameName, Sprite source, FrameGeometry geometry)
+        {
+            if (!_anchorChecked.Add(frameName)) return;
+            if (!string.Equals(frameName, source.name, StringComparison.Ordinal)) return;
+            float dx = Math.Abs(source.pivot.x / source.rect.width - geometry.PivotX);
+            float dy = Math.Abs(source.pivot.y / source.rect.height - geometry.PivotY);
+            if (dx * source.rect.width < 2f && dy * source.rect.height < 2f) return;
+            Warn("原帧锚点与包内模板不一致: " + frameName
+                + " 运行时=(" + (source.pivot.x / source.rect.width).ToString("F3") + "," + (source.pivot.y / source.rect.height).ToString("F3") + ")"
+                + " 包内=(" + geometry.PivotX.ToString("F3") + "," + geometry.PivotY.ToString("F3") + ")"
+                + "，已按包内锚点渲染（角色 " + a.Target.Plan.HeroId + "，包 " + m.Id + "）");
+        }
+        private void ApplyFrame(Actor a, string file, Sprite source, CharacterSkinManifest m, bool originalLayout, string layoutName)
+        {
             string path = CharacterSkinRules.SafePath(a.Target.Package.Root, file);
-            bool originalLayout = mapped && m.UseOriginalSpriteLayout;
-            string key = path + ":" + m.HeroId + ":" + a.Target.Plan.Applied.ItemID + (originalLayout ? ":" + source.GetInstanceID() : "");
+            Vector2 pivot; float ppu; string token;
+            bool template = m.UseOriginalSpriteLayout;
+            originalLayout = originalLayout && template;
+            string frameName = FrameName(file);
+            FrameGeometry geometry;
+            if (template && frameName.Length > 0 && TryFrameGeometry(a.Target.Package, frameName, out geometry))
+            {
+                // 包内模板帧：这张自定义图就是按该原帧的画布导出的，锚点以它为准。
+                CheckAnchor(a, m, frameName, source, geometry);
+                pivot = new Vector2(geometry.PivotX, geometry.PivotY); ppu = geometry.PixelsPerUnit; token = "meta:" + frameName;
+            }
+            else if (originalLayout && (frameName.Length == 0 || string.Equals(frameName, source.name, StringComparison.Ordinal)))
+            {
+                // 包内没有该帧锚点、且就在替换当前原帧：用运行时原帧的锚点。
+                pivot = new Vector2(source.pivot.x / source.rect.width, source.pivot.y / source.rect.height);
+                ppu = source.pixelsPerUnit; token = "src:" + source.GetInstanceID();
+            }
+            else if (originalLayout && !string.IsNullOrEmpty(layoutName) && TryFrameGeometry(a.Target.Package, layoutName, out geometry))
+            {
+                // 帧名不可识别（例如逐帧替换生成的 replacements/<guid>.png）：用它替换的
+                // 原精灵名（LayoutName）的包内锚点，保证与同一动作其它帧一致。
+                pivot = new Vector2(geometry.PivotX, geometry.PivotY); ppu = geometry.PixelsPerUnit; token = "meta:" + layoutName;
+            }
+            else if (originalLayout)
+            {
+                // 包内没有锚点记录：退回当前原帧的锚点。
+                pivot = new Vector2(source.pivot.x / source.rect.width, source.pivot.y / source.rect.height);
+                ppu = source.pixelsPerUnit; token = "src:" + source.GetInstanceID();
+            }
+            else
+            {
+                // 整段自定义序列（用户导入/编辑过的动作）继续使用包自己的 Layout。
+                pivot = new Vector2(m.Layout.PivotX, m.Layout.PivotY); ppu = m.Layout.PixelsPerUnit; token = "pkg";
+            }
+            string key = path + ":" + m.HeroId + ":" + a.Target.Plan.Applied.ItemID + ":" + token;
             if (!_sprites.TryGetValue(key, out var sprite))
             {
                 var owned = _textures.GetOrCreateTexture(path, "sprite:" + key);
@@ -558,11 +682,8 @@ namespace CharacterSkinMod
                 _ownedTextures.Add(owned);
                 var texture = owned.nativeTexture as Texture2D;
                 if (texture == null) throw new Exception("自定义动画纹理类型无效");
-                var l = m.Layout;
-                var pivot = originalLayout ? new Vector2(source.pivot.x / source.rect.width, source.pivot.y / source.rect.height) : new Vector2(l.PivotX, l.PivotY);
-                float ppu = originalLayout ? source.pixelsPerUnit : l.PixelsPerUnit;
-                sprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), pivot, ppu / l.Scale, 0, SpriteMeshType.FullRect);
-                sprite.name = "Cesium_" + source.name; _sprites[key] = sprite;
+                sprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), pivot, ppu / m.Layout.Scale, 0, SpriteMeshType.FullRect);
+                sprite.name = "Cesium_" + (frameName.Length > 0 ? frameName : source.name); _sprites[key] = sprite;
             }
             a.Applied = sprite; a.Renderer.sprite = sprite; if (a.Renderer.sprite == sprite) _spriteApplications++;
         }

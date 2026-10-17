@@ -8,6 +8,7 @@
     <Compile Include="../../mods/CharacterSkinMod/SchemeRuntimePlan.cs" Link="SchemeRuntimePlan.cs" />
     <Compile Include="../../mods/CharacterSkinMod/SkinLayoutAliases.cs" Link="SkinLayoutAliases.cs" />
     <Compile Include="../../mods/CharacterSkinMod/AnimationPlayback.cs" Link="AnimationPlayback.cs" />
+    <Compile Include="../../mods/CharacterSkinMod/ActorPlayback.cs" Link="ActorPlayback.cs" />
     <Reference Include="AstralParty.Runtime"><HintPath>../../../../extracted_dlls/AstralParty.Runtime.dll</HintPath></Reference>
     <Reference Include="Google.Protobuf.Runtime"><HintPath>../../../../extracted_dlls/Google.Protobuf.Runtime.dll</HintPath></Reference>
     <Compile Include="../../shared/CharacterSkins/CharacterSkinManifest.cs" Link="CharacterSkinManifest.cs" />

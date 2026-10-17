@@ -23,6 +23,33 @@ public sealed class AnimationPlaybackTests
         Assert.Equal(action, AnimationPlayback.ActionName(sprite));
     }
 
+    [Theory]
+    [InlineData("Fight-attack_00063", 63)]
+    [InlineData("Hit-01_00001", 1)]
+    [InlineData("Walk_00000", 0)]
+    [InlineData("Fight-move-loop_00000", 0)]
+    [InlineData("Hit_01_00012", 12)]
+    [InlineData("Idle", -1)]
+    [InlineData("", -1)]
+    [InlineData("Walk_", -1)]
+    [InlineData("Walk_00x1", -1)]
+    public void FrameIndexReadsOnlyNumericSuffix(string sprite, int index)
+    {
+        Assert.Equal(index, AnimationPlayback.FrameIndex(sprite));
+    }
+
+    [Fact]
+    public void AdvanceScalesWithGameAnimationRateAndStopsAtZero()
+    {
+        Assert.Equal(180, AnimationPlayback.Advance(0, 0.1, 1.8f), 3);
+        Assert.Equal(0, AnimationPlayback.Advance(0, 0.1, 0f), 3);
+        Assert.Equal(500, AnimationPlayback.Advance(500, 0, 1.8f), 3);
+        Assert.Equal(500, AnimationPlayback.Advance(500, -1, 1.8f), 3);
+        // Unity 对动画更新用的 deltaTime 有上限，长卡顿不应把序列一次推到末尾。
+        Assert.Equal(900, AnimationPlayback.Advance(0, 10, 1.8f), 3);
+        Assert.Equal(500, AnimationPlayback.Advance(0, 2, 1f), 3);
+    }
+
     [Fact]
     public void ShortSequenceHoldsLastCustomFrameAfterCompletion()
     {
