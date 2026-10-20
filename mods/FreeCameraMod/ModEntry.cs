@@ -26,7 +26,7 @@ namespace FreeCameraMod
     }
 
     /// <summary>
-    /// 滚轮缩放(v2.4.3 —— 旧版"F1 开关俯瞰视角"已整体重写)。
+    /// 滚轮缩放(v2.4.4 —— 旧版"F1 开关俯瞰视角"已整体重写)。
     ///
     /// 要的行为:
     ///   1) 进游戏后<b>什么都不做</b>: 画面就是游戏自己的默认视角, 没有开关、没有自动接管;
@@ -206,6 +206,28 @@ namespace FreeCameraMod
         /// <summary>锁定的主相机世界欧拉角。</summary>
         private Vector3 _lockedCameraEuler;
 
+        /// <summary>锁定的棋盘主相机(演出期间游戏会把它失活, 但位姿仍要锁住)。</summary>
+        private Camera _lockedMainCamera;
+
+        /// <summary>演出/战斗用的额外相机(本作的 PKMainCamera), 启用时冻结在开场机位。</summary>
+        private readonly List<ExtraCameraLock> _extraCameraLocks = new List<ExtraCameraLock>();
+
+        /// <summary>额外相机列表的重扫倒计时(帧)。</summary>
+        private int _extraCameraScanCooldown;
+
+        /// <summary>一台额外相机的冻结状态。</summary>
+        private sealed class ExtraCameraLock
+        {
+            public Camera Camera;
+            public bool HasPose;
+            public int Delay;
+            public Vector3 Position;
+            public Vector3 Euler;
+            public float FieldOfView;
+            public bool Orthographic;
+            public float OrthographicSize;
+        }
+
         /// <summary>本帧玩家是否在主动拖拽/按键移动自由相机(每帧只采集一次输入)。</summary>
         private bool _playerMovingFreeCamera;
 
@@ -233,7 +255,7 @@ namespace FreeCameraMod
 
         public override string Name { get { return "自由相机"; } }
 
-        public override string Version { get { return "2.4.3"; } }
+        public override string Version { get { return "2.4.4"; } }
 
         // =====================================================================
         // 生命周期
@@ -706,10 +728,17 @@ namespace FreeCameraMod
                         {
                             _lockedCameraPosition = _lastGameCameraPosition;
                             _lockedCameraEuler = CameraService.GetEulerAngles(main);
+                            _lockedMainCamera = main;
                             _hasCameraLock = true;
                             Log.Info("自动跟随: 已锁定主相机位姿 (" +
                                       F(_lockedCameraPosition.x) + ", " + F(_lockedCameraPosition.y) + ", " +
                                       F(_lockedCameraPosition.z) + "); 游戏自动运镜不会再移动画面");
+                            // 找出本作的 PK 演出相机(开大/战斗切入时游戏会禁用主相机、改用这台)
+                            RefreshExtraCameras();
+                        }
+                        else if (_lockedMainCamera == null)
+                        {
+                            _lockedMainCamera = main;
                         }
                     }
                 }
@@ -892,8 +921,20 @@ namespace FreeCameraMod
         {
             if (_autoFollow || !_hasCameraLock) return false;
 
-            var camera = CameraService.GetMainCamera();
+            // 演出/开大时游戏会禁用棋盘主相机、启用独立的 PKMainCamera;
+            // 这台相机也要冻结在开场机位, 否则开大运镜照样会动。
+            UpdateExtraCameraLocks();
+
+            // 固定锁在第一次捕获的棋盘主相机上。演出期间 Camera.main 可能切到 PK 相机,
+            // 不能用 CameraService.GetMainCamera() 的当前结果去写棋盘视角。
+            var camera = _lockedMainCamera;
+            if (!UnityObject.IsAlive(camera)) camera = CameraService.GetMainCamera();
             if (!UnityObject.IsAlive(camera)) return false;
+            if (!ReferenceEquals(camera, _lockedMainCamera))
+            {
+                _lockedMainCamera = camera;
+                RefreshExtraCameras();
+            }
 
             Vector3 currentPosition = CameraService.GetPosition(camera);
             Vector3 currentEuler = CameraService.GetEulerAngles(camera);
@@ -921,6 +962,124 @@ namespace FreeCameraMod
             CameraService.SetEulerAngles(camera, _lockedCameraEuler);
             if (!_active) CameraService.SetPosition(camera, _lockedCameraPosition);
             return true;
+        }
+
+        /// <summary>
+        /// 重新收集带 CinemachineBrain 的额外相机(本作是 PKMainCamera)。
+        /// 主相机由 <see cref="UpdateFollowCameraLock"/> 单独锁定, 这里跳过。
+        /// </summary>
+        private void RefreshExtraCameras()
+        {
+            _extraCameraLocks.Clear();
+
+            var main = _lockedMainCamera;
+            if (!UnityObject.IsAlive(main)) main = CameraService.GetMainCamera();
+
+            var cameras = CameraService.GetAllCameras(true);
+            for (int i = 0; i < cameras.Length; i++)
+            {
+                var cam = cameras[i];
+                if (!UnityObject.IsAlive(cam)) continue;
+                if (UnityObject.IsAlive(main) && ReferenceEquals(cam, main)) continue;
+                if (!HasCinemachineBrain(cam)) continue;
+
+                bool duplicate = false;
+                for (int j = 0; j < _extraCameraLocks.Count; j++)
+                {
+                    if (ReferenceEquals(_extraCameraLocks[j].Camera, cam)) { duplicate = true; break; }
+                }
+                if (duplicate) continue;
+
+                _extraCameraLocks.Add(new ExtraCameraLock { Camera = cam, Delay = 1 });
+            }
+
+            Log.Debug("自动跟随: 额外演出相机 " + _extraCameraLocks.Count + " 台");
+        }
+
+        /// <summary>
+        /// 相机自身或最近几层父节点上是否有 CinemachineBrain。
+        /// PK 相机可能挂在 PKCameraManager 的子节点上, 所以不能只看相机自己的 GameObject。
+        /// </summary>
+        private static bool HasCinemachineBrain(Camera camera)
+        {
+            if (!UnityObject.IsAlive(camera)) return false;
+
+            var go = UnityObject.GetGameObject(camera);
+            if (go != null && CinemachineService.FindBrainOn(go) != null) return true;
+
+            Transform parent = TransformService.GetParent(camera.transform);
+            for (int i = 0; i < 4 && parent != null; i++)
+            {
+                if (CinemachineService.FindBrainOn(parent.gameObject) != null) return true;
+                parent = TransformService.GetParent(parent);
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// 冻结额外演出相机(PKMainCamera)。开大/战斗切入时游戏会禁用主相机、改用这台相机
+        /// 播放运镜; 把它锁在启用时的第一帧位姿和镜头参数上, 画面就不会跟着运镜跑。
+        /// </summary>
+        private void UpdateExtraCameraLocks()
+        {
+            // 清理已经销毁的相机; 列表空了再按冷却重新扫描(相机可能比锁定晚创建)
+            for (int i = _extraCameraLocks.Count - 1; i >= 0; i--)
+            {
+                if (!UnityObject.IsAlive(_extraCameraLocks[i].Camera)) _extraCameraLocks.RemoveAt(i);
+            }
+
+            if (_extraCameraLocks.Count == 0)
+            {
+                if (_extraCameraScanCooldown > 0)
+                {
+                    _extraCameraScanCooldown--;
+                    return;
+                }
+                _extraCameraScanCooldown = 30;
+                RefreshExtraCameras();
+                if (_extraCameraLocks.Count == 0) return;
+            }
+
+            for (int i = 0; i < _extraCameraLocks.Count; i++)
+            {
+                var state = _extraCameraLocks[i];
+                var cam = state.Camera;
+                if (!UnityObject.IsAlive(cam)) continue;
+
+                bool enabled = CameraService.GetEnabled(cam) && UnityObject.IsActiveInHierarchy(cam);
+                if (!enabled)
+                {
+                    state.HasPose = false;
+                    state.Delay = 1;
+                    continue;
+                }
+
+                if (!state.HasPose)
+                {
+                    // 等一帧让 CinemachineBrain 把相机写到本次演出的第一个机位, 再捕获
+                    if (state.Delay > 0)
+                    {
+                        state.Delay--;
+                        continue;
+                    }
+
+                    // 启用后的第一帧: 记下游戏给的初始演出机位/镜头参数, 之后不再让它动
+                    state.Position = CameraService.GetPosition(cam);
+                    state.Euler = CameraService.GetEulerAngles(cam);
+                    state.FieldOfView = CameraService.GetFieldOfView(cam);
+                    state.Orthographic = CameraService.GetOrthographic(cam);
+                    state.OrthographicSize = CameraService.GetOrthographicSize(cam);
+                    state.HasPose = true;
+                    Log.Info("自动跟随: 已冻结演出相机 " + UnityObject.GetName(cam) + " 于开场机位");
+                    continue;
+                }
+
+                CameraService.SetPosition(cam, state.Position);
+                CameraService.SetEulerAngles(cam, state.Euler);
+                CameraService.SetFieldOfView(cam, state.FieldOfView);
+                CameraService.SetOrthographic(cam, state.Orthographic);
+                CameraService.SetOrthographicSize(cam, state.OrthographicSize);
+            }
         }
 
         /// <summary>玩家是否正在主动平移自由相机(此时允许画面移动)。</summary>
@@ -1056,6 +1215,9 @@ namespace FreeCameraMod
             _hasCameraLock = false;
             _lockedCameraPosition = Vector3.zero;
             _lockedCameraEuler = Vector3.zero;
+            _lockedMainCamera = null;
+            _extraCameraLocks.Clear();
+            _extraCameraScanCooldown = 0;
             _playerMovingFreeCamera = false;
             _hasLastMousePosition = false;
             _brain = null;
