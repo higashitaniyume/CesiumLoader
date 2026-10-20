@@ -26,7 +26,7 @@ namespace FreeCameraMod
     }
 
     /// <summary>
-    /// 滚轮缩放(v2.4.4 —— 旧版"F1 开关俯瞰视角"已整体重写)。
+    /// 滚轮缩放(v2.4.5 —— 旧版"F1 开关俯瞰视角"已整体重写)。
     ///
     /// 要的行为:
     ///   1) 进游戏后<b>什么都不做</b>: 画面就是游戏自己的默认视角, 没有开关、没有自动接管;
@@ -255,7 +255,7 @@ namespace FreeCameraMod
 
         public override string Name { get { return "自由相机"; } }
 
-        public override string Version { get { return "2.4.4"; } }
+        public override string Version { get { return "2.4.5"; } }
 
         // =====================================================================
         // 生命周期
@@ -939,12 +939,9 @@ namespace FreeCameraMod
             Vector3 currentPosition = CameraService.GetPosition(camera);
             Vector3 currentEuler = CameraService.GetEulerAngles(camera);
 
-            // 菜单/加载过渡相机: 不能把它锁在棋盘视线上
-            if (IsPlaceholderCamera(currentPosition, currentEuler))
-            {
-                _hasCameraLock = false;
-                return false;
-            }
+            // 注意: 这里不要因为"占位相机"而释放锁定。回合开始/刷怪/演出期间游戏会把
+            // 主相机临时挪到 (0,0,0) 或高处(或者禁用), 释放锁定就会让镜头跟着游戏跑到
+            // 新位置; 切场景时 OnSceneLoaded 会统一 ResetFollowOverride。
 
             // 玩家主动平移自由相机: 让游戏相机正常移动, 并把固定视角更新到当前画面
             if (IsPlayerPanningFreeCamera())
