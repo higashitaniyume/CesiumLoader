@@ -116,16 +116,29 @@ if (CameraService.TryGetCenterRay(cam, out origin, out dir))
 
 ```csharp
 object brain = CinemachineService.FindBrain();
+object mainBrain = CinemachineService.FindBrainOn(CameraService.GetMainCamera());   // 优先取主相机上的
 bool blending = CinemachineService.IsBlending(brain);
 object vcam = CinemachineService.CreateVirtualCamera("CesiumFreeCamera", parent, priority: 100);
 CinemachineService.SetLensFieldOfView(vcam, 70f);
 CinemachineService.SetPriority(vcam, 200);        // 抢过控制权
 CinemachineService.DestroyVirtualCamera(vcam);
+
+// 读取 / 改写 Follow、LookAt（用于"关闭角色自动跟随"这类功能）
+Transform follow = CinemachineService.GetFollow(vcam);
+bool isCharacter = CinemachineService.IsCharacterTransform(follow);   // Core.Unit.Character
+bool isFreeCamera = CinemachineService.IsFollowingFreeCamera(vcam);   // Core.FreeCameraObject
+CinemachineService.SetFollow(vcam, fixedAnchorTransform);
 ```
 
-> 实测结论：本作的 CinemachineBrain 位于一个**未激活**的对象上，因此自由相机采用
-> "每帧直接写 Main Camera 位姿"的方式接管，而不是靠 vcam 抢优先级。Cinemachine API 保留，
-> 供 mod 在确认 Brain 激活的场景里使用。
+`IsCharacterTransform` 只认游戏角色组件（`Core.Unit.Character`），`IsFollowingFreeCamera`
+认玩家拖拽用的自由相机对象（`Core.FreeCameraObject`）。两者用来区分「跟随角色的相机」
+「跟随自由相机对象 / 演出镜头锁的相机」。自由相机 mod 的 `autoFollow=false` 只改角色相机，
+并且只在自由相机移动时让固定锚点跟着走，所以玩家拖拽平移不受影响、演出运镜也不会改掉固定镜头。
+
+> 实测结论(2026-09-20)：菜单/场景过渡期 Brain 可能挂在失活对象上，此时靠 vcam 抢优先级
+> 不生效；自由相机的**滚轮缩放**因此采用"每帧直接写 Main Camera 位姿"的方式接管。
+> 战斗内角色相机仍由 Brain + vcam 驱动（`Core.Camera.CharacterCamera` 创建并设置 `m_Follow`），
+> 所以"关闭角色自动跟随"改的是角色 vcam 的 Follow。
 
 ## 8. FreeCameraMath
 

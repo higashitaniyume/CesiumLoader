@@ -61,7 +61,7 @@ winget install Hiynet.AstralParty.Toys
 | [CardSkinMod](mods/CardSkinMod/README.md) | 自定义卡面、多方案与 PNG 序列帧动态卡面 |
 | [CharacterSkinMod](docs/mod-CharacterSkinMod.md) | 角色外观、多人物皮肤方案与精灵动画 |
 | [CombatOddsMod](docs/mod-CombatOddsMod.md) | 战斗胜率分析、头顶攻防数字与悬停详情 |
-| [FreeCameraMod](docs/mod-FreeCameraMod.md) | 滚轮沿视线缩放，默认 `F1` 恢复视角 |
+| [FreeCameraMod](docs/mod-FreeCameraMod.md) | 滚轮沿视线缩放，默认 `F1` 恢复视角；锁定镜头默认关闭，需手动设置 `autoFollow=false` |
 | [SpeedHackMod](docs/mod-SpeedHackMod.md) | 游戏内调整倍率，切换正常速度与上次倍率 |
 | ActivityLogMod | 记录出牌、投骰、回合等行为并转发到控制台 |
 | [ForkDirectionMod](mods/ForkDirectionMod/README.md) | PVE 岔路三个相邻地块按顺序显示红 A、黄 B、蓝 C 与地块 ID |

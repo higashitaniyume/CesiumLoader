@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using CesiumLoader.SDK.Cameras;
 using CesiumLoader.SDK.Configuration;
@@ -25,17 +26,19 @@ namespace FreeCameraMod
     }
 
     /// <summary>
-    /// 滚轮缩放(v2.3.0 —— 旧版"F1 开关俯瞰视角"已整体重写)。
+    /// 滚轮缩放(v2.4.3 —— 旧版"F1 开关俯瞰视角"已整体重写)。
     ///
     /// 要的行为:
     ///   1) 进游戏后<b>什么都不做</b>: 画面就是游戏自己的默认视角, 没有开关、没有自动接管;
     ///   2) <b>滚轮 = 放大/缩小, 且保持原来的视角</b>: 相机沿"当前视线方向"前后移动
     ///      (向前滚 = 拉近/放大), 朝向、俯角、滚转一律不写 —— 画面不会歪、不会变成俯视,
     ///      只是把同一个视角拉近/拉远;
-    ///   3) <b>F1(可改键) = 恢复原来的视角</b>: 立刻回到游戏自己的机位, 并把相机交还给游戏。
+    ///   3) <b>F1(可改键) = 恢复原来的视角</b>: 立刻回到游戏自己的机位, 并把相机交还给游戏;
+    ///   4) <b>autoFollow=false(可选)</b>: 关掉游戏自带的自动跟随, 见下。
     ///
     /// 为什么这么实现(本作实测约束, 详见 docs/SDK-相机.md / docs/mod-FreeCameraMod.md):
-    ///   - Cinemachine Brain 位于失活对象, 靠 vcam 抢优先级不生效, 只有"每帧直接写主相机"可靠;
+    ///   - 菜单/过渡期 Cinemachine Brain 可能在失活对象上, 靠 vcam 抢优先级不生效,
+    ///     所以滚轮缩放只有"每帧直接写主相机"可靠; 战斗内角色相机的跟随仍由 vcam 驱动;
     ///   - 游戏自己的相机逻辑每帧都写相机, 所以我们的写入要放在 UpdateService 的
     ///     LateUpdate(实际时机 PostLateUpdate) 才不会被覆盖;
     ///   - 游戏自己完全没用滚轮(反编译确认没有任何 "Mouse ScrollWheel" 读取), 所以滚轮是
@@ -43,22 +46,33 @@ namespace FreeCameraMod
     ///
     /// 安全保证:
     ///   - 只读输入(滚轮 + 热键), 不 Capture、不拦截、不改键位;
-    ///   - 只写相机位置(+ 拉远时按需抬高 farClip 防远处被裁), 从不写朝向/FOV/nearClip;
+    ///   - 滚轮缩放只写相机位置(+ 拉远时按需抬高 farClip 防远处被裁), 不写朝向/FOV/nearClip;
+    ///   - autoFollow=false 时为锁定画面会同时写回位置和朝向(默认模式不写);
     ///   - 每帧以"游戏本帧写下的位姿"为基准再加偏移, 所以缩放期间游戏的鼠标拖拽平移 /
     ///     键盘平移仍然有效(一边拉远看全图, 一边照样拖地图);
     ///   - 结束缩放(滚轮滚回原位 / 按复原键 / 切场景 / 换相机 / mod 卸载)时, 把"游戏自己的位姿"
     ///     写回去并还原 farClip —— 绝不会把相机永久丢在缩放后的位置。
     ///
     /// 配置: mods\FreeCameraMod\config.json(旧版 v2.x 的键会在启动时自动清理)
-    ///   zoomStep / zoomInMax / zoomOutMax / invertWheel / smooth / smoothTime /
+    ///   autoFollow / zoomStep / zoomInMax / zoomOutMax / invertWheel / smooth / smoothTime /
     ///   ensureFarClip / requireReadyCamera / maxReadyCameraHeight / notify /
     ///   restoreKey / resetKey
+    ///
+    /// 自动跟随(autoFollow, 默认 true):
+    ///   - true = 完全保持游戏原样, 角色移动时镜头照常跟着走;
+    ///   - false = 锁定当前画面: 角色相机的 Follow 换成固定锚点(角色移动/换角色不带动镜头),
+    ///     同时在 PostLateUpdate 把主相机位姿锁回固定值(回合开始/刷怪/演出运镜也不移动画面)。
+    ///     锚点/锁定位置每个场景只取一次; 只有玩家主动拖拽/按键平移自由相机时才更新。
+    ///     配置在启动时读一次。
     /// </summary>
     public sealed class ZoomCameraController : ModBase
     {
         // =====================================================================
         // 配置
         // =====================================================================
+
+        /// <summary>是否保持游戏自带的"角色移动时镜头跟随"(默认 true)。</summary>
+        private bool _autoFollow = true;
 
         /// <summary>每格滚轮拉近/拉远的米数。</summary>
         private float _zoomStep = FreeCameraMath.DefaultZoomStep;
@@ -152,9 +166,74 @@ namespace FreeCameraMod
         /// <summary>"当前是菜单相机"的提示只记一次。</summary>
         private bool _placeholderWarned;
 
+        // =====================================================================
+        // 自动跟随(仅 autoFollow=false 时使用)
+        // =====================================================================
+
+        /// <summary>固定跟随锚点; 角色相机把 Follow 指向它后, 角色移动镜头就不动了。</summary>
+        private GameObject _followAnchor;
+
+        /// <summary>缓存的 CinemachineBrain(FindBrain 会全场景搜索, 不能每帧调用)。</summary>
+        private object _brain;
+
+        /// <summary>解析 Brain 时对应的主相机(换相机后缓存必须失效)。</summary>
+        private Camera _brainOwner;
+
+        /// <summary>找不到 Brain 时的重试倒计时(帧), 避免在菜单里每帧全场景搜索。</summary>
+        private int _brainProbeCooldown;
+
+        /// <summary>上一次处理过的活动 vcam instanceID(换相机/换玩家时重新检查)。</summary>
+        private int _lastFollowVcamId;
+
+        /// <summary>是否已经取过锚点位姿(每个场景只取一次; 之后换角色/换角色相机都不再移动镜头)。</summary>
+        private bool _hasFollowAnchorPose;
+
+        /// <summary>上一帧的游戏相机位置(排除滚轮缩放偏移), 用于自由相机/演出运镜时让锚点跟着走。</summary>
+        private Vector3 _lastGameCameraPosition;
+
+        /// <summary>上一帧游戏相机位置是否有效。</summary>
+        private bool _hasLastGameCameraPosition;
+
+        /// <summary>上一帧是否在混合(只在混合开始时扫描一次角色相机)。</summary>
+        private bool _wasBlending;
+
+        /// <summary>是否已锁定主相机位姿(autoFollow=false 时把游戏自动运镜也挡掉)。</summary>
+        private bool _hasCameraLock;
+
+        /// <summary>锁定的主相机世界位置。</summary>
+        private Vector3 _lockedCameraPosition;
+
+        /// <summary>锁定的主相机世界欧拉角。</summary>
+        private Vector3 _lockedCameraEuler;
+
+        /// <summary>本帧玩家是否在主动拖拽/按键移动自由相机(每帧只采集一次输入)。</summary>
+        private bool _playerMovingFreeCamera;
+
+        /// <summary>上一帧鼠标屏幕坐标(用于区分"拖拽"和"点一下 UI")。</summary>
+        private Vector2 _lastMousePosition;
+
+        /// <summary>上一帧鼠标屏幕坐标是否有效。</summary>
+        private bool _hasLastMousePosition;
+
+        /// <summary>被我们改过 Follow 的 vcam 及原始目标(卸载/切场景时还原)。</summary>
+        private readonly List<FollowOverride> _followOverrides = new List<FollowOverride>();
+
+        /// <summary>Follow 改写失败只记一条日志。</summary>
+        private bool _followWarned;
+
+        /// <summary>一次 Follow 改写记录: vcam 与它原本的 Follow/LookAt。</summary>
+        private sealed class FollowOverride
+        {
+            public object Vcam;
+            public int VcamId;
+            public Transform OriginalFollow;
+            public Transform OriginalLookAt;
+            public bool LookAtOverridden;
+        }
+
         public override string Name { get { return "自由相机"; } }
 
-        public override string Version { get { return "2.3.0"; } }
+        public override string Version { get { return "2.4.3"; } }
 
         // =====================================================================
         // 生命周期
@@ -185,8 +264,11 @@ namespace FreeCameraMod
                      "平滑=" + (_smooth ? F(_smoothTime) + "s" : "关") + ", " +
                      _restoreKey + "=恢复原来的视角" +
                      (_resetKey != KeyCode.None && _resetKey != _restoreKey ? " (" + _resetKey + " 同效)" : "") +
-                     "; 进入游戏时不接管任何东西");
+                     "; 自动跟随=" + (_autoFollow ? "开(游戏原样, 锁定镜头未启用)" : "关(锁定当前镜头)") +
+                     (_autoFollow ? "; 要启用锁定镜头请把 config.json 的 autoFollow 改成 false 并重启" : "; 游戏自动运镜不再移动画面, 玩家拖拽/按键平移自由相机仍可用"));
             if (_configFixed && _config != null) Log.Info("配置已更新/迁移: " + _config.Path);
+            if (!_autoFollow && !CinemachineService.IsAvailable)
+                Log.Warn("自动跟随已配置为关闭, 但没有解析到 Cinemachine: 本功能依赖角色相机的 VirtualCamera, 当前无法生效");
             if (!InputService.IsAvailable)
                 Log.Warn("输入后端不可用: 滚轮与热键都读不到(看 SDK 的 INPUT 日志; 本作滚轮只可能来自 Unity 的 mouseScrollDelta / Mouse ScrollWheel 轴)");
         }
@@ -196,6 +278,9 @@ namespace FreeCameraMod
         {
             try
             {
+                // ---- 自动跟随(autoFollow=false 时每帧维护"固定跟随锚点") ----
+                MaintainAutoFollow();
+
                 // ---- 复原键(默认 F1; 没接管时按了不做事) ----
                 if ((_restoreKey != KeyCode.None && InputService.IsKeyPressed(_restoreKey)) ||
                     (_resetKey != KeyCode.None && InputService.IsKeyPressed(_resetKey)))
@@ -229,12 +314,17 @@ namespace FreeCameraMod
         ///
         /// 游戏自己的相机逻辑(Cinemachine Brain 等)跑完之后我们再写, 所以本帧渲染用的
         /// 就是缩放后的机位 —— 这是本作里唯一可靠的接管点(实测 Brain 在失活对象上, 单靠
-        /// VirtualCamera 不生效)。只写位置: 朝向/FOV 一律不动, 因此"视角不变, 只是远近变了"。
+        /// VirtualCamera 不生效)。<c>autoFollow=false</c> 时这里还会把主相机位姿锁回固定
+        /// 视角(游戏自动运镜、回合开始、刷怪都不让画面移动); 滚轮缩放只写位置。
         /// </summary>
         public override void OnLateUpdate()
         {
             try
             {
+                // 自动跟随关闭时: 先把主相机锁回固定视角(玩家正在主动平移自由相机时除外)。
+                // 这一步在滚轮缩放之前做, 缩放会以锁定位姿作为基准再叠加距离偏移。
+                bool cameraLocked = UpdateFollowCameraLock();
+
                 if (!_active) return;
 
                 var camera = (_driven != null && UnityObject.IsAlive(_driven)) ? _driven : CameraService.GetMainCamera();
@@ -253,15 +343,23 @@ namespace FreeCameraMod
                 //    否则会在"已经拉远的位置"上再加一次偏移, 越滚越远。
                 Vector3 gamePosition = CameraService.GetPosition(camera);
                 Vector3 gameEuler = CameraService.GetEulerAngles(camera);
-                bool stillOurWrite = _hasWrittenPose &&
-                                     Distance(gamePosition, _lastWrittenPosition) < 0.001f &&
-                                     Math.Abs(NormalizeAngle(gameEuler.x - _lastWrittenPitch)) < 0.02f &&
-                                     Math.Abs(NormalizeAngle(gameEuler.y - _lastWrittenYaw)) < 0.02f;
-                if (!stillOurWrite)
+                if (cameraLocked)
                 {
-                    _basePosition = gamePosition;
-                    _baseEuler = gameEuler;
+                    // 基准已经由 UpdateFollowCameraLock 设成锁定位姿, 不再从游戏相机读取
                     _hasBasePose = true;
+                }
+                else
+                {
+                    bool stillOurWrite = _hasWrittenPose &&
+                                         Distance(gamePosition, _lastWrittenPosition) < 0.001f &&
+                                         Math.Abs(NormalizeAngle(gameEuler.x - _lastWrittenPitch)) < 0.02f &&
+                                         Math.Abs(NormalizeAngle(gameEuler.y - _lastWrittenYaw)) < 0.02f;
+                    if (!stillOurWrite)
+                    {
+                        _basePosition = gamePosition;
+                        _baseEuler = gameEuler;
+                        _hasBasePose = true;
+                    }
                 }
 
                 // 2) 复原(按键): 把游戏自己的位姿写回去, 相机交还游戏
@@ -335,6 +433,9 @@ namespace FreeCameraMod
         /// <summary>场景加载完成: 新场景 = 新相机, 偏移一律清零, 绝不跨场景沿用。</summary>
         public override void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
+            // 旧场景的相机/锚点已经(或即将)销毁: 先尽量还原, 再丢弃全部自动跟随状态
+            ResetFollowOverride();
+
             if (!_active) return;
             Log.Info("滚轮缩放: 场景切换(" + (scene.IsValid() ? scene.name : "?") + "), 结束接管并清零偏移");
             ResetRuntime();
@@ -351,6 +452,7 @@ namespace FreeCameraMod
                 Log.Info("滚轮缩放: 卸载前已把相机交还给游戏");
             }
             if (_config != null) _config.SaveIfDirty();
+            ResetFollowOverride();
             Log.Info("自由相机已卸载");
         }
 
@@ -495,6 +597,7 @@ namespace FreeCameraMod
 
         private void OnMainCameraLost()
         {
+            ResetBrainCache();
             if (!_active) return;
             Log.Warn("滚轮缩放: 主相机消失, 结束接管(下一帧由游戏自己接回相机)");
             ResetRuntime();
@@ -502,9 +605,466 @@ namespace FreeCameraMod
 
         private void OnMainCameraChanged(Camera camera)
         {
+            ResetBrainCache();
             if (!_active) return;
             Log.Info("滚轮缩放: 主相机更换, 结束接管并清零偏移");
             ResetRuntime();
+        }
+
+        /// <summary>主相机换了: 缓存的 Brain/活动 vcam 解析必须重新做。</summary>
+        private void ResetBrainCache()
+        {
+            _brain = null;
+            _brainOwner = null;
+            _brainProbeCooldown = 0;
+        }
+
+        // =====================================================================
+        // 自动跟随
+        // =====================================================================
+
+        /// <summary>
+        /// 维护"关闭自动跟随": 把角色相机的 Follow 指向固定锚点。
+        ///
+        /// 关键行为(2.4.2 起):
+        ///   - 锚点在每个场景里只取一次初始位姿(第一次进入角色相机时), 之后角色走路、
+        ///     换当前玩家、换角色相机都不再移动它 —— 否则"切换角色"时镜头会跳到新角色;
+        ///   - 混合期间 <c>ActiveVirtualCamera</c> 可能还是上一台相机, 所以在换相机/
+        ///     开始混合时扫描全部 vcam, 把所有角色相机都提前改成锚点, 这样切入的新
+        ///     角色相机不会先跟随角色再被拽回;
+        ///   - 回合开始/刷怪等流程会直接搬动自由相机对象, 改 Follow 挡不住; 因此
+        ///     <see cref="UpdateFollowCameraLock"/> 每帧在 PostLateUpdate 把主相机位姿
+        ///     锁回固定值, 只有玩家主动拖拽/按键平移自由相机时才解除那一帧的锁定。
+        ///
+        /// 为什么改 vcam 的 Follow 而不是每帧钉住主相机:
+        ///   - 本作角色相机由 <c>Core.Camera.CharacterCamera</c> 创建, 它只做一件事
+        ///     —— 把 vcam 的 <c>m_Follow</c> 设成角色 transform。角色走路时镜头跟着走
+        ///     就是 Cinemachine 的 Follow 在起作用;
+        ///   - 把 Follow 换成固定在原地的锚点, 角色移动就不再带动镜头, 而自由相机的
+        ///     拖拽平移(FreeCameraObject 自己的 vcam)、切玩家/演出运镜(别的 vcam 或
+        ///     BattleEffect.SceneCamLock)完全不受影响;
+        ///   - 反过来, 如果在 LateUpdate 里直接钉住主相机, 会把玩家自己的拖拽平移和
+        ///     演出运镜一起冻住。
+        /// </summary>
+        private void MaintainAutoFollow()
+        {
+            if (_autoFollow) return;
+
+            // 输入每帧只采集一次(鼠标位置差分要在同一帧内保持一致);
+            // OnLateUpdate 的锁定逻辑直接复用这个结果。
+            _playerMovingFreeCamera = IsPlayerMovingFreeCamera();
+
+            var brain = GetBrain();
+            if (brain == null) return;
+
+            var main = CameraService.GetMainCamera();
+            if (!UnityObject.IsAlive(main))
+            {
+                _hasLastGameCameraPosition = false;
+                return;
+            }
+
+            bool blending = CinemachineService.IsBlending(brain);
+            bool blendStarted = blending && !_wasBlending;
+            _wasBlending = blending;
+
+            var vcam = CinemachineService.GetActiveVirtualCamera(brain);
+            int id = (vcam != null) ? UnityObject.GetInstanceId(vcam as UnityEngine.Object) : 0;
+            bool activeChanged = id != _lastFollowVcamId;
+            _lastFollowVcamId = id;
+
+            bool activeIsCharacter = false;
+            if (id != 0)
+            {
+                activeIsCharacter = FindFollowOverride(id) != null;
+                if (!activeIsCharacter && activeChanged)
+                    activeIsCharacter = TryAdoptCharacterVcam(vcam);
+            }
+
+            // 换相机/开始混合时, 把所有角色相机提前锁到锚点(包括正在切入的那台)。
+            if (activeChanged || blendStarted) AnchorAllCharacterVcams();
+
+            if (activeIsCharacter)
+            {
+                FollowOverride info = FindFollowOverride(id);
+                if (info != null)
+                {
+                    if (!_hasFollowAnchorPose) SetFollowAnchorPose(info.OriginalFollow);
+                    if (_hasFollowAnchorPose) EnsureVcamUsesAnchor(vcam, info);
+
+                    // 稳定状态下记录游戏相机位置; 混合期间保留旧值, 这样从角色相机
+                    // 切到自由相机时能把整段混合位移补进锚点。
+                    if (!blending)
+                    {
+                        _lastGameCameraPosition = GetGameCameraPosition(main);
+                        _hasLastGameCameraPosition = true;
+
+                        // 第一次稳定到角色相机后锁定主相机位姿。之后角色移动、换角色、
+                        // 回合开始、刷怪、演出运镜都不会再移动画面; 只有玩家拖拽/按键
+                        // 平移自由相机时才更新锁定位置。
+                        if (!_hasCameraLock)
+                        {
+                            _lockedCameraPosition = _lastGameCameraPosition;
+                            _lockedCameraEuler = CameraService.GetEulerAngles(main);
+                            _hasCameraLock = true;
+                            Log.Info("自动跟随: 已锁定主相机位姿 (" +
+                                      F(_lockedCameraPosition.x) + ", " + F(_lockedCameraPosition.y) + ", " +
+                                      F(_lockedCameraPosition.z) + "); 游戏自动运镜不会再移动画面");
+                        }
+                    }
+                }
+                return;
+            }
+
+            // 不是角色相机。只有玩家自己拖拽/按键移动自由相机时才把锚点一起带走;
+            // 游戏事件/演出用自由相机运镜时不改变固定镜头。
+            Vector3 gamePosition = GetGameCameraPosition(main);
+            bool playerPanning = CinemachineService.IsFollowingFreeCamera(vcam) && _playerMovingFreeCamera;
+            if (!playerPanning || !_hasFollowAnchorPose || !_hasLastGameCameraPosition)
+            {
+                _lastGameCameraPosition = gamePosition;
+                _hasLastGameCameraPosition = true;
+                return;
+            }
+
+            if (IsPlaceholderCamera(gamePosition, CameraService.GetEulerAngles(main)))
+            {
+                _lastGameCameraPosition = gamePosition;
+                return;
+            }
+
+            Vector3 delta = gamePosition - _lastGameCameraPosition;
+            if (delta.sqrMagnitude > 0.000001f)
+            {
+                var anchor = GetOrCreateFollowAnchor();
+                if (anchor != null)
+                    TransformService.SetPosition(anchor, TransformService.GetPosition(anchor) + delta);
+            }
+            _lastGameCameraPosition = gamePosition;
+        }
+
+        /// <summary>活动 vcam 是新的角色相机: 登记原始 Follow, 首次落锚点后改写。</summary>
+        private bool TryAdoptCharacterVcam(object vcam)
+        {
+            int id = UnityObject.GetInstanceId(vcam as UnityEngine.Object);
+            if (id == 0) return false;
+
+            FollowOverride info = FindFollowOverride(id);
+            if (info == null)
+            {
+                Transform follow = CinemachineService.GetFollow(vcam);
+                if (!CinemachineService.IsCharacterTransform(follow)) return false;
+
+                info = new FollowOverride
+                {
+                    Vcam = vcam,
+                    VcamId = id,
+                    OriginalFollow = follow
+                };
+                _followOverrides.Add(info);
+            }
+
+            if (!_hasFollowAnchorPose) SetFollowAnchorPose(info.OriginalFollow);
+            if (_hasFollowAnchorPose) EnsureVcamUsesAnchor(vcam, info);
+            return true;
+        }
+
+        /// <summary>把场景里所有角色相机的 Follow 提前改成锚点(混合期间切入的相机也不会先跟随角色)。</summary>
+        private void AnchorAllCharacterVcams()
+        {
+            if (!_hasFollowAnchorPose) return;
+
+            var vcams = CinemachineService.GetVirtualCameras(true);
+            for (int i = 0; i < vcams.Count; i++)
+            {
+                var vcam = vcams[i];
+                if (!UnityObject.IsAlive(vcam as UnityEngine.Object)) continue;
+
+                int id = UnityObject.GetInstanceId(vcam as UnityEngine.Object);
+                if (id == 0) continue;
+
+                FollowOverride info = FindFollowOverride(id);
+                if (info == null)
+                {
+                    Transform follow = CinemachineService.GetFollow(vcam);
+                    if (!CinemachineService.IsCharacterTransform(follow)) continue;
+
+                    info = new FollowOverride
+                    {
+                        Vcam = vcam,
+                        VcamId = id,
+                        OriginalFollow = follow
+                    };
+                    _followOverrides.Add(info);
+                }
+
+                EnsureVcamUsesAnchor(vcam, info);
+            }
+        }
+
+        /// <summary>取第一个角色相机的位置作为固定镜头位置(每个场景只做一次)。</summary>
+        private void SetFollowAnchorPose(Transform source)
+        {
+            if (!UnityObject.IsAlive(source)) return;
+
+            Transform anchor = GetOrCreateFollowAnchor();
+            if (anchor == null) return;
+
+            Vector3 position = TransformService.GetPosition(source);
+            TransformService.SetPosition(anchor, position);
+            TransformService.SetRotation(anchor, TransformService.GetRotation(source));
+            _hasFollowAnchorPose = true;
+
+            Log.Info("自动跟随: 已关闭, 镜头固定在当前角色位置 (" +
+                     F(position.x) + ", " + F(position.y) + ", " + F(position.z) + ")" +
+                     "; 之后角色移动、切换角色都不会再移动镜头");
+
+            // 第一次落锚点后立刻把场景里已有的角色相机全部锁上, 避免后续切换时
+            // 新相机还先跟着角色走一帧。
+            AnchorAllCharacterVcams();
+        }
+
+        /// <summary>确保一台角色相机的 Follow/LookAt 指向锚点; 不改变锚点位置。</summary>
+        private void EnsureVcamUsesAnchor(object vcam, FollowOverride info)
+        {
+            if (info == null) return;
+
+            Transform anchor = GetOrCreateFollowAnchor();
+            if (anchor == null) return;
+
+            // LookAt 也指着这个角色时一并冻结, 否则镜头还会转向角色
+            if (!info.LookAtOverridden)
+            {
+                Transform lookAt = CinemachineService.GetLookAt(vcam);
+                if (CinemachineService.IsCharacterTransform(lookAt))
+                {
+                    info.OriginalLookAt = lookAt;
+                    info.LookAtOverridden = true;
+                }
+            }
+
+            Transform current = CinemachineService.GetFollow(vcam);
+            if (current == anchor)
+            {
+                if (info.LookAtOverridden && CinemachineService.GetLookAt(vcam) != anchor)
+                    CinemachineService.SetLookAt(vcam, anchor);
+                return;
+            }
+
+            // 游戏把同一台 vcam 重新绑到了另一个角色: 只更新还原用的原始目标, 不移动锚点
+            if (UnityObject.IsAlive(current) && current != info.OriginalFollow &&
+                CinemachineService.IsCharacterTransform(current))
+            {
+                info.OriginalFollow = current;
+            }
+
+            if (!CinemachineService.SetFollow(vcam, anchor))
+            {
+                if (!_followWarned)
+                {
+                    _followWarned = true;
+                    Log.Warn("自动跟随: 无法改写角色相机的 Follow(当前 vcam 不支持), 本次启动内不再重试");
+                }
+                return;
+            }
+
+            if (info.LookAtOverridden) CinemachineService.SetLookAt(vcam, anchor);
+        }
+
+        /// <summary>游戏相机位置; 滚轮缩放期间用基准位姿, 排除 mod 自己写的偏移。</summary>
+        private Vector3 GetGameCameraPosition(Camera main)
+        {
+            if (_active && _hasBasePose) return _basePosition;
+            return CameraService.GetPosition(main);
+        }
+
+        /// <summary>
+        /// 每帧把主相机锁回固定视角(autoFollow=false)。返回是否已锁住。
+        ///
+        /// 只做两件事:
+        ///   - 玩家正在主动拖拽/按键平移自由相机时, 不覆盖相机, 而是把锁定位置更新到
+        ///     当前画面(玩家操作完就停在这里);
+        ///   - 其他时候(角色移动、换角色、回合开始、刷怪、演出运镜)把主相机的位置和
+        ///     朝向都写回锁定值, 所以画面完全不动。
+        /// 菜单/过渡占位相机出现时解除锁定, 交回给游戏(下次进入角色相机再锁)。
+        /// </summary>
+        private bool UpdateFollowCameraLock()
+        {
+            if (_autoFollow || !_hasCameraLock) return false;
+
+            var camera = CameraService.GetMainCamera();
+            if (!UnityObject.IsAlive(camera)) return false;
+
+            Vector3 currentPosition = CameraService.GetPosition(camera);
+            Vector3 currentEuler = CameraService.GetEulerAngles(camera);
+
+            // 菜单/加载过渡相机: 不能把它锁在棋盘视线上
+            if (IsPlaceholderCamera(currentPosition, currentEuler))
+            {
+                _hasCameraLock = false;
+                return false;
+            }
+
+            // 玩家主动平移自由相机: 让游戏相机正常移动, 并把固定视角更新到当前画面
+            if (IsPlayerPanningFreeCamera())
+            {
+                _lockedCameraPosition = currentPosition;
+                _lockedCameraEuler = currentEuler;
+                return false;
+            }
+
+            _basePosition = _lockedCameraPosition;
+            _baseEuler = _lockedCameraEuler;
+            _hasBasePose = true;
+
+            // 缩放接管时只写位置(由滚轮缩放代码按 _basePosition 叠加偏移); 没缩放时位置和朝向都写
+            CameraService.SetEulerAngles(camera, _lockedCameraEuler);
+            if (!_active) CameraService.SetPosition(camera, _lockedCameraPosition);
+            return true;
+        }
+
+        /// <summary>玩家是否正在主动平移自由相机(此时允许画面移动)。</summary>
+        private bool IsPlayerPanningFreeCamera()
+        {
+            if (!_playerMovingFreeCamera) return false;
+
+            var brain = GetBrain();
+            if (brain == null) return false;
+            var vcam = CinemachineService.GetActiveVirtualCamera(brain);
+            return CinemachineService.IsFollowingFreeCamera(vcam);
+        }
+
+        /// <summary>
+        /// 玩家是否正在主动移动自由相机(鼠标左键拖拽或方向键)。
+        /// 只有这种输入才允许移动固定镜头; 游戏事件用自由相机运镜不算。
+        /// </summary>
+        private bool IsPlayerMovingFreeCamera()
+        {
+            try
+            {
+                if (InputService.IsMouseButtonHeld(0))
+                {
+                    Vector2 position;
+                    if (InputService.TryGetMousePosition(out position))
+                    {
+                        if (_hasLastMousePosition)
+                        {
+                            Vector2 delta = position - _lastMousePosition;
+                            _lastMousePosition = position;
+                            // 鼠标按住且真的在拖: 点一下 UI(位置不变)不算移动相机
+                            if (delta.sqrMagnitude > 0.25f) return true;
+                        }
+                        else
+                        {
+                            _lastMousePosition = position;
+                            _hasLastMousePosition = true;
+                        }
+                    }
+                    else
+                    {
+                        // 取不到光标位置(光标锁定/后端限制)时退回"按住就算拖拽"
+                        return true;
+                    }
+                }
+                else
+                {
+                    _hasLastMousePosition = false;
+                }
+
+                Vector2 move = InputService.GetMoveAxis();
+                // 留死区: 手柄漂移/极小轴值不应该把固定镜头解除锁定
+                return move.sqrMagnitude > 0.04f;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>缓存的 CinemachineBrain(FindBrain 会全场景搜索)。</summary>
+        private object GetBrain()
+        {
+            var main = CameraService.GetMainCamera();
+            var cached = _brain as UnityEngine.Object;
+            if (cached != null && UnityObject.IsAlive(cached) && ReferenceEquals(_brainOwner, main)) return _brain;
+
+            // 菜单/过场里可能还没有 Brain: 最多每秒重找一次, 不每帧全场景搜索。
+            if (_brainProbeCooldown > 0)
+            {
+                _brainProbeCooldown--;
+                return null;
+            }
+            _brainProbeCooldown = 60;
+            _brainOwner = main;
+
+            // 本作可能同时有主相机与 PK 演出相机两个 Brain; 优先取主相机上的那个。
+            _brain = CinemachineService.FindBrainOn(main);
+            if (_brain == null) _brain = CinemachineService.FindBrain();
+            return _brain;
+        }
+
+        /// <summary>取固定跟随锚点(不存在或被场景销毁时重建)。</summary>
+        private Transform GetOrCreateFollowAnchor()
+        {
+            if (_followAnchor != null && UnityObject.IsAlive(_followAnchor))
+                return _followAnchor.transform;
+
+            var go = GameObjectUtil.Create("CesiumFreeCameraFollowAnchor");
+            if (go == null) return null;
+            _followAnchor = go;
+            Log.Debug("自动跟随: 已创建固定跟随锚点");
+            return go.transform;
+        }
+
+        private FollowOverride FindFollowOverride(int vcamId)
+        {
+            for (int i = 0; i < _followOverrides.Count; i++)
+            {
+                var info = _followOverrides[i];
+                if (info.VcamId != vcamId) continue;
+                if (!UnityObject.IsAlive(info.Vcam as UnityEngine.Object)) continue;
+                return info;
+            }
+            return null;
+        }
+
+        /// <summary>还原一台 vcam 的 Follow/LookAt(只在对象仍存活时)。</summary>
+        private void RestoreFollow(FollowOverride info)
+        {
+            if (info == null) return;
+            try
+            {
+                if (!UnityObject.IsAlive(info.Vcam as UnityEngine.Object)) return;
+                if (UnityObject.IsAlive(info.OriginalFollow))
+                    CinemachineService.SetFollow(info.Vcam, info.OriginalFollow);
+                if (info.LookAtOverridden && UnityObject.IsAlive(info.OriginalLookAt))
+                    CinemachineService.SetLookAt(info.Vcam, info.OriginalLookAt);
+            }
+            catch (Exception e)
+            {
+                Log.ReportCrash("RestoreFollow", e);
+            }
+        }
+
+        /// <summary>还原全部被改写的相机并丢弃锚点(卸载 / 切场景时用)。</summary>
+        private void ResetFollowOverride()
+        {
+            for (int i = 0; i < _followOverrides.Count; i++) RestoreFollow(_followOverrides[i]);
+            _followOverrides.Clear();
+            _lastFollowVcamId = 0;
+            _hasFollowAnchorPose = false;
+            _hasLastGameCameraPosition = false;
+            _lastGameCameraPosition = Vector3.zero;
+            _wasBlending = false;
+            _hasCameraLock = false;
+            _lockedCameraPosition = Vector3.zero;
+            _lockedCameraEuler = Vector3.zero;
+            _playerMovingFreeCamera = false;
+            _hasLastMousePosition = false;
+            _brain = null;
+            _brainOwner = null;
+            _brainProbeCooldown = 0;
+            _followWarned = false;
+
+            if (UnityObject.IsAlive(_followAnchor)) UnityObject.SafeDestroy(_followAnchor);
+            _followAnchor = null;
         }
 
         // =====================================================================
@@ -532,6 +1092,7 @@ namespace FreeCameraMod
                 if (_config.Remove(key)) legacyRemoved = true;
             }
 
+            _autoFollow = _config.GetBool("autoFollow", _autoFollow);
             _zoomStep = _config.GetFloat("zoomStep", _zoomStep);
             _zoomInMax = _config.GetFloat("zoomInMax", _zoomInMax);
             _zoomOutMax = _config.GetFloat("zoomOutMax", _zoomOutMax);
@@ -567,8 +1128,9 @@ namespace FreeCameraMod
         /// <summary>把当前(已兜底的)配置写回文件: 缺键或清掉了旧键时落盘一次, 让用户能直接改。</summary>
         private void WriteDefaults(bool force)
         {
-            if (!force && _config.Has("zoomStep") && _config.Has("restoreKey")) return;
+            if (!force && _config.Has("autoFollow") && _config.Has("zoomStep") && _config.Has("restoreKey")) return;
 
+            _config.Set("autoFollow", _autoFollow);
             _config.Set("zoomStep", _zoomStep);
             _config.Set("zoomInMax", _zoomInMax);
             _config.Set("zoomOutMax", _zoomOutMax);

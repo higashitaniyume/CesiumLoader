@@ -11,7 +11,7 @@ namespace CesiumLoader.SDK.Manifests
     public static class SdkVersion
     {
         /// <summary>当前 SDK 版本 (SemVer)。与 CesiumLoader.SDK.csproj 的 Version 保持一致。</summary>
-        public const string Current = "2.5.1";
+        public const string Current = "2.5.2";
 
         /// <summary>加载器原生层版本(与 version.dll 构建对应)。</summary>
         public const string LoaderVersion = "2.5.3";

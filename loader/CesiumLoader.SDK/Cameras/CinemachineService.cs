@@ -125,6 +125,26 @@ namespace CesiumLoader.SDK.Cameras
             return result;
         }
 
+        /// <summary>
+        /// 查找挂在指定对象(通常是主相机)上的 CinemachineBrain。
+        ///
+        /// 本作可能同时存在多个 Brain(主相机与 PK 演出相机各一个), 直接 <see cref="FindBrain"/>
+        /// 拿到的不一定是驱动主相机的那一个。需要按主相机操作相机管线时优先用这个。
+        /// </summary>
+        public static object FindBrainOn(UnityEngine.Object owner)
+        {
+            if (!UnityObject.IsAlive(owner)) return null;
+            Resolve();
+            if (_brainType == null) return null;
+            try
+            {
+                var go = UnityObject.GetGameObject(owner);
+                if (go == null) return null;
+                return UnityCall.GetComponent(go, _brainType);
+            }
+            catch { Interlocked.Increment(ref _failCount); return null; }
+        }
+
         /// <summary>brain 当前接管的 VirtualCamera(找不到返回 null)。</summary>
         public static object GetActiveVirtualCamera(object brain)
         {
@@ -281,6 +301,19 @@ namespace CesiumLoader.SDK.Cameras
             return false;
         }
 
+        /// <summary>读取 Follow 目标(未设置/读取失败返回 null)。</summary>
+        public static Transform GetFollow(object vcam)
+        {
+            if (vcam == null) return null;
+            Resolve();
+            try
+            {
+                if (_vcamFollowProperty == null || !_vcamFollowProperty.CanRead) return null;
+                return _vcamFollowProperty.GetValue(vcam, null) as Transform;
+            }
+            catch { Interlocked.Increment(ref _failCount); return null; }
+        }
+
         /// <summary>设置 Follow 目标。</summary>
         public static bool SetFollow(object vcam, Transform target)
         {
@@ -295,6 +328,19 @@ namespace CesiumLoader.SDK.Cameras
             catch { return false; }
         }
 
+        /// <summary>读取 LookAt 目标(未设置/读取失败返回 null)。</summary>
+        public static Transform GetLookAt(object vcam)
+        {
+            if (vcam == null) return null;
+            Resolve();
+            try
+            {
+                if (_vcamLookAtProperty == null || !_vcamLookAtProperty.CanRead) return null;
+                return _vcamLookAtProperty.GetValue(vcam, null) as Transform;
+            }
+            catch { Interlocked.Increment(ref _failCount); return null; }
+        }
+
         /// <summary>设置 LookAt 目标。</summary>
         public static bool SetLookAt(object vcam, Transform target)
         {
@@ -307,6 +353,47 @@ namespace CesiumLoader.SDK.Cameras
                 return true;
             }
             catch { return false; }
+        }
+
+        /// <summary>
+        /// Transform 上是否挂着游戏角色组件(<c>Core.Unit.Character</c>)。
+        ///
+        /// 用来区分"跟随角色的相机"和"跟随自由相机/演出对象的相机": 本作的
+        /// <c>Core.Camera.CharacterCamera</c> 会把 vcam 的 Follow 指向角色 transform,
+        /// 而自由相机、战斗演出相机跟随的是另外的对象。自由相机的"关闭自动跟随"只应
+        /// 干预前者, 否则会把玩家的拖拽平移和演出运镜一起冻住。
+        /// </summary>
+        public static bool IsCharacterTransform(Transform target)
+        {
+            if (!UnityObject.IsAlive(target)) return false;
+            try
+            {
+                var type = RuntimeAssemblyService.FindType("Core.Unit.Character");
+                if (type == null) return false;
+                return UnityCall.GetComponent(target, type) != null;
+            }
+            catch { Interlocked.Increment(ref _failCount); return false; }
+        }
+
+        /// <summary>
+        /// vcam 是否跟随玩家的自由相机对象(<c>Core.FreeCameraObject</c>)。
+        ///
+        /// 自由相机是玩家拖拽平移用的相机, 与"角色相机"不同。关闭自动跟随时,
+        /// 角色相机要固定; 自由相机的位移则应该保留(玩家主动操作), 因此需要区分。
+        /// </summary>
+        public static bool IsFollowingFreeCamera(object vcam)
+        {
+            Transform follow = GetFollow(vcam);
+            if (!UnityObject.IsAlive(follow)) return false;
+            try
+            {
+                var type = RuntimeAssemblyService.FindType("Core.FreeCameraObject");
+                if (type == null) return false;
+                var go = UnityObject.GetGameObject(follow);
+                // Follow 可能指向自由相机对象本身, 也可能是它的子节点
+                return go != null && UnityCall.GetComponentInParent(go, type) != null;
+            }
+            catch { Interlocked.Increment(ref _failCount); return false; }
         }
 
         /// <summary>
