@@ -12,7 +12,7 @@
 
 ## 配置
 
-修改模组目录的 config.json，重启后生效：
+修改模组目录的 config.json，保存后约 1 秒内自动热重载（CesiumLoader 2.6.0 及以上）：
 
 - enabled：显示开关，默认 true。
 - fontSize：字母和编码字号，默认 24，范围 14–48。

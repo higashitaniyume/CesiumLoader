@@ -55,6 +55,40 @@ SdkConfig.Save("MyMod", cfg);
 { "Enabled":true, "DelayMs":100, "Keywords":["攻击","防御"] }
 ```
 
+## ModConfig — 模组配置与热重载
+
+新模组推荐使用 `ModConfig`，文件位于 `mods/{ModId}/config.json`（与 DLL 同目录）。
+
+```csharp
+var cfg = Config;                       // ModBase 子类可直接取; 或 ModConfig.ForMod(ctx)
+cfg.SetDefault("speed", 2.0);           // 缺键时补默认值
+float speed = cfg.GetFloat("speed", 2.0);
+cfg.Set("speed", 3.0);
+cfg.Save();
+```
+
+- 键是字符串；值支持 bool / 整数 / 浮点 / 字符串 / 枚举 / 嵌套简单对象 / List。
+- 解析失败不会抛异常；启动时损坏的文件会备份为 `.bak`，之后使用默认值。
+
+### 热重载
+
+SDK 在主线程约每秒检查一次已缓存的 `ModConfig` 文件，内容变化且解析成功时自动重载：
+
+- 新式 `ModBase` 子类覆写 `OnConfigChanged()`，重载成功后调用；
+- 旧式 `ModBase.Run(init, tick)` 模组可订阅 `Config.Changed`（只在从磁盘重载成功时触发；`Set` / `Save` 不触发，避免回调自触发）；
+- `Config.Revision` 可用于自行比较版本；
+- `Config.ReloadIfChanged()` 可手动触发一次检查；
+- 外部修改写到一半或 JSON 损坏时**保留当前内存配置**，不覆盖磁盘文件；同一份坏内容只警告一次；
+- 需要重启才能应用的设置（例如资源重载、总开关）由各模组文档说明。
+
+```csharp
+public override void OnConfigChanged()
+{
+    LoadConfig(isInitial: false);
+    Log.Info("配置已热重载");
+}
+```
+
 ## ModManifest — mod 元数据声明
 
 打在 mod 程序集的 `ModEntry` 类上（或程序集级），SDK 通过 `SdkInfo` 读取。

@@ -48,6 +48,11 @@ struct LoaderConfig
     // 关掉它等于"游戏内热键变速"不可用(基础倍率仍然生效)。
     bool speedControlEnabled = true;
 
+    // 窗口置前控制文件通道(<window>\request.txt / state.txt)。默认开:
+    // 热更程序集无法 P/Invoke user32, "轮到自己回合时置前"由加载器执行,
+    // mod 写请求文件。关掉它只影响该功能, 不影响游戏与其它 mod。
+    bool windowControlEnabled = true;
+
     // Steam 自杀门绕过(见 steamhack.h)。默认**开**:
     // 国服客户端在非 Steam 客户端启动时, AOT 类 SteamManager(全局命名空间)的
     // Awake() 会打印 "[ERROR] [SteamManager] 非Steam客户端启动, 退出游戏" 并退出。
@@ -161,11 +166,11 @@ struct LoaderConfig
     // 只受本开关控制。设为 false = 恢复原版行为(退房/解散/被踢时 await 之后的代码仍会被 NRE 跳过)。
     bool steamBypassLobbyQuery = true;
 
-    std::string sdkVersion = "2.5.2";
+    std::string sdkVersion = "2.6.0";
 
     // 加载器自身版本(SemVer)。与发布 tag (modloader-<版本>) 对应, 启动横幅会打印。
     // 与 sdkVersion 独立递增: 改动引导/互操作/打包时递增此值。
-    static constexpr const char* loaderVersion = "2.5.5";
+    static constexpr const char* loaderVersion = "2.6.0";
 };
 
 // 从 config_path 读取配置。文件不存在/解析失败返回默认配置(不抛异常)。

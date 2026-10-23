@@ -11,7 +11,7 @@
 
 ## 配置
 
-配置位于 `AstralParty_ModLoader/mods/CombatOddsMod/config.json`，可在 AstralParty.Toys 的模组配置页面编辑。保存后重启游戏生效。初始化会补齐缺少的配置项，保留已有设置；保存失败会记录警告。
+配置位于 `AstralParty_ModLoader/mods/CombatOddsMod/config.json`，可在 AstralParty.Toys 的模组配置页面编辑。显示与数值类配置保存后约 1 秒内自动热重载（CesiumLoader 2.6.0 及以上）；`Enabled` 总开关仍需重启游戏。初始化会补齐缺少的配置项，保留已有设置；保存失败会记录警告。
 
 | 键 | 默认值 | 说明 |
 |---|---|---|

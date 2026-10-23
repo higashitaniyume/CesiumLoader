@@ -21,19 +21,18 @@ namespace ActivityLogMod
     /// 本文件演示的 SDK 规范:
     ///   1. 入口: ModEntry.Main() —— 导出 manifest sidecar → 加载配置 → ModBase.Run
     ///   2. 元数据: [ModManifest] 特性(名称/版本/作者/描述)
-    ///   3. 配置: SdkConfig.Load/Save 读写 configs/ActivityLogMod.json(公开字段, 支持热重载)
+    ///   3. 配置: ModConfig 读写 mods/ActivityLogMod/config.json(公开字段, 支持热重载)
     ///   4. 日志分级: SdkLog.Info/Warn/Error/Debug(环境变量 CESIUM_LOG_LEVEL=Debug 可看调试日志)
     ///   5. 事件: GameEvents.* 订阅 + StartAutoHook()(SDK 内部维持挂钩, 事件驱动)
     ///   6. 轮询: 仅 UI/房间/战斗状态用 ModBase.Run 的 tick(各块独立 try/catch)
     ///   7. 操作查询: GameActions.CanThrowDice 检测"我的回合"(展示操作层 API)
     ///
-    /// 配置(configs/ActivityLogMod.json, 全部可选):
-    ///   Enabled            = true  总开关(false 时 mod 直接不启动)
-    ///   LogUi              = true  界面切换 / 房间状态 / 队友 / 选角(轮询)
-    ///   LogBattle          = true  星币 / 摸牌 / 手牌(轮询)
-    ///   LogEvents          = true  用牌 / 骰子 / 移动 / 战斗 / 商店 / 遗物(事件)
-    ///   LogTurn            = true  轮到我的回合提示(基于 GameActions.CanThrowDice)
-    ///   ReloadConfigOnTick = false 每次 tick 重读配置(改配置即时生效, 不用重启游戏)
+    /// 配置(mods/ActivityLogMod/config.json, 全部可选):
+    ///   Enabled   = true  总开关(false 时 mod 不启动; 这类启动项仍需重启)
+    ///   LogUi     = true  界面切换 / 房间状态 / 队友 / 选角(轮询)
+    ///   LogBattle = true  星币 / 摸牌 / 手牌(轮询)
+    ///   LogEvents = true  用牌 / 骰子 / 移动 / 战斗 / 商店 / 遗物(事件)
+    ///   LogTurn   = true  轮到我的回合提示(基于 GameActions.CanThrowDice)
     /// </summary>
     // 元数据已移到 AssemblyInfo.cs(程序集级声明, 权威位置)
     public static class ModEntry
@@ -53,7 +52,6 @@ namespace ActivityLogMod
                     _cfg.LogBattle = c.GetBool("LogBattle", _cfg.LogBattle);
                     _cfg.LogEvents = c.GetBool("LogEvents", _cfg.LogEvents);
                     _cfg.LogTurn = c.GetBool("LogTurn", _cfg.LogTurn);
-                    _cfg.ReloadConfigOnTick = c.GetBool("ReloadConfigOnTick", _cfg.ReloadConfigOnTick);
                     return;
                 }
 
@@ -69,7 +67,6 @@ namespace ActivityLogMod
                     c.Set("LogBattle", _cfg.LogBattle);
                     c.Set("LogEvents", _cfg.LogEvents);
                     c.Set("LogTurn", _cfg.LogTurn);
-                    c.Set("ReloadConfigOnTick", _cfg.ReloadConfigOnTick);
                     c.Save();
                 }
             }
@@ -108,13 +105,9 @@ namespace ActivityLogMod
                 return;
             }
             SdkLog.Info("ActivityLog",
-                $"配置已加载: LogUi={_cfg.LogUi}, LogBattle={_cfg.LogBattle}, LogEvents={_cfg.LogEvents}, LogTurn={_cfg.LogTurn}, 热重载={_cfg.ReloadConfigOnTick}");
+                $"配置已加载: LogUi={_cfg.LogUi}, LogBattle={_cfg.LogBattle}, LogEvents={_cfg.LogEvents}, LogTurn={_cfg.LogTurn}");
 
-            ModBase.Run(init: OnInit, tick: OnTick, tag: "ActivityLog");
-        }
-
-        private static void OnInit()
-        {
+            // 在启动延迟之前订阅: 延迟期间外部改配置也能在 OnInit 前完成重载。
             if (_ctx?.Config != null)
             {
                 _ctx.Config.Changed += _ =>
@@ -123,6 +116,12 @@ namespace ActivityLogMod
                     SdkLog.Info("ActivityLog", $"配置已热重载: LogUi={_cfg.LogUi}, LogBattle={_cfg.LogBattle}, LogEvents={_cfg.LogEvents}, LogTurn={_cfg.LogTurn}");
                 };
             }
+
+            ModBase.Run(init: OnInit, tick: OnTick, tag: "ActivityLog");
+        }
+
+        private static void OnInit()
+        {
             SdkLog.Info("ActivityLog", "初始化: 订阅游戏事件");
             GameEvents.CardUsed += OnCardUsed;
             GameEvents.NoCard += OnNoCard;
@@ -266,11 +265,8 @@ namespace ActivityLogMod
 
         private static void OnTick()
         {
-            if (_cfg.ReloadConfigOnTick)
-            {
-                var fresh = SdkConfig.Load<ActivityLogConfig>("ActivityLogMod");
-                if (fresh != null) _cfg = fresh;
-            }
+            // 配置热重载由 ModConfig.Changed 驱动, 不在 tick 里重读旧版 SdkConfig,
+            // 否则旧文件会覆盖热重载结果。
 
             // 事件挂钩由 GameEvents.StartAutoHook() 内部维持, 这里只做周期状态轮询
             if (_cfg.LogTurn) PollTurn();
@@ -550,7 +546,7 @@ namespace ActivityLogMod
         }
     }
 
-    /// <summary>实时行为日志 mod 配置(公开字段, SdkConfig 读写; 热重载开启后改配置即时生效)。</summary>
+    /// <summary>实时行为日志 mod 配置(公开字段, ModConfig 读写; 启动后修改会自动热重载)。</summary>
     public class ActivityLogConfig
     {
         public bool Enabled = true;
@@ -558,6 +554,5 @@ namespace ActivityLogMod
         public bool LogBattle = true;
         public bool LogEvents = true;
         public bool LogTurn = true;
-        public bool ReloadConfigOnTick = false;
     }
 }

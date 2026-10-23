@@ -48,10 +48,11 @@ winget install Hiynet.AstralParty.Toys
     ├── bootstrap/              托管引导程序
     ├── mods/{ModId}/           模组 DLL、元数据与配置
     ├── logs/                   每次启动独立的引导、行为与错误日志
-    └── speed/                  变速控制文件通道
+    ├── speed/                  变速控制文件通道
+    └── window/                 窗口置前控制文件通道
 ```
 
-新增模组解压至 `mods/`，保持 `{ModId}/{ModId}.dll` 布局；安装或修改配置后重启游戏。旧版 `winmm.dll` 加载器需先移除，避免重复引导。兼容旧版直接放在 `mods/` 根目录的 DLL。
+新增模组解压至 `mods/`，保持 `{ModId}/{ModId}.dll` 布局；新增模组或修改加载器配置后重启游戏。模组自身的 `config.json` 在支持热重载的模组中保存后自动生效，具体见各模组文档。旧版 `winmm.dll` 加载器需先移除，避免重复引导。兼容旧版直接放在 `mods/` 根目录的 DLL。
 
 ## 内置模组
 
@@ -65,6 +66,7 @@ winget install Hiynet.AstralParty.Toys
 | [SpeedHackMod](docs/mod-SpeedHackMod.md) | 游戏内调整倍率，切换正常速度与上次倍率 |
 | ActivityLogMod | 记录出牌、投骰、回合等行为并转发到控制台 |
 | [ForkDirectionMod](mods/ForkDirectionMod/README.md) | PVE 岔路三个相邻地块按顺序显示红 A、黄 B、蓝 C 与地块 ID |
+| [TurnFocusMod](mods/TurnFocusMod/README.md) | 轮到自己回合、选择筹码、战斗出牌、攻击或防御时把游戏窗口切到前台 |
 
 
 ## 配置与运行
@@ -78,6 +80,7 @@ winget install Hiynet.AstralParty.Toys
 | `forwardActivityLog` | 将模组行为日志转发到控制台 |
 | `speedhackBaseSpeed` | 启动时的基础倍率，`1.0` 为正常速度 |
 | `speedControlEnabled` | 允许通过文件通道调整倍率 |
+| `windowControlEnabled` | 允许模组通过文件通道把游戏窗口切到前台 |
 | `useManagedBootstrap` | 实验性托管编排；默认使用原生编排 |
 
 **变速范围为 1–100 倍，建议不超过 3 倍。** 变速影响动画、演出、回合与网络超时；切换倍率时保持虚拟时间连续。默认 `Delete` 切换正常速度与上次倍率，`Alt` + `=` / `Alt` + `-` 调整倍率，热键可在 Toys 中修改。
@@ -112,6 +115,7 @@ SDK 提供生命周期、游戏事件、玩家数据、相机、输入、UI、�
 | [事件](docs/SDK-事件.md) · [玩家与名字](docs/SDK-玩家与名字.md) | 对局事件与数据查询 |
 | [相机](docs/SDK-相机.md) · [输入与光标](docs/SDK-输入与光标.md) · [UI](docs/SDK-UI.md) | 交互与覆盖层 |
 | [场景与协程](docs/SDK-场景与协程.md) · [变速](docs/SDK-变速.md) | 场景、调度与时间控制 |
+| [窗口焦点](docs/SDK-窗口焦点.md) | 把游戏窗口切到前台的文件通道 |
 | [操作](docs/SDK-操作.md) · [诊断](docs/SDK-诊断.md) | 游戏指令与排障 |
 | [Unity 调用与 ECall 隔离](docs/SDK-Unity调用与ECall隔离.md) · [平台约束](docs/平台约束-第三方库与AOT裁剪.md) | 运行时兼容要求 |
 | [cesium CLI](docs/工具-cesium-CLI.md) | 脚手架、打包与离线预检 |
@@ -125,6 +129,7 @@ SDK 提供生命周期、游戏事件、玩家数据、相机、输入、UI、�
 dotnet restore CesiumLoader.sln
 MSBuild CesiumLoader.sln /p:Configuration=Release /p:Platform=x64
 dotnet test tests/CesiumLoader.SDK.Tests/CesiumLoader.SDK.Tests.csproj -c Release
+dotnet test tests/TurnFocusMod.Tests/TurnFocusMod.Tests.csproj -c Release
 pwsh -NoProfile -File tools/smoke-speedctl.ps1
 pwsh -NoProfile -File tools/package-modloader.ps1
 ```

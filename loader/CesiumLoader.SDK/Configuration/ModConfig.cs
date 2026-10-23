@@ -32,6 +32,7 @@ namespace CesiumLoader.SDK.Configuration
         private Dictionary<string, object> _data = new Dictionary<string, object>(StringComparer.Ordinal);
         private bool _dirty;
         private string _lastLoadedText;
+        private string _lastFailedText;
         private long _revision;
 
         /// <summary>配置版本号(每次从磁盘加载新内容或保存修改时递增)。</summary>
@@ -40,7 +41,7 @@ namespace CesiumLoader.SDK.Configuration
             get { lock (_lock) { return _revision; } }
         }
 
-        /// <summary>配置内容发生变更(重载成功或保存)时触发。</summary>
+        /// <summary>配置从磁盘重载成功时触发; Set/Save 不触发, 避免回调自触发。</summary>
         public event Action<ModConfig> Changed;
 
         private ModConfig(string modId, string path)
@@ -341,6 +342,7 @@ namespace CesiumLoader.SDK.Configuration
                     _data = map;
                     _dirty = false;
                     _lastLoadedText = text;
+                    _lastFailedText = null;
                     _revision++;
                 }
                 SdkLog.Debug(ModId, "已加载配置: " + Path + " (" + map.Count + " 项)");
@@ -371,11 +373,15 @@ namespace CesiumLoader.SDK.Configuration
                 {
                     if (string.Equals(text, _lastLoadedText, StringComparison.Ordinal))
                         return false;
+                    // 同一份坏内容只警告一次; 用户继续编辑出新的坏内容时才会再提示。
+                    if (string.Equals(text, _lastFailedText, StringComparison.Ordinal))
+                        return false;
                 }
 
                 object parsed;
                 if (!CesiumJson.TryDeserialize(text, out parsed))
                 {
+                    lock (_lock) { _lastFailedText = text; }
                     SdkLog.Warn(ModId, "外部修改的 config.json 解析失败, 保留当前配置不变");
                     return false;
                 }
@@ -383,6 +389,7 @@ namespace CesiumLoader.SDK.Configuration
                 var map = parsed as Dictionary<string, object>;
                 if (map == null)
                 {
+                    lock (_lock) { _lastFailedText = text; }
                     SdkLog.Warn(ModId, "外部修改的 config.json 顶层不是 JSON 对象, 忽略");
                     return false;
                 }
@@ -392,6 +399,7 @@ namespace CesiumLoader.SDK.Configuration
                     _data = map;
                     _dirty = false;
                     _lastLoadedText = text;
+                    _lastFailedText = null;
                     _revision++;
                 }
 
@@ -448,6 +456,7 @@ namespace CesiumLoader.SDK.Configuration
                 {
                     _dirty = false;
                     _lastLoadedText = json;
+                    _lastFailedText = null;
                     _revision++;
                 }
                 SdkLog.Debug(ModId, "已保存配置: " + Path);

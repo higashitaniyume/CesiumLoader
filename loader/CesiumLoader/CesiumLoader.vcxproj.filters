@@ -19,6 +19,9 @@
     <Filter Include="speed">
       <UniqueIdentifier>{1EC466CA-4604-47A0-952A-3C47B80A1E45}</UniqueIdentifier>
     </Filter>
+    <Filter Include="window">
+      <UniqueIdentifier>{B72E4A18-9D63-4C05-AF21-6B8E3D57C904}</UniqueIdentifier>
+    </Filter>
     <Filter Include="steam">
       <UniqueIdentifier>{E6EA7D24-1CF8-4E7D-A927-3CAB875AD2D9}</UniqueIdentifier>
     </Filter>
@@ -47,6 +50,9 @@
     </ClCompile>
     <ClCompile Include="speed\speedhack.cpp">
       <Filter>speed</Filter>
+    </ClCompile>
+    <ClCompile Include="window\windowctl.cpp">
+      <Filter>window</Filter>
     </ClCompile>
     <ClCompile Include="steam\steamhack.cpp">
       <Filter>steam</Filter>
@@ -81,6 +87,9 @@
     </ClInclude>
     <ClInclude Include="speed\speedhack.h">
       <Filter>speed</Filter>
+    </ClInclude>
+    <ClInclude Include="window\windowctl.h">
+      <Filter>window</Filter>
     </ClInclude>
     <ClInclude Include="steam\steamhack.h">
       <Filter>steam</Filter>

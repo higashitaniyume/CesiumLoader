@@ -368,6 +368,7 @@ namespace CesiumLoader.SDK.Tests
             var ctx = ModRegistry.Register("ConfigWatchMod", "1.0.0", "", "", typeof(ConfigWatchMod).Assembly);
             var mod = new ConfigWatchMod();
             ctx.Mod = mod;
+            ctx.State = ModLifecycleState.Initialized;
 
             var cfg = ModConfig.ForModId("ConfigWatchMod", dir);
             cfg.Set("val", 1);
@@ -383,6 +384,36 @@ namespace CesiumLoader.SDK.Tests
             Assert.Equal(2, cfg.GetInt("val"));
 
             ModRegistry.Unregister("ConfigWatchMod");
+        }
+
+        [Fact]
+        public void CheckConfigsOnMainThread_DoesNotCallBeforeInitialized()
+        {
+            CesiumLoader.SDK.Runtime.MainThread.SetMainThreadIdForTesting(Thread.CurrentThread.ManagedThreadId);
+            string dir = TestEnv.NewTempDir("config_watch_preinit");
+            var ctx = ModRegistry.Register("ConfigWatchPreInitMod", "1.0.0", "", "", typeof(ConfigWatchMod).Assembly);
+            var mod = new ConfigWatchMod();
+            ctx.Mod = mod;      // State 默认 Loaded: 启动延迟/初始化尚未完成
+
+            var cfg = ModConfig.ForModId("ConfigWatchPreInitMod", dir);
+            cfg.Set("val", 1);
+            cfg.Save();
+
+            File.WriteAllText(cfg.Path, "{\n  \"val\": 2\n}");
+            ModHost.CheckConfigsOnMainThread(force: true);
+
+            // 配置可以重载, 但初始化完成前不回调实例。
+            Assert.Equal(2, cfg.GetInt("val"));
+            Assert.Equal(0, mod.ConfigChangeCount);
+
+            ctx.State = ModLifecycleState.Initialized;
+            File.WriteAllText(cfg.Path, "{\n  \"val\": 3\n}");
+            ModHost.CheckConfigsOnMainThread(force: true);
+
+            Assert.Equal(1, mod.ConfigChangeCount);
+            Assert.Equal(3, cfg.GetInt("val"));
+
+            ModRegistry.Unregister("ConfigWatchPreInitMod");
         }
     }
 }

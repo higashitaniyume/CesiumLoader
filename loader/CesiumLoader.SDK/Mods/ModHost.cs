@@ -40,8 +40,6 @@ namespace CesiumLoader.SDK.Mods
                 catch (Exception e) { SdkLog.Error(label, "创建 mod 上下文失败: " + e.Message); }
             }
 
-            if (ctx != null) ctx.Mod = mod;
-
             SdkLog.Info(label, "生命周期开始: " + (mod.Name ?? type.Name) +
                               " v" + mod.Version + " (启动延迟 " + delayMs + "ms)");
 
@@ -135,6 +133,9 @@ namespace CesiumLoader.SDK.Mods
                 return;
             }
 
+            // 初始化完成后才挂上实例: 启动延迟/初始化期间外部改配置时,
+            // CheckConfigsOnMainThread 不会提前调用 OnConfigChanged。
+            ctx.Mod = mod;
             ctx.State = ModLifecycleState.Initialized;
             SdkLog.Info(label, "初始化完成 (状态: Initialized)");
         }
@@ -177,9 +178,11 @@ namespace CesiumLoader.SDK.Mods
                 var cfg = ctx.Config;
                 if (cfg == null) continue;
 
+                // 启动延迟/初始化期间也刷新 ModConfig, 这样 OnInitialize 读到的是最新值;
+                // 但只有初始化完成后才回调实例, 避免提前访问未初始化字段。
                 if (cfg.ReloadIfChanged())
                 {
-                    if (ctx.Mod is ModBase mb)
+                    if (ctx.State == ModLifecycleState.Initialized && ctx.Mod is ModBase mb)
                     {
                         SafeOnMain(ctx.ModId, "OnConfigChanged", mb.OnConfigChanged);
                     }

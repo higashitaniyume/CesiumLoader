@@ -15,6 +15,7 @@ SDK 类型全部位于 `CesiumLoader.SDK` 根命名空间之下的子命名空�
 | `CesiumLoader.SDK.Logging` | `SdkLog`、`ModLogger` |
 | `CesiumLoader.SDK.Gameplay` | `GameEvents`、`GameActions`、`Players`、`Names` |
 | `CesiumLoader.SDK.Speed` | `SpeedHack` |
+| `CesiumLoader.SDK.Windowing` | `WindowFocus` |
 | `CesiumLoader.SDK.Cameras` | `CameraService`、`CameraState`、`FreeCameraMath` |
 | `CesiumLoader.SDK.Scenes` | `SceneService` |
 | `CesiumLoader.SDK.Inputs` | `InputService`、input backends |
@@ -35,6 +36,7 @@ SDK 类型全部位于 `CesiumLoader.SDK` 根命名空间之下的子命名空�
 ├── version.dll (原生加载器, Doorstop 代理)
 │   ├── 等 GameAssembly → il2cpp 运行时 → HybridCLR 热更 (AstralParty.Runtime)
 │   ├── 变速引擎 speedhack: MinHook inline hook 4 个系统时间函数
+│   ├── 窗口置前通道: 监听 mod 请求并调用 SetForegroundWindow
 │   └── 原生加载 sdk\*.dll → mods\{ModId}\{ModId}.dll → 调用 {文件名}.ModEntry.Main()
 └── CesiumLoader.SDK.dll (netstandard2.0, 供 mod 编译期引用)
     ├── ModBase      mod 生命周期基座
@@ -42,7 +44,8 @@ SDK 类型全部位于 `CesiumLoader.SDK` 根命名空间之下的子命名空�
     ├── Players      玩家数据访问
     ├── Names        名字解析 (卡牌/遗物/技能/角色)
     ├── GameActions  向服务器发送操作 (投骰/移动/用牌等)
-    ├── SpeedHack    游戏变速 (P/Invoke 调加载器 ap_speed_* 导出)
+    ├── SpeedHack    游戏变速 (文件通道, 加载器执行时间缩放)
+    ├── WindowFocus  把游戏窗口切到前台 (文件通道, 加载器执行激活)
     ├── SdkConfig    mod 配置 (JSON)
     ├── SdkLog       日志
     ├── ModManifest  mod 元数据声明
@@ -123,6 +126,7 @@ public static class ModEntry
 | [SDK-玩家与名字.md](SDK-玩家与名字.md) | Players 玩家数据 / Names 名字解析 |
 | [SDK-操作.md](SDK-操作.md) | GameActions 投骰/移动/用牌/选择 (⚠ 声明后可操作, 工具/加载器会警告) |
 | [SDK-变速.md](SDK-变速.md) | SpeedHack 游戏变速 (加载器内置功能, 也可 mod 编程控制) |
+| [SDK-窗口焦点.md](SDK-窗口焦点.md) | WindowFocus 把游戏窗口切到前台 (加载器文件通道) |
 | [SDK-能力声明与元数据.md](SDK-能力声明与元数据.md) | 能力声明(仅警告) / sidecar 元数据 / 依赖解析 / 版本协商 |
 | [SDK-配置与元数据.md](SDK-配置与元数据.md) | SdkConfig JSON 配置 / ModManifest 元数据 / SdkManifest sidecar |
 | [工具-cesium-CLI.md](工具-cesium-CLI.md) | 脚手架与包分发 CLI (new/build/package/list/verify) |

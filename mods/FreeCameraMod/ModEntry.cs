@@ -265,7 +265,7 @@ namespace FreeCameraMod
         public override void OnInitialize()
         {
             _config = Config;
-            LoadConfig();
+            LoadConfig(isInitial: true);
 
             // 相机变化时结束接管 —— 换相机/切场景后绝不把旧偏移套到新相机上
             CameraEvents.MainCameraLost += OnMainCameraLost;
@@ -287,12 +287,31 @@ namespace FreeCameraMod
                      _restoreKey + "=恢复原来的视角" +
                      (_resetKey != KeyCode.None && _resetKey != _restoreKey ? " (" + _resetKey + " 同效)" : "") +
                      "; 自动跟随=" + (_autoFollow ? "开(游戏原样, 锁定镜头未启用)" : "关(锁定当前镜头)") +
-                     (_autoFollow ? "; 要启用锁定镜头请把 config.json 的 autoFollow 改成 false 并重启" : "; 游戏自动运镜不再移动画面, 玩家拖拽/按键平移自由相机仍可用"));
+                     (_autoFollow ? "; 要启用锁定镜头请把 config.json 的 autoFollow 改成 false(热重载即时生效)" : "; 游戏自动运镜不再移动画面, 玩家拖拽/按键平移自由相机仍可用"));
             if (_configFixed && _config != null) Log.Info("配置已更新/迁移: " + _config.Path);
             if (!_autoFollow && !CinemachineService.IsAvailable)
                 Log.Warn("自动跟随已配置为关闭, 但没有解析到 Cinemachine: 本功能依赖角色相机的 VirtualCamera, 当前无法生效");
             if (!InputService.IsAvailable)
                 Log.Warn("输入后端不可用: 滚轮与热键都读不到(看 SDK 的 INPUT 日志; 本作滚轮只可能来自 Unity 的 mouseScrollDelta / Mouse ScrollWheel 轴)");
+        }
+
+        /// <summary>配置文件热重载: 重读字段; autoFollow 切换时还原/重建镜头锁定。</summary>
+        public override void OnConfigChanged()
+        {
+            bool wasAutoFollow = _autoFollow;
+            LoadConfig(isInitial: false);
+
+            if (wasAutoFollow != _autoFollow)
+            {
+                // 交给下一帧 MaintainAutoFollow 按新值重建; 先还原被改写的 Follow/LookAt,
+                // 这样 autoFollow 从 false 改回 true 时游戏能立刻恢复自己的跟随。
+                ResetFollowOverride();
+                Log.Info("自动跟随已" + (_autoFollow ? "恢复(游戏原样)" : "关闭(锁定当前镜头)") + ", 镜头锁定已重置");
+            }
+
+            Log.Info("自由相机配置已热重载: 滚轮" + (_invertWheel ? "下" : "上") + "=拉近, 每格 " +
+                     F(_zoomStep) + "m, 向前上限 " + F(_zoomInMax) + "m / 向后上限 " + F(_zoomOutMax) + "m, " +
+                     _restoreKey + "=恢复原来的视角");
         }
 
         /// <summary>每帧(主线程, Update 时机): 只做输入采集, 不碰相机。</summary>
@@ -1241,16 +1260,19 @@ namespace FreeCameraMod
             "nearClip", "farClip"
         };
 
-        private void LoadConfig()
+        private void LoadConfig(bool isInitial = false)
         {
             if (_config == null) return;
 
-            // 旧键迁移: 只有 toggleKey(旧版的开关热键, 正对应现在的复原键)会被继承, 其余直接删
-            string legacyToggle = _config.GetString("toggleKey", null);
+            // 旧键迁移只在初始化时做; 热重载时不再改磁盘, 免得和外部编辑器互相覆盖。
+            string legacyToggle = isInitial ? _config.GetString("toggleKey", null) : null;
             bool legacyRemoved = false;
-            foreach (string key in LegacyKeys)
+            if (isInitial)
             {
-                if (_config.Remove(key)) legacyRemoved = true;
+                foreach (string key in LegacyKeys)
+                {
+                    if (_config.Remove(key)) legacyRemoved = true;
+                }
             }
 
             _autoFollow = _config.GetBool("autoFollow", _autoFollow);
@@ -1270,7 +1292,7 @@ namespace FreeCameraMod
             if (string.IsNullOrEmpty(restore)) restore = legacyToggle;
             _restoreKey = ParseKey(restore, _restoreKey);
             _resetKey = ParseKey(_config.GetString("resetKey", "F2"), _resetKey);
-            if (_config.Remove("toggleKey")) legacyRemoved = true;
+            if (isInitial && _config.Remove("toggleKey")) legacyRemoved = true;
 
             // 数值兜底: 配置写坏也不能变成"滚轮没反应"或"一滚飞出去"
             if (!IsUsable(_zoomStep)) _zoomStep = FreeCameraMath.DefaultZoomStep;
@@ -1283,7 +1305,7 @@ namespace FreeCameraMod
             _zoomOutMax = Math.Min(_zoomOutMax, 20000f);
             _smoothTime = Math.Min(_smoothTime, 2f);
 
-            WriteDefaults(legacyRemoved);
+            if (isInitial) WriteDefaults(legacyRemoved);
         }
 
         /// <summary>把当前(已兜底的)配置写回文件: 缺键或清掉了旧键时落盘一次, 让用户能直接改。</summary>

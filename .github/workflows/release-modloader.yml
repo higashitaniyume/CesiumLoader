@@ -148,6 +148,7 @@ jobs:
             "ActivityLogMod" = "行为日志"
             "FreeCameraMod"  = "自由相机, 滚轮缩放(视角不变) / F1 恢复原视角"
             "SpeedHackMod"   = "变速, Delete 开关 / Alt+= Alt+- 调倍率"
+            "TurnFocusMod"   = "回合置前, 轮到自己时把游戏窗口切到前台"
           }
           $modList = @()
           foreach ($mod in $builtInMods) {

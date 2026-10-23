@@ -18,6 +18,7 @@
 #include "config/config.h"
 #include "speed/speedhack.h"
 #include "speed/speedctl.h"
+#include "window/windowctl.h"
 #include "mods/modmeta.h"
 #include "logging/logging.h"
 #include "runtime/il2cpp_safe.h"
@@ -624,6 +625,13 @@ static DWORD WINAPI boot_thread(LPVOID)
     else
         log_line("[hijack] speedControlEnabled=false, 跳过变速控制文件通道");
 
+    // 3.7.1 窗口置前控制文件通道(见 windowctl.h): 同样因为热更程序集无法 P/Invoke,
+    //       mod 只能写请求文件, 由原生侧调用 SetForegroundWindow。
+    if (cfg.windowControlEnabled)
+        windowctl_start(windowctl_dir());
+    else
+        log_line("[hijack] windowControlEnabled=false, 跳过窗口置前控制文件通道");
+
     // 4. 等待 GameAssembly.dll
     HMODULE ga = wait_module(L"GameAssembly.dll", cfg.gameAssemblyTimeoutSec);
     if (!ga) { log_line("[hijack] GameAssembly.dll 超时"); return 0; }
@@ -686,11 +694,13 @@ static DWORD WINAPI boot_thread(LPVOID)
     std::wstring sdk = sdk_dir();
     std::wstring boot = bootstrap_dir();
     std::wstring speed = speedctl_dir();
+    std::wstring window = windowctl_dir();
     set_env_w(L"CESIUM_MODS_DIR", mods);
     set_env_w(L"CESIUM_LOG_DIR", logs);
     set_env_w(L"CESIUM_SDK_DIR", sdk);
     set_env_w(L"CESIUM_BOOTSTRAP_DIR", boot);
     set_env_w(L"CESIUM_SPEED_DIR", speed);
+    set_env_w(L"CESIUM_WINDOW_DIR", window);
 
     // 本次启动的日志文件(**每次启动一套, 不共用**)。
     // 托管侧(SDK 的 SdkLog / SdkDiagnostics / Bootstrap)也要往"这一次"的文件里写, 而它只知道
@@ -711,6 +721,7 @@ static DWORD WINAPI boot_thread(LPVOID)
     log_line(L"[hijack] 本次启动日志: " + cesium::log::session_id() +
              L" (引导: " + log_file + L" / mod: " + activity_file + L" / 错误: " + error_file + L")");
     log_line(L"[hijack] 变速目录: " + speed);
+    log_line(L"[hijack] 窗口控制目录: " + window);
 
     // 6a. 实验特性: useManagedBootstrap=true 时, 加载 bootstrap DLL 并调用入口,
     //     由托管代码负责 sdk/mods 加载与入口调用(注意 HybridCLR 反射裁剪风险)。

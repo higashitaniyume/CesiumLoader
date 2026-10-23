@@ -83,6 +83,8 @@ LoaderConfig load_config(const std::wstring& config_path)
     cfg.forwardActivityLog = jsonc::boolean(j, "forwardActivityLog", cfg.forwardActivityLog);
     cfg.speedhackBaseSpeed = read_speed(j, "speedhackBaseSpeed", cfg.speedhackBaseSpeed);
     cfg.speedControlEnabled = jsonc::boolean(j, "speedControlEnabled", cfg.speedControlEnabled);
+    // 窗口置前控制文件通道: 缺失/损坏走默认(启用), 关掉只影响该功能。
+    cfg.windowControlEnabled = jsonc::boolean(j, "windowControlEnabled", cfg.windowControlEnabled);
     // Steam 自杀门绕过: 缺失/损坏走默认(启用), 绝不阻止启动(见 steamhack.h)。
     cfg.steamBypassEnabled = jsonc::boolean(j, "steamBypassEnabled", cfg.steamBypassEnabled);
     cfg.steamBypassRestartCheck = jsonc::boolean(j, "steamBypassRestartCheck", cfg.steamBypassRestartCheck);
