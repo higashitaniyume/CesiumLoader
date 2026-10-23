@@ -18,9 +18,9 @@ namespace CesiumLoader.SDK.UserInterface
     ///    通知同时写入日志(方便在没有渲染后端时依然可观察)。
     ///  - 安装后端(内置 IMGUI 宿主或游戏 FairyGUI 适配层)后, 会在渲染时机回调后端绘制。
     ///
-    /// 与输入的关系: <see cref="IsAnyWindowOrOverlayOpen"/> 为真时
-    /// <see cref="ShouldBlockGameInput"/> 也为真(自由相机等 mod 据此暂停输入响应,
-    /// 避免"UI 打开还在转视角"); 但临时通知 <b>不</b> 屏蔽输入, 见
+    /// 与输入的关系: 只有打开的 mod 窗口会让 <see cref="ShouldBlockGameInput"/> 为真
+    /// (自由相机等 mod 据此暂停输入响应, 避免"设置窗口打开还在转视角");
+    /// 覆盖层(HUD/标签)与临时通知 <b>不</b> 屏蔽输入, 见
     /// <see cref="ShouldBlockGameInput"/> 的注释。
     ///
     /// 线程: 全部 API 必须在主线程调用(内部会断言并记录一次警告)。
@@ -527,14 +527,24 @@ namespace CesiumLoader.SDK.UserInterface
         /// <summary>
         /// 是否应该屏蔽游戏输入(自由相机等应据此暂停响应)。
         ///
-        /// 只统计"需要输入独占的 mod 窗口/悬浮层", <b>不包含临时通知</b>。
-        /// 通知(Notify)只是几秒的提示条, 不该挡住输入: 否则"自由相机: 开启"这条通知
-        /// 会在它的 TTL 内把自由相机自己的输入整个屏蔽掉(游戏内实测: 按 F1 后 3 秒内
-        /// 转视角完全无响应)。
+        /// 只统计"打开的 mod 窗口", <b>不包含覆盖层与临时通知</b>。
+        /// 覆盖层大多是 HUD/标签(如战斗辅助的常驻信息), 本身不接收输入; 若把它算进来,
+        /// 自由相机的滚轮/热键会被一个常驻 HUD 永久屏蔽。临时通知同理: 否则
+        /// "自由相机: 开启"这条通知会在 TTL 内把自由相机自己的输入整个屏蔽掉。
         /// </summary>
         public static bool ShouldBlockGameInput
         {
-            get { return IsAnyWindowOrOverlayOpen(); }
+            get { return IsAnyWindowOpen(); }
+        }
+
+        /// <summary>是否有 mod 窗口处于打开状态(不含覆盖层/通知)。</summary>
+        public static bool IsAnyWindowOpen()
+        {
+            lock (_lock)
+            {
+                for (int i = 0; i < _windows.Count; i++) if (_windows[i].IsOpen) return true;
+                return false;
+            }
         }
 
         /// <summary>是否有 mod 窗口/悬浮层处于打开状态(不含通知)。</summary>

@@ -54,11 +54,13 @@ UiService.InvokeGuiCallbacks();     // 由 SDK 的 GUI 管线调用
 ```csharp
 bool any = UiService.IsAnyWindowOrOverlayOpen();   // 有窗口/覆盖层可见
 bool mod = UiService.IsAnyModUiOpen();
+bool window = UiService.IsAnyWindowOpen();         // 只有打开的窗口
 bool block = UiService.ShouldBlockGameInput();     // 是否应该吃掉游戏输入
 ```
 
 > 实测修正：早期版本把"有通知"也算作挡住输入，导致提示一出现就吞掉玩家的点击。
-> 现在**通知不算挡住输入**，只有真正可见的窗口/覆盖层才算，并且必须配合输入独占实际生效。
+> 现在**通知不算挡住输入**；**HUD/标签类覆盖层也不算**——它们本身不接收输入，
+> 若算进去会让自由相机的滚轮/热键被常驻 HUD 永久屏蔽。只有真正打开的 mod 窗口才屏蔽输入。
 
 ## 7. 生命周期：mod 卸载自动清理
 

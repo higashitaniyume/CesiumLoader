@@ -357,6 +357,13 @@ namespace CesiumLoader.SDK.Tests
             Assert.True(UiService.IsAnyModUiOpen());
             Assert.True(UiService.ShouldBlockGameInput);
 
+            // HUD 覆盖层不接收输入, 不能把自由相机/热键永久屏蔽。
+            UiService.CloseWindow("w", _owner);
+            UiService.RegisterOverlay("hud", visible: true, owner: _owner);
+
+            Assert.True(UiService.IsAnyWindowOrOverlayOpen());
+            Assert.False(UiService.ShouldBlockGameInput);
+
             UiService.ClearAll();
             Assert.False(UiService.IsAnyModUiOpen());
         }
