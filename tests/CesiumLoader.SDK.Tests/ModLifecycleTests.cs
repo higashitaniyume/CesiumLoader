@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using CesiumLoader.SDK.Configuration;
 using System.Threading;
 using CesiumLoader.SDK.Inputs;
 using CesiumLoader.SDK.Mods;
@@ -347,6 +349,40 @@ namespace CesiumLoader.SDK.Tests
                 new[] { typeof(Action), typeof(Action), typeof(int), typeof(string) });
 
             Assert.NotNull(method);
+        }
+
+        private sealed class ConfigWatchMod : ModBase
+        {
+            public int ConfigChangeCount;
+            public override void OnConfigChanged()
+            {
+                ConfigChangeCount++;
+            }
+        }
+
+        [Fact]
+        public void CheckConfigsOnMainThread_TriggersOnConfigChanged()
+        {
+            CesiumLoader.SDK.Runtime.MainThread.SetMainThreadIdForTesting(Thread.CurrentThread.ManagedThreadId);
+            string dir = TestEnv.NewTempDir("config_watch");
+            var ctx = ModRegistry.Register("ConfigWatchMod", "1.0.0", "", "", typeof(ConfigWatchMod).Assembly);
+            var mod = new ConfigWatchMod();
+            ctx.Mod = mod;
+
+            var cfg = ModConfig.ForModId("ConfigWatchMod", dir);
+            cfg.Set("val", 1);
+            cfg.Save();
+
+            // 外部更新配置
+            File.WriteAllText(cfg.Path, "{\n  \"val\": 2\n}");
+
+            // 驱动配置检查
+            ModHost.CheckConfigsOnMainThread(force: true);
+
+            Assert.Equal(1, mod.ConfigChangeCount);
+            Assert.Equal(2, cfg.GetInt("val"));
+
+            ModRegistry.Unregister("ConfigWatchMod");
         }
     }
 }

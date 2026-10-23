@@ -137,6 +137,7 @@ namespace CesiumLoader.SDK.Scheduling
         public static void RaiseUpdate()
         {
             Interlocked.Increment(ref _updateTicks);
+            try { ModHost.CheckConfigsOnMainThread(); } catch { }
             InvokeAll(Volatile.Read(ref _updateSnapshot));
 
             try { UpdateEvents.RaiseUpdate(); }

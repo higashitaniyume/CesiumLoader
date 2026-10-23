@@ -172,6 +172,9 @@ namespace CesiumLoader.SDK.Mods
         /// <summary>IMGUI 绘制时机。仅当 UI 渲染后端可用时才会被调用。</summary>
         public virtual void OnGUI() { }
 
+        /// <summary>配置发生变化且已重载后调用(主线程)。</summary>
+        public virtual void OnConfigChanged() { }
+
         /// <summary>卸载。SDK 已在调用前清理该 mod 的订阅/协程/UI。</summary>
         public virtual void OnUnload() { }
     }

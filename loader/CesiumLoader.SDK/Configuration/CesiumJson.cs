@@ -519,8 +519,30 @@ namespace CesiumLoader.SDK.Configuration
             while (pos < s.Length)
             {
                 char c = s[pos];
-                if (c == ' ' || c == '\t' || c == '\n' || c == '\r') pos++;
-                else break;
+                if (c == ' ' || c == '\t' || c == '\n' || c == '\r')
+                {
+                    pos++;
+                    continue;
+                }
+                if (c == '/' && pos + 1 < s.Length)
+                {
+                    char next = s[pos + 1];
+                    if (next == '/')
+                    {
+                        pos += 2;
+                        while (pos < s.Length && s[pos] != '\n' && s[pos] != '\r') pos++;
+                        continue;
+                    }
+                    if (next == '*')
+                    {
+                        pos += 2;
+                        while (pos + 1 < s.Length && !(s[pos] == '*' && s[pos + 1] == '/')) pos++;
+                        if (pos + 1 < s.Length) pos += 2;
+                        else pos = s.Length;
+                        continue;
+                    }
+                }
+                break;
             }
         }
 

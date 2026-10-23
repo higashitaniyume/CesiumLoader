@@ -303,6 +303,8 @@ namespace FreeCameraMod
                 // ---- 自动跟随(autoFollow=false 时每帧维护"固定跟随锚点") ----
                 MaintainAutoFollow();
 
+                if (UiService.ShouldBlockGameInput) return;
+
                 // ---- 复原键(默认 F1; 没接管时按了不做事) ----
                 if ((_restoreKey != KeyCode.None && InputService.IsKeyPressed(_restoreKey)) ||
                     (_resetKey != KeyCode.None && InputService.IsKeyPressed(_resetKey)))

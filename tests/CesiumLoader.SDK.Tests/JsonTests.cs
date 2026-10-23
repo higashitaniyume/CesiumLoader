@@ -126,5 +126,35 @@ namespace CesiumLoader.SDK.Tests
             Assert.Equal(1d, list[0]);
             Assert.Equal(false, ((Dictionary<string, object>)list[2])["b"]);
         }
+
+        [Fact]
+        public void Deserialize_Comments_SingleLineAndMultiLine_AreIgnored()
+        {
+            string jsonWithComments = @"{
+  // 顶层注释
+  /* 块级注释 */
+  ""speed"": 2.5, // 行尾注释
+  ""list"": [
+    /* 数组内注释 */
+    1,
+    // 数组单行注释
+    2
+  ]
+}";
+            var parsed = CesiumJson.Deserialize(jsonWithComments) as Dictionary<string, object>;
+            Assert.NotNull(parsed);
+            Assert.Equal(2.5d, parsed["speed"]);
+            var list = parsed["list"] as List<object>;
+            Assert.NotNull(list);
+            Assert.Equal(2, list.Count);
+            Assert.Equal(1d, list[0]);
+            Assert.Equal(2d, list[1]);
+
+            // 测试 Toys 生成的默认带注释空配置
+            string toysDefault = "{\n  // 配置说明见对应 mod 文档; 公开字段(public field)才会被读取\n}\n";
+            var emptyParsed = CesiumJson.Deserialize(toysDefault) as Dictionary<string, object>;
+            Assert.NotNull(emptyParsed);
+            Assert.Empty(emptyParsed);
+        }
     }
 }

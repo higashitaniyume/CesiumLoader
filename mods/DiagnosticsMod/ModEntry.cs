@@ -49,22 +49,7 @@ namespace DiagnosticsMod
         public override void OnInitialize()
         {
             _config = Config;
-            if (_config != null)
-            {
-                _dumpAllKey = ParseKey(_config.GetString("dumpAllKey", "F10"), _dumpAllKey);
-                _dumpCameraKey = ParseKey(_config.GetString("dumpCameraKey", "F11"), _dumpCameraKey);
-                _dumpSceneKey = ParseKey(_config.GetString("dumpSceneKey", "F12"), _dumpSceneKey);
-                _dumpOnSceneChange = _config.GetBool("dumpSceneOnChange", true);
-
-                if (!_config.Has("dumpAllKey"))
-                {
-                    _config.Set("dumpAllKey", _dumpAllKey.ToString());
-                    _config.Set("dumpCameraKey", _dumpCameraKey.ToString());
-                    _config.Set("dumpSceneKey", _dumpSceneKey.ToString());
-                    _config.Set("dumpOnSceneChange", _dumpOnSceneChange);
-                    _config.Save();
-                }
-            }
+            LoadConfig(isInitial: true);
 
             Log.Info("诊断工具已就绪: " + _dumpAllKey + "=全量, " +
                      _dumpCameraKey + "=相机, " + _dumpSceneKey + "=场景");
@@ -76,10 +61,36 @@ namespace DiagnosticsMod
         }
 
         /// <summary>每帧: 只处理按键。</summary>
+        private void LoadConfig(bool isInitial = false)
+        {
+            if (_config == null) return;
+            _dumpAllKey = ParseKey(_config.GetString("dumpAllKey", "F10"), _dumpAllKey);
+            _dumpCameraKey = ParseKey(_config.GetString("dumpCameraKey", "F11"), _dumpCameraKey);
+            _dumpSceneKey = ParseKey(_config.GetString("dumpSceneKey", "F12"), _dumpSceneKey);
+            _dumpOnSceneChange = _config.GetBool("dumpSceneOnChange", true);
+
+            if (isInitial && !_config.Has("dumpAllKey"))
+            {
+                _config.Set("dumpAllKey", _dumpAllKey.ToString());
+                _config.Set("dumpCameraKey", _dumpCameraKey.ToString());
+                _config.Set("dumpSceneKey", _dumpSceneKey.ToString());
+                _config.Set("dumpOnSceneChange", _dumpOnSceneChange);
+                _config.Save();
+            }
+        }
+
+        public override void OnConfigChanged()
+        {
+            LoadConfig(isInitial: false);
+            Log.Info("诊断工具配置已热重载: " + _dumpAllKey + "/" + _dumpCameraKey + "/" + _dumpSceneKey);
+        }
+
         public override void OnUpdate()
         {
             try
             {
+                if (UiService.ShouldBlockGameInput) return;
+
                 if (InputService.IsKeyPressed(_dumpAllKey)) SafeDump(() => SdkDiagnostics.Dump("手动全量"), "全量");
                 else if (InputService.IsKeyPressed(_dumpCameraKey)) SafeDump(() => SdkDiagnostics.DumpCameraInfo(), "相机");
                 else if (InputService.IsKeyPressed(_dumpSceneKey)) SafeDump(() => SdkDiagnostics.DumpSceneInfo(), "场景");

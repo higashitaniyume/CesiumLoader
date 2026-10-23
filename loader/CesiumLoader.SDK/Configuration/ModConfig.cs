@@ -31,6 +31,17 @@ namespace CesiumLoader.SDK.Configuration
         private readonly object _lock = new object();
         private Dictionary<string, object> _data = new Dictionary<string, object>(StringComparer.Ordinal);
         private bool _dirty;
+        private string _lastLoadedText;
+        private long _revision;
+
+        /// <summary>配置版本号(每次从磁盘加载新内容或保存修改时递增)。</summary>
+        public long Revision
+        {
+            get { lock (_lock) { return _revision; } }
+        }
+
+        /// <summary>配置内容发生变更(重载成功或保存)时触发。</summary>
+        public event Action<ModConfig> Changed;
 
         private ModConfig(string modId, string path)
         {
@@ -247,6 +258,19 @@ namespace CesiumLoader.SDK.Configuration
             }
         }
 
+        /// <summary>若键不存在则设置默认值(标记为脏), 返回是否新设了默认值。</summary>
+        public bool SetDefault<T>(string key, T defaultValue)
+        {
+            if (string.IsNullOrEmpty(key)) return false;
+            lock (_lock)
+            {
+                if (_data.ContainsKey(key)) return false;
+                _data[key] = CesiumJson.ToDictionary(new Wrapper<T> { Value = defaultValue })["Value"];
+                _dirty = true;
+                return true;
+            }
+        }
+
         /// <summary>删除键。</summary>
         public bool Remove(string key)
         {
@@ -281,7 +305,12 @@ namespace CesiumLoader.SDK.Configuration
                 _data = new Dictionary<string, object>(StringComparer.Ordinal);
                 _dirty = false;
             }
-            return Load();
+            bool ok = Load();
+            if (ok)
+            {
+                try { Changed?.Invoke(this); } catch { }
+            }
+            return ok;
         }
 
         /// <summary>从磁盘加载; 文件不存在时返回 false 且保持为空(不报错)。</summary>
@@ -311,6 +340,8 @@ namespace CesiumLoader.SDK.Configuration
                 {
                     _data = map;
                     _dirty = false;
+                    _lastLoadedText = text;
+                    _revision++;
                 }
                 SdkLog.Debug(ModId, "已加载配置: " + Path + " (" + map.Count + " 项)");
                 return true;
@@ -319,6 +350,78 @@ namespace CesiumLoader.SDK.Configuration
             {
                 SdkLog.Warn(ModId, "读配置失败: " + e.Message);
                 return false;
+            }
+        }
+
+        /// <summary>
+        /// 检查磁盘配置文件是否变化; 若内容变化且解析成功则重载, 更新 Revision 并触发 Changed 事件。
+        /// 若解析失败则保留当前配置不变(绝不破坏磁盘文件)。
+        /// </summary>
+        public bool ReloadIfChanged()
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(Path) || !File.Exists(Path)) return false;
+
+                string text;
+                try { text = File.ReadAllText(Path); }
+                catch { return false; }
+
+                lock (_lock)
+                {
+                    if (string.Equals(text, _lastLoadedText, StringComparison.Ordinal))
+                        return false;
+                }
+
+                object parsed;
+                if (!CesiumJson.TryDeserialize(text, out parsed))
+                {
+                    SdkLog.Warn(ModId, "外部修改的 config.json 解析失败, 保留当前配置不变");
+                    return false;
+                }
+
+                var map = parsed as Dictionary<string, object>;
+                if (map == null)
+                {
+                    SdkLog.Warn(ModId, "外部修改的 config.json 顶层不是 JSON 对象, 忽略");
+                    return false;
+                }
+
+                lock (_lock)
+                {
+                    _data = map;
+                    _dirty = false;
+                    _lastLoadedText = text;
+                    _revision++;
+                }
+
+                SdkLog.Info(ModId, "已热重载配置: " + Path + " (版本 " + _revision + ", " + map.Count + " 项)");
+                try { Changed?.Invoke(this); }
+                catch (Exception e) { SdkLog.Error(ModId, "配置变更事件异常: " + e.Message); }
+                return true;
+            }
+            catch (Exception e)
+            {
+                SdkLog.Warn(ModId, "热重载检查异常: " + e.Message);
+                return false;
+            }
+        }
+
+        /// <summary>轮询已缓存的全部配置, 热重载有变更的配置。</summary>
+        public static void PollAllChanged()
+        {
+            ModConfig[] configs;
+            lock (_cacheLock)
+            {
+                if (_cache.Count == 0) return;
+                configs = new ModConfig[_cache.Count];
+                _cache.Values.CopyTo(configs, 0);
+            }
+
+            for (int i = 0; i < configs.Length; i++)
+            {
+                try { configs[i].ReloadIfChanged(); }
+                catch { }
             }
         }
 
@@ -341,7 +444,12 @@ namespace CesiumLoader.SDK.Configuration
                 if (File.Exists(Path)) File.Delete(Path);
                 File.Move(tmp, Path);
 
-                lock (_lock) { _dirty = false; }
+                lock (_lock)
+                {
+                    _dirty = false;
+                    _lastLoadedText = json;
+                    _revision++;
+                }
                 SdkLog.Debug(ModId, "已保存配置: " + Path);
                 return true;
             }

@@ -35,7 +35,7 @@ namespace AutoThanksMod
         private bool _acceptNotices;
         private RoomInfo _sessionRoom;
         private long _sessionAccount;
-        private long _nextConfigRead, _nextWarning;
+        private long _nextWarning;
         private bool _enabled = true, _healing = true, _cards = true, _transfers = true;
         private int _cooldown = 2;
         private int _thankDelay = ThanksPolicy.DefaultDelayMilliseconds;
@@ -66,17 +66,17 @@ namespace AutoThanksMod
             Log.Info("自动感谢已初始化：队友帮助后延迟发送感谢，结算时逐个点赞其他真人玩家，回放和观战不发送。");
         }
 
+        public override void OnConfigChanged()
+        {
+            ReadConfig();
+            Log.Info("自动感谢配置已热重载: enabled=" + _enabled + ", autoLike=" + _autoLike + ", delay=" + _thankDelay + "ms");
+        }
+
         public override void OnUpdate()
         {
             long now = DateTime.UtcNow.Ticks;
             try
             {
-                if (now >= _nextConfigRead)
-                {
-                    _nextConfigRead = now + 2 * ThanksPolicy.TicksPerSecond;
-                    Config?.Load();
-                    ReadConfig();
-                }
                 var gm = SimpleSingletonProvider<GameLogicManager>.inst;
                 if (!IsParticipantContext(gm))
                 {

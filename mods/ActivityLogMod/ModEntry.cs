@@ -39,6 +39,45 @@ namespace ActivityLogMod
     public static class ModEntry
     {
         private static ActivityLogConfig _cfg = new ActivityLogConfig();
+        private static ModContext _ctx;
+
+        private static void LoadConfig(bool isInitial = false)
+        {
+            try
+            {
+                var c = _ctx != null ? _ctx.Config : null;
+                if (c != null && (c.Count > 0 || File.Exists(c.Path)))
+                {
+                    _cfg.Enabled = c.GetBool("Enabled", _cfg.Enabled);
+                    _cfg.LogUi = c.GetBool("LogUi", _cfg.LogUi);
+                    _cfg.LogBattle = c.GetBool("LogBattle", _cfg.LogBattle);
+                    _cfg.LogEvents = c.GetBool("LogEvents", _cfg.LogEvents);
+                    _cfg.LogTurn = c.GetBool("LogTurn", _cfg.LogTurn);
+                    _cfg.ReloadConfigOnTick = c.GetBool("ReloadConfigOnTick", _cfg.ReloadConfigOnTick);
+                    return;
+                }
+
+                // 回退读取旧版 configs/ActivityLogMod.json
+                var legacy = SdkConfig.Load<ActivityLogConfig>("ActivityLogMod");
+                if (legacy != null) _cfg = legacy;
+
+                // 首次在 mods/ActivityLogMod/config.json 写入默认值
+                if (isInitial && c != null && !c.Has("Enabled"))
+                {
+                    c.Set("Enabled", _cfg.Enabled);
+                    c.Set("LogUi", _cfg.LogUi);
+                    c.Set("LogBattle", _cfg.LogBattle);
+                    c.Set("LogEvents", _cfg.LogEvents);
+                    c.Set("LogTurn", _cfg.LogTurn);
+                    c.Set("ReloadConfigOnTick", _cfg.ReloadConfigOnTick);
+                    c.Save();
+                }
+            }
+            catch (Exception e)
+            {
+                SdkLog.Warn("ActivityLog", "加载配置失败: " + e.Message);
+            }
+        }
 
         // ============================== 入口 ==============================
 
@@ -61,10 +100,11 @@ namespace ActivityLogMod
             SdkLog.Info("ActivityLog", "=== 实时行为日志 v2.3.0 启动 ===");
             SdkManifest.ExportSidecar(); // [ModManifest] → 同名 .json, 供 apt 模组列表读取
 
-            _cfg = SdkConfig.Load<ActivityLogConfig>("ActivityLogMod");
+            _ctx = ModRegistry.GetOrRegister(typeof(ModEntry).Assembly);
+            LoadConfig(isInitial: true);
             if (!_cfg.Enabled)
             {
-                SdkLog.Warn("ActivityLog", "配置 Enabled=false, mod 已停用(改 configs/ActivityLogMod.json 后重进游戏生效)");
+                SdkLog.Warn("ActivityLog", "配置 Enabled=false, mod 已停用");
                 return;
             }
             SdkLog.Info("ActivityLog",
@@ -75,6 +115,14 @@ namespace ActivityLogMod
 
         private static void OnInit()
         {
+            if (_ctx?.Config != null)
+            {
+                _ctx.Config.Changed += _ =>
+                {
+                    LoadConfig(isInitial: false);
+                    SdkLog.Info("ActivityLog", $"配置已热重载: LogUi={_cfg.LogUi}, LogBattle={_cfg.LogBattle}, LogEvents={_cfg.LogEvents}, LogTurn={_cfg.LogTurn}");
+                };
+            }
             SdkLog.Info("ActivityLog", "初始化: 订阅游戏事件");
             GameEvents.CardUsed += OnCardUsed;
             GameEvents.NoCard += OnNoCard;

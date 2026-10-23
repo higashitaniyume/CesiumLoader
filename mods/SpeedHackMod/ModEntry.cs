@@ -180,12 +180,27 @@ namespace SpeedHackMod
             Log.Info("变速已卸载");
         }
 
+        public override void OnConfigChanged()
+        {
+            LoadConfig();
+            if (_ready)
+            {
+                double current = SpeedHack.Speed;
+                if (current > 0.0)
+                {
+                    _activeSpeed = SpeedHack.ClampSpeed(current, _minSpeed, _maxSpeed);
+                }
+            }
+            Log.Info("配置已热重载: " + Describe());
+        }
+
         // =====================================================================
         // 热键
         // =====================================================================
 
         private void HandleHotkeys()
         {
+            if (UiService.ShouldBlockGameInput) return;
             if (InputService.IsKeyPressed(_toggleKey)) ToggleSpeed();
             if (!InputService.IsAvailable) return;
 

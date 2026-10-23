@@ -37,15 +37,27 @@ namespace ForkDirectionMod
 
         public override void OnInitialize()
         {
+            ReadConfig();
+            UpdateEvents.LateUpdate += Draw;
+            Context?.RegisterCleanup(Stop);
+            Log.Info("已启用岔路邻接地块标记：A 红色、B 黄色、C 蓝色，附带地块 ID。");
+        }
+
+        private void ReadConfig()
+        {
             if (Config != null)
             {
                 _enabled = Config.GetBool("enabled", true);
                 _height = Clamp(Config.GetFloat("heightOffset", .8f), 0f, 10f, .8f);
                 _fontSize = Math.Max(14, Math.Min(48, Config.GetInt("fontSize", 24)));
             }
-            UpdateEvents.LateUpdate += Draw;
-            Context?.RegisterCleanup(Stop);
-            Log.Info("已启用岔路邻接地块标记：A 红色、B 黄色、C 蓝色，附带地块 ID。");
+        }
+
+        public override void OnConfigChanged()
+        {
+            ReadConfig();
+            Clear();
+            Log.Info("岔路标记配置已热重载: enabled=" + _enabled + ", heightOffset=" + _height + ", fontSize=" + _fontSize);
         }
 
         private static float Clamp(float x, float min, float max, float fallback)

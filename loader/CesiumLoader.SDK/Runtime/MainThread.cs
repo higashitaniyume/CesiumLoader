@@ -53,6 +53,11 @@ namespace CesiumLoader.SDK.Runtime
         /// <summary>主线程托管 id(未确认时为 0)。</summary>
         public static int MainThreadId { get { return Volatile.Read(ref _mainThreadId); } }
 
+        internal static void SetMainThreadIdForTesting(int id)
+        {
+            Volatile.Write(ref _mainThreadId, id);
+        }
+
         /// <summary>当前线程是否 Unity 主线程。主线程尚未确认时保守返回 false。</summary>
         public static bool IsMainThread
         {

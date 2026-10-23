@@ -233,5 +233,74 @@ namespace CesiumLoader.SDK.Tests
             Assert.True(cfg.Has("nullValue"));
             Assert.Null(cfg.GetString("nullValue"));
         }
+
+        [Fact]
+        public void SetDefault_OnlySetsWhenKeyMissing()
+        {
+            string dir;
+            var cfg = NewConfig(out dir, "SetDefaultMod");
+
+            Assert.True(cfg.SetDefault("step", 10));
+            Assert.Equal(10, cfg.GetInt("step"));
+
+            // 第二次调用不覆盖已有值
+            Assert.False(cfg.SetDefault("step", 20));
+            Assert.Equal(10, cfg.GetInt("step"));
+        }
+
+        [Fact]
+        public void ReloadIfChanged_DetectsExternalFileModificationAndFiresEvent()
+        {
+            string dir;
+            var cfg = NewConfig(out dir, "HotReloadMod");
+            cfg.Set("speed", 2.0f);
+            cfg.Save();
+
+            long initialRevision = cfg.Revision;
+            Assert.True(initialRevision > 0);
+
+            // 未改变时返回 false，且不触发事件
+            int eventCount = 0;
+            cfg.Changed += _ => eventCount++;
+            Assert.False(cfg.ReloadIfChanged());
+            Assert.Equal(0, eventCount);
+            Assert.Equal(initialRevision, cfg.Revision);
+
+            // 模拟外部编辑器修改文件
+            File.WriteAllText(cfg.Path, "{\n  \"speed\": 3.5,\n  \"newKey\": true\n}");
+
+            // 热重载应返回 true 并触发 Changed 事件
+            Assert.True(cfg.ReloadIfChanged());
+            Assert.Equal(1, eventCount);
+            Assert.True(cfg.Revision > initialRevision);
+            Assert.Equal(3.5f, cfg.GetFloat("speed"));
+            Assert.True(cfg.GetBool("newKey"));
+
+            // 再次调用无变化
+            Assert.False(cfg.ReloadIfChanged());
+            Assert.Equal(1, eventCount);
+        }
+
+        [Fact]
+        public void ReloadIfChanged_CorruptExternalFile_KeepsCurrentConfigAndDoesNotBackup()
+        {
+            string dir;
+            var cfg = NewConfig(out dir, "SafeCorruptMod");
+            cfg.Set("speed", 5.0f);
+            cfg.Save();
+
+            // 模拟外部写入中断或损坏格式
+            File.WriteAllText(cfg.Path, "{ broken json content");
+
+            int eventCount = 0;
+            cfg.Changed += _ => eventCount++;
+
+            // 热重载失败时应返回 false，不触发 Changed，且绝不能生成 .bak 或修改原文件
+            Assert.False(cfg.ReloadIfChanged());
+            Assert.Equal(0, eventCount);
+            Assert.Equal(5.0f, cfg.GetFloat("speed"));
+            Assert.False(File.Exists(cfg.Path + ".bak"), "热重载不应把正在编辑的文件备份为 .bak");
+            Assert.True(File.Exists(cfg.Path), "原损坏文件应完整保留供用户修正");
+        }
     }
 }

@@ -89,7 +89,7 @@ namespace CombatOddsMod
         /// 这个位置正是 AstralParty.Toys「模组」页 ⚙ 配置表单读写的文件, 因此字号/位置/开关
         /// 都能在 Toys 里用勾选框/数字框/文本框直接改(改完重启游戏生效)。
         /// </summary>
-        private static void LoadConfig()
+        private static void LoadConfig(bool isInitial = false)
         {
             try
             {
@@ -120,25 +120,28 @@ namespace CombatOddsMod
                     _cfg.LogCdDetail       = c.GetBool("LogCdDetail", d.LogCdDetail);
 #endif
 
-                    // 全字段写回, 保证 config.json 始终含全部键 → Toys ⚙ 表单能把每一项都列出来。
-                    c.Set("Enabled", _cfg.Enabled);
-                    c.Set("ShowForOthers", _cfg.ShowForOthers);
-                    c.Set("PopupNotification", _cfg.PopupNotification);
-                    c.Set("NotificationTtl", _cfg.NotificationTtl);
-                    c.Set("DodgeKeepsBaseDefense", _cfg.DodgeKeepsBaseDefense);
-                    c.Set("ColorHighlight", _cfg.ColorHighlight);
-                    c.Set("ShowBuffBreakdown", _cfg.ShowBuffBreakdown);
-                    c.Set("InGameOverlay", _cfg.InGameOverlay);
-                    c.Set("OverlayFontScale", _cfg.OverlayFontScale);
-                    c.Set("OverlayAnchor", string.IsNullOrEmpty(_cfg.OverlayAnchor) ? d.OverlayAnchor : _cfg.OverlayAnchor);
-                    c.Set("OverlayOffsetX", _cfg.OverlayOffsetX);
-                    c.Set("OverlayOffsetY", _cfg.OverlayOffsetY);
-                    c.Set("ShowRelicAtkBonus", _cfg.ShowRelicAtkBonus);
-                    c.Set("ShowBoardPlayerAttrs", _cfg.ShowBoardPlayerAttrs);
-                    c.Set("LogAtkBonusDetail", _cfg.LogAtkBonusDetail);
-                    c.Set("ShowSkillCooldown", _cfg.ShowSkillCooldown);
-                    c.Set("LogCdDetail", _cfg.LogCdDetail);
-                    if (!c.Save()) SdkLog.Warn("CombatOdds", "配置未能保存，请检查 mod 目录写入权限。");
+                    // 仅首次缺失键时补齐默认值, 避免热重载写坏外部文件
+                    if (isInitial && !c.Has("Enabled"))
+                    {
+                        c.Set("Enabled", _cfg.Enabled);
+                        c.Set("ShowForOthers", _cfg.ShowForOthers);
+                        c.Set("PopupNotification", _cfg.PopupNotification);
+                        c.Set("NotificationTtl", _cfg.NotificationTtl);
+                        c.Set("DodgeKeepsBaseDefense", _cfg.DodgeKeepsBaseDefense);
+                        c.Set("ColorHighlight", _cfg.ColorHighlight);
+                        c.Set("ShowBuffBreakdown", _cfg.ShowBuffBreakdown);
+                        c.Set("InGameOverlay", _cfg.InGameOverlay);
+                        c.Set("OverlayFontScale", _cfg.OverlayFontScale);
+                        c.Set("OverlayAnchor", string.IsNullOrEmpty(_cfg.OverlayAnchor) ? d.OverlayAnchor : _cfg.OverlayAnchor);
+                        c.Set("OverlayOffsetX", _cfg.OverlayOffsetX);
+                        c.Set("OverlayOffsetY", _cfg.OverlayOffsetY);
+                        c.Set("ShowRelicAtkBonus", _cfg.ShowRelicAtkBonus);
+                        c.Set("ShowBoardPlayerAttrs", _cfg.ShowBoardPlayerAttrs);
+                        c.Set("LogAtkBonusDetail", _cfg.LogAtkBonusDetail);
+                        c.Set("ShowSkillCooldown", _cfg.ShowSkillCooldown);
+                        c.Set("LogCdDetail", _cfg.LogCdDetail);
+                        if (!c.Save()) SdkLog.Warn("CombatOdds", "配置未能保存，请检查 mod 目录写入权限。");
+                    }
                 }
             }
             catch (Exception e) { SdkLog.Warn("CombatOdds", "读配置失败, 用默认值: " + e.Message); }
@@ -151,10 +154,30 @@ namespace CombatOddsMod
             RuntimeFightOverlayReflector.OffsetY = (float)_cfg.OverlayOffsetY;
         }
 
+        private static void OnConfigChanged()
+        {
+            LoadConfig(isInitial: false);
+            if (_skillCooldown != null)
+            {
+                _skillCooldown.SetEnabled(_cfg.ShowSkillCooldown);
+                _skillCooldown.SetLogDetail(_cfg.LogCdDetail);
+            }
+            if (_playerAttrOverlay != null)
+            {
+                _playerAttrOverlay.SetEnabled(_cfg.ShowBoardPlayerAttrs);
+            }
+            if (_hudBonus != null)
+            {
+                RefreshHudAtkBonus();
+            }
+            SdkLog.Info("CombatOdds", "配置已热重载");
+        }
+
         private static void OnInit()
         {
             _ctx = ModRegistry.GetOrRegister(typeof(ModEntry).Assembly);
-            LoadConfig();
+            if (_ctx?.Config != null) _ctx.Config.Changed += _ => OnConfigChanged();
+            LoadConfig(isInitial: true);
             if (!_cfg.Enabled)
             {
                 SdkLog.Warn("CombatOdds", "配置 Enabled=false, mod 已停用");

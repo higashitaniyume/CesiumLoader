@@ -78,6 +78,9 @@ namespace CesiumLoader.SDK.Mods
             get { return _logger ?? (_logger = new ModLogger(ModId)); }
         }
 
+        /// <summary>与本上下文关联的 mod 实例(新式 ModBase 生命周期下有效)。</summary>
+        public IMod Mod { get; internal set; }
+
         /// <summary>本 mod 的配置(懒加载)。</summary>
         public ModConfig Config
         {

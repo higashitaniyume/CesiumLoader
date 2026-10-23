@@ -40,6 +40,8 @@ namespace CesiumLoader.SDK.Mods
                 catch (Exception e) { SdkLog.Error(label, "创建 mod 上下文失败: " + e.Message); }
             }
 
+            if (ctx != null) ctx.Mod = mod;
+
             SdkLog.Info(label, "生命周期开始: " + (mod.Name ?? type.Name) +
                               " v" + mod.Version + " (启动延迟 " + delayMs + "ms)");
 
@@ -62,7 +64,11 @@ namespace CesiumLoader.SDK.Mods
             SdkLog.Info(label, "开始卸载");
             if (ctx != null) ctx.Cleanup();          // 自动退订事件/Update/协程/UI/对象
             SafeOnMain(label, "OnUnload", mod.OnUnload);
-            if (ctx != null) ctx.State = ModLifecycleState.Stopped;
+            if (ctx != null)
+            {
+                ctx.Mod = null;
+                ctx.State = ModLifecycleState.Stopped;
+            }
             SdkLog.Info(label, "卸载完成");
         }
 
@@ -147,6 +153,38 @@ namespace CesiumLoader.SDK.Mods
                 return method.DeclaringType != typeof(ModBase);
             }
             catch { return true; }
+        }
+
+        private static long _lastConfigCheckTicks;
+        private const long ConfigCheckIntervalTicks = 10000000; // 1 秒
+
+        /// <summary>
+        /// 轮询所有活跃 mod 的配置, 若文件修改则热重载并在主线程调用 OnConfigChanged。
+        /// 仅在主线程调用, 间隔 ~1 秒(使用 DateTime.UtcNow.Ticks, 不受变速影响)。
+        /// </summary>
+        public static void CheckConfigsOnMainThread(bool force = false)
+        {
+            long now = DateTime.UtcNow.Ticks;
+            if (!force && now - _lastConfigCheckTicks < ConfigCheckIntervalTicks) return;
+            _lastConfigCheckTicks = now;
+
+            var contexts = ModRegistry.All;
+            for (int i = 0; i < contexts.Count; i++)
+            {
+                var ctx = contexts[i];
+                if (ctx == null || ctx.State == ModLifecycleState.Stopped) continue;
+
+                var cfg = ctx.Config;
+                if (cfg == null) continue;
+
+                if (cfg.ReloadIfChanged())
+                {
+                    if (ctx.Mod is ModBase mb)
+                    {
+                        SafeOnMain(ctx.ModId, "OnConfigChanged", mb.OnConfigChanged);
+                    }
+                }
+            }
         }
 
         private static void SafeOnMain(string label, string what, Action action)
