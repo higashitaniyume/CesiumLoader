@@ -79,5 +79,51 @@ namespace TurnFocusMod.Tests
             Assert.False(TurnFocusPolicy.ShouldRequest(7, 7, true, false, true, last + 1, last, 3));
             Assert.True(TurnFocusPolicy.ShouldRequest(7, 7, true, false, true, last + 3 * Second, last, 3));
         }
+
+        [Fact]
+        public void IsOtherPlayer_OnlyMatchesDifferentPositiveIds()
+        {
+            Assert.True(TurnFocusPolicy.IsOtherPlayer(42, 43));
+            Assert.False(TurnFocusPolicy.IsOtherPlayer(42, 42));
+            Assert.False(TurnFocusPolicy.IsOtherPlayer(0, 43));
+            Assert.False(TurnFocusPolicy.IsOtherPlayer(42, 0));
+            Assert.False(TurnFocusPolicy.IsOtherPlayer(-1, 42));
+        }
+
+        [Fact]
+        public void ShouldRequestRoomChat_RequiresEveryCondition()
+        {
+            long now = 10 * Second;
+            Assert.True(TurnFocusPolicy.ShouldRequestRoomChat(true, true, true, true, false, true, now, 0, 3));
+
+            Assert.False(TurnFocusPolicy.ShouldRequestRoomChat(false, true, true, true, false, true, now, 0, 3));
+            Assert.False(TurnFocusPolicy.ShouldRequestRoomChat(true, false, true, true, false, true, now, 0, 3));
+            Assert.False(TurnFocusPolicy.ShouldRequestRoomChat(true, true, false, true, false, true, now, 0, 3));
+            Assert.False(TurnFocusPolicy.ShouldRequestRoomChat(true, true, true, false, false, true, now, 0, 3));
+            Assert.False(TurnFocusPolicy.ShouldRequestRoomChat(true, true, true, true, true, true, now, 0, 3));
+            Assert.False(TurnFocusPolicy.ShouldRequestRoomChat(true, true, true, true, false, false, now, 0, 3));
+        }
+
+        [Fact]
+        public void ShouldRequestRoomChat_RespectsCooldown()
+        {
+            long last = 10 * Second;
+            Assert.False(TurnFocusPolicy.ShouldRequestRoomChat(true, true, true, true, false, true, last + 1, last, 3));
+            Assert.True(TurnFocusPolicy.ShouldRequestRoomChat(true, true, true, true, false, true, last + 3 * Second, last, 3));
+        }
+
+        [Fact]
+        public void ShouldRequestMatchSuccess_RequiresEveryCondition()
+        {
+            long now = 10 * Second;
+            Assert.True(TurnFocusPolicy.ShouldRequestMatchSuccess(true, true, false, true, now, 0, 3));
+
+            Assert.False(TurnFocusPolicy.ShouldRequestMatchSuccess(false, true, false, true, now, 0, 3));
+            Assert.False(TurnFocusPolicy.ShouldRequestMatchSuccess(true, false, false, true, now, 0, 3));
+            Assert.False(TurnFocusPolicy.ShouldRequestMatchSuccess(true, true, true, true, now, 0, 3));
+            Assert.False(TurnFocusPolicy.ShouldRequestMatchSuccess(true, true, false, false, now, 0, 3));
+            Assert.False(TurnFocusPolicy.ShouldRequestMatchSuccess(true, true, false, true, now + 1, now, 3));
+            Assert.True(TurnFocusPolicy.ShouldRequestMatchSuccess(true, true, false, true, now + 3 * Second, now, 3));
+        }
     }
 }

@@ -45,4 +45,4 @@ if (WindowFocus.IsAvailable && WindowFocus.RequestForeground())
 
 ## 相关模组
 
-内置 [TurnFocusMod](../mods/TurnFocusMod/README.md) 在轮到自己回合、选择筹码、战斗出牌、攻击骰或防御选择时调用本接口。
+内置 [TurnFocusMod](../mods/TurnFocusMod/README.md) 在轮到自己回合、选择筹码、战斗出牌、攻击骰或防御选择时调用本接口；匹配成功时，以及匹配成功开房后其他玩家发送“准备”等快捷消息时也会调用。

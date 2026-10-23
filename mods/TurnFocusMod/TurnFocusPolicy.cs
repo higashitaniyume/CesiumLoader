@@ -59,6 +59,12 @@ namespace TurnFocusMod
             return playerId > 0 && selfPlayerId > 0 && playerId == selfPlayerId;
         }
 
+        /// <summary>发送者是否是别的玩家(自己在房间里发的快捷消息不需要提示)。</summary>
+        internal static bool IsOtherPlayer(long senderPlayerId, long selfPlayerId)
+        {
+            return senderPlayerId > 0 && selfPlayerId > 0 && senderPlayerId != selfPlayerId;
+        }
+
         /// <summary>距离上一次请求是否已经超过冷却时间(第一次请求恒为 true)。</summary>
         internal static bool CooldownElapsed(long nowTicks, long lastRequestTicks, int cooldownSeconds)
         {
@@ -83,6 +89,38 @@ namespace TurnFocusMod
             if (replayOrWatcher) return false;
             if (!channelAvailable) return false;
             if (!IsMyTurn(playerId, selfPlayerId)) return false;
+            return CooldownElapsed(nowTicks, lastRequestTicks, cooldownSeconds);
+        }
+
+        /// <summary>
+        /// 房间等待阶段(匹配成功开房后、游戏开始前)其他玩家发"准备"类快捷消息时的
+        /// 置前判定: 房间消息开关打开 / 仍是等待阶段 / 消息来自别人 / 不在回放或观战 /
+        /// 加载器通道可用 / 冷却已过。任一条件不满足都不发请求。
+        /// </summary>
+        internal static bool ShouldRequestRoomChat(bool enabled, bool roomChatFocus, bool inWaitingRoom,
+            bool otherPlayer, bool replayOrWatcher, bool channelAvailable, long nowTicks,
+            long lastRequestTicks, int cooldownSeconds)
+        {
+            if (!enabled || !roomChatFocus) return false;
+            if (!inWaitingRoom) return false;
+            if (!otherPlayer) return false;
+            if (replayOrWatcher) return false;
+            if (!channelAvailable) return false;
+            return CooldownElapsed(nowTicks, lastRequestTicks, cooldownSeconds);
+        }
+
+        /// <summary>
+        /// 匹配成功(MatchSuccessS2C)时的置前判定: 开关打开 / 不在回放或观战 /
+        /// 加载器通道可用 / 冷却已过。匹配成功本身就是要提醒的事件, 不依赖房间状态,
+        /// 因为这条通知到达时游戏才刚创建房间。
+        /// </summary>
+        internal static bool ShouldRequestMatchSuccess(bool enabled, bool matchSuccessFocus,
+            bool replayOrWatcher, bool channelAvailable, long nowTicks, long lastRequestTicks,
+            int cooldownSeconds)
+        {
+            if (!enabled || !matchSuccessFocus) return false;
+            if (replayOrWatcher) return false;
+            if (!channelAvailable) return false;
             return CooldownElapsed(nowTicks, lastRequestTicks, cooldownSeconds);
         }
     }

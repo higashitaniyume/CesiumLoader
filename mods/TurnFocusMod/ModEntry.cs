@@ -15,17 +15,23 @@ namespace TurnFocusMod
     }
 
     /// <summary>
-    /// 轮到自己需要操作时, 通过加载器的窗口置前通道把游戏窗口切到前台。
+    /// 轮到自己需要操作, 匹配成功, 或匹配成功开房后队友喊"准备"时, 通过加载器的
+    /// 窗口置前通道把游戏窗口切到前台。
     ///
-    /// 两个触发来源:
+    /// 四个触发来源:
     ///   - 行动开始通知(ActionStartNotifyS2C, 1026): 轮到自己的回合;
     ///   - SDK 原始动作流(RawAction): 5211 筹码三选一 / 5047 战斗询问 /
-    ///     5035 战斗出牌 / 5037 攻击骰 / 5039 防御选择。
-    /// 只处理 PlayerId 为自己的动作; 回放、观战不触发。
+    ///     5035 战斗出牌 / 5037 攻击骰 / 5039 防御选择;
+    ///   - 匹配成功(MatchSuccessS2C, 5226): 匹配成功时立即提醒;
+    ///   - 房间快捷消息(RoomShortChatS2C / MatchTeamChatS2C): 匹配成功开房后,
+    ///     其他玩家发送"准备"之类的消息。
+    /// 回合相关只处理 PlayerId 为自己的动作; 房间消息只处理别人发的消息;
+    /// 回放、观战不触发。
     /// </summary>
     public sealed class TurnFocus : ModBase
     {
         private const int MaxHookInstallsPerBattle = 4;
+        private const int MaxRoomHookInstallsPerLogin = 8;
         private const long HookCheckIntervalTicks = TimeSpan.TicksPerSecond;
         private const long WarnIntervalTicks = 30 * TimeSpan.TicksPerSecond;
 
@@ -35,7 +41,26 @@ namespace TurnFocusMod
         private BattleLogic _battle;
         private int _installs;
 
+        private RoomShortChatS2CRPC _roomChatRpc;
+        private RoomShortChatS2CRPC.OnRoomShortChatS2CServerDelegate _roomChatOriginal;
+        private RoomShortChatS2CRPC.OnRoomShortChatS2CServerDelegate _roomChatWrapped;
+        private int _roomChatInstalls;
+
+        private MatchTeamChatS2CRPC _teamChatRpc;
+        private MatchTeamChatS2CRPC.OnMatchTeamChatS2CServerDelegate _teamChatOriginal;
+        private MatchTeamChatS2CRPC.OnMatchTeamChatS2CServerDelegate _teamChatWrapped;
+        private int _teamChatInstalls;
+
+        private MatchSuccessS2CRPC _matchSuccessRpc;
+        private MatchSuccessS2CRPC.OnMatchSuccessS2CServerDelegate _matchSuccessOriginal;
+        private MatchSuccessS2CRPC.OnMatchSuccessS2CServerDelegate _matchSuccessWrapped;
+        private int _matchSuccessInstalls;
+
+        private Core.Net.RPCMsgManager _rpcManager;
+
         private bool _enabled = true;
+        private bool _roomChatFocus = true;
+        private bool _matchSuccessFocus = true;
         private int _cooldownSeconds = TurnFocusPolicy.DefaultCooldownSeconds;
         private long _lastRequestTicks;
         private long _nextHookCheckTicks;
@@ -43,11 +68,11 @@ namespace TurnFocusMod
         private bool _subscribed;
 
         public override string Name { get { return "回合置前"; } }
-        public override string Version { get { return "1.1.0"; } }
+        public override string Version { get { return "1.3.0"; } }
         public override string Author { get { return "CesiumLoader"; } }
         public override string Description
         {
-            get { return "轮到自己回合、选择筹码、战斗出牌、攻击或防御时把游戏窗口切换到前台，窗口已在前台时不打扰。"; }
+            get { return "轮到自己回合、选择筹码、战斗出牌、攻击或防御、匹配成功，或开房后有人发准备消息时把游戏窗口切换到前台，窗口已在前台时不打扰。"; }
         }
 
         public override void OnInitialize()
@@ -57,6 +82,8 @@ namespace TurnFocusMod
             {
                 if (!config.Has("enabled")) config.Set("enabled", true);
                 if (!config.Has("cooldownSeconds")) config.Set("cooldownSeconds", TurnFocusPolicy.DefaultCooldownSeconds);
+                if (!config.Has("focusOnRoomChat")) config.Set("focusOnRoomChat", true);
+                if (!config.Has("focusOnMatchSuccess")) config.Set("focusOnMatchSuccess", true);
                 config.Save();
             }
 
@@ -65,7 +92,7 @@ namespace TurnFocusMod
             _subscribed = true;
             Context?.RegisterCleanup(Unhook);
 
-            Log.Info("已启用回合置前：轮到自己回合、选择筹码、战斗出牌、攻击或防御时切换到前台。");
+            Log.Info("已启用回合置前：轮到自己回合、选择筹码、战斗出牌、攻击或防御、匹配成功，或开房后有人发准备消息时切换到前台。");
             if (!WindowFocus.IsAvailable)
                 Log.Warn("窗口置前通道不可用：" + (WindowFocus.UnavailableReason ?? "原因未知"));
         }
@@ -73,7 +100,10 @@ namespace TurnFocusMod
         public override void OnConfigChanged()
         {
             ReadConfig();
-            Log.Info("回合置前配置已热重载: enabled=" + _enabled + ", cooldownSeconds=" + _cooldownSeconds);
+            Log.Info("回合置前配置已热重载: enabled=" + _enabled
+                + ", cooldownSeconds=" + _cooldownSeconds
+                + ", focusOnMatchSuccess=" + _matchSuccessFocus
+                + ", focusOnRoomChat=" + _roomChatFocus);
         }
 
         public override void OnUnload()
@@ -90,6 +120,7 @@ namespace TurnFocusMod
             // SDK 负责包装 PredictActionS2C(不能重复包装); 每秒保持一次挂钩即可。
             GameEvents.EnsureHooked();
             EnsureActionStartHook();
+            EnsureRoomHooks();
         }
 
         private void ReadConfig()
@@ -98,6 +129,8 @@ namespace TurnFocusMod
             if (config == null) return;
 
             _enabled = config.GetBool("enabled", true);
+            _roomChatFocus = config.GetBool("focusOnRoomChat", true);
+            _matchSuccessFocus = config.GetBool("focusOnMatchSuccess", true);
             _cooldownSeconds = TurnFocusPolicy.ClampCooldownSeconds(
                 config.GetInt("cooldownSeconds", TurnFocusPolicy.DefaultCooldownSeconds));
         }
@@ -140,6 +173,74 @@ namespace TurnFocusMod
                 _lastRequestTicks = now;
                 if (WindowFocus.RequestForeground())
                     Log.Info("轮到我" + reason + "，已请求把游戏窗口切到前台。");
+                else
+                    WarnThrottled("窗口置前请求失败：" + (WindowFocus.UnavailableReason ?? "原因未知"));
+            }
+            catch (Exception e)
+            {
+                WarnThrottled("窗口置前执行失败：" + e.Message);
+            }
+        }
+
+        /// <summary>
+        /// 匹配成功触发点: 游戏刚匹配到对局、准备创建房间时置前。
+        /// 这条通知到达时房间还没建好, 所以不检查房间状态, 只排除回放/观战。
+        /// </summary>
+        private void FocusForMatchSuccess()
+        {
+            if (!_enabled || !_matchSuccessFocus) return;
+
+            try
+            {
+                var gm = SimpleSingletonProvider<GameLogicManager>.inst;
+                long now = DateTime.UtcNow.Ticks;
+                bool available = WindowFocus.IsAvailable;
+                if (!TurnFocusPolicy.ShouldRequestMatchSuccess(_enabled, _matchSuccessFocus,
+                        IsReplayOrWatcher(gm), available, now, _lastRequestTicks, _cooldownSeconds))
+                {
+                    if (!available) WarnThrottled("窗口置前通道不可用：" + (WindowFocus.UnavailableReason ?? "原因未知"));
+                    return;
+                }
+
+                _lastRequestTicks = now;
+                if (WindowFocus.RequestForeground())
+                    Log.Info("匹配成功，已请求把游戏窗口切到前台。");
+                else
+                    WarnThrottled("窗口置前请求失败：" + (WindowFocus.UnavailableReason ?? "原因未知"));
+            }
+            catch (Exception e)
+            {
+                WarnThrottled("窗口置前执行失败：" + e.Message);
+            }
+        }
+
+        /// <summary>
+        /// 房间快捷消息触发点: 匹配成功开房后, 其他玩家发"准备"之类的消息时置前。
+        /// 只处理房间等待阶段, 战斗内的快捷消息不抢焦点。
+        /// </summary>
+        private void FocusForRoomChat(long senderPlayerId, int index)
+        {
+            if (!_enabled || !_roomChatFocus || senderPlayerId <= 0) return;
+
+            try
+            {
+                var gm = SimpleSingletonProvider<GameLogicManager>.inst;
+                if (!IsRoomWaiting(gm)) return;
+
+                long selfPlayerId = gm.account.GetPlayerID();
+                long now = DateTime.UtcNow.Ticks;
+                bool available = WindowFocus.IsAvailable;
+                if (!TurnFocusPolicy.ShouldRequestRoomChat(_enabled, _roomChatFocus, true,
+                        TurnFocusPolicy.IsOtherPlayer(senderPlayerId, selfPlayerId),
+                        IsReplayOrWatcher(gm), available, now, _lastRequestTicks, _cooldownSeconds))
+                {
+                    if (!available) WarnThrottled("窗口置前通道不可用：" + (WindowFocus.UnavailableReason ?? "原因未知"));
+                    return;
+                }
+
+                _lastRequestTicks = now;
+                if (WindowFocus.RequestForeground())
+                    Log.Info("房间里有人发送快捷消息(Index=" + index + ")，已请求把游戏窗口切到前台。");
                 else
                     WarnThrottled("窗口置前请求失败：" + (WindowFocus.UnavailableReason ?? "原因未知"));
             }
@@ -197,6 +298,138 @@ namespace TurnFocusMod
             }
         }
 
+        /// <summary>
+        /// 包装匹配成功与房间快捷消息的 RPC。它们由游戏在登录后常驻注册, 不依赖战斗,
+        /// 所以不能用 IsLiveBattle 作为安装条件; 用 hasInstance 避免提前创建 NetManager。
+        /// 房间消息有两种通道: 组队匹配成功后走 MatchTeamChatS2C, 否则走 RoomShortChatS2C。
+        /// </summary>
+        private void EnsureRoomHooks()
+        {
+            try
+            {
+                if (!MonoSingletonProvider<NetManager>.hasInstance) return;
+
+                var manager = MonoSingletonProvider<NetManager>.inst;
+                if (manager == null) return;
+
+                var net = manager.RPC;
+                if (net == null) return;
+
+                // 重新登录或重连会换一个 RPCMsgManager, 挂接额度按实例重置。
+                if (!ReferenceEquals(net, _rpcManager))
+                {
+                    _rpcManager = net;
+                    _roomChatInstalls = 0;
+                    _teamChatInstalls = 0;
+                    _matchSuccessInstalls = 0;
+                    _roomChatRpc = null;
+                    _roomChatOriginal = null;
+                    _roomChatWrapped = null;
+                    _teamChatRpc = null;
+                    _teamChatOriginal = null;
+                    _teamChatWrapped = null;
+                    _matchSuccessRpc = null;
+                    _matchSuccessOriginal = null;
+                    _matchSuccessWrapped = null;
+                }
+
+                HookMatchSuccess(net);
+                HookRoomShortChat(net);
+                HookMatchTeamChat(net);
+            }
+            catch (Exception e)
+            {
+                WarnThrottled("安装房间快捷消息挂钩失败：" + e.Message);
+            }
+        }
+
+        private void HookMatchSuccess(Core.Net.RPCMsgManager net)
+        {
+            var rpc = net.MatchSuccessS2C;
+            if (rpc == null) return;
+
+            var current = rpc.OnMatchSuccessS2CServerCallBackAsync;
+            if (current == null || ReferenceEquals(current, _matchSuccessWrapped)) return;
+            if (_matchSuccessInstalls >= MaxRoomHookInstallsPerLogin) return;
+
+            var original = current;
+            MatchSuccessS2CRPC.OnMatchSuccessS2CServerDelegate wrapped =
+                (model, errId, isDispatch) =>
+                {
+                    try
+                    {
+                        if (errId == 0 && model != null) FocusForMatchSuccess();
+                    }
+                    catch (Exception e) { WarnThrottled("处理匹配成功通知失败：" + e.Message); }
+                    return original(model, errId, isDispatch);
+                };
+
+            _matchSuccessInstalls++;
+            _matchSuccessRpc = rpc;
+            _matchSuccessOriginal = original;
+            _matchSuccessWrapped = wrapped;
+            rpc.OnMatchSuccessS2CServerCallBackAsync = wrapped;
+            Log.Info("已挂钩匹配成功通知。");
+        }
+
+        private void HookRoomShortChat(Core.Net.RPCMsgManager net)
+        {
+            var rpc = net.RoomShortChatS2C;
+            if (rpc == null) return;
+
+            var current = rpc.OnRoomShortChatS2CServerCallBackAsync;
+            if (current == null || ReferenceEquals(current, _roomChatWrapped)) return;
+            if (_roomChatInstalls >= MaxRoomHookInstallsPerLogin) return;
+
+            var original = current;
+            RoomShortChatS2CRPC.OnRoomShortChatS2CServerDelegate wrapped =
+                (model, errId, isDispatch) =>
+                {
+                    try
+                    {
+                        if (errId == 0 && model != null) FocusForRoomChat(model.PlayerId, model.Index);
+                    }
+                    catch (Exception e) { WarnThrottled("处理房间快捷消息失败：" + e.Message); }
+                    return original(model, errId, isDispatch);
+                };
+
+            _roomChatInstalls++;
+            _roomChatRpc = rpc;
+            _roomChatOriginal = original;
+            _roomChatWrapped = wrapped;
+            rpc.OnRoomShortChatS2CServerCallBackAsync = wrapped;
+            Log.Info("已挂钩房间快捷消息。");
+        }
+
+        private void HookMatchTeamChat(Core.Net.RPCMsgManager net)
+        {
+            var rpc = net.MatchTeamChatS2C;
+            if (rpc == null) return;
+
+            var current = rpc.OnMatchTeamChatS2CServerCallBackAsync;
+            if (current == null || ReferenceEquals(current, _teamChatWrapped)) return;
+            if (_teamChatInstalls >= MaxRoomHookInstallsPerLogin) return;
+
+            var original = current;
+            MatchTeamChatS2CRPC.OnMatchTeamChatS2CServerDelegate wrapped =
+                (model, errId, isDispatch) =>
+                {
+                    try
+                    {
+                        if (errId == 0 && model != null) FocusForRoomChat(model.PlayerId, model.Index);
+                    }
+                    catch (Exception e) { WarnThrottled("处理组队快捷消息失败：" + e.Message); }
+                    return original(model, errId, isDispatch);
+                };
+
+            _teamChatInstalls++;
+            _teamChatRpc = rpc;
+            _teamChatOriginal = original;
+            _teamChatWrapped = wrapped;
+            rpc.OnMatchTeamChatS2CServerCallBackAsync = wrapped;
+            Log.Info("已挂钩组队快捷消息。");
+        }
+
         private static bool IsLiveBattle(GameLogicManager gm)
         {
             if (gm?.room?.curRoomInfo == null || gm.account == null || gm.battle == null) return false;
@@ -206,12 +439,29 @@ namespace TurnFocusMod
             if (gm.battle.PlayerDatas == null || gm.battle.PlayerDatas.Count == 0) return false;
 
             // 回放与观战不是"轮到玩家操作", 不抢焦点。
-            try { if (gm.replay != null && gm.replay.Session != null && gm.replay.Session.IsReplay) return false; }
-            catch { }
-            try { if (gm.watch != null && gm.watch.PlayerIsWatcher()) return false; }
-            catch { }
+            if (IsReplayOrWatcher(gm)) return false;
 
             return true;
+        }
+
+        /// <summary>匹配成功开房后、游戏开始前的房间等待阶段(选人/准备)。</summary>
+        private static bool IsRoomWaiting(GameLogicManager gm)
+        {
+            if (gm?.room?.curRoomInfo == null || gm.account == null) return false;
+            if (!gm.room.IsInRoom || gm.room.roomController == null) return false;
+
+            var state = gm.room.roomController.roomStateType;
+            return state == RoomStateType.WAIT || state == RoomStateType.CHOICE || state == RoomStateType.READY;
+        }
+
+        private static bool IsReplayOrWatcher(GameLogicManager gm)
+        {
+            try { if (gm.replay != null && gm.replay.Session != null && gm.replay.Session.IsReplay) return true; }
+            catch { }
+            try { if (gm.watch != null && gm.watch.PlayerIsWatcher()) return true; }
+            catch { }
+
+            return false;
         }
 
         private void WarnThrottled(string message)
@@ -237,9 +487,40 @@ namespace TurnFocusMod
             }
             catch { }
 
+            try
+            {
+                if (_roomChatRpc != null && ReferenceEquals(_roomChatRpc.OnRoomShortChatS2CServerCallBackAsync, _roomChatWrapped))
+                    _roomChatRpc.OnRoomShortChatS2CServerCallBackAsync = _roomChatOriginal;
+            }
+            catch { }
+
+            try
+            {
+                if (_teamChatRpc != null && ReferenceEquals(_teamChatRpc.OnMatchTeamChatS2CServerCallBackAsync, _teamChatWrapped))
+                    _teamChatRpc.OnMatchTeamChatS2CServerCallBackAsync = _teamChatOriginal;
+            }
+            catch { }
+
+            try
+            {
+                if (_matchSuccessRpc != null && ReferenceEquals(_matchSuccessRpc.OnMatchSuccessS2CServerCallBackAsync, _matchSuccessWrapped))
+                    _matchSuccessRpc.OnMatchSuccessS2CServerCallBackAsync = _matchSuccessOriginal;
+            }
+            catch { }
+
             _rpc = null;
             _original = null;
             _wrapped = null;
+            _roomChatRpc = null;
+            _roomChatOriginal = null;
+            _roomChatWrapped = null;
+            _teamChatRpc = null;
+            _teamChatOriginal = null;
+            _teamChatWrapped = null;
+            _matchSuccessRpc = null;
+            _matchSuccessOriginal = null;
+            _matchSuccessWrapped = null;
+            _rpcManager = null;
         }
     }
 }
