@@ -755,24 +755,24 @@ static DWORD WINAPI boot_thread(LPVOID)
     else
         log_line("[loader] windowControlEnabled=false, skipping foreground control file channel");
 
-    // 3.7.2 调试 shell: 控制台就绪后启动, 之后游戏加载 mod 的几秒里就能查状态/改配置。
-    //       没有控制台(consoleEnabled=false 或 AllocConsole 失败)时 shell_start 直接返回 false。
-    if (cfg.consoleEnabled && cfg.shellEnabled)
+    // 3.7.2 CesiumLoader Debug Shell: 控制台就绪后启动(配置 debugShell 默认关闭),
+    //       之后游戏加载 mod 的几秒里就能查状态/改配置。没有控制台时 shell_start 返回 false。
+    if (cfg.consoleEnabled && cfg.debugShell)
     {
         if (cesium::shell::shell_start())
         {
             console_set_color(LOG_CYAN);
-            log_line("[shell] 调试 shell 已就绪 · 输入 help 查看命令");
+            log_line("[shell] CesiumLoader Debug Shell ready (type 'help')");
             console_set_color(LOG_DEFAULT);
         }
         else
         {
-            log_line("[shell] 启动失败, 继续以纯日志模式运行");
+            log_line("[shell] failed to start, running in log-only mode");
         }
     }
     else if (cfg.consoleEnabled)
     {
-        log_line("[shell] shellEnabled=false, 不读取控制台输入");
+        log_line("[shell] debugShell=false, console input disabled");
     }
 
     // 3.7.3 活动日志转发线程: 常驻, 是否真正转发由 forwardActivityLog 开关控制,

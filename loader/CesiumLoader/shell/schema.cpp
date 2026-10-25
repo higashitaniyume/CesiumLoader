@@ -28,8 +28,8 @@ const Field kFields[] = {
       "控制台窗口置顶(会一直压着游戏)" },
     { "forwardActivityLog", ValueType::Bool, 0, 0, nullptr, Apply::Immediate,
       "把 mod 行为日志转发到控制台" },
-    { "shellEnabled", ValueType::Bool, 0, 0, nullptr, Apply::Immediate,
-      "启动调试 shell(关闭后不再读取控制台输入)" },
+    { "debugShell", ValueType::Bool, 0, 0, nullptr, Apply::Immediate,
+      "CesiumLoader Debug Shell(默认关闭; 关闭立即生效, 打开需重启)" },
 
     { "speedControlEnabled", ValueType::Bool, 0, 0, nullptr, Apply::StartOnly,
       "变速文件通道(<loader>\\speed); 只能从关到开" },
@@ -228,7 +228,7 @@ std::string field_value(const LoaderConfig& cfg, const Field& f)
     if (n == "consoleEnabled") return cfg.consoleEnabled ? "true" : "false";
     if (n == "consoleTopmost") return cfg.consoleTopmost ? "true" : "false";
     if (n == "forwardActivityLog") return cfg.forwardActivityLog ? "true" : "false";
-    if (n == "shellEnabled") return cfg.shellEnabled ? "true" : "false";
+    if (n == "debugShell") return cfg.debugShell ? "true" : "false";
     if (n == "speedControlEnabled") return cfg.speedControlEnabled ? "true" : "false";
     if (n == "windowControlEnabled") return cfg.windowControlEnabled ? "true" : "false";
     if (n == "steamBypassEnabled") return cfg.steamBypassEnabled ? "true" : "false";
@@ -293,7 +293,7 @@ bool field_assign(LoaderConfig& cfg, const Field& f, const std::string& text, st
     else if (n == "consoleEnabled") cfg.consoleEnabled = (v == "true");
     else if (n == "consoleTopmost") cfg.consoleTopmost = (v == "true");
     else if (n == "forwardActivityLog") cfg.forwardActivityLog = (v == "true");
-    else if (n == "shellEnabled") cfg.shellEnabled = (v == "true");
+    else if (n == "debugShell") cfg.debugShell = (v == "true");
     else if (n == "speedControlEnabled") cfg.speedControlEnabled = (v == "true");
     else if (n == "windowControlEnabled") cfg.windowControlEnabled = (v == "true");
     else if (n == "steamBypassEnabled") cfg.steamBypassEnabled = (v == "true");

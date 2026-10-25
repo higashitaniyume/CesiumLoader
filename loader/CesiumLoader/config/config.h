@@ -34,9 +34,10 @@ struct LoaderConfig
     bool consoleEnabled = true;             // 是否分配控制台窗口
     bool consoleTopmost = false;            // 控制台窗口是否置顶(默认不置顶: 置顶会一直压着游戏)
 
-    // 调试 shell: 在控制台里输入命令, 查环境/看日志/改配置(loader.<字段> 或 <ModId>.<键>)。
-    // 关掉只影响命令行输入, 控制台照常显示日志; 也可在 shell 里 set loader.shellEnabled false。
-    bool shellEnabled = true;
+    // CesiumLoader Debug Shell: 在控制台里输入命令, 查环境/看日志/改配置
+    // (loader.<字段> 或 <ModId>.<键>)。默认**关闭**(调试功能需显式打开), 控制台照常显示日志。
+    // shell 里可热改: set loader.debugShell true/false
+    bool debugShell = false;
 
 
     // mod 日志 -> 控制台 转发线程

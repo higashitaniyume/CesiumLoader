@@ -1,8 +1,10 @@
-# 调试 shell
+# CesiumLoader Debug Shell
 
 控制台窗口里直接输入命令，查看加载器环境、改配置、看 mod 状态和日志，不用改文件、不用重启。
 
-启动游戏后控制台最后一行是提示符：
+在 `doorstop_config.json` 里配置 `"debugShell": true`（或在运行中的 shell 里 `set loader.debugShell true`）后启用；默认关闭，关闭时控制台只显示日志。
+
+启用后，控制台最后一行是提示符：
 
 ```text
 cesium>
@@ -97,8 +99,8 @@ cesium> set TurnFocusMod.soundFile "C:\sounds\your turn.wav"
 
 ## 关闭 shell
 
-- 只想关掉命令行、保留日志窗口：`detach`，或配置 `set loader.shellEnabled false`（下次启动也不启用）。
-- 想恢复：`set loader.shellEnabled true` 后重启游戏。
+- 只想关掉命令行、保留日志窗口：`detach`，或配置 `set loader.debugShell false`（下次启动也不启用）。
+- 想恢复：`set loader.debugShell true`，或把 `doorstop_config.json` 的 `debugShell` 改成 `true` 后重启游戏。
 
 ## 说明
 

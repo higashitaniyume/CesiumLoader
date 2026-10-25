@@ -77,7 +77,7 @@ winget install Hiynet.AstralParty.Toys
 | --- | --- |
 | `enabled` | 加载器总开关 |
 | `consoleEnabled` / `consoleTopmost` | 控制台显示与置顶 |
-| `shellEnabled` | 控制台调试 shell 的命令输入（默认开） |
+| `debugShell` | CesiumLoader Debug Shell 的命令输入（默认关） |
 | `forwardActivityLog` | 将模组行为日志转发到控制台 |
 | `speedhackBaseSpeed` | 启动时的基础倍率，`1.0` 为正常速度 |
 | `speedControlEnabled` | 允许通过文件通道调整倍率 |
@@ -90,9 +90,9 @@ Steam 绕过涉及多个独立开关，推荐通过 Toys 选择启动方式。�
 
 控制台窗口由加载器通过 `AllocConsole` 分配，始终由传统控制台承载：Windows 的默认终端应用设置只作用于控制台程序启动时创建的控制台，不会接管这里后分配的控制台。`consoleTopmost` 作用于这个控制台窗口。
 
-## 调试 shell
+## CesiumLoader Debug Shell
 
-控制台里直接输入命令查看环境、改配置、看日志：
+在配置里把 `debugShell` 设为 `true` 后，控制台窗口里可以直接输入命令查看环境、改配置、看日志：
 
 ```text
 cesium> ls TurnFocus

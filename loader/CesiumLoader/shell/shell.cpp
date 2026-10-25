@@ -516,7 +516,7 @@ void apply_loader_hot(const Field& field, const LoaderConfig& cfg, const std::st
             print("  该通道只能从关到开; 关闭需要重启游戏", LOG_YELLOW);
         }
     }
-    else if (name == "shellEnabled" && !cfg.shellEnabled)
+    else if (name == "debugShell" && !cfg.debugShell)
     {
         print("  shell 将在本次命令后停止", LOG_YELLOW);
         g_quit = true;
@@ -778,7 +778,7 @@ void cmd_env(const std::vector<std::string>&)
     const size_t slash = exe.find_last_of(L"\\/");
     const std::wstring exe_name = (slash == std::wstring::npos) ? exe : exe.substr(slash + 1);
 
-    print(fmt::format("CesiumLoader {} · SDK {} · 调试 shell", LoaderConfig::loaderVersion,
+    print(fmt::format("CesiumLoader {} · SDK {} · Debug Shell", LoaderConfig::loaderVersion,
                       snap.cfg.sdkVersion), LOG_MAGENTA);
     print(fmt::format("可执行   {}", narrow(exe.empty() ? std::wstring(L"-") : exe)));
     print(fmt::format("游戏     {} {}", narrow(exe_name), snap.game_version.empty() ? "-" : snap.game_version));
@@ -1242,7 +1242,7 @@ void cmd_help(const std::vector<std::string>& args)
         return;
     }
 
-    print(fmt::format("CesiumLoader 调试 shell (v{})", LoaderConfig::loaderVersion), LOG_MAGENTA);
+    print("CesiumLoader Debug Shell", LOG_MAGENTA);
     print("用法: <命令> [参数] [--help]", LOG_DIM);
     print("");
     for (const Command& c : kCommands) print("  " + pad_right(c.usage, 30) + c.desc);
@@ -1510,6 +1510,7 @@ DWORD WINAPI thread_proc(LPVOID)
     }
 
     enter_raw_mode();
+    SetConsoleTitleW(L"CesiumLoader Debug Shell");
     SetConsoleCtrlHandler(ctrl_handler, TRUE);
     console_set_write_hooks(on_pre_write, on_post_write);
 
@@ -1543,6 +1544,7 @@ DWORD WINAPI thread_proc(LPVOID)
     console_unlock();
 
     console_set_write_hooks(nullptr, nullptr);
+    SetConsoleTitleW(L"CesiumLoader Console");
     restore_console_mode();
     SetConsoleCtrlHandler(ctrl_handler, FALSE);
     raw_write_locked(L"\r\n");
