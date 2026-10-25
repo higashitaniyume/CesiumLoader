@@ -11,6 +11,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -101,7 +102,7 @@ void dump_screen(const std::wstring& path, bool append, const std::wstring& labe
 
 } // namespace
 
-int main(int argc, char**)
+int main(int argc, char** argv)
 {
     // 运行期快照: 让 status/mods 有内容可显示。
     cesium::runtime::mark_started();
@@ -140,6 +141,13 @@ int main(int argc, char**)
     }
 
     Sleep(600);
+
+    // --hold: 只把 shell 跑起来、不注入脚本, 供外部进程 attach 控制台后手动注入验证。
+    if (argc > 1 && strcmp(argv[1], "--hold") == 0)
+    {
+        Sleep(25000);
+        return 0;
+    }
 
     // 用 exe 所在目录, 不依赖启动时的工作目录(Start-Process 的 cwd 不受控)。
     wchar_t self[MAX_PATH] = {};
