@@ -4,5 +4,6 @@
   "focusOnMatchSuccess": true,
   "focusOnRoomChat": true,
   "soundEnabled": true,
-  "soundFile": ""
+  "soundFile": "",
+  "alwaysPlaySound": false
 }

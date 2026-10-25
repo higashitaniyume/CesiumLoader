@@ -253,6 +253,11 @@ HWND find_game_window()
 // 但它的前台状态不代表游戏可见, 所以控制台/输入法窗口一律不算。
 bool is_foreground_game(HWND game)
 {
+    if (game == nullptr) return false;
+
+    // 最小化: 用户看不见窗口, 即使系统仍把它算作 foreground, 也要恢复并提醒。
+    if (IsIconic(game)) return false;
+
     HWND fg = GetForegroundWindow();
     if (fg == nullptr) return false;
     if (fg == game) return true;
@@ -348,22 +353,12 @@ DWORD WINAPI watch_thread(LPVOID)
             if (!request.valid()) continue;
 
             HWND hwnd = find_game_window();
-            if (hwnd == nullptr)
-            {
-                log_line("[windowctl] game window not found, ignoring foreground request");
-                continue;
-            }
+            const bool foreground = (hwnd != nullptr) && is_foreground_game(hwnd);
 
-            // 窗口已经在前台: 不抢焦点, 也不放提示音(两者是同一个"提醒"动作)。
-            if (is_foreground_game(hwnd))
-            {
-                log_line("[windowctl] game window already in foreground, ignoring request");
-                continue;
-            }
-
-            // 提示音先播: 系统拒绝置前时它照样能起到提醒作用。
+            // 提示音策略: 默认只在"窗口不在前台"时播放 —— 这时置前才是真正需要的提醒;
+            // 请求里带 always=1 时, 即使已经在前台也每次播放一次。
             bool sound_played = false;
-            if (request.has_sound())
+            if (request.has_sound() && (request.always_play || !foreground))
             {
                 std::wstring path = utf8_to_wide(request.sound_path);
                 if (path.empty())
@@ -374,11 +369,28 @@ DWORD WINAPI watch_thread(LPVOID)
                     log_line(L"[windowctl] failed to play prompt sound (need PCM WAV, <= 16 MB): " + short_path(path));
             }
 
-            const char* suffix = sound_played ? " + prompt sound" : "";
+            std::string sound_note;
+            if (sound_played)
+                sound_note = " (+ prompt sound)";
+            else if (request.has_sound() && foreground)
+                sound_note = " (prompt sound skipped: foreground)";
+
+            if (hwnd == nullptr)
+            {
+                log_line(std::string("[windowctl] game window not found, foreground skipped") + sound_note);
+                continue;
+            }
+
+            if (foreground)
+            {
+                log_line(std::string("[windowctl] game window already in foreground, foreground skipped") + sound_note);
+                continue;
+            }
+
             if (bring_to_foreground(hwnd))
-                log_line(std::string("[windowctl] brought game window to foreground") + suffix);
+                log_line(std::string("[windowctl] brought game window to foreground") + sound_note);
             else
-                log_line(std::string("[windowctl] system refused foreground switch, flashed taskbar") + suffix);
+                log_line(std::string("[windowctl] system refused foreground switch, flashed taskbar") + sound_note);
         }
     }
     return 0;

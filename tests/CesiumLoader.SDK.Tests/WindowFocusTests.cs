@@ -93,7 +93,7 @@ namespace CesiumLoader.SDK.Tests
             Assert.True(WindowFocus.IsAvailable);
         }
 
-        // ---------- 提示音 (2.7.1) ----------
+        // ---------- 提示音 (2.7.2) ----------
 
         [Fact]
         public void SupportsSound_RequiresAudioLine()
@@ -101,17 +101,17 @@ namespace CesiumLoader.SDK.Tests
             WriteState("version=2.7.0\r\navailable=1\r\n");
             Assert.False(WindowFocus.SupportsSound);   // 旧加载器没有 audio 行
 
-            WriteState("version=2.7.1\r\navailable=1\r\naudio=0\r\n");
+            WriteState("version=2.7.2\r\navailable=1\r\naudio=0\r\n");
             Assert.False(WindowFocus.SupportsSound);
 
-            WriteState("version=2.7.1\r\navailable=1\r\naudio=wav\r\n");
+            WriteState("version=2.7.2\r\navailable=1\r\naudio=wav\r\n");
             Assert.True(WindowFocus.SupportsSound);
         }
 
         [Fact]
         public void RequestForeground_WithSound_WritesTokenAndPath()
         {
-            WriteState("version=2.7.1\r\navailable=1\r\naudio=wav\r\n");
+            WriteState("version=2.7.2\r\navailable=1\r\naudio=wav\r\n");
             string sound = Path.Combine(_dir, "sounds", "your-turn.wav");
 
             Assert.True(WindowFocus.RequestForeground(sound));
@@ -125,7 +125,7 @@ namespace CesiumLoader.SDK.Tests
         [Fact]
         public void RequestForeground_WithoutSound_WritesSingleLine()
         {
-            WriteState("version=2.7.1\r\navailable=1\r\naudio=wav\r\n");
+            WriteState("version=2.7.2\r\navailable=1\r\naudio=wav\r\n");
 
             Assert.True(WindowFocus.RequestForeground(null));
             Assert.Single(File.ReadAllLines(RequestPath));
@@ -137,7 +137,7 @@ namespace CesiumLoader.SDK.Tests
         [Fact]
         public void RequestForeground_DropsRelativeOrMultilineSound()
         {
-            WriteState("version=2.7.1\r\navailable=1\r\naudio=wav\r\n");
+            WriteState("version=2.7.2\r\navailable=1\r\naudio=wav\r\n");
 
             // 相对路径: 加载器会按自己的当前目录解析, 不能发出去。
             Assert.True(WindowFocus.RequestForeground(@"sounds\your-turn.wav"));
@@ -190,6 +190,35 @@ namespace CesiumLoader.SDK.Tests
         {
             string text = WindowFocus.BuildRequestText(12345, "C:\\a\\ding.wav");
             Assert.Equal("12345\r\nC:\\a\\ding.wav\r\n", text);
+        }
+
+        [Fact]
+        public void BuildRequestText_AddsAlwaysLineOnlyWithSound()
+        {
+            // 默认(仅后台播放): 不写第三行。
+            Assert.Equal("1\r\nC:\\a\\ding.wav\r\n",
+                WindowFocus.BuildRequestText(1, "C:\\a\\ding.wav", false));
+
+            // 前台也播放: 第三行 always=1。
+            Assert.Equal("1\r\nC:\\a\\ding.wav\r\nalways=1\r\n",
+                WindowFocus.BuildRequestText(1, "C:\\a\\ding.wav", true));
+
+            // 没有提示音时, always 没有意义, 不写。
+            Assert.Equal("1\r\n", WindowFocus.BuildRequestText(1, null, true));
+        }
+
+        [Fact]
+        public void RequestForeground_WithAlwaysPlay_WritesThirdLine()
+        {
+            WriteState("version=2.7.2\r\navailable=1\r\naudio=wav\r\n");
+            string sound = Path.Combine(_dir, "ding.wav");
+
+            Assert.True(WindowFocus.RequestForeground(sound, true));
+
+            string[] lines = File.ReadAllLines(RequestPath);
+            Assert.Equal(3, lines.Length);
+            Assert.Equal(sound, lines[1]);
+            Assert.Equal("always=1", lines[2]);
         }
     }
 }

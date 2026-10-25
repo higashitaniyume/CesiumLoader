@@ -3,11 +3,12 @@
 // 协议(对旧 mod 完全兼容):
 //   第 1 行: 十进制令牌。加载器只处理"内容变化"的请求; 启动时写入的 "0" 是重置值。
 //   第 2 行: 可选, 提示音的**绝对路径**(UTF-8)。缺省/空 = 只置前, 不播放。
-//   第 3 行起: 忽略(给将来扩展留位置)。
+//   第 3 行: 可选开关 "always=1": 窗口已在前台时也播放提示音; 缺省只在后台播放。
+//   第 4 行起: 忽略(给将来扩展留位置)。
 // 行尾: CRLF / LF / CR 均可; 每行首尾的空格与制表符忽略。
 //
 // 为什么路径跟令牌放在同一个文件: "置前 + 提示音"是一个动作。放在一次请求里,
-// 加载器才能在窗口已在前台时把两者一起静默跳过, 不会出现"窗口没动却响了"。
+// 加载器才能按同一个"是否需要提醒"的判断决定播不播, 不会出现两套状态。
 //
 // 安全边界: 路径必须是绝对路径且不含控制字符。相对路径会被丢弃(否则会按游戏
 // 工作目录解析, 行为不确定); 真正的文件存在性/扩展名/大小由 windowctl 再校验。
@@ -23,6 +24,7 @@ struct FocusRequest
 {
     std::string token;        // 十进制令牌, 已 trim
     std::string sound_path;   // UTF-8 绝对路径, 空表示无提示音
+    bool always_play = false; // 提示音是否无视前台状态: false=仅窗口不在前台时播放
 
     bool has_sound() const { return !sound_path.empty(); }
     bool valid() const { return !token.empty() && token != "0"; }
@@ -88,6 +90,11 @@ inline FocusRequest parse_focus_request(const std::string& text)
         {
             if (t.size() <= kMaxPathChars && !has_control(t) && is_absolute(t))
                 req.sound_path = t;
+        }
+        else if (index == 2)
+        {
+            // 可选开关: always=1 表示窗口已在前台时也播放提示音; 缺省/always=0 = 仅后台播放。
+            if (t == "always=1") req.always_play = true;
         }
 
         ++index;

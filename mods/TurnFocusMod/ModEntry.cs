@@ -64,10 +64,12 @@ namespace TurnFocusMod
         private bool _matchSuccessFocus = true;
         private bool _soundEnabled = true;
         private string _soundFile = DefaultSoundFile;
+        private bool _alwaysPlaySound;
         private bool _warnedMissingSound;
         private int _cooldownSeconds = TurnFocusPolicy.DefaultCooldownSeconds;
         private long _lastRequestTicks;
         private long _nextHookCheckTicks;
+        private long _nextConfigCheckTicks;
         private long _nextWarnTicks;
         private bool _subscribed;
 
@@ -90,13 +92,17 @@ namespace TurnFocusMod
             var config = Config;
             if (config != null)
             {
-                if (!config.Has("enabled")) config.Set("enabled", true);
-                if (!config.Has("cooldownSeconds")) config.Set("cooldownSeconds", TurnFocusPolicy.DefaultCooldownSeconds);
-                if (!config.Has("focusOnRoomChat")) config.Set("focusOnRoomChat", true);
-                if (!config.Has("focusOnMatchSuccess")) config.Set("focusOnMatchSuccess", true);
-                if (!config.Has("soundEnabled")) config.Set("soundEnabled", true);
-                if (!config.Has("soundFile")) config.Set("soundFile", DefaultSoundFile);
-                config.Save();
+                // 只在真的补了缺失键时才落盘: 无条件 Save 会把"启动后、初始化前"
+                // 用户手动改的 config.json 覆盖回去(看起来就像热重载没生效)。
+                bool added = false;
+                if (!config.Has("enabled")) { config.Set("enabled", true); added = true; }
+                if (!config.Has("cooldownSeconds")) { config.Set("cooldownSeconds", TurnFocusPolicy.DefaultCooldownSeconds); added = true; }
+                if (!config.Has("focusOnRoomChat")) { config.Set("focusOnRoomChat", true); added = true; }
+                if (!config.Has("focusOnMatchSuccess")) { config.Set("focusOnMatchSuccess", true); added = true; }
+                if (!config.Has("soundEnabled")) { config.Set("soundEnabled", true); added = true; }
+                if (!config.Has("soundFile")) { config.Set("soundFile", DefaultSoundFile); added = true; }
+                if (!config.Has("alwaysPlaySound")) { config.Set("alwaysPlaySound", false); added = true; }
+                if (added) config.Save();
             }
 
             ReadConfig();
@@ -112,18 +118,13 @@ namespace TurnFocusMod
             else if (string.IsNullOrEmpty(_soundFile))
                 Log.Info("未指定提示音，仅置前（soundFile 填 WAV 绝对路径或 sounds/your-turn.wav 即可启用）。");
             else if (!WindowFocus.SupportsSound)
-                Log.Warn("加载器未提供提示音（需要 CesiumLoader 2.7.1 及以上），本次只置前。");
+                Log.Warn("加载器未提供提示音（需要 CesiumLoader 2.7.2 及以上），本次只置前。");
         }
 
         public override void OnConfigChanged()
         {
             ReadConfig();
-            Log.Info("回合置前配置已热重载: enabled=" + _enabled
-                + ", cooldownSeconds=" + _cooldownSeconds
-                + ", focusOnMatchSuccess=" + _matchSuccessFocus
-                + ", focusOnRoomChat=" + _roomChatFocus
-                + ", soundEnabled=" + _soundEnabled
-                + ", soundFile=" + (_soundFile ?? ""));
+            LogConfigReload();
         }
 
         public override void OnUnload()
@@ -134,6 +135,15 @@ namespace TurnFocusMod
         public override void OnUpdate()
         {
             long now = DateTime.UtcNow.Ticks;
+
+            // 自带一套 1 秒配置轮询: 掉配置/改 soundFile 不必重启游戏。
+            // 与 SDK 的全局轮询互为兜底 —— ReloadIfChanged 自己去重, 不会重复触发。
+            if (now >= _nextConfigCheckTicks)
+            {
+                _nextConfigCheckTicks = now + HookCheckIntervalTicks;
+                ReloadConfigIfChanged();
+            }
+
             if (now < _nextHookCheckTicks) return;
             _nextHookCheckTicks = now + HookCheckIntervalTicks;
 
@@ -141,6 +151,33 @@ namespace TurnFocusMod
             GameEvents.EnsureHooked();
             EnsureActionStartHook();
             EnsureRoomHooks();
+        }
+
+        /// <summary>配置文件被外部修改时立刻应用(下次触发就用新值, 不等 SDK 的轮询)。</summary>
+        private void ReloadConfigIfChanged()
+        {
+            var config = Config;
+            if (config == null) return;
+
+            bool changed;
+            try { changed = config.ReloadIfChanged(); }
+            catch { return; }
+
+            if (!changed) return;
+
+            ReadConfig();
+            LogConfigReload();
+        }
+
+        private void LogConfigReload()
+        {
+            Log.Info("回合置前配置已热重载: enabled=" + _enabled
+                + ", cooldownSeconds=" + _cooldownSeconds
+                + ", focusOnMatchSuccess=" + _matchSuccessFocus
+                + ", focusOnRoomChat=" + _roomChatFocus
+                + ", soundEnabled=" + _soundEnabled
+                + ", soundFile=" + (_soundFile ?? "")
+                + ", alwaysPlaySound=" + _alwaysPlaySound);
         }
 
         private void ReadConfig()
@@ -154,20 +191,21 @@ namespace TurnFocusMod
             _soundEnabled = config.GetBool("soundEnabled", true);
             _soundFile = config.GetString("soundFile", DefaultSoundFile);
             if (_soundFile != null) _soundFile = _soundFile.Trim();
+            _alwaysPlaySound = config.GetBool("alwaysPlaySound", false);
             _warnedMissingSound = false;
             _cooldownSeconds = TurnFocusPolicy.ClampCooldownSeconds(
                 config.GetInt("cooldownSeconds", TurnFocusPolicy.DefaultCooldownSeconds));
         }
 
         /// <summary>
-        /// 写一条置前请求。提示音路径跟请求一起交给加载器, 由它决定"这次是否真的
-        /// 需要提醒"(窗口已在前台时置前和提示音一起跳过)。
+        /// 写一条置前请求。提示音路径和"前台也响"的开关一起交给加载器,
+        /// 由它按配置决定这次要不要出声(默认只在窗口不在前台时响)。
         /// </summary>
         private void RequestFocus(string what)
         {
             string sound = ResolveSoundPath();
 
-            if (WindowFocus.RequestForeground(sound))
+            if (WindowFocus.RequestForeground(sound, _alwaysPlaySound))
             {
                 Log.Info(what + "，已请求把游戏窗口切到前台"
                     + (sound != null ? "，并播放提示音。" : "。"));

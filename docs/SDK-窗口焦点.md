@@ -24,9 +24,10 @@ if (WindowFocus.SupportsSound && WindowFocus.RequestForeground(@"C:\...\sounds\y
 | 成员 | 说明 |
 |---|---|
 | `bool IsAvailable` | 加载器是否提供窗口置前通道（读取 `state.txt` 的 `available=1`） |
-| `bool SupportsSound` | 加载器是否支持提示音（`state.txt` 的 `audio`，2.7.1 起为 `wav`） |
+| `bool SupportsSound` | 加载器是否支持提示音（`state.txt` 的 `audio`，2.7.2 起为 `wav`） |
 | `bool RequestForeground()` | 写入置前请求；返回 `true` 只表示请求已落盘，不保证系统一定允许激活 |
-| `bool RequestForeground(string soundFile)` | 置前的同时播放提示音；路径必须是绝对路径 |
+| `bool RequestForeground(string soundFile)` | 置前的同时播放提示音；路径必须是绝对路径；默认只在窗口不在前台时播放 |
+| `bool RequestForeground(string soundFile, bool alwaysPlaySound)` | 同上，`alwaysPlaySound=true` 时每次请求都播放（窗口在前台也响） |
 | `string Directory` | 当前使用的控制目录 |
 | `string UnavailableReason` | 通道不可用/写请求失败的原因，可用时为 `null` |
 | `string Describe()` | 诊断描述，适合写日志 |
@@ -35,7 +36,7 @@ if (WindowFocus.SupportsSound && WindowFocus.RequestForeground(@"C:\...\sounds\y
 
 ## 提示音
 
-- 只在加载器**真正处理这次请求**时播放：窗口已经在前台时不抢焦点，也不播放。
+- 默认只在游戏窗口**不在前台**时播放（这时置前才是真正需要的提醒）；`RequestForeground(path, true)` 则每次请求都播放一次，窗口在前台也响。
 - 系统拒绝置前（前台是全屏程序或提权窗口）时仍会播放 —— 这时提示音就是唯一的提醒。
 - 格式：**WAV**，建议 16-bit PCM、44.1 kHz、单声道、不超过 2 秒。加载器用 Windows `PlaySound` 异步播放，不阻塞游戏线程。
 - 上限 16 MB。文件不存在、扩展名不是 `.wav` 或文件过大时只写加载器日志，置前不受影响。
@@ -47,12 +48,12 @@ if (WindowFocus.SupportsSound && WindowFocus.RequestForeground(@"C:\...\sounds\y
 
 | 文件 | 方向 | 内容 |
 |---|---|---|
-| `<CESIUM_WINDOW_DIR>\request.txt` | mod → 加载器 | 第 1 行是新的十进制令牌（内容变化即触发）；第 2 行可选，提示音绝对路径（UTF-8） |
+| `<CESIUM_WINDOW_DIR>\request.txt` | mod → 加载器 | 第 1 行新的十进制令牌（内容变化即触发）；第 2 行可选，提示音绝对路径（UTF-8）；第 3 行可选 `always=1`（前台也播放） |
 | `<CESIUM_WINDOW_DIR>\state.txt` | 加载器 → mod | `version=<加载器版本>`、`available=0/1`、`audio=wav` |
 
 `CESIUM_WINDOW_DIR` 默认为 `<游戏目录>\AstralParty_ModLoader\window`，加载器同时镜像到 `%LocalAppData%\AstralParty_ModLoader\window`（SDK 会自动尝试两处）。
 
-加载器每 100ms 检查一次请求文件，只处理内容变化；启动时把 `request.txt` 重置为 `0`，上一次会话的残留请求不会在下次启动时执行。游戏窗口已经在前台时忽略请求；最小化的窗口先恢复；系统前台锁定拒绝置前时闪烁任务栏（提示音照常播放）。
+加载器每 100ms 检查一次请求文件，只处理内容变化；启动时把 `request.txt` 重置为 `0`，上一次会话的残留请求不会在下次启动时执行。游戏窗口已经在前台时只跳过置前；最小化的窗口先恢复；系统前台锁定拒绝置前时闪烁任务栏（提示音照常播放）。
 
 ## 行为与限制
 

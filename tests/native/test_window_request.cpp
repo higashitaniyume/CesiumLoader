@@ -30,7 +30,7 @@ void check(const std::string& name, bool ok, const std::string& detail)
 }
 
 void check_request(const std::string& name, const std::string& text, bool expectValid,
-                   const std::string& expectPath)
+                   const std::string& expectPath, bool expectAlways = false)
 {
     FocusRequest req = parse_focus_request(text);
 
@@ -44,6 +44,12 @@ void check_request(const std::string& name, const std::string& text, bool expect
     if (req.sound_path != expectPath)
     {
         check(name, false, "sound_path 期望 '" + expectPath + "', 实际 '" + req.sound_path + "'");
+        return;
+    }
+    if (req.always_play != expectAlways)
+    {
+        check(name, false, std::string("always_play 期望 ") + (expectAlways ? "true" : "false") +
+                           ", 实际 " + (req.always_play ? "true" : "false"));
         return;
     }
     check(name, true, "");
@@ -93,6 +99,14 @@ int main()
 
     // 多余行忽略, 不污染路径。
     check_request("extra_lines_ignored", "99\r\n" + wav + "\r\nfuture=1\r\n", true, wav);
+
+    // 第三行 always=1: 窗口在前台时也播放提示音; 缺省/always=0 = 仅后台播放。
+    check_request("always_on", "99\r\n" + wav + "\r\nalways=1\r\n", true, wav, true);
+    check_request("always_off", "99\r\n" + wav + "\r\nalways=0\r\n", true, wav, false);
+    check_request("always_absent", "99\r\n" + wav + "\r\n", true, wav, false);
+    check_request("always_garbage_ignored", "99\r\n" + wav + "\r\nalways=yes\r\n", true, wav, false);
+    // 没有路径时 always 行不会被当成开关(第二行位置先解析, 非法路径被丢弃)。
+    check_request("always_without_path", "99\r\n\r\nalways=1\r\n", true, "", false);
 
     std::cout << "  用例: " << g_total << "  失败: " << g_fail << "\n";
     if (g_fail == 0) std::cout << "== 全部通过 ==\n";

@@ -110,8 +110,10 @@ namespace CesiumLoader.SDK.Windowing
         /// 请求加载器把游戏窗口切换到前台, 并在置前时播放提示音。
         ///
         /// 提示音由加载器用原生 <c>PlaySound</c> 播放, 不经过游戏的 Wwise 音频,
-        /// 因此游戏内音量/静音不影响它。加载器只播放 **WAV**(建议 16-bit PCM),
-        /// 且只在真正处理这次请求时播放 —— 窗口已经在前台时置前和提示音一起静默跳过。
+        /// 因此游戏内音量/静音不影响它。加载器只播放 **WAV**(建议 16-bit PCM)。
+        ///
+        /// 默认只在游戏窗口**不在前台**时播放(此时置前才是真正需要的提醒);
+        /// 需要"每次请求都响, 不管前台"时用 <see cref="RequestForeground(string, bool)"/>。
         /// </summary>
         /// <param name="soundFile">
         /// 提示音的**绝对路径**。传 null/空字符串等于只置前;
@@ -120,6 +122,20 @@ namespace CesiumLoader.SDK.Windowing
         /// </param>
         /// <returns>同 <see cref="RequestForeground()"/>。</returns>
         public static bool RequestForeground(string soundFile)
+        {
+            return RequestForeground(soundFile, false);
+        }
+
+        /// <summary>
+        /// 请求置前并播放提示音, 可指定"窗口已在前台时也播放"。
+        /// </summary>
+        /// <param name="soundFile">提示音绝对路径(WAV), 规则同上。</param>
+        /// <param name="alwaysPlaySound">
+        /// <c>true</c> = 每次新请求都播放, 不管游戏窗口在不在前台;
+        /// <c>false</c> = 只在窗口不在前台时播放(默认)。没有提示音时该参数无意义。
+        /// </param>
+        /// <returns>同 <see cref="RequestForeground()"/>。</returns>
+        public static bool RequestForeground(string soundFile, bool alwaysPlaySound)
         {
             lock (_lock)
             {
@@ -139,7 +155,7 @@ namespace CesiumLoader.SDK.Windowing
                 try { token = DateTime.UtcNow.Ticks + (++_sequence); }
                 catch { token = ++_sequence; }
 
-                var text = BuildRequestText(token, soundFile);
+                var text = BuildRequestText(token, soundFile, alwaysPlaySound);
                 string error;
                 if (!WriteAtomic(path, Utf8Bytes(text), out error))
                 {
@@ -169,14 +185,18 @@ namespace CesiumLoader.SDK.Windowing
             }
         }
 
-        /// <summary>请求文本: 第一行令牌, 第二行可选提示音路径(见 windowctl.h 协议)。</summary>
-        internal static string BuildRequestText(long token, string soundFile)
+        /// <summary>请求文本: 第一行令牌, 第二行可选提示音路径, 第三行可选 always=1(见 windowctl.h)。</summary>
+        internal static string BuildRequestText(long token, string soundFile, bool alwaysPlaySound = false)
         {
             var sb = new StringBuilder();
             sb.Append(token.ToString(CultureInfo.InvariantCulture)).Append("\r\n");
 
             string path = NormalizeSoundPath(soundFile);
-            if (path != null) sb.Append(path).Append("\r\n");
+            if (path != null)
+            {
+                sb.Append(path).Append("\r\n");
+                if (alwaysPlaySound) sb.Append("always=1\r\n");
+            }
 
             return sb.ToString();
         }
