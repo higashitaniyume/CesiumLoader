@@ -204,6 +204,27 @@ void on_post_write()
     LeaveCriticalSection(&g_line_cs);
 }
 
+// 用户用滚轮翻到上面看日志后, 一敲键盘就把视口拉回提示符所在行(与 cmd 一致)。
+// 只在按键路径调用; 日志写入不调用, 否则回看时会被新日志不停拽回底部。
+void ensure_cursor_visible()
+{
+    HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
+    CONSOLE_SCREEN_BUFFER_INFO info{};
+    if (h == nullptr || h == INVALID_HANDLE_VALUE || !GetConsoleScreenBufferInfo(h, &info)) return;
+
+    const SHORT height = info.srWindow.Bottom - info.srWindow.Top + 1;
+    const SHORT cursor = info.dwCursorPosition.Y;
+    if (cursor >= info.srWindow.Top && cursor <= info.srWindow.Bottom) return;
+
+    SHORT top = cursor - height + 1;
+    if (top < 0) top = 0;
+    if (top > info.dwSize.Y - height) top = info.dwSize.Y - height;
+    if (top < 0) top = 0;
+
+    SMALL_RECT window{0, top, (SHORT)(info.dwSize.X - 1), (SHORT)(top + height - 1)};
+    SetConsoleWindowInfo(h, TRUE, &window);
+}
+
 void refresh_prompt()
 {
     if (!g_line_cs_ready) return;
@@ -213,6 +234,7 @@ void refresh_prompt()
     {
         erase_prompt_locked();
         draw_prompt_locked();
+        ensure_cursor_visible();
     }
     LeaveCriticalSection(&g_line_cs);
     console_unlock();
@@ -1270,8 +1292,15 @@ void enter_raw_mode()
     g_have_saved_mode = true;
 
     DWORD mode = g_saved_in_mode;
-    mode &= ~(ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT | ENABLE_PROCESSED_INPUT | ENABLE_QUICK_EDIT_MODE);
-    mode |= ENABLE_EXTENDED_FLAGS | ENABLE_WINDOW_INPUT;
+    // 鼠标的两个模式位分工不同, 这里要**一个开一个关**:
+    //   ENABLE_MOUSE_INPUT   = 把鼠标事件塞进输入缓冲区交给客户端。打开时 conhost 不再自己
+    //                          滚窗口, 而本 shell 不处理鼠标事件 —— 表现为滚轮没反应。必须关。
+    //   ENABLE_QUICK_EDIT_MODE = 控制台宿主自己处理鼠标(拖选/右键复制)。关掉就只能看不能选,
+    //                          必须开, 否则没法复制日志。
+    // QuickEdit 的固有行为: 有选区时控制台输出会暂停(和 cmd 一样), 取消选区/复制完即恢复。
+    mode &= ~(ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT | ENABLE_PROCESSED_INPUT |
+              ENABLE_MOUSE_INPUT | ENABLE_WINDOW_INPUT);
+    mode |= ENABLE_EXTENDED_FLAGS | ENABLE_QUICK_EDIT_MODE;
     SetConsoleMode(in, mode);
 }
 
