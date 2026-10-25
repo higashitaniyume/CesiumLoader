@@ -35,9 +35,9 @@ struct LoaderConfig
     bool consoleTopmost = false;            // 控制台窗口是否置顶(默认不置顶: 置顶会一直压着游戏)
 
     // CesiumLoader Debug Shell: 在控制台里输入命令, 查环境/看日志/改配置
-    // (loader.<字段> 或 <ModId>.<键>)。默认**关闭**(调试功能需显式打开), 控制台照常显示日志。
-    // shell 里可热改: set loader.debugShell true/false
-    bool debugShell = false;
+    // (loader.<字段> 或 <ModId>.<键>)。默认**打开**; 关掉只影响命令输入, 控制台照常显示日志。
+    // shell 里可热改: set loader.debugShell false
+    bool debugShell = true;
 
 
     // mod 日志 -> 控制台 转发线程
@@ -172,7 +172,7 @@ struct LoaderConfig
     // 只受本开关控制。设为 false = 恢复原版行为(退房/解散/被踢时 await 之后的代码仍会被 NRE 跳过)。
     bool steamBypassLobbyQuery = true;
 
-    std::string sdkVersion = "2.7.2";
+    std::string sdkVersion = "2.8.0";
 
     // 加载器自身版本(SemVer)。与发布 tag (modloader-<版本>) 对应, 启动横幅会打印。
     // 与 sdkVersion 独立递增: 改动引导/互操作/打包时递增此值。

@@ -2,7 +2,7 @@
 
 控制台窗口里直接输入命令，查看加载器环境、改配置、看 mod 状态和日志，不用改文件、不用重启。
 
-在 `doorstop_config.json` 里配置 `"debugShell": true`（或在运行中的 shell 里 `set loader.debugShell true`）后启用；默认关闭，关闭时控制台只显示日志。
+默认开启；把 `doorstop_config.json` 里的 `"debugShell"` 设为 `false`（或在运行中的 shell 里 `set loader.debugShell false`）就只显示日志、不读取命令输入。
 
 启用后，控制台最后一行是提示符：
 

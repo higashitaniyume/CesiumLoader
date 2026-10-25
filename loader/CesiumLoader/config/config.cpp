@@ -80,7 +80,7 @@ LoaderConfig load_config(const std::wstring& config_path)
     // 已按头文件承诺修正。实测仓内与实机 4 份配置都显式写了 consoleTopmost=false,
     // 因此该修正对现有配置**没有任何行为变化**。
     cfg.consoleTopmost = jsonc::boolean(j, "consoleTopmost", cfg.consoleTopmost);
-    // CesiumLoader Debug Shell: 缺失/损坏走默认(关闭); 打开后才读取控制台命令输入。
+    // CesiumLoader Debug Shell: 缺失/损坏走默认(开启); 关掉只影响控制台命令输入。
     cfg.debugShell = jsonc::boolean(j, "debugShell", cfg.debugShell);
     cfg.forwardActivityLog = jsonc::boolean(j, "forwardActivityLog", cfg.forwardActivityLog);
     cfg.speedhackBaseSpeed = read_speed(j, "speedhackBaseSpeed", cfg.speedhackBaseSpeed);

@@ -29,7 +29,7 @@ const Field kFields[] = {
     { "forwardActivityLog", ValueType::Bool, 0, 0, nullptr, Apply::Immediate,
       "把 mod 行为日志转发到控制台" },
     { "debugShell", ValueType::Bool, 0, 0, nullptr, Apply::Immediate,
-      "CesiumLoader Debug Shell(默认关闭; 关闭立即生效, 打开需重启)" },
+      "CesiumLoader Debug Shell(默认开启; 关闭立即生效, 打开需重启)" },
 
     { "speedControlEnabled", ValueType::Bool, 0, 0, nullptr, Apply::StartOnly,
       "变速文件通道(<loader>\\speed); 只能从关到开" },

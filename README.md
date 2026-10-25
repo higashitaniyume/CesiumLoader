@@ -77,7 +77,7 @@ winget install Hiynet.AstralParty.Toys
 | --- | --- |
 | `enabled` | 加载器总开关 |
 | `consoleEnabled` / `consoleTopmost` | 控制台显示与置顶 |
-| `debugShell` | CesiumLoader Debug Shell 的命令输入（默认关） |
+| `debugShell` | CesiumLoader Debug Shell 的命令输入（默认开） |
 | `forwardActivityLog` | 将模组行为日志转发到控制台 |
 | `speedhackBaseSpeed` | 启动时的基础倍率，`1.0` 为正常速度 |
 | `speedControlEnabled` | 允许通过文件通道调整倍率 |
@@ -92,7 +92,7 @@ Steam 绕过涉及多个独立开关，推荐通过 Toys 选择启动方式。�
 
 ## CesiumLoader Debug Shell
 
-在配置里把 `debugShell` 设为 `true` 后，控制台窗口里可以直接输入命令查看环境、改配置、看日志：
+控制台窗口里可以直接输入命令查看环境、改配置、看日志（配置项 `debugShell`，默认开启；设为 `false` 则只显示日志）：
 
 ```text
 cesium> ls TurnFocus
