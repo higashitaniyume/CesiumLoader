@@ -91,6 +91,7 @@ Set-Content -Path $bat -Value $lines -Encoding ascii
 & cmd.exe /c $bat
 if ($LASTEXITCODE -ne 0) { throw '编译失败' }
 
+Set-Clipboard -Value 'status'   # 联调台里靠 Ctrl+V 粘贴这一行
 Write-Host '== 运行联调台(会短暂弹出一个控制台窗口)' -ForegroundColor Cyan
 $p = Start-Process -FilePath $exe -PassThru -Wait
 Write-Host "退出码: $($p.ExitCode)"

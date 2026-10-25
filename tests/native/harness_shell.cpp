@@ -150,32 +150,36 @@ int main(int argc, char**)
     screen += L"\\shell-screen.txt";
     DeleteFileW(screen.c_str());
 
-    const wchar_t* script[] = {
-        L"help set\r",
-        L"set --help\r",
-        L"status\r",
-        L"ls TurnFocus\r",
-        L"set TurnFocusMod.cooldownSeconds 3\r",
-        L"set loader.consoleTopmost true\r",
-        L"set loader.speedhackBaseSpeed 0.5\r",
-        L"set loader.domainTimeoutSec 45\r",
-        L"get loader.domainTimeoutSec\r",
-        L"mods\r",
-        L"env\r",
-        L"detach\r",
+    struct Step { const wchar_t* keys; const wchar_t* label; bool clearBefore; };
+    const Step script[] = {
+        { L"help\r", L"help", true },
+        { L"help set\r", L"help set", true },
+        { L"set --help\r", L"set --help", true },
+        { L"status\r", L"status", true },
+        { L"ls TurnFocus\r", L"ls TurnFocus", true },
+        { L"set TurnFocusMod.cooldownSeconds 3\r", L"set TurnFocusMod.cooldownSeconds 3", true },
+        { L"set loader.consoleTopmost true\r", L"set loader.consoleTopmost true", true },
+        { L"set loader.speedhackBaseSpeed 0.5\r", L"set loader.speedhackBaseSpeed 0.5", true },
+        { L"set loader.domainTimeoutSec 45\r", L"set loader.domainTimeoutSec 45", true },
+        { L"get loader.domainTimeoutSec\r", L"get loader.domainTimeoutSec", true },
+        { L"mods\r", L"mods", true },
+        { L"env\r", L"env", true },
+        { L"\x16", L"paste Ctrl+V(不回车)", true },
+        { L"\r", L"回车执行粘贴内容", false },   // 不能先 clear, 否则会粘到上一行后面
+        { L"detach\r", L"detach", true },
     };
 
-    for (const wchar_t* line : script)
+    for (const Step& step : script)
     {
         // 先清屏, 每次只抓这一条命令的结果(控制台的可读区域有限, 滚动历史读不到)。
-        inject(L"clear\r");
-        Sleep(250);
-        inject(line);
+        if (step.clearBefore)
+        {
+            inject(L"clear\r");
+            Sleep(250);
+        }
+        inject(step.keys);
         Sleep(650);
-
-        std::wstring label(line);
-        while (!label.empty() && (label.back() == L'\r' || label.back() == L'\n')) label.pop_back();
-        dump_screen(screen, true, label);
+        dump_screen(screen, true, step.label);
     }
 
     (void)argc;

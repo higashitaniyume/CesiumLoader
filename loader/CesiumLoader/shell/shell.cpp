@@ -1365,10 +1365,87 @@ void history_move(int delta)
     refresh_prompt();
 }
 
+// ---------- 剪贴板 ----------
+//
+// QuickEdit 的右键粘贴由控制台宿主直接把字符注入输入缓冲区, 不需要这里做;
+// 这里补的是快捷键: Ctrl+V / Ctrl+Shift+V / Shift+Insert。
+// 粘贴只填进当前行、不自动回车 —— 避免把一整段日志粘成一条命令直接执行。
+
+std::wstring read_clipboard_text()
+{
+    bool opened = false;
+    for (int attempt = 0; attempt < 5 && !opened; ++attempt)
+    {
+        opened = OpenClipboard(nullptr) != FALSE;
+        if (!opened) Sleep(10);
+    }
+    if (!opened) return std::wstring();
+
+    std::wstring text;
+    if (IsClipboardFormatAvailable(CF_UNICODETEXT))
+    {
+        HANDLE handle = GetClipboardData(CF_UNICODETEXT);
+        if (handle != nullptr)
+        {
+            const wchar_t* p = static_cast<const wchar_t*>(GlobalLock(handle));
+            if (p != nullptr)
+            {
+                text = p;
+                GlobalUnlock(handle);
+            }
+        }
+    }
+    CloseClipboard();
+    return text;
+}
+
+void paste_clipboard()
+{
+    std::wstring text = read_clipboard_text();
+    if (text.empty())
+    {
+        print("剪贴板里没有文本", LOG_DIM);
+        return;
+    }
+
+    // 换行/制表符压成空格: 多行内容合并成一行, 让用户自己确认后再回车。
+    std::wstring clean;
+    clean.reserve(text.size());
+    for (wchar_t c : text)
+    {
+        if (c == L'\r' || c == L'\n' || c == L'\t') clean += L' ';
+        else clean += c;
+    }
+    while (!clean.empty() && clean.back() == L' ') clean.pop_back();
+
+    bool truncated = false;
+    EnterCriticalSection(&g_line_cs);
+    const size_t room = kMaxInput > g_input.size() ? kMaxInput - g_input.size() : 0;
+    if (clean.size() > room)
+    {
+        clean.resize(room);
+        truncated = true;
+    }
+    g_input += clean;
+    LeaveCriticalSection(&g_line_cs);
+
+    refresh_prompt();
+    if (truncated)
+        print("粘贴内容过长, 已截断到 " + std::to_string(kMaxInput) + " 个字符", LOG_YELLOW);
+}
 void handle_key(const KEY_EVENT_RECORD& key)
 {
     const wchar_t ch = key.uChar.UnicodeChar;
     const WORD vk = key.wVirtualKeyCode;
+    const bool ctrl = (key.dwControlKeyState & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED)) != 0;
+    const bool shift = (key.dwControlKeyState & SHIFT_PRESSED) != 0;
+
+    // 粘贴: Ctrl+V(部分键盘布局只给字符 0x16) / Ctrl+Shift+V / Shift+Insert
+    if (ch == 22 || (ctrl && vk == 'V') || (shift && vk == VK_INSERT))
+    {
+        paste_clipboard();
+        return;
+    }
 
     if (vk == VK_RETURN) { submit(); return; }
 
