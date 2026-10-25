@@ -112,6 +112,7 @@ namespace CombatOddsMod
                     _cfg.ShowRelicAtkBonus     = c.GetBool("ShowRelicAtkBonus", d.ShowRelicAtkBonus);
                     _cfg.ShowBoardPlayerAttrs  = c.GetBool("ShowBoardPlayerAttrs", d.ShowBoardPlayerAttrs);
                     _cfg.LogAtkBonusDetail     = c.GetBool("LogAtkBonusDetail", d.LogAtkBonusDetail);
+                    _cfg.LogBattleOdds         = c.GetBool("LogBattleOdds", d.LogBattleOdds);
                     _cfg.ShowSkillCooldown     = c.GetBool("ShowSkillCooldown", d.ShowSkillCooldown);
                     // Debug 构建(deploy-combatodds.ps1 部署的那份)默认打开 CD 明细日志, 免去改配置。
 #if COMBATODDS_DEBUG_PROBES
@@ -138,6 +139,7 @@ namespace CombatOddsMod
                         c.Set("ShowRelicAtkBonus", _cfg.ShowRelicAtkBonus);
                         c.Set("ShowBoardPlayerAttrs", _cfg.ShowBoardPlayerAttrs);
                         c.Set("LogAtkBonusDetail", _cfg.LogAtkBonusDetail);
+                        c.Set("LogBattleOdds", _cfg.LogBattleOdds);
                         c.Set("ShowSkillCooldown", _cfg.ShowSkillCooldown);
                         c.Set("LogCdDetail", _cfg.LogCdDetail);
                         if (!c.Save()) SdkLog.Warn("CombatOdds", "配置未能保存，请检查 mod 目录写入权限。");
@@ -493,10 +495,14 @@ namespace CombatOddsMod
             if (plain != _lastLogged)
             {
                 _lastLogged = plain;
-                // 控制台输出(带边框, 便于在滚动日志里一眼看到)。
-                SdkLog.Info("CombatOdds", "\n┌─ 战斗胜率 ─────────────\n" + Indent(plain) + "\n└───────────────────────");
-                // 通知(有渲染后端时更显眼; 无后端时也进日志)。
-                if (_cfg.PopupNotification)
+                // 控制台输出(带边框, 便于在滚动日志里一眼看到)。默认关闭: 这些读数已经显示在
+                // 战斗窗口面板与通知里, 每次都写日志会把控制台刷满。
+                if (_cfg.LogBattleOdds)
+                    SdkLog.Info("CombatOdds", "\n┌─ 战斗胜率 ─────────────\n" + Indent(plain) + "\n└───────────────────────");
+                // 通知只在真有 UI 渲染后端时弹。没有后端时 SDK 会把通知文本镜像进日志
+                // ("无渲染后端时也保证可观察"), 而战斗读数已经显示在 FightWindow 覆盖层里,
+                // 这个镜像只会把控制台刷满 —— 所以这里先判断 IsRenderingAvailable。
+                if (_cfg.PopupNotification && UiService.IsRenderingAvailable)
                 {
                     try { UiService.Notify(plain, UiNotificationLevel.Info, _cfg.NotificationTtl, _ctx); } catch { }
                 }
