@@ -12,20 +12,20 @@ std::string box_path_desc(int path, const PodTaskInvoke& r)
     switch (path)
     {
     case BOX_VALUE_BOX:
-        return "il2cpp_value_box(256B 零初始化栈缓冲区)成功 -> 装箱对象 " + cesium::steam::diagnostics::hex((uintptr_t)r.boxed_arg);
+        return "il2cpp_value_box (256B zero-initialized stack buffer) succeeded -> boxed object " + cesium::steam::diagnostics::hex((uintptr_t)r.boxed_arg);
     case BOX_OBJNEW_AFTER_NULL:
-        return "il2cpp_value_box 返回 NULL(空 Nullable 的 .NET 装箱语义) -> 改用 il2cpp_object_new 兜底 -> " +
+        return "il2cpp_value_box returned NULL (the .NET boxing semantics of an empty Nullable) -> falling back to il2cpp_object_new -> " +
                cesium::steam::diagnostics::hex((uintptr_t)r.boxed_arg);
     case BOX_OBJNEW_NO_EXPORT:
-        return "il2cpp_value_box 导出缺失 -> 改用 il2cpp_object_new 兜底 -> " + cesium::steam::diagnostics::hex((uintptr_t)r.boxed_arg);
+        return "il2cpp_value_box export missing -> falling back to il2cpp_object_new -> " + cesium::steam::diagnostics::hex((uintptr_t)r.boxed_arg);
     case BOX_FAILED_UNKNOWN:
-        return "无法判定参数是否为值类型(缺 method_get_param/type_get_object/class_from_system_type/"
-               "class_is_valuetype) -> 本次失败(绝不冒险传 null)";
+        return "cannot tell whether the param is a value type (missing method_get_param/type_get_object/class_from_system_type/"
+               "class_is_valuetype) -> failing this time (never risk passing null)";
     case BOX_FAILED_ALL:
-        return "值类型参数, 但 il2cpp_value_box 与 il2cpp_object_new 两条路都拿不到装箱对象 -> 本次失败";
+        return "value-type param, but neither il2cpp_value_box nor il2cpp_object_new produced a boxed object -> failing this time";
     default:
-        return (r.param_count >= 1) ? std::string("引用类型参数 -> args[0]=nullptr(合法)")
-                                    : std::string("工厂 0 参数 -> 不需要参数");
+        return (r.param_count >= 1) ? std::string("reference-type param -> args[0]=nullptr (legal)")
+                                    : std::string("factory takes 0 params -> no argument needed");
     }
 }
 
@@ -64,28 +64,28 @@ void log_direct_attempt(const cesium_safe::il2cpp_tbl& t, const TaskFactory& f,
     const std::string tag = std::string("[steamhack] ") + f.label + "[direct](" + phase + "): ";
     if (r.skipped)
     {
-        log_line(tag + "不适用 —— 工厂不是 类..ctor(1)(或缺少 ctor methodPointer / il2cpp_object_new), "
-                      "direct 路径未被尝试");
+        log_line(tag + "not applicable - the factory is not class..ctor(1) (or ctor methodPointer / il2cpp_object_new is missing), "
+                      "direct path was not attempted");
         return;
     }
 
-    std::string s = tag + "原生 ABI 直调 Task<T>..ctor(T), 绕过 il2cpp_runtime_invoke: ";
+    std::string s = tag + "native ABI direct Task<T>..ctor(T), bypassing il2cpp_runtime_invoke: ";
     s += "ctor methodPointer=" + cesium::steam::diagnostics::hex((uintptr_t)f.ctor_ptr);
-    s += " 目标类=" + class_name_of(t, f.ret_class);
-    s += " il2cpp_object_new=" + std::string(r.alloc_ok ? "成功" : "失败");
-    s += " 参数=指向 " + std::to_string(r.buffer_bytes) + " 字节全零栈缓冲区(";
-    s += r.buf_first16_zero ? "前16B确认全零 -> 传进去的是空 Nullable(hasValue=false)"
-                            : "前16B非零(异常, 应不可能)";
+    s += " targetClass=" + class_name_of(t, f.ret_class);
+    s += " il2cpp_object_new=" + std::string(r.alloc_ok ? "ok" : "failed");
+    s += " arg=points to " + std::to_string(r.buffer_bytes) + " byte all-zero stack buffer (";
+    s += r.buf_first16_zero ? "first 16B confirmed zero -> an empty Nullable was passed (hasValue=false)"
+                            : "first 16B non-zero (unexpected, should not happen)";
     s += ")";
 
     if (r.seh_code)
-        s += " | 原生调用触发 SEH 异常 " + hex_code_str(r.seh_code) +
-             " —— 已被 __try/__except 捕获, **本路径作废**";
+        s += " | native call raised SEH " + hex_code_str(r.seh_code) +
+             " - captured by __try/__except, **this path is void**";
     else if (!r.called)
-        s += " | 未执行调用(见上)";
+        s += " | call not executed (see above)";
     else
-        s += std::string(" | 原生调用完成, 返回对象=") +
-             (obj ? cesium::steam::diagnostics::hex((uintptr_t)obj) : std::string("(空)"));
+        s += std::string(" | native call done, object=") +
+             (obj ? cesium::steam::diagnostics::hex((uintptr_t)obj) : std::string("(empty)"));
     log_line(s);
 }
 
@@ -94,25 +94,25 @@ void log_direct_attempt(const cesium_safe::il2cpp_tbl& t, const TaskFactory& f,
 std::string hasvalue_desc(const PodNullableHasValue& h, bool boxed)
 {
     if (h.seh_code)
-        return "读取触发 SEH 异常 " + hex_code_str(h.seh_code) +
-               " —— 已被 __try/__except 捕获, 未能读取 hasValue 字段";
+        return "read raised SEH " + hex_code_str(h.seh_code) +
+               " - captured by __try/__except, could not read hasValue";
     if (!h.field)
-        return "未能读取 hasValue 字段(类上既没有 \"hasValue\" 也没有 \"has_value\", 或 "
-               "il2cpp_class_get_field_from_name 导出缺失)";
+        return "could not read hasValue (the class has neither \"hasValue\" nor \"has_value\", or "
+               "il2cpp_class_get_field_from_name export missing)";
 
-    std::string s = "hasValue 字段 FieldInfo=" + cesium::steam::diagnostics::hex((uintptr_t)h.field) +
-                    " 名称=" + std::string(h.field_by == 1 ? "\"hasValue\"" : "\"has_value\"");
-    s += h.have_offset ? (" 偏移=" + std::to_string(h.offset))
-                       : std::string(" 偏移=(il2cpp_field_get_offset 导出缺失, 未取到)");
-    s += h.have_direct ? (" 直接按偏移读=" + std::string(h.direct_value ? "true" : "false"))
-                       : std::string(" 直接按偏移读=(未取到)");
+    std::string s = "hasValue field FieldInfo=" + cesium::steam::diagnostics::hex((uintptr_t)h.field) +
+                    " name=" + std::string(h.field_by == 1 ? "\"hasValue\"" : "\"has_value\"");
+    s += h.have_offset ? (" offset=" + std::to_string(h.offset))
+                       : std::string(" offset=(il2cpp_field_get_offset export missing, unavailable)");
+    s += h.have_direct ? (" directOffsetRead=" + std::string(h.direct_value ? "true" : "false"))
+                       : std::string(" directOffsetRead=(not available)");
     s += h.have_fieldget ? (" il2cpp_field_get_value=" + std::string(h.fieldget_value ? "true" : "false"))
-                         : std::string(" il2cpp_field_get_value=(导出缺失或未取到)");
+                         : std::string(" il2cpp_field_get_value=(export missing or unavailable)");
     if (boxed)
-        s += " (数据指针来源: " +
+        s += " (data pointer source: " +
              std::string(h.data_from_unbox == 1 ? "il2cpp_object_unbox"
-                                                : (h.data_from_unbox == 2 ? "按 Il2CppObject 头 +16 回退"
-                                                                          : "未取到")) +
+                                                : (h.data_from_unbox == 2 ? "fallback via Il2CppObject header +16"
+                                                                          : "not available")) +
              ")";
     return s;
 }
@@ -132,7 +132,7 @@ int log_sample_task_hasvalue(const cesium_safe::il2cpp_tbl& t, void* probe, void
     if (!f.param_class)
     {
         log_line(std::string("[steamhack] ") + label +
-                 ": 未能读取 hasValue 字段(工厂参数类未解析, 没有 Nullable 类可用)");
+                 ": could not read hasValue (factory param class unresolved; no Nullable class available)");
         return -1;
     }
 
@@ -145,42 +145,42 @@ int log_sample_task_hasvalue(const cesium_safe::il2cpp_tbl& t, void* probe, void
                                    inner.have_offset ? inner.offset : 0ULL,
                                    inner.have_offset, &tr);
 
-    std::string msg = std::string("[steamhack] ") + label + ": 样本 Task 的 m_result(" +
-                      f.param_class_name + ") hasValue 诊断 -> ";
+    std::string msg = std::string("[steamhack] ") + label + ": sample Task's m_result(" +
+                      f.param_class_name + ") hasValue diagnostic -> ";
     if (tr.seh_code)
     {
-        msg += "读取触发 SEH 异常 " + hex_code_str(tr.seh_code) +
-               " —— 已被 __try/__except 捕获, 未能读取 hasValue 字段";
+        msg += "read raised SEH " + hex_code_str(tr.seh_code) +
+               " - captured by __try/__except, could not read hasValue";
     }
     else if (!tr.found)
     {
-        msg += "未能读取 hasValue 字段(Task 类上找不到 m_result, 或 "
-               "il2cpp_class_get_field_from_name 导出缺失)";
+        msg += "could not read hasValue (m_result not found on the Task class, or "
+               "il2cpp_class_get_field_from_name export missing)";
     }
     else
     {
         msg += "m_result FieldInfo=" + cesium::steam::diagnostics::hex((uintptr_t)tr.field);
-        msg += tr.have_offset ? (" 偏移=" + std::to_string(tr.offset))
-                              : std::string(" 偏移=(il2cpp_field_get_offset 导出缺失)");
+        msg += tr.have_offset ? (" offset=" + std::to_string(tr.offset))
+                              : std::string(" offset=(il2cpp_field_get_offset export missing)");
         if (tr.value_object_called)
         {
             if (tr.value_object_is_null)
-                msg += " | il2cpp_field_get_value_object -> NULL(空 Nullable 的装箱语义 => hasValue=false)";
+                msg += " | il2cpp_field_get_value_object -> NULL (boxing semantics of an empty Nullable => hasValue=false)";
             else if (tr.have_inner)
-                msg += " | il2cpp_field_get_value_object -> 装箱对象, 读出 hasValue=" +
+                msg += " | il2cpp_field_get_value_object -> boxed object, read hasValue=" +
                        std::string(tr.inner_value ? "true" : "false");
             else
-                msg += " | il2cpp_field_get_value_object -> 装箱对象, 但未能读出其中的 hasValue 字段";
+                msg += " | il2cpp_field_get_value_object -> boxed object, but its hasValue field could not be read";
         }
         else
         {
-            msg += " | il2cpp_field_get_value_object 导出缺失, 未走权威路径";
+            msg += " | il2cpp_field_get_value_object export missing, authoritative path not used";
         }
         if (tr.have_direct)
-            msg += std::string(" | 次要(按偏移直读, 假设引用类型字段偏移含 16B 对象头)=") +
+            msg += std::string(" | secondary(direct offset read, assuming reference field offset includes the 16B header)=") +
                    (tr.direct_value ? "true" : "false");
         else
-            msg += " | 次要(按偏移直读)=(未取到)";
+            msg += " | secondary(direct offset read)=(not available)";
     }
     log_line(msg);
 
@@ -208,10 +208,10 @@ void* invoke_task_factory(const cesium_safe::il2cpp_tbl& t, TaskFactory& f, void
     if (f.box_logged.fetch_add(1, std::memory_order_relaxed) == 0)
     {
         const std::string vt = (r.param_is_valuetype < 0)
-                                   ? std::string("未知")
-                                   : (r.param_is_valuetype ? std::string("是") : std::string("否"));
-        log_line("[steamhack] " + std::string(f.label) + ": 参数装箱 工厂参数个数=" +
-                 std::to_string(r.param_count) + " 值类型=" + vt + " 路径=" + box_path_desc(r.box_path, r));
+                                   ? std::string("unknown")
+                                   : (r.param_is_valuetype ? std::string("yes") : std::string("no"));
+        log_line("[steamhack] " + std::string(f.label) + ": boxing params, factory paramCount=" +
+                 std::to_string(r.param_count) + " isValueType=" + vt + " path=" + box_path_desc(r.box_path, r));
 
         // ---- 额外诊断(需求核心): 直接读出"我们刚装箱并传给工厂的那个 Nullable<Lobby>"
         //      的 hasValue 字段真实值 —— 把"传进去的到底是空 Nullable 还是有值 Nullable"
@@ -222,14 +222,14 @@ void* invoke_task_factory(const cesium_safe::il2cpp_tbl& t, TaskFactory& f, void
             {
                 PodNullableHasValue hv;
                 pod_read_nullable_hasvalue(&t, f.param_class, r.boxed_arg, 1, &hv);
-                log_line("[steamhack] " + std::string(f.label) + ": 装箱参数 hasValue 诊断(类=" +
-                         f.param_class_name + " 装箱对象=" + cesium::steam::diagnostics::hex((uintptr_t)r.boxed_arg) + ") -> " +
+                log_line("[steamhack] " + std::string(f.label) + ": boxed argument hasValue diagnostic (class=" +
+                         f.param_class_name + " boxedObject=" + cesium::steam::diagnostics::hex((uintptr_t)r.boxed_arg) + ") -> " +
                          hasvalue_desc(hv, true));
             }
             else
             {
                 log_line("[steamhack] " + std::string(f.label) +
-                         ": 未能读取 hasValue 字段(工厂参数类未解析或没有装箱对象)");
+                         ": could not read hasValue (factory param class unresolved or no boxed object)");
             }
         }
     }
@@ -238,9 +238,9 @@ void* invoke_task_factory(const cesium_safe::il2cpp_tbl& t, TaskFactory& f, void
     if (r.seh_code)
     {
         if (f.failures.fetch_add(1, std::memory_order_relaxed) == 0)
-            log_line("[steamhack] " + std::string(f.label) + ": runtime_invoke 触发 SEH 异常 " +
-                     hex_code_str(r.seh_code) + " —— 已被 __try/__except 捕获, 本次调用作废"
-                     "(安装期出现即判定失败 -> 不挂钩, 游戏行为与原版一致)");
+            log_line("[steamhack] " + std::string(f.label) + ": runtime_invoke raised SEH " +
+                     hex_code_str(r.seh_code) + " - captured by __try/__except, this call is void"
+                     " (failure at install time -> not hooked, game behaves as vanilla)");
         return nullptr;
     }
 
@@ -259,7 +259,7 @@ void* invoke_task_factory(const cesium_safe::il2cpp_tbl& t, TaskFactory& f, void
         else if (r.obj_alloc_ok == 0)
         {
             log_line("[steamhack] " + std::string(f.label) +
-                     ": il2cpp_object_new 分配 Task 对象失败(或 object_new 导出缺失) -> 本次失败");
+                     ": il2cpp_object_new failed to allocate the Task object (or object_new export missing) -> failing this time");
         }
         return nullptr;
     }
@@ -331,7 +331,7 @@ bool probe_task_completed_and_null(const cesium_safe::il2cpp_tbl& t, void* probe
     if (!get_completed || !method_pointer_of(get_completed))
     {
         log_line("[steamhack] " + tag +
-                 ": 找不到可用的 IsCompleted getter —— 跳过完成态校验(仅按对象类型放行)");
+                 ": no usable IsCompleted getter - skipping the completion check (accept on object type only)");
         return true;
     }
 
@@ -341,25 +341,25 @@ bool probe_task_completed_and_null(const cesium_safe::il2cpp_tbl& t, void* probe
     pod_runtime_invoke((void*)t.runtime_invoke, get_completed, probe, args, &boxed, &exc, &seh);
     if (seh)
     {
-        log_line("[steamhack] " + tag + ": IsCompleted 调用触发 SEH 异常 " +
-                 hex_code_str(seh) + " —— 已被 __try/__except 捕获, 判定失败 -> 不挂钩");
+        log_line("[steamhack] " + tag + ": IsCompleted call raised SEH " +
+                 hex_code_str(seh) + " - captured by __try/__except, check failed -> not hooked");
         return false;
     }
     if (exc || !boxed)
     {
-        log_line("[steamhack] " + tag + ": IsCompleted 调用失败" +
-                 (exc ? "(托管异常)" : "(返回空)") + " —— 不挂钩");
+        log_line("[steamhack] " + tag + ": IsCompleted call failed" +
+                 (exc ? "(managed exception)" : "(returned null)") + " - not hooked");
         return false;
     }
     const bool completed = boxed_byte(t, boxed) != 0;
-    log_line("[steamhack] " + tag + ": 探测对象 IsCompleted=" +
+    log_line("[steamhack] " + tag + ": probe object IsCompleted=" +
              (completed ? "true" : "false") +
-             (t.object_unbox ? " (经 il2cpp_object_unbox 读装箱值)"
-                             : " (按 Il2CppObject 头 +16 读装箱值)"));
+             (t.object_unbox ? " (boxed value read via il2cpp_object_unbox)"
+                             : " (boxed value read via Il2CppObject header +16)"));
     if (!completed)
     {
         log_line("[steamhack] " + tag +
-                 ": 探测任务不是 RanToCompletion —— 不挂钩(否则游戏 await 会永久挂起)");
+                 ": probe task is not RanToCompletion - not hooked (otherwise the game's await would hang forever)");
         return false;
     }
 
@@ -369,15 +369,15 @@ bool probe_task_completed_and_null(const cesium_safe::il2cpp_tbl& t, void* probe
     const int hv = log_sample_task_hasvalue(t, probe, cls, f, tag.c_str());
 
     // ---- 1.6) 结论行(需求: 要能明确看出这次 direct 到底把 hasValue 变成了什么) ----
-    log_line("[steamhack] " + tag + ": hasValue 结论 = " +
-             (hv == 0 ? "**false**(空 Nullable —— 正是期望结果, 游戏侧不会进 if 块)"
-                      : hv == 1 ? "**true**(非空 —— 与期望相反, 游戏侧会进 if 块并调用 Lobby.SetPublic)"
-                                : "未能判定(读不到)"));
+    log_line("[steamhack] " + tag + ": hasValue verdict = " +
+             (hv == 0 ? "**false** (empty Nullable - exactly what we want; the game skips the if block)"
+                      : hv == 1 ? "**true** (non-empty - the opposite of what we want; the game enters the if block and calls Lobby.SetPublic)"
+                                : "undetermined (unreadable)"));
 
     if (strict_nullable && hv == 1)
     {
         log_line("[steamhack] " + tag +
-                 ": 严格校验失败 —— 该路径造出的 Task 里 hasValue 仍为 true(方案C 的 ABI 假设不成立)");
+                 ": strict validation failed - the Task built by this path still has hasValue=true (plan C's ABI assumption does not hold)");
         return false;
     }
 
@@ -387,7 +387,7 @@ bool probe_task_completed_and_null(const cesium_safe::il2cpp_tbl& t, void* probe
     if (!get_result || !method_pointer_of(get_result))
     {
         log_line("[steamhack] " + tag +
-                 ": 类上没有 get_Result(非泛型 Task 属正常) —— 跳过结果校验");
+                 ": no get_Result on the class (normal for a non-generic Task) - skipping result checks");
         return true;
     }
     void* rexc = nullptr;
@@ -396,24 +396,24 @@ bool probe_task_completed_and_null(const cesium_safe::il2cpp_tbl& t, void* probe
     pod_runtime_invoke((void*)t.runtime_invoke, get_result, probe, args, &rv, &rexc, &rseh);
     if (rseh)
     {
-        log_line("[steamhack] " + tag + ": get_Result() 触发 SEH 异常 " +
-                 hex_code_str(rseh) + " —— 已被 __try/__except 捕获, 判定失败 -> 不挂钩");
+        log_line("[steamhack] " + tag + ": get_Result() raised SEH " +
+                 hex_code_str(rseh) + " - captured by __try/__except, check failed -> not hooked");
         return false;
     }
     if (rexc)
     {
         log_line("[steamhack] " + tag +
-                 ": get_Result() 抛出托管异常(说明任务处于 Faulted/Canceled 态) —— 不挂钩");
+                 ": get_Result() threw a managed exception (task is Faulted/Canceled) - not hooked");
         return false;
     }
     // 注意: 我们传进去的结果参数就是 null, 所以这里**不可能**是真值:
     //   rv == nullptr -> 空 Nullable / 引用类型 null(CLR 语义);
     //   rv != nullptr -> IL2CPP 把"无值 Nullable"装箱成了对象(装箱实现差异), 语义仍是"无值"。
     // 两种情况都安全, 只记录实际观测到哪一种。
-    log_line("[steamhack] " + tag + ": 探测对象 get_Result()=" +
-             (rv ? ("装箱对象 " + cesium::steam::diagnostics::hex((uintptr_t)rv) + "(空 Nullable 的装箱差异, 仍代表无值)")
-                 : std::string("null(无值)")) +
-             " —— 校验通过: 已完成 + 结果为 null");
+    log_line("[steamhack] " + tag + ": probe object get_Result()=" +
+             (rv ? ("boxed object " + cesium::steam::diagnostics::hex((uintptr_t)rv) + "(boxing difference of an empty Nullable, still no value)")
+                 : std::string("null (no value)")) +
+             " - validation passed: completed + result is null");
     return true;
 }
 
@@ -441,8 +441,8 @@ void dump_class_methods(const cesium_safe::il2cpp_tbl& t, void* cls, const char*
         }
     }
     log_line(std::string("[steamhack] ") + label +
-             ": 该类里含 Lobby/Async/Task/From/Result 的方法名(上限20): " +
-             (names.empty() ? std::string("(无)") : names));
+             ": methods in that class containing Lobby/Async/Task/From/Result (max 20): " +
+             (names.empty() ? std::string("(none)") : names));
 }
 
 // 未命中诊断(阶段3 专用): 把 Nullable 类里**所有**方法名列出来(上限 24)。
@@ -464,8 +464,8 @@ void dump_all_methods(const cesium_safe::il2cpp_tbl& t, void* cls, const char* l
         names += n;
         shown++;
     }
-    log_line(std::string("[steamhack] ") + label + ": 该类全部方法名(上限24): " +
-             (names.empty() ? std::string("(无, 或 class_get_methods/method_get_name 缺失)") : names));
+    log_line(std::string("[steamhack] ") + label + ": all methods of that class (max 24): " +
+             (names.empty() ? std::string("(none, or class_get_methods/method_get_name missing)") : names));
 }
 
 // 用指定路径造一个默认返回值并做完整校验(类型 + 完成态 + 结果为 null + hasValue 诊断)。
@@ -485,15 +485,15 @@ void* try_build_and_validate(const cesium_safe::il2cpp_tbl& t, TaskFactory& f, i
     {
         PodDirectCtor dr;
         probe = run_direct_ctor(t, f, &dr);
-        log_direct_attempt(t, f, dr, probe, "安装期探测");
+        log_direct_attempt(t, f, dr, probe, "install-time probe");
     }
     else
     {
         void* exc = nullptr;
         probe = invoke_task_factory(t, f, &exc);
-        log_line(std::string("[steamhack] ") + f.label + "[invoke]: runtime_invoke 造 Task " +
-                 (probe ? ("完成, 对象=" + cesium::steam::diagnostics::hex((uintptr_t)probe))
-                        : ("失败(" + std::string(exc ? "抛出托管异常" : "返回空") + ")")));
+        log_line(std::string("[steamhack] ") + f.label + "[invoke]: runtime_invoke built a Task, " +
+                 (probe ? ("done, object=" + cesium::steam::diagnostics::hex((uintptr_t)probe))
+                        : ("failed (" + std::string(exc ? "threw a managed exception" : "returned null") + ")")));
     }
 
     if (!probe) return nullptr;
@@ -502,23 +502,23 @@ void* try_build_and_validate(const cesium_safe::il2cpp_tbl& t, TaskFactory& f, i
     {
         void* pcls = t.object_get_class(probe);
         const bool same = (pcls == f.ret_class);
-        log_line(std::string("[steamhack] ") + f.label + "[" + path + "]: 探测对象=" +
-                 cesium::steam::diagnostics::hex((uintptr_t)probe) + " 类=" + class_name_of(t, pcls) +
-                 " 与期望返回类型一致=" + (same ? "是" : "否"));
+        log_line(std::string("[steamhack] ") + f.label + "[" + path + "]: probe object=" +
+                 cesium::steam::diagnostics::hex((uintptr_t)probe) + " class=" + class_name_of(t, pcls) +
+                 " matchesExpectedReturnType=" + (same ? "yes" : "no"));
         if (!same && f.kind != TF_COMPLETED_TASK)
         {
             log_line(std::string("[steamhack] ") + f.label + "[" + path + "]" +
-                     ": 对象类型与期望返回类型不一致 —— 本路径失败(避免把错误类型的对象交给游戏)");
+                     ": object type differs from the expected return type - this path fails (avoids handing the wrong type to the game)");
             return nullptr;
         }
         if (!same)
             log_line(std::string("[steamhack] ") + f.label + "[" + path + "]" +
-                     ": 类不一致, 但返回类型是非泛型 Task(CompletedTask 可能是内部子类), 接受");
+                     ": class differs, but the return type is a non-generic Task (CompletedTask may be an internal subclass), accepting");
     }
     else
     {
-        log_line(std::string("[steamhack] ") + f.label + "[" + path + "]: 探测对象=" +
-                 cesium::steam::diagnostics::hex((uintptr_t)probe) + " (object_get_class 缺失, 跳过类型校验)");
+        log_line(std::string("[steamhack] ") + f.label + "[" + path + "]: probe object=" +
+                 cesium::steam::diagnostics::hex((uintptr_t)probe) + " (object_get_class missing, skipping type check)");
     }
 
     // 深度校验: 造出来的任务必须真的"已完成"且"结果为 null"。
@@ -568,8 +568,8 @@ bool resolve_task_factory(const cesium_safe::il2cpp_tbl& t, TaskFactory& f, void
     for (auto& n : need) if (!n.p) { if (!missing.empty()) missing += ", "; missing += n.n; }
     if (!missing.empty())
     {
-        log_line(std::string("[steamhack] ") + label + ": IL2CPP 导出缺失(" + missing +
-                 ") —— 无法构造默认返回值, 不挂钩");
+        log_line(std::string("[steamhack] ") + label + ": IL2CPP exports missing (" + missing +
+                 ") - cannot build a default return value, not hooked");
         return false;
     }
 
@@ -577,31 +577,31 @@ bool resolve_task_factory(const cesium_safe::il2cpp_tbl& t, TaskFactory& f, void
     void* ret = t.method_get_return_type(hooked_mi);
     if (!ret)
     {
-        log_line(std::string("[steamhack] ") + label + ": method_get_return_type 返回空 —— 不挂钩");
+        log_line(std::string("[steamhack] ") + label + ": method_get_return_type returned null - not hooked");
         return false;
     }
     f.ret_type = ret;
-    f.ret_type_name = t.type_get_name ? cstr_or(t.type_get_name(ret), "(null)") : std::string("(type_get_name 缺失)");
+    f.ret_type_name = t.type_get_name ? cstr_or(t.type_get_name(ret), "(null)") : std::string("(type_get_name missing)");
 
     void* tobj = t.type_get_object(ret);
     if (!tobj)
     {
-        log_line(std::string("[steamhack] ") + label + ": type_get_object(" + f.ret_type_name + ") 返回空 —— 不挂钩");
+        log_line(std::string("[steamhack] ") + label + ": type_get_object(" + f.ret_type_name + ") returned null - not hooked");
         return false;
     }
     void* cls = t.class_from_system_type(tobj);
     if (!cls)
     {
-        log_line(std::string("[steamhack] ") + label + ": class_from_system_type 返回空 —— 不挂钩");
+        log_line(std::string("[steamhack] ") + label + ": class_from_system_type returned null - not hooked");
         return false;
     }
     f.ret_class = cls;
 
-    log_line(std::string("[steamhack] ") + label + ": 返回值解析 返回类型=" + f.ret_type_name +
+    log_line(std::string("[steamhack] ") + label + ": return value resolved, type=" + f.ret_type_name +
              " Il2CppType=" + cesium::steam::diagnostics::hex((uintptr_t)ret) +
              " System.Type=" + cesium::steam::diagnostics::hex((uintptr_t)tobj) +
              " Il2CppClass=" + cesium::steam::diagnostics::hex((uintptr_t)cls) +
-             " 类名=" + class_name_of(t, cls));
+             " className=" + class_name_of(t, cls));
 
     // ---- 判定"是 Task<T> 还是非泛型 Task" ----
     // 三条信号, 任一命中即认为是泛型(用于禁止 Task.CompletedTask 兜底 —— 在 Task<T> 的位置
@@ -616,10 +616,10 @@ bool resolve_task_factory(const cesium_safe::il2cpp_tbl& t, TaskFactory& f, void
     const bool by_get_result = (t.class_get_method_from_name &&
                                 t.class_get_method_from_name(cls, "get_Result", 0) != nullptr);
     const bool cls_is_generic = by_type_name || by_class_name || by_get_result;
-    log_line(std::string("[steamhack] ") + label + ": 泛型判定 类型名含`=" + (by_type_name ? "是" : "否") +
-             " 类名含`=" + (by_class_name ? "是" : "否") +
-             " 有 get_Result()=" + (by_get_result ? "是" : "否") +
-             " -> " + (cls_is_generic ? "Task<T>(泛型)" : "非泛型 Task"));
+    log_line(std::string("[steamhack] ") + label + ": generic check typeNameContains`=" + (by_type_name ? "yes" : "no") +
+             " classNameContains`=" + (by_class_name ? "yes" : "no") +
+             " hasGetResult=" + (by_get_result ? "yes" : "no") +
+             " -> " + (cls_is_generic ? "Task<T> (generic)" : "non-generic Task"));
 
     // ---- 候选 A: cls.FromResult(1) ----
     void* cand = t.class_get_method_from_name(cls, "FromResult", 1);
@@ -628,9 +628,9 @@ bool resolve_task_factory(const cesium_safe::il2cpp_tbl& t, TaskFactory& f, void
         void* cand_ret = t.method_get_return_type(cand);
         void* cand_ptr = method_pointer_of(cand);
         const bool ret_match = (cand_ret == f.ret_type);
-        log_line(std::string("[steamhack] ") + label + ": cls.FromResult 解析 命中=是 MethodInfo=" +
+        log_line(std::string("[steamhack] ") + label + ": cls.FromResult resolve hit=yes MethodInfo=" +
                  cesium::steam::diagnostics::hex((uintptr_t)cand) + " methodPointer=" + cesium::steam::diagnostics::hex((uintptr_t)cand_ptr) +
-                 " 返回类型指针与本体一致=" + (ret_match ? "是" : "否"));
+                 " returnTypePtrMatchesBody=" + (ret_match ? "yes" : "no"));
         if (ret_match && cand_ptr)
         {
             f.factory = cand;
@@ -639,14 +639,14 @@ bool resolve_task_factory(const cesium_safe::il2cpp_tbl& t, TaskFactory& f, void
         else
         {
             log_line(std::string("[steamhack] ") + label +
-                     ": FromResult 校验未通过(返回类型指针不一致 或 methodPointer 为空) —— "
-                     "判定为基类上的开放泛型定义, 不采用, 转构造函数兜底");
+                     ": FromResult validation failed (return type pointer mismatch or null methodPointer) - "
+                     "treated as an open generic definition on the base type; not used, falling back to the constructor");
         }
     }
     else
     {
         log_line(std::string("[steamhack] ") + label +
-                 ": cls.FromResult 解析 命中=否 (FromResult 实际声明在非泛型 Task 上, 属预期)");
+                 ": cls.FromResult resolve hit=no (FromResult is declared on the non-generic Task, as expected)");
     }
 
     // ---- 候选 B: object_new(cls) + cls..ctor(1) ----
@@ -659,20 +659,20 @@ bool resolve_task_factory(const cesium_safe::il2cpp_tbl& t, TaskFactory& f, void
             f.factory = ctor;
             f.ctor_ptr = ctor_ptr;   // 方案C: 记住原生入口, direct 路径直调它
             f.kind = TF_CTOR_OBJECT_NEW;
-            log_line(std::string("[steamhack] ") + label + ": 采用构造函数 类..ctor(1) MethodInfo=" +
+            log_line(std::string("[steamhack] ") + label + ": using constructor class..ctor(1) MethodInfo=" +
                      cesium::steam::diagnostics::hex((uintptr_t)ctor) + " methodPointer=" + cesium::steam::diagnostics::hex((uintptr_t)ctor_ptr) +
-                     " + il2cpp_object_new —— 与 FromResult 等价(Mono 源码注释即 "
+                     " + il2cpp_object_new - equivalent to FromResult (the Mono source comment says "
                      "\"Construct a pre-completed Task<TResult>\")");
             log_line(std::string("[steamhack] ") + label +
-                     ": 方案C 可用性 —— 上面这个 methodPointer 就是【原生 ABI 直调】的入口; "
+                     ": plan C availability - the methodPointer above is the entry for the native ABI direct call; "
                      "steamBypassTaskCtorMode=\"" + std::string(g_ctor_mode_name) + "\"");
         }
         else
         {
-            log_line(std::string("[steamhack] ") + label + ": 类..ctor(1) 解析 命中=" +
-                     (ctor ? "是" : "否") +
-                     (ctor && !ctor_ptr ? " 但 methodPointer 为空" : "") +
-                     (t.object_new ? "" : " 且 il2cpp_object_new 导出缺失") + " —— 该兜底不可用");
+            log_line(std::string("[steamhack] ") + label + ": class..ctor(1) resolve hit=" +
+                     (ctor ? "yes" : "no") +
+                     (ctor && !ctor_ptr ? " but methodPointer is null" : "") +
+                     (t.object_new ? "" : " and il2cpp_object_new export is missing") + " - that fallback is unavailable");
         }
     }
 
@@ -690,23 +690,23 @@ bool resolve_task_factory(const cesium_safe::il2cpp_tbl& t, TaskFactory& f, void
             f.factory = getter;
             f.kind = TF_COMPLETED_TASK;
             log_line(std::string("[steamhack] ") + label +
-                     ": 返回类型是非泛型 Task, 采用 Task.CompletedTask getter MethodInfo=" +
+                     ": return type is a non-generic Task, using the Task.CompletedTask getter MethodInfo=" +
                      cesium::steam::diagnostics::hex((uintptr_t)getter));
         }
         else
         {
-            log_line(std::string("[steamhack] ") + label + ": Task.CompletedTask 解析 命中=否");
+            log_line(std::string("[steamhack] ") + label + ": Task.CompletedTask resolve hit=no");
         }
     }
     else if (!f.factory)
     {
         log_line(std::string("[steamhack] ") + label +
-                 ": 返回类型是泛型 Task<T> —— 明确禁止用 Task.CompletedTask 兜底(类型混淆), 已跳过该候选");
+                 ": return type is a generic Task<T> - using Task.CompletedTask is explicitly forbidden (type confusion), candidate skipped");
     }
 
     if (!f.factory)
     {
-        log_line(std::string("[steamhack] ") + label + ": 三种构造方式全部失败 —— 不挂钩(游戏行为与原版一致)");
+        log_line(std::string("[steamhack] ") + label + ": all three construction paths failed - not hooked (game behaves as vanilla)");
         dump_class_methods(t, cls, label);
         return false;
     }
@@ -720,12 +720,12 @@ bool resolve_task_factory(const cesium_safe::il2cpp_tbl& t, TaskFactory& f, void
     if (t.method_get_param_count && t.method_get_param)
     {
         const uint32_t pc = t.method_get_param_count(f.factory);
-        log_line(std::string("[steamhack] ") + label + ": 工厂方法参数个数=" + std::to_string(pc));
+        log_line(std::string("[steamhack] ") + label + ": factory paramCount=" + std::to_string(pc));
         if (pc == 1)
         {
             void* pt = t.method_get_param(f.factory, 0);
             const std::string ptn = (pt && t.type_get_name) ? cstr_or(t.type_get_name(pt), "(null)")
-                                                            : std::string("(未知)");
+                                                            : std::string("(unknown)");
             bool is_vt = false;
             bool determined = false;
             void* pcls = nullptr;
@@ -739,8 +739,8 @@ bool resolve_task_factory(const cesium_safe::il2cpp_tbl& t, TaskFactory& f, void
                     determined = true;
                 }
             }
-            log_line(std::string("[steamhack] ") + label + ": 工厂方法参数类型=" + ptn +
-                     " 值类型=" + (determined ? (is_vt ? "是" : "否") : "未知(无法判定)"));
+            log_line(std::string("[steamhack] ") + label + ": factory param type=" + ptn +
+                     " isValueType=" + (determined ? (is_vt ? "yes" : "no") : "unknown (cannot determine)"));
             if (determined && pcls)
             {
                 // ---- 阶段3 复用点: 把这一个 Il2CppClass* 留下来 ----
@@ -752,33 +752,33 @@ bool resolve_task_factory(const cesium_safe::il2cpp_tbl& t, TaskFactory& f, void
                 f.param_is_nullable = is_vt &&
                                       (ptn.find("Nullable") != std::string::npos ||
                                        f.param_class_name.find("Nullable") != std::string::npos);
-                log_line(std::string("[steamhack] ") + label + ": 工厂参数类 pcls=" + cesium::steam::diagnostics::hex((uintptr_t)pcls) +
-                         " 类名=" + f.param_class_name +
-                         " (阶段3 将用它解析 Nullable.get_HasValue)" +
-                         " 类名确认含\"Nullable\"=" + (f.param_is_nullable ? "是" : "否"));
+                log_line(std::string("[steamhack] ") + label + ": factory param class pcls=" + cesium::steam::diagnostics::hex((uintptr_t)pcls) +
+                         " className=" + f.param_class_name +
+                         " (stage 3 will use it to resolve Nullable.get_HasValue)" +
+                         " classNameConfirmsNullable=" + (f.param_is_nullable ? "yes" : "no"));
             }
 
             if (!determined)
             {
                 log_line(std::string("[steamhack] ") + label +
-                         ": 无法判定工厂参数是否为值类型(缺 type_get_object / class_from_system_type / "
-                         "class_is_valuetype) —— 不冒进, 不挂钩");
+                         ": cannot tell whether the factory param is a value type (missing type_get_object / class_from_system_type / "
+                         "class_is_valuetype) - not attempting, not hooked");
                 return false;
             }
             if (is_vt && !t.value_box && !t.object_new)
             {
                 log_line(std::string("[steamhack] ") + label +
-                         ": 工厂参数是值类型, 但 il2cpp_value_box 与 il2cpp_object_new 都缺失 —— "
-                         "无法装箱(传 null 会像上一轮那样崩游戏), 不挂钩");
+                         ": factory param is a value type but both il2cpp_value_box and il2cpp_object_new are missing - "
+                         "cannot box (passing null crashed the game last round), not hooked");
                 return false;
             }
             if (is_vt)
             {
-                log_line(std::string("[steamhack] ") + label + ": 工厂参数是值类型(" +
-                         (ptn.find("Nullable") != std::string::npos ? "空 Nullable" : "非 Nullable") +
-                         ") —— 将用 256B 零初始化缓冲区装箱: il2cpp_value_box" +
-                         (t.value_box ? "(可用)" : "(导出缺失)") +
-                         (t.object_new ? " + il2cpp_object_new 兜底(空 Nullable 装箱返回 NULL 时)" : "(无兜底)"));
+                log_line(std::string("[steamhack] ") + label + ": factory param is a value type (" +
+                         (ptn.find("Nullable") != std::string::npos ? "empty Nullable" : "non-Nullable") +
+                         ") - will box with a 256B zero-initialized buffer: il2cpp_value_box" +
+                         (t.value_box ? "(available)" : "(export missing)") +
+                         (t.object_new ? " + il2cpp_object_new fallback (when boxing an empty Nullable returns NULL)" : "(no fallback)"));
             }
         }
     }
@@ -795,14 +795,14 @@ bool resolve_task_factory(const cesium_safe::il2cpp_tbl& t, TaskFactory& f, void
     if (g_ctor_mode == CTOR_MODE_INVOKE)
     {
         log_line(std::string("[steamhack] ") + label +
-                 "[invoke]: steamBypassTaskCtorMode=\"invoke\" —— 只走 runtime_invoke(不尝试 direct)");
+                 "[invoke]: steamBypassTaskCtorMode=\"invoke\" - runtime_invoke only (no direct attempt)");
         probe = try_build_and_validate(t, f, CPATH_INVOKE);
         if (probe) f.ctor_path = CPATH_INVOKE;
     }
     else if (direct_possible)
     {
         log_line(std::string("[steamhack] ") + label +
-                 "[direct]: 尝试方案C —— 原生 ABI 直调 Task<T>..ctor(T) (steamBypassTaskCtorMode=\"" +
+                 "[direct]: trying plan C - native ABI direct Task<T>..ctor(T) (steamBypassTaskCtorMode=\"" +
                  std::string(g_ctor_mode_name) + "\") ...");
         probe = try_build_and_validate(t, f, CPATH_DIRECT);
         if (probe)
@@ -812,38 +812,38 @@ bool resolve_task_factory(const cesium_safe::il2cpp_tbl& t, TaskFactory& f, void
         else if (g_ctor_mode == CTOR_MODE_AUTO)
         {
             log_line(std::string("[steamhack] ") + label +
-                     "[auto]: direct 路径未通过校验(关键看上面那条 hasValue 结论) —— "
-                     "**自动退回 runtime_invoke 路径**, 见下一条日志");
+                     "[auto]: the direct path failed validation (see the hasValue verdict above) - "
+                     "**automatically falling back to runtime_invoke**, see the next line");
             probe = try_build_and_validate(t, f, CPATH_INVOKE);
             if (probe)
             {
                 f.ctor_path = CPATH_INVOKE;
                 log_line(std::string("[steamhack] ") + label +
-                         "[auto]: 已退回 invoke 路径并通过校验 —— runtime_invoke 这条路 hasValue 可能仍被判为 "
-                         "true, 届时应由方案B(Lobby.SetPublic/SetJoinable/Id 挂成无害)兜住");
+                         "[auto]: fell back to the invoke path and passed validation - on this path hasValue may still be judged "
+                         "true, plan B (Lobby.SetPublic/SetJoinable/Id hooked as harmless) should then catch it");
             }
         }
         else
         {
             log_line(std::string("[steamhack] ") + label +
-                     "[direct]: steamBypassTaskCtorMode=\"direct\" 且 direct 校验失败 —— "
-                     "按配置不退回 invoke, 不挂钩(fail-safe)");
+                     "[direct]: steamBypassTaskCtorMode=\"direct\" and direct validation failed - "
+                     "not falling back to invoke per config, not hooked (fail-safe)");
         }
     }
     else
     {
         const std::string why = (f.kind != TF_CTOR_OBJECT_NEW)
-                                    ? std::string("工厂不是 类..ctor(1)")
-                                    : (!f.ctor_ptr ? std::string("ctor methodPointer 为空")
-                                                   : std::string("il2cpp_object_new 导出缺失"));
+                                    ? std::string("factory is not class..ctor(1)")
+                                    : (!f.ctor_ptr ? std::string("ctor methodPointer is null")
+                                                   : std::string("il2cpp_object_new export missing"));
         if (g_ctor_mode == CTOR_MODE_DIRECT)
         {
             log_line(std::string("[steamhack] ") + label + "[direct]: " + why +
-                     " —— direct 路径不适用, 且模式为 \"direct\" -> 不挂钩(fail-safe)");
+                     " - direct path not applicable and the mode is \"direct\" -> not hooked (fail-safe)");
             return false;
         }
         log_line(std::string("[steamhack] ") + label + "[invoke]: " + why +
-                 " —— direct 不适用, 改走 runtime_invoke");
+                 " - direct not applicable, using runtime_invoke");
         probe = try_build_and_validate(t, f, CPATH_INVOKE);
         if (probe) f.ctor_path = CPATH_INVOKE;
     }
@@ -851,12 +851,12 @@ bool resolve_task_factory(const cesium_safe::il2cpp_tbl& t, TaskFactory& f, void
     if (!probe)
     {
         log_line(std::string("[steamhack] ") + label +
-                 ": 探测最终失败(direct/invoke 两条路径都未通过校验) —— 不挂钩(游戏行为与原版一致)");
+                 ": probe ultimately failed (neither direct nor invoke passed) - not hooked (game behaves as vanilla)");
         dump_class_methods(t, f.ret_class, label);
         return false;
     }
 
-    log_line(std::string("[steamhack] ") + label + ": 探测成功 —— 实际采用路径 = " +
+    log_line(std::string("[steamhack] ") + label + ": probe succeeded - path used = " +
              ctor_path_name(f.ctor_path) +
              " (steamBypassTaskCtorMode=\"" + std::string(g_ctor_mode_name) + "\")");
 
@@ -885,14 +885,14 @@ void* resolve_steam_matchmaking(const cesium_safe::il2cpp_tbl& t, std::string* o
     for (auto& n : need) if (!n.p) { if (!missing.empty()) missing += ", "; missing += n.n; }
     if (!missing.empty())
     {
-        log_line("[steamhack] IL2CPP 函数表缺失: " + missing + " —— 无法解析 SteamMatchmaking");
+        log_line("[steamhack] IL2CPP function table missing: " + missing + " - cannot resolve SteamMatchmaking");
         return nullptr;
     }
 
     void* domain = t.domain_get();
     if (!domain)
     {
-        log_line("[steamhack] il2cpp domain 为空, 无法解析 SteamMatchmaking");
+        log_line("[steamhack] il2cpp domain is null, cannot resolve SteamMatchmaking");
         return nullptr;
     }
 
@@ -900,7 +900,7 @@ void* resolve_steam_matchmaking(const cesium_safe::il2cpp_tbl& t, std::string* o
     void** assemblies = t.domain_get_assemblies(domain, &count);
     if (!assemblies)
     {
-        log_line("[steamhack] domain_get_assemblies 返回空");
+        log_line("[steamhack] domain_get_assemblies returned null");
         return nullptr;
     }
 
@@ -927,9 +927,9 @@ void* resolve_steam_matchmaking(const cesium_safe::il2cpp_tbl& t, std::string* o
         {
             void* cls = t.class_from_name(images[i], ns, "SteamMatchmaking");
             if (!cls) continue;
-            log_line("[steamhack] 命中类 SteamMatchmaking: image=" + image_names[i] +
+            log_line("[steamhack] class SteamMatchmaking hit: image=" + image_names[i] +
                      " ns=\"" + std::string(ns) + "\" Il2CppClass=" + cesium::steam::diagnostics::hex((uintptr_t)cls) +
-                     " 类名=" + class_name_of(t, cls));
+                     " className=" + class_name_of(t, cls));
             // 多份命中时优先取 image 名里带 Steamworks 的那份(Steamworks.NET.dll 的 AOT 镜像)
             const bool better = (!chosen) ||
                                 (chosen_image.find("Steamworks") == std::string::npos &&
@@ -941,9 +941,9 @@ void* resolve_steam_matchmaking(const cesium_safe::il2cpp_tbl& t, std::string* o
 
     if (!chosen)
     {
-        log_line("[steamhack] 未找到类 SteamMatchmaking(候选 ns: \"Steamworks\" / 全局 / \"Steamworks.NET\")"
-                 " —— 阶段2 无法安装");
-        log_line("[steamhack] 域内程序集 " + std::to_string(image_names.size()) + " 个: " + all_images);
+        log_line("[steamhack] class SteamMatchmaking not found (candidate ns: \"Steamworks\" / global / \"Steamworks.NET\")"
+                 " - stage 2 cannot be installed");
+        log_line("[steamhack] domain assemblies " + std::to_string(image_names.size()) + " items: " + all_images);
     }
     if (out_image) *out_image = chosen_image;
     if (out_ns) *out_ns = chosen_ns;
@@ -967,22 +967,22 @@ bool install_lobby_hook(const cesium_safe::il2cpp_tbl& t,
     void* mi = t.class_get_method_from_name(cls, method_name, arg_count);
     if (!mi)
     {
-        log_line("[steamhack] 未命中 SteamMatchmaking." + std::string(method_name) + "(" +
-                 std::to_string(arg_count) + " 参数): image=" + image + " ns=\"" + ns + "\"");
+        log_line("[steamhack] no hit for SteamMatchmaking." + std::string(method_name) + "(" +
+                 std::to_string(arg_count) + " params): image=" + image + " ns=\"" + ns + "\"");
         dump_class_methods(t, cls, method_name);
         return false;
     }
 
     void* target = method_pointer_of(mi);
     const uint32_t pc = t.method_get_param_count ? t.method_get_param_count(mi) : (uint32_t)arg_count;
-    log_line("[steamhack] 命中 SteamMatchmaking." + std::string(method_name) + ": image=" + image +
+    log_line("[steamhack] hit SteamMatchmaking." + std::string(method_name) + ": image=" + image +
              " ns=\"" + ns + "\" MethodInfo=" + cesium::steam::diagnostics::hex((uintptr_t)mi) +
              " methodPointer=" + cesium::steam::diagnostics::hex((uintptr_t)target) + " (" + cesium::steam::diagnostics::gameassembly_rva(target) + ")" +
-             " 参数个数=" + std::to_string(pc));
+             " paramCount=" + std::to_string(pc));
     if (!target)
     {
         log_line("[steamhack] SteamMatchmaking." + std::string(method_name) +
-                 " 的 methodPointer 为空(可能不是 AOT 方法) —— 跳过该 hook");
+                 " methodPointer is null (possibly not an AOT method) - skipping this hook");
         return false;
     }
 
@@ -993,7 +993,7 @@ bool install_lobby_hook(const cesium_safe::il2cpp_tbl& t,
     MH_STATUS st = MH_CreateHook(target, detour, real_out);
     if (st != MH_OK)
     {
-        log_line("[steamhack] MH_CreateHook(" + std::string(method_name) + ") 失败: " +
+        log_line("[steamhack] MH_CreateHook(" + std::string(method_name) + ") failed: " +
                  std::to_string((int)st) + " (target=" + cesium::steam::diagnostics::hex((uintptr_t)target) + ")");
         return false;
     }
@@ -1001,7 +1001,7 @@ bool install_lobby_hook(const cesium_safe::il2cpp_tbl& t,
     st = MH_EnableHook(target);
     if (st != MH_OK)
     {
-        log_line("[steamhack] MH_EnableHook(" + std::string(method_name) + ") 失败: " +
+        log_line("[steamhack] MH_EnableHook(" + std::string(method_name) + ") failed: " +
                  std::to_string((int)st));
         MH_RemoveHook(target);
         return false;
@@ -1010,7 +1010,7 @@ bool install_lobby_hook(const cesium_safe::il2cpp_tbl& t,
     if (target_out) *target_out = target;
     if (method_out) *method_out = mi;
     log_line("[steamhack] SteamMatchmaking." + std::string(method_name) +
-             " inline hook 已启用 (恒返回已完成的空 Task)");
+             " inline hook enabled (always returns a completed empty Task)");
     return true;
 }
 
@@ -1049,10 +1049,10 @@ bool install_lobby_hook(const cesium_safe::il2cpp_tbl& t,
 //     与"共享泛型代码"一致; 反之则该实例看上去有自己的代码。
 void log_hasvalue_scope_caution(const TaskFactory& f, void* target)
 {
-    log_line("[steamhack] " + f.param_class_name + ": get_HasValue 目标 " +
-             cesium::steam::diagnostics::hex((uintptr_t)target) + " RVA 见上方日志; "
-             "共享泛型范围**未判定**(对开放泛型定义做元数据解析有触发 il2cpp 断言的风险, 属不可捕获, "
-             "故按 fail-safe 原则不做) —— 若该方法在多个 Nullable<T> 间共享, 恒 false 也会作用于它们");
+    log_line("[steamhack] " + f.param_class_name + ": get_HasValue target " +
+             cesium::steam::diagnostics::hex((uintptr_t)target) + " RVA logged above; "
+             "shared-generic scope **not determined** (metadata resolution on an open generic can trip an il2cpp assertion that cannot be caught, "
+             "so it is skipped per fail-safe) - if this method is shared across Nullable<T> types, \"always false\" applies to them too");
 }
 
 // 解析 Nullable<Lobby>.get_HasValue 的 MethodInfo*(复用 resolve_task_factory 留下的 pcls)。
@@ -1066,13 +1066,13 @@ void* resolve_hasvalue_method(const cesium_safe::il2cpp_tbl& t, TaskFactory& f)
     if (!f.param_class)
     {
         log_line("[steamhack] " + std::string(f.label) +
-                 ": 未解析到工厂参数类(Nullable), 无法解析 get_HasValue —— 不挂钩(fail-safe)");
+                 ": factory param class (Nullable) unresolved, cannot resolve get_HasValue - not hooked (fail-safe)");
         return nullptr;
     }
     if (!t.class_get_method_from_name)
     {
         log_line("[steamhack] " + std::string(f.label) +
-                 ": il2cpp_class_get_method_from_name 导出缺失 —— 无法解析 get_HasValue, 不挂钩(fail-safe)");
+                 ": il2cpp_class_get_method_from_name export missing - cannot resolve get_HasValue, not hooked (fail-safe)");
         return nullptr;
     }
 
@@ -1081,27 +1081,27 @@ void* resolve_hasvalue_method(const cesium_safe::il2cpp_tbl& t, TaskFactory& f)
     pod_resolve_hasvalue_method(&t, f.param_class, &r);
     if (r.seh_code)
     {
-        log_line("[steamhack] " + std::string(f.label) + ": 解析 " + f.param_class_name +
-                 "::get_HasValue() 触发 SEH 异常 " + hex_code_str(r.seh_code) +
-                 " —— 已被 __try/__except 捕获, 本次不挂钩(fail-safe)");
+        log_line("[steamhack] " + std::string(f.label) + ": resolve " + f.param_class_name +
+                 "::get_HasValue() raised SEH " + hex_code_str(r.seh_code) +
+                 " - captured by __try/__except, not hooked this time (fail-safe)");
         return nullptr;
     }
     if (!r.mi)
     {
-        log_line("[steamhack] " + std::string(f.label) + ": 类 " + f.param_class_name +
-                 " 上未命中 get_HasValue()(0 参数) —— 不挂钩(fail-safe)");
+        log_line("[steamhack] " + std::string(f.label) + ": class " + f.param_class_name +
+                 " no get_HasValue() (0 params) hit - not hooked (fail-safe)");
         dump_all_methods(t, f.param_class, "Nullable.get_HasValue");
         return nullptr;
     }
 
-    log_line("[steamhack] " + std::string(f.label) + ": 命中 " + f.param_class_name +
+    log_line("[steamhack] " + std::string(f.label) + ": hit " + f.param_class_name +
              "::get_HasValue() MethodInfo=" + cesium::steam::diagnostics::hex((uintptr_t)r.mi) +
              " methodPointer=" + cesium::steam::diagnostics::hex((uintptr_t)r.ptr) + " (" + cesium::steam::diagnostics::gameassembly_rva(r.ptr) + ")");
 
     if (!r.ptr)
     {
         log_line("[steamhack] " + std::string(f.label) +
-                 ": get_HasValue 的 methodPointer 为空(可能未 AOT 编译) —— **只记日志, 不挂钩**(fail-safe)");
+                 ": get_HasValue methodPointer is null (possibly not AOT-compiled) - **log only, no hook** (fail-safe)");
         return nullptr;
     }
 
@@ -1126,15 +1126,15 @@ bool install_hasvalue_hook(const cesium_safe::il2cpp_tbl& t, TaskFactory& f)
     MH_STATUS st = MH_CreateHook(target, (LPVOID)&Hook_NullableHasValue, (LPVOID*)&g_real_hasvalue);
     if (st != MH_OK)
     {
-        log_line("[steamhack] MH_CreateHook(Nullable.get_HasValue) 失败: " + std::to_string((int)st) +
-                 " (target=" + cesium::steam::diagnostics::hex((uintptr_t)target) + ") —— 本次不挂钩(fail-safe)");
+        log_line("[steamhack] MH_CreateHook(Nullable.get_HasValue) failed: " + std::to_string((int)st) +
+                 " (target=" + cesium::steam::diagnostics::hex((uintptr_t)target) + ") - not hooked this time (fail-safe)");
         return false;
     }
 
     st = MH_EnableHook(target);
     if (st != MH_OK)
     {
-        log_line("[steamhack] MH_EnableHook(Nullable.get_HasValue) 失败: " + std::to_string((int)st));
+        log_line("[steamhack] MH_EnableHook(Nullable.get_HasValue) failed: " + std::to_string((int)st));
         MH_RemoveHook(target);
         return false;
     }
@@ -1144,8 +1144,8 @@ bool install_hasvalue_hook(const cesium_safe::il2cpp_tbl& t, TaskFactory& f)
     g_hv_hooked = true;
     f.hasvalue_ok = true;
     log_line("[steamhack] " + f.param_class_name +
-             "::get_HasValue inline hook 已启用 (恒返回 false: 任何 Lobby? 都视同无值, "
-             "游戏侧 LobbyId 保持 0 -> 走 RequestCreateC2S)");
+             "::get_HasValue inline hook enabled (always false: any Lobby? counts as no value; "
+             "game keeps LobbyId 0 -> RequestCreateC2S is used)");
     return true;
 }
 

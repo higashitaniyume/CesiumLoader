@@ -24,16 +24,16 @@ bool steamhack_install(const cesium_safe::il2cpp_tbl& t,
         g_ctor_mode_name = ctor_mode_name(g_ctor_mode);
         if (unknown)
             log_line("[steamhack] steamBypassTaskCtorMode=\"" + task_ctor_mode +
-                     "\" 不是合法取值(auto/direct/invoke) —— 按默认 \"auto\" 处理");
+                     "\" is not a valid value (auto/direct/invoke) - using the default \"auto\"");
         else
             log_line("[steamhack] steamBypassTaskCtorMode=\"" + std::string(g_ctor_mode_name) + "\"");
     }
 
-    log_line("[steamhack] 安装 Steam 绕过: 阶段1 自杀门(Awake->no-op) + 阶段2 大厅匹配(返回已完成的空 Task)"
-             " + 阶段3 Nullable<Lobby>.get_HasValue->false(实测作废, 保留但无效)"
-             " + 方案C Task<T>..ctor(T) 原生 ABI 直调"
-             " + 方案B Lobby.SetPublic/SetJoinable/Id 无害化"
-             " + 阶段5 LobbyQuery.RequestAsync->结果为空 Lobby[] 的已完成 Task");
+    log_line("[steamhack] installing Steam bypass: stage 1 self-kill gate (Awake->no-op) + stage 2 lobby matchmaking (returns a completed empty Task)"
+             " + stage 3 Nullable<Lobby>.get_HasValue->false (dead in practice, kept but ineffective)"
+             " + plan C Task<T>..ctor(T) native ABI direct call"
+             " + plan B Lobby.SetPublic/SetJoinable/Id neutralized"
+             " + stage 5 LobbyQuery.RequestAsync -> completed Task with an empty Lobby[] result");
 
     int hooks = 0;
     int stage1 = 0;
@@ -53,7 +53,7 @@ bool steamhack_install(const cesium_safe::il2cpp_tbl& t,
     }
     else
     {
-        log_line("[steamhack] steamBypassEnabled=false, 跳过 SteamManager.Awake no-op(非 Steam 启动会退出游戏)");
+        log_line("[steamhack] steamBypassEnabled=false, skipping SteamManager.Awake no-op (non-Steam start would exit the game)");
     }
 
     if (bypass_awake && bypass_restart_check)
@@ -63,11 +63,11 @@ bool steamhack_install(const cesium_safe::il2cpp_tbl& t,
     }
     else if (bypass_awake)
     {
-        log_line("[steamhack] steamBypassRestartCheck=false, 跳过 RestartAppIfNecessary 保险");
+        log_line("[steamhack] steamBypassRestartCheck=false, skipping the RestartAppIfNecessary safety net");
     }
     else
     {
-        log_line("[steamhack] steamBypassEnabled=false, 跳过 RestartAppIfNecessary 保险(仅在该开关为 true 时有意义)");
+        log_line("[steamhack] steamBypassEnabled=false, skipping the RestartAppIfNecessary safety net (only meaningful when this switch is true)");
     }
 
     // ---- 阶段2: Steam 大厅匹配(只受 steamBypassMatchmaking 控制) ----
@@ -76,7 +76,7 @@ bool steamhack_install(const cesium_safe::il2cpp_tbl& t,
     if (bypass_matchmaking)
     {
         stage2_expected += 2;
-        log_line("[steamhack] 阶段2: 安装大厅匹配绕过 (CreateLobbyAsync/JoinLobbyAsync -> 已完成的空 Task) ...");
+        log_line("[steamhack] stage 2: installing lobby matchmaking bypass (CreateLobbyAsync/JoinLobbyAsync -> completed empty Task) ...");
         if (install_lobby_hook(t, "CreateLobbyAsync", 1, (void*)&Hook_CreateLobbyAsync,
                                (LPVOID*)&g_real_create_lobby, &g_cl_target, &g_cl_method, g_factory_cl))
         {
@@ -92,23 +92,23 @@ bool steamhack_install(const cesium_safe::il2cpp_tbl& t,
         // 实机结论: 这个 hook 的"首次被拦截"那行**从未出现** —— HybridCLR 解释器把
         // Nullable<T>.HasValue 当**内建指令**内联处理, 不走 MethodInfo->methodPointer。
         // 所以 hook 留着无害, 但它**不是解法**; 真正的解法是方案C + 方案B。这里明确记一行。
-        log_line("[steamhack] 阶段3 说明(实测): Nullable<Lobby>.get_HasValue 这条路线**已作废** —— "
-                 "HybridCLR 解释器把 Nullable.HasValue 当内建指令内联, 该 hook 在实机日志里"
-                 "从未出现“首次被拦截”。hook 保留(无害, 万一将来真走 AOT 调用还能兜住), "
-                 "但它**不是**解法: 解法是方案C(steamBypassTaskCtorMode) + 方案B(steamBypassLobbyMethods)。");
+        log_line("[steamhack] stage 3 note (observed in game): the Nullable<Lobby>.get_HasValue route is **dead** - "
+                 "the HybridCLR interpreter inlines Nullable.HasValue as a builtin, so in real sessions this hook"
+                 "never showed \"first hit\". The hook is kept (harmless; it would still catch a future AOT call), "
+                 "but it is **not** the fix: the fix is plan C (steamBypassTaskCtorMode) + plan B (steamBypassLobbyMethods).");
         if (bypass_lobby_hasvalue)
         {
             stage2_expected++;
-            log_line("[steamhack] 阶段3: 安装 Nullable<Lobby>.get_HasValue 挂钩(恒返回 false; "
-                     "预期不被命中, 仅作无害保留) ...");
+            log_line("[steamhack] stage 3: installing the Nullable<Lobby>.get_HasValue hook (always false; "
+                     "expected not to be hit, kept as harmless) ...");
             TaskFactory* src = nullptr;
             if (g_cl_hooked)      src = &g_factory_cl;
             else if (g_jl_hooked) src = &g_factory_jl;
 
             if (!src)
             {
-                log_line("[steamhack] 阶段3: 阶段2 两个大厅 hook 都没装上, 没有可复用的 Nullable 类 "
-                         "—— 跳过 get_HasValue 挂钩(fail-safe, 游戏行为保持当前状态)");
+                log_line("[steamhack] stage 3: neither stage-2 lobby hook installed, no reusable Nullable class "
+                         "- skipping the get_HasValue hook (fail-safe, behavior unchanged)");
             }
             else if (install_hasvalue_hook(t, *src))
             {
@@ -116,13 +116,13 @@ bool steamhack_install(const cesium_safe::il2cpp_tbl& t,
             }
             else
             {
-                log_line("[steamhack] 阶段3: get_HasValue 未挂上 —— 不影响方案C/方案B 生效");
+                log_line("[steamhack] stage 3: get_HasValue not hooked - plan C/plan B still work");
             }
         }
         else
         {
-            log_line("[steamhack] steamBypassLobbyHasValue=false, 跳过 Nullable<Lobby>.get_HasValue 挂钩"
-                     "(该 hook 本就不被命中, 跳过无副作用)");
+            log_line("[steamhack] steamBypassLobbyHasValue=false, skipping the Nullable<Lobby>.get_HasValue hook"
+                     " (that hook is never hit anyway; skipping is side-effect free)");
         }
 
         // ---- 方案B(安全网): Lobby.SetPublic / SetJoinable / Id 无害化 ----
@@ -130,8 +130,8 @@ bool steamhack_install(const cesium_safe::il2cpp_tbl& t,
         // 游戏根本走不到 Lobby 那几个成员)。预期 2 或 3 个(Id 是属性才 +1)。
         if (bypass_lobby_methods)
         {
-            log_line("[steamhack] 方案B: 安装 Lobby.SetPublic/SetJoinable/Id 无害化挂钩"
-                     "(安全网: hasValue 若仍为 true 时兜住建房流程) ...");
+            log_line("[steamhack] plan B: installing harmless hooks for Lobby.SetPublic/SetJoinable/Id"
+                     " (safety net: catches the create-room flow if hasValue is still true) ...");
             int exp = 0;
             const int got = install_lobby_methods(t, &exp);
             lobby_installed = got;
@@ -140,15 +140,15 @@ bool steamhack_install(const cesium_safe::il2cpp_tbl& t,
         }
         else
         {
-            log_line("[steamhack] steamBypassLobbyMethods=false, 跳过方案B"
-                     "(Lobby.SetPublic/SetJoinable/Id 不挂钩 —— hasValue 若仍为 true, "
-                     "点创建房间仍会在 SetPublic 处抛 NRE)");
+            log_line("[steamhack] steamBypassLobbyMethods=false, skipping plan B"
+                     " (Lobby.SetPublic/SetJoinable/Id not hooked - if hasValue is still true, "
+                     "clicking create-room would still NRE at SetPublic)");
         }
     }
     else
     {
-        log_line("[steamhack] steamBypassMatchmaking=false, 跳过大厅匹配绕过 + 阶段3 的 get_HasValue 挂钩 + "
-                 "方案B 的 Lobby 方法无害化(创建/加入房间仍会因 async 异常而无反应)");
+        log_line("[steamhack] steamBypassMatchmaking=false, skipping lobby matchmaking bypass + stage 3 get_HasValue hook + "
+                 "plan B Lobby method neutralization (create/join room still silently fails due to the async exception)");
     }
 
     // ---- 阶段5: LobbyQuery.RequestAsync -> 结果为空 Lobby[] 的已完成 Task ----
@@ -164,23 +164,23 @@ bool steamhack_install(const cesium_safe::il2cpp_tbl& t,
     }
     else
     {
-        log_line("[steamhack] steamBypassLobbyQuery=false, 跳过阶段5(LobbyQuery.RequestAsync 不挂钩 —— "
-                 "退房/解散/被踢时 await 之后的 UpdateRoomByExit/ClearRoomInfo 仍会被 NRE 跳过)");
+        log_line("[steamhack] steamBypassLobbyQuery=false, skipping stage 5 (LobbyQuery.RequestAsync not hooked - "
+                 "on leave/disband/kick, UpdateRoomByExit/ClearRoomInfo after await would still be skipped by an NRE)");
     }
 
     g_hook_count = hooks;
     const int expected = stage1_expected + stage2_expected + lobby_expected + stage5_expected;
     if (hooks == 0)
-        log_line("[steamhack] 未安装任何 hook —— 游戏行为与原版一致");
+        log_line("[steamhack] no hook installed - game behaves as vanilla");
     else
-        log_line("[steamhack] 完成: 已启用 " + std::to_string(hooks) + "/" + std::to_string(expected) +
-                 " 个 hook (阶段1 自杀门 " + std::to_string(stage1) + "/" + std::to_string(stage1_expected) +
-                 ", 阶段2+3 大厅匹配 " + std::to_string(stage2) + "/" + std::to_string(stage2_expected) +
-                 ", 阶段5 LobbyQuery.RequestAsync " + std::to_string(stage5) + "/" +
+        log_line("[steamhack] done: enabled " + std::to_string(hooks) + "/" + std::to_string(expected) +
+                 " hooks (stage 1 self-kill gate " + std::to_string(stage1) + "/" + std::to_string(stage1_expected) +
+                 ", stage 2+3 lobby matchmaking " + std::to_string(stage2) + "/" + std::to_string(stage2_expected) +
+                 ", stage 5 LobbyQuery.RequestAsync " + std::to_string(stage5) + "/" +
                  std::to_string(stage5_expected) +
-                 ", 方案B Lobby 方法 " + std::to_string(lobby_installed) + "/" + std::to_string(lobby_expected) +
-                 ")。**定版配置(方案B 默认关)预期 = 6/6**: 阶段1 2 个 + 阶段2 2 个 + 阶段3 1 个 + 阶段5 1 个; "
-                 "方案B 打开时总数变 8 或 9(Lobby.get_Id 只有 Id 是属性时才多 1 个)");
+                 ", plan B Lobby methods " + std::to_string(lobby_installed) + "/" + std::to_string(lobby_expected) +
+                 "). **Release config (plan B off by default) expects 6/6**: stage 1 x2 + stage 2 x2 + stage 3 x1 + stage 5 x1; "
+                 "with plan B on the total becomes 8 or 9 (one more only if Lobby.get_Id is a property)");
     return hooks > 0;
 }
 

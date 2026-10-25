@@ -31,13 +31,13 @@ bool Hook_NullableHasValue(void* this_ptr, void* generic_ctx)
     if (g_hv_hits.fetch_add(1, std::memory_order_relaxed) == 0)
     {
         const bool same = (generic_ctx != nullptr && generic_ctx == g_hv_method);
-        log_line("[steamhack] Nullable<Lobby>.get_HasValue 首次被拦截: this=" +
+        log_line("[steamhack] Nullable<Lobby>.get_HasValue intercepted on first hit: this=" +
                  cesium::steam::diagnostics::hex(reinterpret_cast<uintptr_t>(this_ptr)) +
-                 " 第2寄存器参数(共享泛型代码的隐藏上下文, 仅记原始值不解引用)=" +
+                 " 2nd register arg (hidden context of shared generic code; raw value only, not dereferenced)=" +
                  cesium::steam::diagnostics::hex(reinterpret_cast<uintptr_t>(generic_ctx)) +
-                 " 与本 Instantiation 的 MethodInfo(" + cesium::steam::diagnostics::hex(reinterpret_cast<uintptr_t>(g_hv_method)) +
-                 ")一致=" + (same ? "是" : "否") +
-                 " -> 恒返回 false(任何 Lobby? 都视同无值, 游戏侧 LobbyId 保持 0)");
+                 " matches this instantiation's MethodInfo(" + cesium::steam::diagnostics::hex(reinterpret_cast<uintptr_t>(g_hv_method)) +
+                 ") match=" + (same ? "yes" : "no") +
+                 " -> always returns false (any Lobby? counts as no value; game keeps LobbyId 0)");
     }
     return false;
 }
@@ -103,7 +103,7 @@ enum CtorPath
 
 const char* ctor_path_name(int p)
 {
-    return (p == CPATH_DIRECT) ? "direct(原生 ABI 直调 ctor, 绕过 runtime_invoke 编组)"
+    return (p == CPATH_DIRECT) ? "direct (native ABI direct ctor call, bypassing runtime_invoke marshaling)"
                                : "invoke(il2cpp_runtime_invoke)";
 }
 
@@ -131,7 +131,7 @@ struct TaskFactory
     // 它就是 System.Nullable`1<Steamworks.Data.Lobby>, 是 get_HasValue 挂钩和 hasValue
     // 字段诊断的入口。
     void* param_class = nullptr;                  // Il2CppClass*(Nullable<Lobby>)
-    std::string param_class_name = "(未解析)";     // 类名(日志: 要能确认是 Nullable`1)
+    std::string param_class_name = "(unresolved)";     // 类名(日志: 要能确认是 Nullable`1)
     bool param_is_valuetype = false;
     bool param_is_nullable = false;               // 类名/类型名里含 "Nullable"
     void* hasvalue_method = nullptr;              // Nullable<Lobby>.get_HasValue 的 MethodInfo*
@@ -164,7 +164,7 @@ std::string cstr_or(const char* s, const char* def)
 std::string class_name_of(const cesium_safe::il2cpp_tbl& t, void* cls)
 {
     if (!cls) return "(null)";
-    if (!t.class_get_name) return "(class_get_name 缺失)";
+    if (!t.class_get_name) return "(class_get_name missing)";
     return cstr_or(t.class_get_name(cls), "(null)");
 }
 

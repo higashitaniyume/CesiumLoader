@@ -4,7 +4,7 @@ void Hook_LobbySetPublic(void* /*self*/)
     // no-op: 原实现会去调 SteamMatchmaking.SetLobbyType(Id, ...) 并在 Steam 未初始化时抛异常。
     // **故意不解引用 self** —— 什么也不做, 也就不需要它有效。
     if (g_lsp_hits.fetch_add(1, std::memory_order_relaxed) == 0)
-        log_line("[steamhack] Lobby.SetPublic() 首次被拦截 -> no-op(不再抛 NullReferenceException)");
+        log_line("[steamhack] Lobby.SetPublic() intercepted on first hit -> no-op (no more NullReferenceException)");
 }
 
 void Hook_LobbySetJoinable(void* /*self*/, bool joinable)
@@ -13,7 +13,7 @@ void Hook_LobbySetJoinable(void* /*self*/, bool joinable)
     // 记它是安全的 —— 但**不碰 self**。
     if (g_lsj_hits.fetch_add(1, std::memory_order_relaxed) == 0)
         log_line("[steamhack] Lobby.SetJoinable(" + std::string(joinable ? "true" : "false") +
-                 ") 首次被拦截 -> no-op(不再抛 NullReferenceException)");
+                 ") intercepted on first hit -> no-op (no more NullReferenceException)");
 }
 
 void* Hook_LobbyGetId(void* /*self*/)
@@ -21,7 +21,7 @@ void* Hook_LobbyGetId(void* /*self*/)
     // 恒返回 0 = SteamId 全零 -> 游戏侧 SteamId.op_Implicit(...) 得 0
     // -> 协议里"无 Steam 大厅"的合法值。
     if (g_lid_hits.fetch_add(1, std::memory_order_relaxed) == 0)
-        log_line("[steamhack] Lobby.get_Id 首次被拦截 -> 恒返回 0(SteamId 零值, 游戏侧 steamLobbyId=0)");
+        log_line("[steamhack] Lobby.get_Id intercepted on first hit -> always returns 0 (zero SteamId; game's steamLobbyId=0)");
     return nullptr;
 }
 
@@ -42,14 +42,14 @@ void* resolve_lobby_class(const cesium_safe::il2cpp_tbl& t, std::string* out_ima
     for (auto& n : need) if (!n.p) { if (!missing.empty()) missing += ", "; missing += n.n; }
     if (!missing.empty())
     {
-        log_line("[steamhack] 方案B: IL2CPP 函数表缺失(" + missing + ") —— 无法解析 Steamworks.Data.Lobby");
+        log_line("[steamhack] plan B: IL2CPP function table missing (" + missing + ") - cannot resolve Steamworks.Data.Lobby");
         return nullptr;
     }
 
     void* domain = t.domain_get();
     if (!domain)
     {
-        log_line("[steamhack] 方案B: il2cpp domain 为空, 无法解析 Lobby");
+        log_line("[steamhack] plan B: il2cpp domain is null, cannot resolve Lobby");
         return nullptr;
     }
 
@@ -57,7 +57,7 @@ void* resolve_lobby_class(const cesium_safe::il2cpp_tbl& t, std::string* out_ima
     void** assemblies = t.domain_get_assemblies(domain, &count);
     if (!assemblies)
     {
-        log_line("[steamhack] 方案B: domain_get_assemblies 返回空");
+        log_line("[steamhack] plan B: domain_get_assemblies returned null");
         return nullptr;
     }
 
@@ -78,9 +78,9 @@ void* resolve_lobby_class(const cesium_safe::il2cpp_tbl& t, std::string* out_ima
         {
             void* cls = t.class_from_name(image, ns, "Lobby");
             if (!cls) continue;
-            log_line("[steamhack] 方案B: 命中类 Lobby: image=" + iname + " ns=\"" + std::string(ns) +
+            log_line("[steamhack] plan B: class Lobby hit: image=" + iname + " ns=\"" + std::string(ns) +
                      "\" Il2CppClass=" + cesium::steam::diagnostics::hex((uintptr_t)cls) +
-                     " 类名=" + class_name_of(t, cls));
+                     " className=" + class_name_of(t, cls));
             const bool better = (!chosen) ||
                                 (chosen_image.find("Steamworks") == std::string::npos &&
                                  iname.find("Steamworks") != std::string::npos);
@@ -91,9 +91,9 @@ void* resolve_lobby_class(const cesium_safe::il2cpp_tbl& t, std::string* out_ima
 
     if (!chosen)
     {
-        log_line("[steamhack] 方案B: 未找到类 Steamworks.Data.Lobby(候选 ns: \"Steamworks.Data\" / "
-                 "\"Steamworks\" / 全局 / \"Steamworks.NET\")");
-        log_line("[steamhack] 方案B: 域内程序集 " + std::to_string(count) + " 个: " + all);
+        log_line("[steamhack] plan B: class Steamworks.Data.Lobby not found (candidate ns: \"Steamworks.Data\" / "
+                 "\"Steamworks\" / global / \"Steamworks.NET\")");
+        log_line("[steamhack] plan B: domain assemblies " + std::to_string(count) + " items: " + all);
     }
     if (out_image) *out_image = chosen_image;
     if (out_ns) *out_ns = chosen_ns;
@@ -123,13 +123,13 @@ void dump_lobby_members(const cesium_safe::il2cpp_tbl& t, void* cls)
             names += n;
             shown++;
         }
-        log_line("[steamhack] Lobby 类字段名(上限24): " +
-                 (names.empty() ? std::string("(无)") : names));
+        log_line("[steamhack] Lobby field names (max 24): " +
+                 (names.empty() ? std::string("(none)") : names));
     }
     else
     {
-        log_line("[steamhack] Lobby 类字段名: 未能列出"
-                 "(缺 il2cpp_class_get_fields 或 il2cpp_field_get_name 导出)");
+        log_line("[steamhack] Lobby field names: could not list"
+                 " (il2cpp_class_get_fields or il2cpp_field_get_name export missing)");
     }
 
     // ---- 含 Id/Public/Join 的方法名列表 ----
@@ -152,13 +152,13 @@ void dump_lobby_members(const cesium_safe::il2cpp_tbl& t, void* cls)
                 shown++;
             }
         }
-        log_line("[steamhack] Lobby 类含 Id/Public/Join 的方法名(上限24): " +
-                 (names.empty() ? std::string("(无)") : names));
+        log_line("[steamhack] Lobby methods containing Id/Public/Join (max 24): " +
+                 (names.empty() ? std::string("(none)") : names));
     }
     else
     {
-        log_line("[steamhack] Lobby 类含 Id/Public/Join 的方法名: 未能列出"
-                 "(缺 il2cpp_class_get_methods 或 il2cpp_method_get_name 导出)");
+        log_line("[steamhack] Lobby methods containing Id/Public/Join: could not list"
+                 " (il2cpp_class_get_methods or il2cpp_method_get_name export missing)");
     }
 }
 
@@ -169,7 +169,7 @@ bool install_lobby_noop(const cesium_safe::il2cpp_tbl& t, void* cls,
 {
     if (!t.class_get_method_from_name)
     {
-        log_line("[steamhack] 方案B: il2cpp_class_get_method_from_name 导出缺失, 无法解析 Lobby." +
+        log_line("[steamhack] plan B: il2cpp_class_get_method_from_name export missing, cannot resolve Lobby." +
                  std::string(method_name));
         return false;
     }
@@ -177,19 +177,19 @@ bool install_lobby_noop(const cesium_safe::il2cpp_tbl& t, void* cls,
     void* mi = t.class_get_method_from_name(cls, method_name, arg_count);
     if (!mi)
     {
-        log_line("[steamhack] 方案B: 未命中 Lobby." + std::string(method_name) + "(" +
-                 std::to_string(arg_count) + " 参数) —— 跳过该 hook");
+        log_line("[steamhack] plan B: no hit for Lobby." + std::string(method_name) + "(" +
+                 std::to_string(arg_count) + " params) - skipping this hook");
         return false;
     }
 
     void* target = method_pointer_of(mi);
-    log_line("[steamhack] 方案B: 命中 Lobby." + std::string(method_name) + " MethodInfo=" +
+    log_line("[steamhack] plan B: hit Lobby." + std::string(method_name) + " MethodInfo=" +
              cesium::steam::diagnostics::hex((uintptr_t)mi) + " methodPointer=" + cesium::steam::diagnostics::hex((uintptr_t)target) +
              " (" + cesium::steam::diagnostics::gameassembly_rva(target) + ")");
     if (!target)
     {
-        log_line("[steamhack] 方案B: Lobby." + std::string(method_name) +
-                 " 的 methodPointer 为空(可能未 AOT 编译) —— **只记日志, 不挂钩**(fail-safe)");
+        log_line("[steamhack] plan B: Lobby." + std::string(method_name) +
+                 " methodPointer is null (possibly not AOT-compiled) - **log only, no hook** (fail-safe)");
         return false;
     }
 
@@ -198,23 +198,23 @@ bool install_lobby_noop(const cesium_safe::il2cpp_tbl& t, void* cls,
     MH_STATUS st = MH_CreateHook(target, detour, real_out);
     if (st != MH_OK)
     {
-        log_line("[steamhack] 方案B: MH_CreateHook(Lobby." + std::string(method_name) + ") 失败: " +
-                 std::to_string((int)st) + " (target=" + cesium::steam::diagnostics::hex((uintptr_t)target) + ") —— 不挂钩");
+        log_line("[steamhack] plan B: MH_CreateHook(Lobby." + std::string(method_name) + ") failed: " +
+                 std::to_string((int)st) + " (target=" + cesium::steam::diagnostics::hex((uintptr_t)target) + ") - not hooked");
         return false;
     }
 
     st = MH_EnableHook(target);
     if (st != MH_OK)
     {
-        log_line("[steamhack] 方案B: MH_EnableHook(Lobby." + std::string(method_name) + ") 失败: " +
+        log_line("[steamhack] plan B: MH_EnableHook(Lobby." + std::string(method_name) + ") failed: " +
                  std::to_string((int)st));
         MH_RemoveHook(target);
         return false;
     }
 
     if (target_out) *target_out = target;
-    log_line("[steamhack] 方案B: Lobby." + std::string(method_name) +
-             " inline hook 已启用 (no-op, 不再抛 NullReferenceException)");
+    log_line("[steamhack] plan B: Lobby." + std::string(method_name) +
+             " inline hook enabled (no-op, no more NullReferenceException)");
     return true;
 }
 
@@ -230,37 +230,37 @@ bool install_lobby_id(const cesium_safe::il2cpp_tbl& t, void* cls, bool* out_is_
     void* fld = (t.class_get_field_from_name ? t.class_get_field_from_name(cls, "Id") : nullptr);
     void* mi = (t.class_get_method_from_name ? t.class_get_method_from_name(cls, "get_Id", 0) : nullptr);
 
-    log_line("[steamhack] Lobby.Id 判定: il2cpp_class_get_field_from_name(\"Id\")=" +
-             std::string(fld ? "命中 -> **是字段**" : "未命中 -> 不是字段") +
+    log_line("[steamhack] Lobby.Id check: il2cpp_class_get_field_from_name(\"Id\")=" +
+             std::string(fld ? "hit -> **it is a field**" : "no hit -> not a field") +
              " | il2cpp_class_get_method_from_name(\"get_Id\", 0)=" +
-             std::string(mi ? "命中 -> **是属性**" : "未命中 -> 没有 get_Id 属性"));
+             std::string(mi ? "hit -> **it is a property**" : "no hit -> no get_Id property"));
 
     // 交叉印证: 走属性 API 再确认一次(缺导出就跳过, 只记日志)
     if (t.class_get_property_from_name && t.property_get_get_method)
     {
         void* prop = t.class_get_property_from_name(cls, "Id");
         void* gm = prop ? t.property_get_get_method(prop) : nullptr;
-        log_line("[steamhack] Lobby.Id 交叉印证: il2cpp_class_get_property_from_name(\"Id\")=" +
-                 std::string(prop ? "命中" : "未命中") + " getter=" + cesium::steam::diagnostics::hex((uintptr_t)gm) +
-                 (gm == mi ? " (与 get_Id 一致)" : ""));
+        log_line("[steamhack] Lobby.Id cross-check: il2cpp_class_get_property_from_name(\"Id\")=" +
+                 std::string(prop ? "hit" : "no hit") + " getter=" + cesium::steam::diagnostics::hex((uintptr_t)gm) +
+                 (gm == mi ? " (consistent with get_Id)" : ""));
     }
     else
     {
-        log_line("[steamhack] Lobby.Id 交叉印证: 跳过"
-                 "(缺 il2cpp_class_get_property_from_name 或 il2cpp_property_get_get_method 导出)");
+        log_line("[steamhack] Lobby.Id cross-check: skipped"
+                 " (il2cpp_class_get_property_from_name or il2cpp_property_get_get_method export missing)");
     }
 
     if (fld)
     {
-        log_line("[steamhack] Lobby.Id 结论 = **字段**(不是属性) —— 字段不可 hook"
-                 "(HybridCLR 解释执行时按字段偏移直读, 没有 AOT 入口可挂)。"
-                 "方案B 对 Id **只记日志, 不硬来**; steamLobbyId 的值由方案C(方案C 让 hasValue 为 false "
-                 "时根本不会走到 Id)与 hasValue 判定共同决定");
+        log_line("[steamhack] Lobby.Id verdict = **a field** (not a property) - fields cannot be hooked"
+                 " (HybridCLR reads it by field offset when interpreting; there is no AOT entry to hook)."
+                 "plan B **only logs Id, never forces it**; steamLobbyId is decided by plan C (which makes hasValue false "
+                 "never reaches Id) and the hasValue verdict together");
         return false;
     }
     if (!mi)
     {
-        log_line("[steamhack] Lobby.Id 结论 = 既不是字段, 也没有 get_Id() 属性 —— 不挂钩(fail-safe)");
+        log_line("[steamhack] Lobby.Id verdict = neither a field nor a get_Id() property - not hooked (fail-safe)");
         return false;
     }
 
@@ -269,8 +269,8 @@ bool install_lobby_id(const cesium_safe::il2cpp_tbl& t, void* cls, bool* out_is_
     void* target = method_pointer_of(mi);
     if (!target)
     {
-        log_line("[steamhack] Lobby.get_Id 的 methodPointer 为空(可能未 AOT 编译) —— "
-                 "**只记日志, 不挂钩**(fail-safe)");
+        log_line("[steamhack] Lobby.get_Id methodPointer is null (possibly not AOT-compiled) - "
+                 "**log only, no hook** (fail-safe)");
         return false;
     }
 
@@ -299,32 +299,32 @@ bool install_lobby_id(const cesium_safe::il2cpp_tbl& t, void* cls, bool* out_is_
             have_sz = true;
         }
 
-        log_line("[steamhack] Lobby.get_Id 返回类型=" + rt_name +
-                 " 值类型=" + (have_vt ? (is_vt ? "是" : "否") : "未能判定") +
-                 (have_sz ? (" 尺寸=" + std::to_string(sz) + " 字节")
-                          : std::string(" 尺寸=(il2cpp_class_value_size 导出缺失, 未核对)")));
+        log_line("[steamhack] Lobby.get_Id return type=" + rt_name +
+                 " isValueType=" + (have_vt ? (is_vt ? "yes" : "no") : "undetermined") +
+                 (have_sz ? (" size=" + std::to_string(sz) + " bytes")
+                          : std::string(" size=(il2cpp_class_value_size export missing, not verified)")));
 
         if (have_vt && is_vt && have_sz && sz > 8)
         {
-            log_line("[steamhack] Lobby.get_Id 返回结构体 " + std::to_string(sz) +
-                     " 字节(>8) —— x64 ABI 下走**隐藏返回缓冲区**, 用 RAX=0 返回会写错位置, "
-                     "**不挂钩**(fail-safe; 由方案C 让 hasValue=false 来避免走到这里)");
+            log_line("[steamhack] Lobby.get_Id returns a struct of " + std::to_string(sz) +
+                     " bytes (>8) - under the x64 ABI this uses a **hidden return buffer**; returning RAX=0 writes to the wrong place, "
+                     "**not hooked** (fail-safe; plan C makes hasValue=false so this is never reached)");
             return false;
         }
         if (have_vt && !is_vt)
         {
-            log_line("[steamhack] Lobby.get_Id 返回的是**引用类型**(" + rt_name +
-                     ") —— 返回 0 会变成 null 引用(语义不对, 可能引出别的异常), **不挂钩**(fail-safe)");
+            log_line("[steamhack] Lobby.get_Id returns a **reference type** (" + rt_name +
+                     ") - returning 0 becomes a null reference (wrong semantics, may cause other exceptions), **not hooked** (fail-safe)");
             return false;
         }
         if (!have_sz)
-            log_line("[steamhack] Lobby.get_Id: 未能核对返回结构体尺寸 —— 按"
-                     "“SteamId 是 8 字节值类型、走 RAX 返回”的预期继续(这是方案B 唯一的 ABI 假设)");
+            log_line("[steamhack] Lobby.get_Id: could not verify the returned struct size - continuing on the assumption"
+                     "the \"SteamId is an 8-byte value type returned in RAX\" assumption (the only ABI assumption in plan B)");
     }
     else
     {
-        log_line("[steamhack] Lobby.get_Id: 无法核对返回类型(缺 il2cpp_method_get_return_type / "
-                 "il2cpp_type_get_name) —— 按“SteamId 是 8 字节值类型、走 RAX 返回”的预期继续");
+        log_line("[steamhack] Lobby.get_Id: cannot verify the return type (missing il2cpp_method_get_return_type / "
+                 "il2cpp_type_get_name) - continuing on the \"SteamId is an 8-byte value type returned in RAX\" assumption");
     }
 
     if (!ensure_minhook()) return false;
@@ -332,14 +332,14 @@ bool install_lobby_id(const cesium_safe::il2cpp_tbl& t, void* cls, bool* out_is_
     MH_STATUS st = MH_CreateHook(target, (LPVOID)&Hook_LobbyGetId, (LPVOID*)&g_real_lid);
     if (st != MH_OK)
     {
-        log_line("[steamhack] 方案B: MH_CreateHook(Lobby.get_Id) 失败: " + std::to_string((int)st) +
-                 " (target=" + cesium::steam::diagnostics::hex((uintptr_t)target) + ") —— 不挂钩");
+        log_line("[steamhack] plan B: MH_CreateHook(Lobby.get_Id) failed: " + std::to_string((int)st) +
+                 " (target=" + cesium::steam::diagnostics::hex((uintptr_t)target) + ") - not hooked");
         return false;
     }
     st = MH_EnableHook(target);
     if (st != MH_OK)
     {
-        log_line("[steamhack] 方案B: MH_EnableHook(Lobby.get_Id) 失败: " + std::to_string((int)st));
+        log_line("[steamhack] plan B: MH_EnableHook(Lobby.get_Id) failed: " + std::to_string((int)st));
         MH_RemoveHook(target);
         return false;
     }
@@ -347,7 +347,7 @@ bool install_lobby_id(const cesium_safe::il2cpp_tbl& t, void* cls, bool* out_is_
     g_lid_target = target;
     g_lid_method = mi;
     g_lid_hooked = true;
-    log_line("[steamhack] 方案B: Lobby.get_Id inline hook 已启用 (恒返回 SteamId 零值 -> steamLobbyId=0)");
+    log_line("[steamhack] plan B: Lobby.get_Id inline hook enabled (always returns a zero SteamId -> steamLobbyId=0)");
     return true;
 }
 
@@ -363,15 +363,15 @@ int install_lobby_methods(const cesium_safe::il2cpp_tbl& t, int* out_expected)
     void* cls = resolve_lobby_class(t, &image, &ns);
     if (!cls)
     {
-        log_line("[steamhack] 方案B: 未能解析 Steamworks.Data.Lobby 类 —— 跳过 Lobby 方法无害化"
-                 "(fail-safe, 行为保持当前状态)");
+        log_line("[steamhack] plan B: could not resolve class Steamworks.Data.Lobby - skipping Lobby method neutralization"
+                 " (fail-safe, behavior unchanged)");
         return 0;
     }
 
     const bool cls_is_vt = (t.class_is_valuetype ? t.class_is_valuetype(cls) : false);
-    log_line("[steamhack] 方案B: 采用类 Lobby image=" + image + " ns=\"" + ns +
-             "\" Il2CppClass=" + cesium::steam::diagnostics::hex((uintptr_t)cls) + " 类名=" + class_name_of(t, cls) +
-             " 值类型=" + (cls_is_vt ? "是(struct)" : "否(class)"));
+    log_line("[steamhack] plan B: using class Lobby image=" + image + " ns=\"" + ns +
+             "\" Il2CppClass=" + cesium::steam::diagnostics::hex((uintptr_t)cls) + " className=" + class_name_of(t, cls) +
+             " isValueType=" + (cls_is_vt ? "yes (struct)" : "no (class)"));
 
     // 需求: 字段名列表 + 含 Id/Public/Join 的方法名列表, 各上限 24 条
     dump_lobby_members(t, cls);
@@ -474,13 +474,13 @@ void* Hook_LobbyQueryRequestAsync(void* this_ptr, void* method_info)
     // **这行日志是否存在是判断本 hook 是否真的被调用的唯一依据** —— 阶段3 的教训:
     // "安装成功"只说明 MH_CreateHook 返回了 MH_OK, 并不代表它会被调用。
     if (g_lq_hits.fetch_add(1, std::memory_order_relaxed) == 0)
-        log_line("[steamhack] LobbyQuery.RequestAsync 首次被拦截: this=" +
+        log_line("[steamhack] LobbyQuery.RequestAsync intercepted on first hit: this=" +
                  cesium::steam::diagnostics::hex(reinterpret_cast<uintptr_t>(this_ptr)) +
-                 " (LobbyQuery 按引用传参, 本模块不解引用) 第2寄存器=" +
+                 " (LobbyQuery is passed by reference; this module does not dereference) 2nd register=" +
                  cesium::steam::diagnostics::hex(reinterpret_cast<uintptr_t>(method_info)) +
-                 " -> 恒返回预建好的 Task<Lobby[]>(结果 = 长度 0 的 Lobby[]); "
-                 "游戏侧 array != null && array.Length > 0 为 false -> 跳过 Steam 大厅清理, "
-                 "await 之后的 UpdateRoomByExit / ClearRoomInfo 正常执行");
+                 " -> always returns the prebuilt Task<Lobby[]> (result = empty Lobby[]); "
+                 "the game's array != null && array.Length > 0 is false -> Steam lobby cleanup is skipped, "
+                 "UpdateRoomByExit / ClearRoomInfo after await run normally");
     return g_lq_task;
 }
 
@@ -505,22 +505,22 @@ void* resolve_steamworks_class(const cesium_safe::il2cpp_tbl& t, const char* lab
     for (auto& n : need) if (!n.p) { if (!missing.empty()) missing += ", "; missing += n.n; }
     if (!missing.empty())
     {
-        log_line(std::string("[steamhack] ") + label + ": IL2CPP 函数表缺失(" + missing +
-                 ") —— 无法解析 " + class_name + ", 不挂钩(fail-safe)");
+        log_line(std::string("[steamhack] ") + label + ": IL2CPP function table missing (" + missing +
+                 ") - cannot resolve " + class_name + ", not hooked (fail-safe)");
         return nullptr;
     }
 
     void* domain = t.domain_get();
     if (!domain)
     {
-        log_line(std::string("[steamhack] ") + label + ": il2cpp domain 为空 —— 解析不到 " + class_name);
+        log_line(std::string("[steamhack] ") + label + ": il2cpp domain is null - cannot resolve " + class_name);
         return nullptr;
     }
     size_t count = 0;
     void** assemblies = t.domain_get_assemblies(domain, &count);
     if (!assemblies)
     {
-        log_line(std::string("[steamhack] ") + label + ": domain_get_assemblies 返回空");
+        log_line(std::string("[steamhack] ") + label + ": domain_get_assemblies returned null");
         return nullptr;
     }
 
@@ -542,10 +542,10 @@ void* resolve_steamworks_class(const cesium_safe::il2cpp_tbl& t, const char* lab
             void* cls = t.class_from_name(image, ns, class_name);
             if (!cls) continue;
             const bool is_vt = (t.class_is_valuetype ? t.class_is_valuetype(cls) : false);
-            log_line(std::string("[steamhack] ") + label + ": 命中类 " + class_name + ": image=" + iname +
+            log_line(std::string("[steamhack] ") + label + ": class hit " + class_name + ": image=" + iname +
                      " ns=\"" + std::string(ns) + "\" Il2CppClass=" + cesium::steam::diagnostics::hex((uintptr_t)cls) +
-                     " 类名=" + class_name_of(t, cls) +
-                     " 值类型=" + (is_vt ? "是" : "否"));
+                     " className=" + class_name_of(t, cls) +
+                     " isValueType=" + (is_vt ? "yes" : "no"));
             const bool better = (!chosen) ||
                                 (chosen_image.find("Steamworks") == std::string::npos &&
                                  iname.find("Steamworks") != std::string::npos);
@@ -556,9 +556,9 @@ void* resolve_steamworks_class(const cesium_safe::il2cpp_tbl& t, const char* lab
 
     if (!chosen)
     {
-        log_line(std::string("[steamhack] ") + label + ": 未找到类 " + class_name +
-                 "(候选 ns: \"Steamworks.Data\" / \"Steamworks\" / 全局 / \"Steamworks.NET\")");
-        log_line(std::string("[steamhack] ") + label + ": 域内程序集 " + std::to_string(count) + " 个: " + all);
+        log_line(std::string("[steamhack] ") + label + ": class not found " + class_name +
+                 " (candidate ns: \"Steamworks.Data\" / \"Steamworks\" / global / \"Steamworks.NET\")");
+        log_line(std::string("[steamhack] ") + label + ": domain assemblies " + std::to_string(count) + " items: " + all);
     }
     if (out_image) *out_image = chosen_image;
     if (out_ns) *out_ns = chosen_ns;
@@ -721,8 +721,8 @@ bool probe_lobby_query_task(const cesium_safe::il2cpp_tbl& t, void* task, void* 
 
     if (!task || !t.runtime_invoke)
     {
-        log_line("[steamhack] 阶段5[探针]: 缺 il2cpp_runtime_invoke 或任务对象为空 —— "
-                 "跳过完成态/结果校验(仅按构造成功放行)");
+        log_line("[steamhack] stage 5[probe]: il2cpp_runtime_invoke missing or task object is null - "
+                 "skipping completion/result checks (accept on successful construction)");
         return true;
     }
 
@@ -730,7 +730,7 @@ bool probe_lobby_query_task(const cesium_safe::il2cpp_tbl& t, void* task, void* 
     if (!cls) cls = task_cls;
     if (!cls)
     {
-        log_line("[steamhack] 阶段5[探针]: 判不出任务对象的类 —— 跳过校验");
+        log_line("[steamhack] stage 5[probe]: cannot determine the task object's class - skipping checks");
         return true;
     }
 
@@ -743,7 +743,7 @@ bool probe_lobby_query_task(const cesium_safe::il2cpp_tbl& t, void* task, void* 
     if (!get_completed) get_completed = find_method_up_chain(t, cls, "get_IsCompleted");
     if (!get_completed || !method_pointer_of(get_completed))
     {
-        log_line("[steamhack] 阶段5[探针]: 找不到可用的 IsCompleted getter —— 跳过完成态校验");
+        log_line("[steamhack] stage 5[probe]: no usable IsCompleted getter - skipping the completion check");
     }
     else
     {
@@ -753,17 +753,17 @@ bool probe_lobby_query_task(const cesium_safe::il2cpp_tbl& t, void* task, void* 
         pod_runtime_invoke((void*)t.runtime_invoke, get_completed, task, args, &boxed, &exc, &seh);
         if (seh || exc || !boxed)
         {
-            log_line(std::string("[steamhack] 阶段5[探针]: IsCompleted 调用失败") +
-                     (seh ? ("(SEH " + hex_code_str(seh) + ")") : exc ? "(托管异常)" : "(返回空)") +
-                     " —— 校验失败, 不挂钩");
+            log_line(std::string("[steamhack] stage 5[probe]: IsCompleted call failed") +
+                     (seh ? ("(SEH " + hex_code_str(seh) + ")") : exc ? "(managed exception)" : "(returned null)") +
+                     " - validation failed, not hooked");
             return false;
         }
         const bool completed = boxed_byte(t, boxed) != 0;
-        log_line("[steamhack] 阶段5[探针]: IsCompleted=" + std::string(completed ? "true" : "false"));
+        log_line("[steamhack] stage 5[probe]: IsCompleted=" + std::string(completed ? "true" : "false"));
         if (!completed)
         {
-            log_line("[steamhack] 阶段5[探针]: 任务不是 RanToCompletion —— 不挂钩"
-                     "(否则游戏 await 会永久挂起)");
+            log_line("[steamhack] stage 5[probe]: task is not RanToCompletion - not hooked"
+                     " (otherwise the game's await would hang forever)");
             return false;
         }
     }
@@ -775,7 +775,7 @@ bool probe_lobby_query_task(const cesium_safe::il2cpp_tbl& t, void* task, void* 
                            : nullptr;
     if (!get_result || !method_pointer_of(get_result))
     {
-        log_line("[steamhack] 阶段5[探针]: 任务类上拿不到 get_Result() —— 无法校验结果, 判失败, 不挂钩");
+        log_line("[steamhack] stage 5[probe]: no get_Result() on the task class - cannot validate the result, treating as failure, not hooked");
         return false;
     }
     void* rexc = nullptr;
@@ -784,16 +784,16 @@ bool probe_lobby_query_task(const cesium_safe::il2cpp_tbl& t, void* task, void* 
     pod_runtime_invoke((void*)t.runtime_invoke, get_result, task, args, &rv, &rexc, &rseh);
     if (rseh || rexc)
     {
-        log_line(std::string("[steamhack] 阶段5[探针]: get_Result() 调用失败") +
-                 (rseh ? ("(SEH " + hex_code_str(rseh) + ")") : "(托管异常)") + " —— 不挂钩");
+        log_line(std::string("[steamhack] stage 5[probe]: get_Result() call failed") +
+                 (rseh ? ("(SEH " + hex_code_str(rseh) + ")") : "(managed exception)") + " - not hooked");
         return false;
     }
     if (!rv)
     {
         // 语义上 null 也能让游戏跳过(array != null 为 false), 但我们的目标是"长度 0 的数组";
         // 拿到 null 说明 ctor 没把结果存进去(或实参被降级成 nullptr) —— 按"宁可不挂钩"处理。
-        log_line("[steamhack] 阶段5[探针]: get_Result() 返回 null(不是长度 0 的 Lobby[]) —— "
-                 "校验失败, 不挂钩(说明 ctor 没把数组存进结果)");
+        log_line("[steamhack] stage 5[probe]: get_Result() returned null (not an empty Lobby[]) - "
+                 "validation failed, not hooked (ctor did not store the array in the result)");
         return false;
     }
 
@@ -805,9 +805,9 @@ bool probe_lobby_query_task(const cesium_safe::il2cpp_tbl& t, void* task, void* 
         void* rcls = t.object_get_class(rv);
         class_checked = true;
         class_is_array = (rcls != nullptr && array_cls != nullptr && rcls == array_cls);
-        log_line("[steamhack] 阶段5[探针]: get_Result() 非空 对象=" + cesium::steam::diagnostics::hex((uintptr_t)rv) +
-                 " 类=" + class_name_of(t, rcls) + " 与 Lobby[] 的 Il2CppClass 一致=" +
-                 (array_cls ? (class_is_array ? "是" : "否") : "(未解析到 Lobby[], 跳过该判定)"));
+        log_line("[steamhack] stage 5[probe]: get_Result() non-null, object=" + cesium::steam::diagnostics::hex((uintptr_t)rv) +
+                 " class=" + class_name_of(t, rcls) + " matchesLobbyArrayIl2CppClass=" +
+                 (array_cls ? (class_is_array ? "yes" : "no") : "(Lobby[] unresolved, skipping this check)"));
     }
 
     // ---- 3) 元素个数必须是 0 ----
@@ -815,37 +815,37 @@ bool probe_lobby_query_task(const cesium_safe::il2cpp_tbl& t, void* task, void* 
     pod_array_length(&t, rv, &al);
     if (al.seh_code)
     {
-        log_line("[steamhack] 阶段5[探针]: 读数组长度触发 SEH " + hex_code_str(al.seh_code) +
-                 " —— 已被 __try/__except 捕获; 未能读取长度, 只按'非 NULL'放行");
+        log_line("[steamhack] stage 5[probe]: reading array length raised SEH " + hex_code_str(al.seh_code) +
+                 " - captured by __try/__except; length unreadable, accepted on non-NULL only");
     }
     else if (al.length >= 0)
     {
-        log_line("[steamhack] 阶段5[探针]: 结果数组长度=" + std::to_string(al.length) + " (来源: " +
-                 (al.source == 1 ? "il2cpp_array_length(权威导出)"
-                                 : "数组布局偏移(il2cpp_array_object_header_size - 8)") + ")");
+        log_line("[steamhack] stage 5[probe]: result array length=" + std::to_string(al.length) + " (source: " +
+                 (al.source == 1 ? "il2cpp_array_length (authoritative export)"
+                                 : "array layout offset (il2cpp_array_object_header_size - 8)") + ")");
     }
     else
     {
-        log_line("[steamhack] 阶段5[探针]: 未能读取数组长度(il2cpp_array_length 与 "
-                 "il2cpp_array_object_header_size 都不可用) —— 只校验'非 NULL'");
+        log_line("[steamhack] stage 5[probe]: could not read the array length (il2cpp_array_length and "
+                 "il2cpp_array_object_header_size unavailable) - validating non-NULL only");
     }
     if (out_len) *out_len = al.length;
     if (out_len_src) *out_len_src = al.source;
 
     if (al.length >= 0 && al.length != 0)
     {
-        log_line("[steamhack] 阶段5[探针]: 结果数组长度不为 0 —— 校验失败, 不挂钩"
-                 "(否则游戏会拿这个数组去 Leave() 真实大厅)");
+        log_line("[steamhack] stage 5[probe]: result array length is not 0 - validation failed, not hooked"
+                 " (otherwise the game would Leave() a real lobby with this array)");
         return false;
     }
     if (class_checked && array_cls && !class_is_array)
     {
-        log_line("[steamhack] 阶段5[探针]: 结果对象的类不是 Lobby[] —— 校验失败, 不挂钩");
+        log_line("[steamhack] stage 5[probe]: result object class is not Lobby[] - validation failed, not hooked");
         return false;
     }
 
-    log_line("[steamhack] 阶段5[探针]: 校验通过 —— 已完成 + get_Result() 是长度 0 的 Lobby[]"
-             "(游戏侧 array != null && array.Length > 0 为 false, 跳过 Steam 大厅清理)");
+    log_line("[steamhack] stage 5[probe]: validation passed - completed + get_Result() is an empty Lobby[]"
+             " (the game's array != null && array.Length > 0 is false, so Steam lobby cleanup is skipped)");
     return true;
 }
 
@@ -865,7 +865,7 @@ void* find_task_ctor_with_arg(const cesium_safe::il2cpp_tbl& t, void* cls, void*
                               std::string* out_param_name, int* out_candidates)
 {
     if (out_candidates) *out_candidates = 0;
-    if (out_param_name) *out_param_name = "(未知)";
+    if (out_param_name) *out_param_name = "(unknown)";
     if (!cls || !t.class_get_methods || !t.method_get_name || !t.method_get_param_count ||
         !t.method_get_param || !t.type_get_object || !t.class_from_system_type)
         return nullptr;
@@ -892,13 +892,13 @@ void* find_task_ctor_with_arg(const cesium_safe::il2cpp_tbl& t, void* cls, void*
         {
             found = m;
             if (out_param_name) *out_param_name = pn;
-            log_line("[steamhack] 阶段5: **已按参数类型精确命中** 类..ctor(1): 参数类型全名=" + pn +
-                     " Il2CppClass=" + cesium::steam::diagnostics::hex((uintptr_t)pcls) + " (与 Lobby[] 一致) MethodInfo=" +
+            log_line("[steamhack] stage 5: **exact param-type hit** for class..ctor(1): param full type name=" + pn +
+                     " Il2CppClass=" + cesium::steam::diagnostics::hex((uintptr_t)pcls) + " (matches Lobby[]) MethodInfo=" +
                      cesium::steam::diagnostics::hex((uintptr_t)m));
             break;
         }
-        log_line("[steamhack] 阶段5: 枚举到一个 1 参数 .ctor 但**参数类型不匹配** —— 参数类型全名=" + pn +
-                 " Il2CppClass=" + cesium::steam::diagnostics::hex((uintptr_t)pcls) + " (期望 Lobby[]=" +
+        log_line("[steamhack] stage 5: found a 1-param .ctor but the **param type does not match** - param full type name=" + pn +
+                 " Il2CppClass=" + cesium::steam::diagnostics::hex((uintptr_t)pcls) + " (expected Lobby[]=" +
                  cesium::steam::diagnostics::hex((uintptr_t)expected_arg_cls) + ")");
     }
     return found;
@@ -911,8 +911,8 @@ void* find_task_ctor_with_arg(const cesium_safe::il2cpp_tbl& t, void* cls, void*
 // 任何一步失败都**只记日志、不挂钩**(fail-safe)。
 bool install_lobby_query_hook(const cesium_safe::il2cpp_tbl& t)
 {
-    log_line("[steamhack] 阶段5: 安装 LobbyQuery.RequestAsync 兜底"
-             "(退房/解散/被踢时 await 之后的代码不再被 NRE 跳过) ...");
+    log_line("[steamhack] stage 5: installing the LobbyQuery.RequestAsync fallback"
+             " (after leave/disband/kick, code after await is no longer skipped by NREs) ...");
 
     // ---- 依赖导出: 缺任何一个都做不了, 直接放弃该 hook(游戏行为与原版一致) ----
     struct { const char* n; const void* p; } need[] = {
@@ -933,37 +933,37 @@ bool install_lobby_query_hook(const cesium_safe::il2cpp_tbl& t)
     for (auto& n : need) if (!n.p) { if (!missing.empty()) missing += ", "; missing += n.n; }
     if (!missing.empty())
     {
-        log_line("[steamhack] 阶段5: IL2CPP 导出缺失(" + missing + ") —— 不挂钩(fail-safe)");
+        log_line("[steamhack] stage 5: IL2CPP exports missing (" + missing + ") - not hooked (fail-safe)");
         return false;
     }
 
     // ---- 1) 解析 Steamworks.Data.LobbyQuery ----
     std::string lq_image;
     std::string lq_ns;
-    void* lq_cls = resolve_steamworks_class(t, "阶段5", "LobbyQuery", &lq_image, &lq_ns);
+    void* lq_cls = resolve_steamworks_class(t, "stage 5", "LobbyQuery", &lq_image, &lq_ns);
     if (!lq_cls) return false;
     const bool lq_is_vt = t.class_is_valuetype ? t.class_is_valuetype(lq_cls) : false;
-    log_line("[steamhack] 阶段5: LobbyQuery 采用 image=" + lq_image + " ns=\"" + lq_ns + "\" 值类型=" +
-             (lq_is_vt ? "是(struct —— 与反编译里 `(ref lobbyList)` 的写法一致)"
-                       : "否(class —— 反编译里的 `(ref ...)` 也可作用于类, 不影响本 hook)"));
+    log_line("[steamhack] stage 5: LobbyQuery uses image=" + lq_image + " ns=\"" + lq_ns + "\" isValueType=" +
+             (lq_is_vt ? "yes (struct - consistent with `(ref lobbyList)` in the decompiled code)"
+                       : "no (class - `(ref ...)` in the decompiled code also works on classes, does not affect this hook)"));
 
     // ---- 2) 解析 RequestAsync(0 参数)并取 methodPointer ----
     void* mi = t.class_get_method_from_name(lq_cls, "RequestAsync", 0);
     if (!mi)
     {
-        log_line("[steamhack] 阶段5: 未命中 LobbyQuery.RequestAsync(0 参数) —— 不挂钩(fail-safe)");
-        dump_class_methods(t, lq_cls, "阶段5.LobbyQuery");
+        log_line("[steamhack] stage 5: no hit for LobbyQuery.RequestAsync (0 params) - not hooked (fail-safe)");
+        dump_class_methods(t, lq_cls, "stage5.LobbyQuery");
         return false;
     }
     void* target = method_pointer_of(mi);
     const uint32_t pc = t.method_get_param_count ? t.method_get_param_count(mi) : 0;
-    log_line("[steamhack] 阶段5: 命中 LobbyQuery.RequestAsync: image=" + lq_image + " ns=\"" + lq_ns +
+    log_line("[steamhack] stage 5: hit LobbyQuery.RequestAsync: image=" + lq_image + " ns=\"" + lq_ns +
              "\" MethodInfo=" + cesium::steam::diagnostics::hex((uintptr_t)mi) + " methodPointer=" + cesium::steam::diagnostics::hex((uintptr_t)target) +
-             " (" + cesium::steam::diagnostics::gameassembly_rva(target) + ") 参数个数=" + std::to_string(pc));
+             " (" + cesium::steam::diagnostics::gameassembly_rva(target) + ") paramCount=" + std::to_string(pc));
     if (!target)
     {
-        log_line("[steamhack] 阶段5: RequestAsync 的 methodPointer 为空(可能不是 AOT 方法) —— "
-                 "**只记日志, 不挂钩**(fail-safe)");
+        log_line("[steamhack] stage 5: RequestAsync methodPointer is null (possibly not an AOT method) - "
+                 "**log only, no hook** (fail-safe)");
         return false;
     }
 
@@ -971,19 +971,19 @@ bool install_lobby_query_hook(const cesium_safe::il2cpp_tbl& t)
     void* ret = t.method_get_return_type(mi);
     if (!ret)
     {
-        log_line("[steamhack] 阶段5: method_get_return_type 返回空 —— 不挂钩(fail-safe)");
+        log_line("[steamhack] stage 5: method_get_return_type returned null - not hooked (fail-safe)");
         return false;
     }
     const std::string ret_name =
-        t.type_get_name ? cstr_or(t.type_get_name(ret), "(null)") : std::string("(type_get_name 缺失)");
+        t.type_get_name ? cstr_or(t.type_get_name(ret), "(null)") : std::string("(type_get_name missing)");
     void* tobj = t.type_get_object(ret);
     void* task_cls = tobj ? t.class_from_system_type(tobj) : nullptr;
-    log_line("[steamhack] 阶段5: 返回值解析 **返回类型全名 = " + ret_name + "**" +
+    log_line("[steamhack] stage 5: return value resolved, **full type name = " + ret_name + "**" +
              " Il2CppType=" + cesium::steam::diagnostics::hex((uintptr_t)ret) + " System.Type=" + cesium::steam::diagnostics::hex((uintptr_t)tobj) +
-             " Il2CppClass=" + cesium::steam::diagnostics::hex((uintptr_t)task_cls) + " 类名=" + class_name_of(t, task_cls));
+             " Il2CppClass=" + cesium::steam::diagnostics::hex((uintptr_t)task_cls) + " className=" + class_name_of(t, task_cls));
     if (!task_cls)
     {
-        log_line("[steamhack] 阶段5: class_from_system_type(" + ret_name + ") 返回空 —— 不挂钩(fail-safe)");
+        log_line("[steamhack] stage 5: class_from_system_type(" + ret_name + ") returned null - not hooked (fail-safe)");
         return false;
     }
     {
@@ -991,29 +991,29 @@ bool install_lobby_query_hook(const cesium_safe::il2cpp_tbl& t)
         // 只做"看起来对"的提示(不作硬门槛 —— 硬门槛会因命名拼写差异误杀), 不符时明确写在日志里。
         const bool looks_task = (ret_name.find("Task") != std::string::npos);
         const bool looks_lobby = (ret_name.find("Lobby") != std::string::npos);
-        log_line("[steamhack] 阶段5: 返回类型自检 含\"Task\"=" + std::string(looks_task ? "是" : "否") +
-                 " 含\"Lobby\"" + "=" + (looks_lobby ? "是" : "否") +
-                 " (期望 System.Threading.Tasks.Task`1<Steamworks.Data.Lobby[]>)" +
-                 (looks_task && looks_lobby ? " —— 与预期一致"
-                                            : " —— **与预期不符, 仍按实际类型继续, 但请核对上面那行**"));
+        log_line("[steamhack] stage 5: return type self-check contains \"Task\"=" + std::string(looks_task ? "yes" : "no") +
+                 " contains \"Lobby\"" + "=" + (looks_lobby ? "yes" : "no") +
+                 " (expected System.Threading.Tasks.Task`1<Steamworks.Data.Lobby[]>)" +
+                 (looks_task && looks_lobby ? " - matches expectation"
+                                            : " - **unexpected; continuing with the actual type, but check the line above**"));
     }
 
     // ---- 4) 解析 Steamworks.Data.Lobby(空数组的元素类型) ----
     std::string lobby_image;
     std::string lobby_ns;
-    void* lobby_cls = resolve_steamworks_class(t, "阶段5", "Lobby", &lobby_image, &lobby_ns);
+    void* lobby_cls = resolve_steamworks_class(t, "stage 5", "Lobby", &lobby_image, &lobby_ns);
     void* array_cls = nullptr;
     if (lobby_cls && t.array_class_get)
     {
         array_cls = t.array_class_get(lobby_cls, 1);
-        log_line("[steamhack] 阶段5: Lobby 采用 image=" + lobby_image + " ns=\"" + lobby_ns +
+        log_line("[steamhack] stage 5: Lobby uses image=" + lobby_image + " ns=\"" + lobby_ns +
                  "\" Il2CppClass=" + cesium::steam::diagnostics::hex((uintptr_t)lobby_cls) +
                  " -> Lobby[] Il2CppClass=" + cesium::steam::diagnostics::hex((uintptr_t)array_cls));
     }
     if (!lobby_cls)
     {
-        log_line("[steamhack] 阶段5: 未解析到 Steamworks.Data.Lobby —— 无法构造长度 0 的数组, "
-                 "不挂钩(fail-safe; 不用 nullptr 硬来, 因为那会让探针判不出结果类型)");
+        log_line("[steamhack] stage 5: Steamworks.Data.Lobby unresolved - cannot build an empty array, "
+                 "not hooked (fail-safe; not forcing nullptr, which would make the probe unable to determine the result type)");
         return false;
     }
 
@@ -1025,33 +1025,33 @@ bool install_lobby_query_hook(const cesium_safe::il2cpp_tbl& t)
     if (array_cls)
     {
         ctor = find_task_ctor_with_arg(t, task_cls, array_cls, &ctor_pick_name, &ctor_candidates);
-        log_line("[steamhack] 阶段5: 类上共枚举到 " + std::to_string(ctor_candidates) +
-                 " 个 1 参数 .ctor(按参数类型筛选后命中=" + std::string(ctor ? "是" : "否") + ")");
+        log_line("[steamhack] stage 5: enumerated " + std::to_string(ctor_candidates) +
+                 " single-parameter .ctor(s) (type-filtered hit=" + std::string(ctor ? "yes" : "no") + ")");
     }
     if (!ctor)
     {
         ctor = t.class_get_method_from_name(task_cls, ".ctor", 1);
-        log_line("[steamhack] 阶段5: 未按参数类型精确筛出 .ctor(1)(Lobby[]) —— 退回 "
-                 "class_get_method_from_name(类, \".ctor\", 1); 该结果**仍要过探针校验**, "
-                 "若拿到的不是 Task<TResult>(TResult), 会因 IsCompleted=false 被拦下(fail-safe)");
+        log_line("[steamhack] stage 5: no exact .ctor(1)(Lobby[]) by param type - falling back to "
+                 "class_get_method_from_name(class, \".ctor\", 1); that result **still goes through the probe**, "
+                 "if it is not Task<TResult>(TResult) it is rejected by IsCompleted=false (fail-safe)");
     }
     void* ctor_ptr = method_pointer_of(ctor);
-    log_line("[steamhack] 阶段5: 采用的 类..ctor(1) 命中=" + std::string(ctor ? "是" : "否") +
+    log_line("[steamhack] stage 5: chosen class..ctor(1) hit=" + std::string(ctor ? "yes" : "no") +
              " MethodInfo=" + cesium::steam::diagnostics::hex((uintptr_t)ctor) +
              " methodPointer=" + cesium::steam::diagnostics::hex((uintptr_t)ctor_ptr));
     if (!ctor || !ctor_ptr)
     {
-        log_line("[steamhack] 阶段5: 拿不到 类..ctor(1) 的 methodPointer —— 不挂钩(fail-safe)");
+        log_line("[steamhack] stage 5: no methodPointer for class..ctor(1) - not hooked (fail-safe)");
         return false;
     }
 
     bool param_is_vt = false;
     bool param_determined = false;
-    std::string param_name = "(未知)";
+    std::string param_name = "(unknown)";
     if (t.method_get_param_count && t.method_get_param)
     {
         const uint32_t cpc = t.method_get_param_count(ctor);
-        log_line("[steamhack] 阶段5: ctor 参数个数=" + std::to_string(cpc));
+        log_line("[steamhack] stage 5: ctor paramCount=" + std::to_string(cpc));
         if (cpc == 1)
         {
             void* pt = t.method_get_param(ctor, 0);
@@ -1065,21 +1065,21 @@ bool install_lobby_query_hook(const cesium_safe::il2cpp_tbl& t)
                     param_is_vt = t.class_is_valuetype(pcls);
                     param_determined = true;
                     if (array_cls)
-                        log_line("[steamhack] 阶段5: ctor 参数类 Il2CppClass=" + cesium::steam::diagnostics::hex((uintptr_t)pcls) +
-                                 " 与解析到的 Lobby[] 一致=" + ((pcls == array_cls) ? "是" : "否"));
+                        log_line("[steamhack] stage 5: ctor param Il2CppClass=" + cesium::steam::diagnostics::hex((uintptr_t)pcls) +
+                                 " matchesResolvedLobbyArray=" + ((pcls == array_cls) ? "yes" : "no"));
                 }
             }
         }
     }
-    log_line("[steamhack] 阶段5: ctor 参数类型全名=" + param_name + " 值类型=" +
-             (param_determined ? (param_is_vt ? "**是**(不符合预期)" : "否(引用类型, 符合预期)")
-                               : "未知(无法判定, 不冒进)"));
+    log_line("[steamhack] stage 5: ctor param full type name=" + param_name + " isValueType=" +
+             (param_determined ? (param_is_vt ? "**yes** (unexpected)" : "no (reference type, as expected)")
+                               : "unknown (cannot determine, not attempting)"));
     if (param_determined && param_is_vt)
     {
         // 需求: 参数被判定为值类型就**不挂钩** —— 给 Task<Lobby[]> 的 ctor 传"数组指针"是错的,
         // 用零值装箱更会给出一个错误的数组。宁可不挂钩, 也不要给游戏一个错误对象。
-        log_line("[steamhack] 阶段5: ctor 参数被判定为**值类型**(不符合预期 —— 泛型参数应为引用类型 "
-                 "Lobby[]) —— 不用零值装箱(那会给出错误的数组), **不挂钩**(fail-safe)");
+        log_line("[steamhack] stage 5: ctor param judged a **value type** (unexpected - the generic param should be a reference type "
+                 "Lobby[]) - not boxing a zero value (that would give a wrong array), **not hooked** (fail-safe)");
         return false;
     }
 
@@ -1090,52 +1090,52 @@ bool install_lobby_query_hook(const cesium_safe::il2cpp_tbl& t)
     unsigned long an_seh = 0;
     pod_array_new_empty((void*)t.array_new, lobby_cls, &empty_array, &an_seh);
     if (an_seh)
-        log_line("[steamhack] 阶段5: il2cpp_array_new(Lobby, 0) 触发 SEH " + hex_code_str(an_seh) +
-                 " —— 已被 __try/__except 捕获");
+        log_line("[steamhack] stage 5: il2cpp_array_new(Lobby, 0) raised SEH " + hex_code_str(an_seh) +
+                 " - captured by __try/__except");
 
     if (empty_array)
     {
         PodArrayLength al0;
         pod_array_length(&t, empty_array, &al0);
-        log_line("[steamhack] 阶段5: 已构造空数组 Lobby[0] 对象=" + cesium::steam::diagnostics::hex((uintptr_t)empty_array) +
-                 " 元素个数=" + (al0.length >= 0 ? std::to_string(al0.length) : std::string("(读不到)")) +
-                 " (来源: " + (al0.source == 1 ? "il2cpp_array_length"
-                                               : al0.source == 2 ? "数组布局偏移" : "无") + ")");
+        log_line("[steamhack] stage 5: built empty array Lobby[0] object=" + cesium::steam::diagnostics::hex((uintptr_t)empty_array) +
+                 " length=" + (al0.length >= 0 ? std::to_string(al0.length) : std::string("(unreadable)")) +
+                 " (source: " + (al0.source == 1 ? "il2cpp_array_length"
+                                               : al0.source == 2 ? "array layout offset" : "none") + ")");
     }
     else
     {
         // 降级: 传 nullptr。调用方有 `array != null` 判空, 语义安全 —— 但探针会因此拿到 null 结果
         // 而判定失败(见 probe_lobby_query_task), 所以最终**不会挂钩**; 这里明确记下走到了哪一步。
-        log_line("[steamhack] 阶段5: **降级路径** —— 未能构造长度 0 的 Lobby[](il2cpp_array_new 调用"
-                 "失败/返回空)。按需求本可退化为给 ctor 传 nullptr(调用方有 `array != null` 判空, "
-                 "语义安全), 但探针拿不到数组就无法校验结果类型, 因此预期会走到'探针失败 -> 不挂钩'。");
+        log_line("[steamhack] stage 5: **degraded path** - could not build an empty Lobby[] (il2cpp_array_new"
+                 "failed/null). Per the requirement we could degrade to passing nullptr to the ctor (the caller checks `array != null`, "
+                 "semantically safe), but without the array the probe cannot verify the result type, so this is expected to end in \"probe failed -> not hooked\".");
     }
 
     // ---- 7) direct 直调 ctor: 原生 ABI, 绕过 il2cpp_runtime_invoke ----
     PodLobbyQueryCtor dr;
     pod_call_lobby_query_ctor((void*)t.object_new, task_cls, ctor_ptr, ctor, empty_array, &dr);
     {
-        std::string s = "[steamhack] 阶段5[direct]: 原生 ABI 直调 Task<Lobby[]>::.ctor(Lobby[]), "
-                        "绕过 il2cpp_runtime_invoke: ";
+        std::string s = "[steamhack] stage 5[direct]: native ABI direct call Task<Lobby[]>::.ctor(Lobby[]), "
+                        "bypassing il2cpp_runtime_invoke: ";
         s += "ctor methodPointer=" + cesium::steam::diagnostics::hex((uintptr_t)ctor_ptr);
-        s += " 目标类=" + class_name_of(t, task_cls);
-        s += " il2cpp_object_new=" + std::string(dr.alloc_ok ? "成功" : "失败");
-        s += " 实参=" + (dr.arg_was_null
-                             ? std::string("nullptr(降级路径: 没传空数组)")
-                             : ("长度 0 的 Lobby[] 对象指针 " + cesium::steam::diagnostics::hex((uintptr_t)empty_array)));
+        s += " targetClass=" + class_name_of(t, task_cls);
+        s += " il2cpp_object_new=" + std::string(dr.alloc_ok ? "ok" : "failed");
+        s += " arg=" + (dr.arg_was_null
+                             ? std::string("nullptr (degraded path: empty array not passed)")
+                             : ("pointer to an empty Lobby[] object " + cesium::steam::diagnostics::hex((uintptr_t)empty_array)));
         if (dr.seh_code)
-            s += " | 原生调用触发 SEH 异常 " + hex_code_str(dr.seh_code) +
-                 " —— 已被 __try/__except 捕获, **构造失败**";
+            s += " | native call raised SEH " + hex_code_str(dr.seh_code) +
+                 " - captured by __try/__except, **construction failed**";
         else if (!dr.called)
-            s += " | 未执行调用(缺 object_new / ctor methodPointer / 目标类)";
+            s += " | call not executed (missing object_new / ctor methodPointer / target class)";
         else
-            s += std::string(" | 原生调用完成, 返回对象=") +
-                 (dr.object ? cesium::steam::diagnostics::hex((uintptr_t)dr.object) : std::string("(空)"));
+            s += std::string(" | native call done, object=") +
+                 (dr.object ? cesium::steam::diagnostics::hex((uintptr_t)dr.object) : std::string("(empty)"));
         log_line(s);
     }
     if (!dr.object)
     {
-        log_line("[steamhack] 阶段5: 未能构造出 Task<Lobby[]> 对象 —— 不挂钩(fail-safe)");
+        log_line("[steamhack] stage 5: could not construct a Task<Lobby[]> object - not hooked (fail-safe)");
         return false;
     }
 
@@ -1144,8 +1144,8 @@ bool install_lobby_query_hook(const cesium_safe::il2cpp_tbl& t)
     int arr_len_src = 0;
     if (!probe_lobby_query_task(t, dr.object, task_cls, array_cls, &arr_len, &arr_len_src))
     {
-        log_line("[steamhack] 阶段5: 探针校验未通过 —— **不挂钩**"
-                 "(宁可不挂钩, 也不给游戏一个错误的返回值)");
+        log_line("[steamhack] stage 5: probe validation failed - **not hooked**"
+                 " (rather not hook than give the game a wrong return value)");
         return false;
     }
 
@@ -1161,21 +1161,21 @@ bool install_lobby_query_hook(const cesium_safe::il2cpp_tbl& t)
     {
         pod_gchandle_new((void*)t.gchandle_new, dr.object, &gh, &gh_seh);
         if (gh_seh)
-            log_line("[steamhack] 阶段5[GC root]: il2cpp_gchandle_new 触发 SEH " + hex_code_str(gh_seh) +
-                     " —— 已被 __try/__except 捕获, 本次仅靠模块级全局变量作根");
+            log_line("[steamhack] stage 5[GC root]: il2cpp_gchandle_new raised SEH " + hex_code_str(gh_seh) +
+                     " - captured by __try/__except; relying on the module-level global as root only");
         else
             g_lq_task_gchandle = gh;
     }
-    log_line("[steamhack] 阶段5[GC root]: 预建好的 Task 持于模块级全局 g_lq_task=" +
+    log_line("[steamhack] stage 5[GC root]: prebuilt Task held in module global g_lq_task=" +
              cesium::steam::diagnostics::hex((uintptr_t)g_lq_task) + " / g_lq_empty_array=" + cesium::steam::diagnostics::hex((uintptr_t)g_lq_empty_array) +
-             " (静态存储期, Boehm 会扫描已加载模块的可写数据段)" +
-             (g_lq_task_gchandle ? (" + **显式** il2cpp_gchandle_new 句柄=" +
+             " (static storage; Boehm scans writable data of loaded modules)" +
+             (g_lq_task_gchandle ? (" + **explicit** il2cpp_gchandle_new handle=" +
                                     std::to_string(g_lq_task_gchandle) + " (pinned=false)")
                                  : std::string(" ; il2cpp_gchandle_new ") +
-                                       (t.gchandle_new ? "返回 0(未成功)" : "导出缺失") +
-                                       " —— 只靠全局变量, 如实标注"));
-    log_line("[steamhack] 阶段5: 该 Task **只构造一次, 所有 RequestAsync 调用复用同一个实例** "
-             "(Task<T> 不可变, get_Result() 恒返回同一个长度 0 的数组)");
+                                       (t.gchandle_new ? "returned 0 (not successful)" : "export missing") +
+                                       " - relying on the global only, noted as is"));
+    log_line("[steamhack] stage 5: that Task is **built once and reused by every RequestAsync call** "
+             "(Task<T> is immutable; get_Result() always returns the same empty array)");
 
     // ---- 10) 挂钩 ----
     if (!ensure_minhook()) return false;
@@ -1183,15 +1183,15 @@ bool install_lobby_query_hook(const cesium_safe::il2cpp_tbl& t)
     MH_STATUS st = MH_CreateHook(target, (LPVOID)&Hook_LobbyQueryRequestAsync, (LPVOID*)&g_real_lq_request);
     if (st != MH_OK)
     {
-        log_line("[steamhack] MH_CreateHook(LobbyQuery.RequestAsync) 失败: " + std::to_string((int)st) +
-                 " (target=" + cesium::steam::diagnostics::hex((uintptr_t)target) + ") —— 本次不挂钩(fail-safe)");
+        log_line("[steamhack] MH_CreateHook(LobbyQuery.RequestAsync) failed: " + std::to_string((int)st) +
+                 " (target=" + cesium::steam::diagnostics::hex((uintptr_t)target) + ") - not hooked this time (fail-safe)");
         return false;
     }
 
     st = MH_EnableHook(target);
     if (st != MH_OK)
     {
-        log_line("[steamhack] MH_EnableHook(LobbyQuery.RequestAsync) 失败: " + std::to_string((int)st));
+        log_line("[steamhack] MH_EnableHook(LobbyQuery.RequestAsync) failed: " + std::to_string((int)st));
         MH_RemoveHook(target);
         return false;
     }
@@ -1199,8 +1199,8 @@ bool install_lobby_query_hook(const cesium_safe::il2cpp_tbl& t)
     g_lq_target = target;
     g_lq_method = mi;
     g_lq_hooked = true;
-    log_line("[steamhack] LobbyQuery.RequestAsync inline hook 已启用 "
-             "(恒返回预建好的 Task<Lobby[]>, 结果 = 长度 0 的 Lobby[])");
+    log_line("[steamhack] LobbyQuery.RequestAsync inline hook enabled "
+             "(always returns the prebuilt Task<Lobby[]>, result = empty Lobby[])");
     return true;
 }
 
@@ -1211,8 +1211,8 @@ void* Hook_CreateLobbyAsync(int32_t max_members)
 {
     // 只在首次拦截时记录入参(原子计数, 不刷屏)
     if (g_cl_hits.fetch_add(1, std::memory_order_relaxed) == 0)
-        log_line("[steamhack] CreateLobbyAsync 首次被拦截: maxMembers=" + std::to_string(max_members) +
-                 " -> 返回已完成的空 Task(不执行真实 Steam 大厅逻辑, 游戏侧 LobbyId 保持 0)");
+        log_line("[steamhack] CreateLobbyAsync intercepted on first hit: maxMembers=" + std::to_string(max_members) +
+                 " -> returning a completed empty Task (no real Steam lobby logic; game keeps LobbyId 0)");
     return make_default_completed_task(g_cl_method);
 }
 
@@ -1226,10 +1226,10 @@ void* Hook_JoinLobbyAsync(void* steam_id_ref)
         // 寄存器值: 宁可少一条信息, 不可多一个崩溃点。(对比 CreateLobbyAsync 的 int32 参数:
         // 基元类型按值传, 所以那边 maxMembers 的日志是可靠的。)
         const uintptr_t raw = reinterpret_cast<uintptr_t>(steam_id_ref);
-        log_line("[steamhack] JoinLobbyAsync 首次被拦截: steamId 原始寄存器值=" +
+        log_line("[steamhack] JoinLobbyAsync intercepted on first hit: raw steamId register value=" +
                  (steam_id_ref ? cesium::steam::diagnostics::hex(raw) : std::string("(null)")) +
-                 " (值类型; 按 IL2CPP AOT 约定应是指向 SteamId 的指针, 本模块不解引用)"
-                 " -> 返回已完成的空 Task(不执行真实 Steam 大厅逻辑)");
+                 " (value type; per the IL2CPP AOT convention this is a pointer to SteamId; this module does not dereference it)"
+                 " -> returning a completed empty Task (no real Steam lobby logic)");
     }
     return make_default_completed_task(g_jl_method);
 }
@@ -1249,7 +1249,7 @@ void* make_default_completed_task(void* hooked_mi)
         // 理论到不了这里(hook 只在安装成功后才存在)。防御性记录一次。
         static std::atomic<long> once{ 0 };
         if (once.fetch_add(1, std::memory_order_relaxed) == 0)
-            log_line("[steamhack] make_default_completed_task: 未登记的 MethodInfo 或函数表未就绪 -> 返回 nullptr");
+            log_line("[steamhack] make_default_completed_task: unregistered MethodInfo or function table not ready -> returning nullptr");
         return nullptr;
     }
 
@@ -1260,7 +1260,7 @@ void* make_default_completed_task(void* hooked_mi)
     {
         if (f->failures.fetch_add(1, std::memory_order_relaxed) == 0)
             log_line("[steamhack] " + std::string(f->label) +
-                     ": 默认返回值工厂不可用 -> 本次返回 nullptr(游戏侧会收到空 Task 而 NRE)");
+                     ": default-return factory unavailable -> returning nullptr this time (the game gets a null Task and NREs)");
         return nullptr;
     }
 
@@ -1276,13 +1276,13 @@ void* make_default_completed_task(void* hooked_mi)
         r = run_direct_ctor(g_t, *f, &dr);
         // 运行期只记首次详细日志(不刷屏); 失败也只在首次记录, 避免每次点创建房间都刷一条。
         if (f->runtime_logged.fetch_add(1, std::memory_order_relaxed) == 0)
-            log_direct_attempt(g_t, *f, dr, r, "运行期首次");
+            log_direct_attempt(g_t, *f, dr, r, "first at runtime");
         if (!r)
         {
             if (f->failures.fetch_add(1, std::memory_order_relaxed) == 0)
                 log_line("[steamhack] " + std::string(f->label) +
-                         "[direct]: 原生 ABI 直调造默认返回值失败(见上一条) -> 本次返回 nullptr"
-                         "(不让异常穿到游戏里)");
+                         "[direct]: native ABI default-return construction failed (see the previous line) -> returning nullptr this time"
+                         " (no exception leaks into the game)");
             return nullptr;
         }
         return r;
@@ -1292,8 +1292,8 @@ void* make_default_completed_task(void* hooked_mi)
     if (!r)
     {
         if (f->failures.fetch_add(1, std::memory_order_relaxed) == 0)
-            log_line("[steamhack] " + std::string(f->label) + "[invoke]: runtime_invoke 造默认返回值失败" +
-                     (exc ? "(托管异常)" : "(返回空)") + " -> 本次返回 nullptr(不让异常穿到游戏里)");
+            log_line("[steamhack] " + std::string(f->label) + "[invoke]: runtime_invoke failed to build a default return value" +
+                     (exc ? "(managed exception)" : "(returned null)") + " -> returning nullptr this time (no exception leaks into the game)");
         return nullptr;
     }
     return r;

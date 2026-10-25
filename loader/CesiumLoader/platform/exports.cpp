@@ -25,7 +25,7 @@ void* real_version_handle()
     if (!g_real_version)
     {
         g_real_version = LoadLibraryA("C:\\Windows\\System32\\version.dll");
-        log_line("[hijack] 系统 version.dll 句柄: (loaded)");
+        log_line("[loader] system version.dll resolved (forward target)");
     }
     return g_real_version;
 }
@@ -180,7 +180,7 @@ BOOL WINAPI DllMain(HINSTANCE, DWORD reason, LPVOID)
 {
     if (reason == DLL_PROCESS_ATTACH)
     {
-        log_line("[hijack] version.dll 被加载 (DLL_PROCESS_ATTACH)");
+        log_line("[loader] version.dll loaded (DLL_PROCESS_ATTACH)");
         // 注意: 不在 DllMain 里安装变速 hook —— loader lock 下改写 kernel32 代码
         // 有竞态风险(ERROR_DLL_INIT_FAILED 实测), 改由引导线程在 loader lock
         // 释放后安装(见 loader.cpp boot_thread 开头)。

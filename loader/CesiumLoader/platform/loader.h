@@ -28,6 +28,11 @@
 #include <string>
 
 // ---------- 日志 ----------
+// 控制台与文件的行为约定:
+//   - 控制台**按窗口宽度折行**: 以 "[tag] " 开头的行, 标签固定占 kTagColumns 列并置暗灰,
+//     正文按调用方设置的颜色; 超宽时在空格/路径分隔符处折行, 续行缩进对齐正文列。
+//   - 文件里按原样写 "[tag] 消息"(spdlog 补时间戳), 行内容不折行 —— 文件是给 grep 用的。
+//   - 空串 = 只输出一个控制台空行(文件里不留带时间戳的空行)。
 void log_line(const char* msg);
 void log_line(const std::string& msg);
 void log_line(const std::wstring& msg);
@@ -35,17 +40,41 @@ void log_line(const std::wstring& msg);
 // ---------- 彩色分级日志(行业标准风格) ----------
 // 颜色码 = Windows 控制台文本属性(FOREGROUND_* 组合)。
 // 用法: console_set_color(LOG_CYAN); log_line("..."); console_set_color(LOG_DEFAULT);
+// 配色约定(改日志时按角色选, 不要随手挑颜色):
+//   LOG_DIM      路径/目录/次要说明/禁用项 —— 视觉上退到背景
+//   LOG_CYAN     分组标题、分隔线、mod 名
+//   LOG_WHITE    正文强调(版本号、计数、总结)
+//   LOG_GREEN    成功; LOG_RED 失败; LOG_YELLOW 警告/被跳过
+//   LOG_MAGENTA  加载器自身的版本/会话等标识
+//   LOG_BLUE     预留(深蓝在黑底上对比度低, 谨慎使用)
 enum LogColor : WORD
 {
     LOG_DEFAULT = 0x07,   // 灰白(默认)
     LOG_DIM     = 0x08,   // 暗灰(次要信息)
+    LOG_BLUE    = 0x09,   // 蓝
     LOG_GREEN   = 0x0A,   // 亮绿(成功)
     LOG_CYAN    = 0x0B,   // 亮青(标题/分组)
     LOG_RED     = 0x0C,   // 亮红(失败/错误)
+    LOG_MAGENTA = 0x0D,   // 品红(加载器标识)
     LOG_YELLOW  = 0x0E,   // 亮黄(警告)
     LOG_WHITE   = 0x0F,   // 亮白(强调)
 };
 void console_set_color(WORD attr);   // 设置控制台前景色(仅在已初始化时生效)
+
+// ---------- 显示辅助 ----------
+// 控制台窗口列数(取不到/无控制台时返回 0, 此时不折行)。console_init 时缓存。
+int console_width();
+
+// UTF-8 文本的显示列宽(中文/emoji 记 2 列), 表格对齐用。
+int text_width(const std::string& utf8);
+
+// PE 文件版本资源: 优先 ProductVersion 字符串(如 "Unity 2022.3.62f3 (hash)"),
+// 退回 FileVersion, 再退回固定版本号; 读不到返回空串。只用于展示, 失败不致命。
+std::wstring file_version(const std::wstring& path);
+
+// 把绝对路径压成短形式: <loader>\... / <game>\... / %LOCALAPPDATA%\...。
+// 不改变语义, 只为让控制台一行放得下; 真正的绝对根目录由启动块打印一次。
+std::wstring short_path(const std::wstring& path);
 
 // ---------- 控制台 ----------
 void console_init(bool topmost);

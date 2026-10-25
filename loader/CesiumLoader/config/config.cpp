@@ -61,8 +61,8 @@ LoaderConfig load_config(const std::wstring& config_path)
         // 否则用户改坏了配置(少个逗号/引号不配对)却只看到"设置没生效", 完全无从下手。
         // 注意与旧实现的差别: 旧的手写扫描器是"能扫到哪个键就用哪个键", 语法错误只影响局部;
         // 新实现一旦语法不合法就整体用默认值。等价性测试里对此有专门的用例(见 tests\native)。
-        log_line("[config] 警告: doorstop_config.json 解析失败, 已使用**全部默认值**; "
-                 "请检查 JSON 语法(// 注释是允许的; 多余逗号、单引号、引号不配对都会失败)");
+        log_line("[config] warning: failed to parse doorstop_config.json, using ALL defaults; "
+                 "check JSON syntax (// comments are allowed; trailing commas, single quotes and unbalanced quotes fail)");
         return cfg;
     }
 

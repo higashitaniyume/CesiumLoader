@@ -11,6 +11,8 @@
 
 #pragma once
 
+#include <string>
+
 // 允许的倍率区间: **硬下限 1.0**(低于 1 倍一律拒绝 —— 减速会让游戏的计时/超时/网络节奏
 // 变得不可预期, 实测也容易触发卡顿; 这是产品规则, 三层都拦:
 // speedctl 的请求解析 -> 这里的 speedhack_set_speed -> SDK 的 SetSpeed/ClampSpeed)。
@@ -30,6 +32,9 @@ bool speedhack_set_speed(double speed);
 // 当前倍率。
 double speedhack_get_speed();
 
+// 倍率的展示文本("2.0x" / "1.75x"): 去掉无意义的尾零, 加载器各层日志共用。
+std::string speed_text(double speed);
+
 // 是否已安装 hook。
 bool speedhack_active();
 
@@ -41,6 +46,7 @@ namespace cesium::speed
 {
 using ::kSpeedMax;
 using ::kSpeedMin;
+using ::speed_text;
 using ::speedhack_active;
 using ::speedhack_get_speed;
 using ::speedhack_hook_count;

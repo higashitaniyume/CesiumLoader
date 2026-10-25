@@ -19,7 +19,7 @@ void Hook_Awake(void* /*self*/)
     // 直接返回 = Awake 的 Steam 校验根本没跑。
     // 只在第一次调用时记日志: Awake 只会被调一次, 但万一被反复调用也不该刷屏。
     if (g_awake_hits.fetch_add(1, std::memory_order_relaxed) == 0)
-        log_line("[steamhack] SteamManager.Awake 已被 no-op 拦截, Steam 校验未执行(游戏继续启动)");
+        log_line("[steamhack] SteamManager.Awake intercepted as no-op, Steam check not executed (game keeps starting)");
 }
 
 // ---------- hook 2: SteamAPI_RestartAppIfNecessary -> 0 ----------
@@ -51,12 +51,12 @@ bool ensure_minhook()
     MH_STATUS st = MH_Initialize();
     if (st != MH_OK && st != MH_ERROR_ALREADY_INITIALIZED)
     {
-        log_line("[steamhack] MinHook 初始化失败: " + std::to_string((int)st));
+        log_line("[steamhack] MinHook init failed: " + std::to_string((int)st));
         return false;
     }
     g_mh_ready = true;
     if (st == MH_ERROR_ALREADY_INITIALIZED)
-        log_line("[steamhack] MinHook 已由 speedhack 初始化(复用, 不重复初始化)");
+        log_line("[steamhack] MinHook already initialized by speedhack (reusing, not re-initializing)");
     return true;
 }
 
@@ -108,14 +108,14 @@ void* resolve_awake(const cesium_safe::il2cpp_tbl& t, std::string* out_chosen_ns
     }
     if (!missing.empty())
     {
-        log_line("[steamhack] IL2CPP 函数表缺失: " + missing + " —— 无法解析 SteamManager");
+        log_line("[steamhack] IL2CPP function table missing: " + missing + " - cannot resolve SteamManager");
         return nullptr;
     }
 
     void* domain = t.domain_get();
     if (!domain)
     {
-        log_line("[steamhack] il2cpp domain 为空, 无法解析 SteamManager");
+        log_line("[steamhack] il2cpp domain is null, cannot resolve SteamManager");
         return nullptr;
     }
 
@@ -123,7 +123,7 @@ void* resolve_awake(const cesium_safe::il2cpp_tbl& t, std::string* out_chosen_ns
     void** assemblies = t.domain_get_assemblies(domain, &count);
     if (!assemblies)
     {
-        log_line("[steamhack] domain_get_assemblies 返回空");
+        log_line("[steamhack] domain_get_assemblies returned null");
         return nullptr;
     }
 
@@ -148,7 +148,7 @@ void* resolve_awake(const cesium_safe::il2cpp_tbl& t, std::string* out_chosen_ns
         list += image_names[i];
         if (i >= 199) { list += ", ..."; break; }   // 防御: 极端情况下不刷爆日志
     }
-    log_line("[steamhack] 域内程序集 " + std::to_string(image_names.size()) + " 个: " + list);
+    log_line("[steamhack] domain assemblies " + std::to_string(image_names.size()) + " items: " + list);
 
     std::vector<AwakeHit> hits;
     int class_without_awake = 0;
@@ -167,7 +167,7 @@ void* resolve_awake(const cesium_safe::il2cpp_tbl& t, std::string* out_chosen_ns
                 h.image = image_names[i];
                 h.ns = ns;
                 hits.push_back(h);
-                log_line("[steamhack] 命中 SteamManager.Awake: image=" + h.image +
+                log_line("[steamhack] SteamManager.Awake hit: image=" + h.image +
                          " ns=\"" + h.ns + "\" MethodInfo=" + cesium::steam::diagnostics::hex((uintptr_t)m) +
                          " methodPointer=" + cesium::steam::diagnostics::hex(*reinterpret_cast<uintptr_t*>(m)) +
                          " (" + cesium::steam::diagnostics::gameassembly_rva(*reinterpret_cast<void**>(m)) + ")");
@@ -179,7 +179,7 @@ void* resolve_awake(const cesium_safe::il2cpp_tbl& t, std::string* out_chosen_ns
             if (class_without_awake < 20)
             {
                 class_without_awake++;
-                log_line("[steamhack] 类命中但无 Awake(): image=" + image_names[i] +
+                log_line("[steamhack] class hit but no Awake(): image=" + image_names[i] +
                          " ns=\"" + std::string(ns) + "\"");
                 if (t.class_get_methods && t.method_get_name)
                 {
@@ -198,7 +198,7 @@ void* resolve_awake(const cesium_safe::il2cpp_tbl& t, std::string* out_chosen_ns
                             names += mn;
                         }
                     }
-                    log_line("[steamhack]   相关方法: " + (names.empty() ? std::string("(无)") : names));
+                    log_line("[steamhack]   related methods: " + (names.empty() ? std::string("(none)") : names));
                 }
             }
         }
@@ -206,7 +206,7 @@ void* resolve_awake(const cesium_safe::il2cpp_tbl& t, std::string* out_chosen_ns
 
     if (hits.empty())
     {
-        log_line("[steamhack] 未找到 SteamManager.Awake(候选命名空间已全部试过) —— Steam 自杀门未被绕过");
+        log_line("[steamhack] SteamManager.Awake not found (all candidate namespaces tried) - Steam self-kill gate not bypassed");
         return nullptr;
     }
 
@@ -221,7 +221,7 @@ void* resolve_awake(const cesium_safe::il2cpp_tbl& t, std::string* out_chosen_ns
         }
     }
     if (hits.size() > 1)
-        log_line("[steamhack] 共 " + std::to_string(hits.size()) + " 处命中, 选用 image=" + hits[chosen].image);
+        log_line("[steamhack] total " + std::to_string(hits.size()) + " hits, selected image=" + hits[chosen].image);
 
     if (out_chosen_ns) *out_chosen_ns = hits[chosen].ns;
     return hits[chosen].method;
@@ -240,7 +240,7 @@ bool install_awake(const cesium_safe::il2cpp_tbl& t)
     void* target = *reinterpret_cast<void**>(method);
     if (!target)
     {
-        log_line("[steamhack] SteamManager.Awake 的 methodPointer 为空(可能未 AOT 编译) —— 跳过");
+        log_line("[steamhack] SteamManager.Awake methodPointer is null (possibly not AOT-compiled) - skipping");
         return false;
     }
 
@@ -249,7 +249,7 @@ bool install_awake(const cesium_safe::il2cpp_tbl& t)
     MH_STATUS st = MH_CreateHook(target, (LPVOID)&Hook_Awake, (LPVOID*)&g_real_awake);
     if (st != MH_OK)
     {
-        log_line("[steamhack] MH_CreateHook(Awake) 失败: " + std::to_string((int)st) +
+        log_line("[steamhack] MH_CreateHook(Awake) failed: " + std::to_string((int)st) +
                  " (target=" + cesium::steam::diagnostics::hex((uintptr_t)target) + ")");
         return false;
     }
@@ -257,7 +257,7 @@ bool install_awake(const cesium_safe::il2cpp_tbl& t)
     st = MH_EnableHook(target);
     if (st != MH_OK)
     {
-        log_line("[steamhack] MH_EnableHook(Awake) 失败: " + std::to_string((int)st));
+        log_line("[steamhack] MH_EnableHook(Awake) failed: " + std::to_string((int)st));
         MH_RemoveHook(target);
         return false;
     }
@@ -265,7 +265,7 @@ bool install_awake(const cesium_safe::il2cpp_tbl& t)
     g_awake_target = target;
     g_awake_method = method;
     g_awake_hooked = true;
-    log_line("[steamhack] SteamManager.Awake inline hook 已启用 (no-op, ns=\"" + ns + "\")");
+    log_line("[steamhack] SteamManager.Awake inline hook enabled (no-op, ns=\"" + ns + "\")");
     return true;
 }
 
@@ -306,7 +306,7 @@ bool install_restart_check()
     std::wstring path = steam_api_path();
     if (path.empty())
     {
-        log_line("[steamhack] 无法推导游戏目录, 跳过 RestartAppIfNecessary 保险");
+        log_line("[steamhack] cannot derive the game dir, skipping the RestartAppIfNecessary safety net");
         return false;
     }
 
@@ -317,17 +317,17 @@ bool install_restart_check()
     if (!steam) steam = GetModuleHandleW(L"steam_api64.dll");
     if (!steam)
     {
-        log_line(L"[steamhack] steam_api64.dll 加载失败(" + std::to_wstring(load_err) +
-                 L"), 跳过 RestartAppIfNecessary 保险: " + path);
+        log_line(L"[steamhack] failed to load steam_api64.dll (" + std::to_wstring(load_err) +
+                 L"), skipping the RestartAppIfNecessary safety net: " + path);
         return false;
     }
-    log_line(L"[steamhack] steam_api64.dll 已加载: " + path);
+    log_line(L"[steamhack] steam_api64.dll loaded: " + path);
 
     // 自己解析一次地址: MH_CreateHookApi 不回传 target, 而 enable/disable/uninstall 都需要它。
     void* target = reinterpret_cast<void*>(GetProcAddress(steam, "SteamAPI_RestartAppIfNecessary"));
     if (!target)
     {
-        log_line("[steamhack] steam_api64.dll 未导出 SteamAPI_RestartAppIfNecessary, 跳过该保险");
+        log_line("[steamhack] steam_api64.dll does not export SteamAPI_RestartAppIfNecessary, skipping that safety net");
         return false;
     }
     log_line("[steamhack] SteamAPI_RestartAppIfNecessary = " + cesium::steam::diagnostics::hex((uintptr_t)target) +
@@ -339,21 +339,21 @@ bool install_restart_check()
                                     (LPVOID)&Hook_RestartApp, (LPVOID*)&g_real_restart);
     if (st != MH_OK)
     {
-        log_line("[steamhack] MH_CreateHookApi(RestartAppIfNecessary) 失败: " + std::to_string((int)st));
+        log_line("[steamhack] MH_CreateHookApi(RestartAppIfNecessary) failed: " + std::to_string((int)st));
         return false;
     }
 
     st = MH_EnableHook(target);
     if (st != MH_OK)
     {
-        log_line("[steamhack] MH_EnableHook(RestartAppIfNecessary) 失败: " + std::to_string((int)st));
+        log_line("[steamhack] MH_EnableHook(RestartAppIfNecessary) failed: " + std::to_string((int)st));
         MH_RemoveHook(target);
         return false;
     }
 
     g_restart_target = target;
     g_restart_hooked = true;
-    log_line("[steamhack] SteamAPI_RestartAppIfNecessary hook 已启用 (恒返回 0)");
+    log_line("[steamhack] SteamAPI_RestartAppIfNecessary hook enabled (always returns 0)");
     return true;
 }
 

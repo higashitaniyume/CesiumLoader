@@ -120,7 +120,7 @@ void write_state()
     for (int i = 0; i < g_dir_count; i++)
     {
         if (!write_text(path_of(g_dirs[i], kStateName), s))
-            log_line(L"[windowctl] 状态文件写入失败: " + path_of(g_dirs[i], kStateName));
+            log_line(L"[windowctl] failed to write state file: " + path_of(g_dirs[i], kStateName));
     }
 }
 
@@ -274,8 +274,14 @@ bool bring_to_foreground(HWND hwnd)
 
 DWORD WINAPI watch_thread(LPVOID)
 {
+    // 与 speedctl 同款: 多目录合并成一行, 路径压缩, 避免同一条事实打印两遍。
+    std::wstring dirs;
     for (int i = 0; i < g_dir_count; i++)
-        log_line(L"[windowctl] 窗口置前控制文件通道就绪 (目录: " + g_dirs[i] + L")");
+    {
+        if (i > 0) dirs += L" · ";
+        dirs += short_path(g_dirs[i]);
+    }
+    log_line(L"[windowctl] file channel ready · " + std::to_wstring(g_dir_count) + L" dir(s): " + dirs);
 
     std::string last_seen[kMaxDirs];
 
@@ -297,20 +303,20 @@ DWORD WINAPI watch_thread(LPVOID)
             HWND hwnd = find_game_window();
             if (hwnd == nullptr)
             {
-                log_line("[windowctl] 未找到游戏窗口, 忽略置前请求");
+                log_line("[windowctl] game window not found, ignoring foreground request");
                 continue;
             }
 
             if (is_foreground_game(hwnd))
             {
-                log_line("[windowctl] 游戏窗口已在前台, 忽略置前请求");
+                log_line("[windowctl] game window already in foreground, ignoring request");
                 continue;
             }
 
             if (bring_to_foreground(hwnd))
-                log_line("[windowctl] 已把游戏窗口切换到前台");
+                log_line("[windowctl] brought game window to foreground");
             else
-                log_line("[windowctl] 置前被系统拒绝, 已闪烁任务栏");
+                log_line("[windowctl] system refused foreground switch, flashed taskbar");
         }
     }
     return 0;
@@ -334,13 +340,13 @@ void windowctl_start(const std::wstring& dir)
     if (!mirror.empty())
     {
         if (mirror == dir)
-            log_line("[windowctl] 镜像目录与主目录相同, 只使用一份");
+            log_line("[windowctl] mirror dir equals primary dir, using a single copy");
         else
             g_dirs[g_dir_count++] = mirror;
     }
     else
     {
-        log_line("[windowctl] 取不到 %LOCALAPPDATA%, 只使用主目录");
+        log_line("[windowctl] %LOCALAPPDATA% unavailable, using primary dir only");
     }
 
     std::wstring kept[kMaxDirs];
@@ -348,14 +354,14 @@ void windowctl_start(const std::wstring& dir)
     for (int i = 0; i < g_dir_count; i++)
     {
         if (ensure_dir(g_dirs[i])) kept[kept_count++] = g_dirs[i];
-        else log_line(L"[windowctl] 控制目录创建失败, 该目录不可用: " + g_dirs[i]);
+        else log_line(L"[windowctl] failed to create control dir, unusable: " + g_dirs[i]);
     }
     for (int i = 0; i < kept_count; i++) g_dirs[i] = kept[i];
     g_dir_count = kept_count;
 
     if (g_dir_count == 0)
     {
-        log_line("[windowctl] 没有可用的控制目录, 窗口置前通道不可用");
+        log_line("[windowctl] no usable control dir, foreground channel unavailable");
         return;
     }
 
@@ -363,7 +369,7 @@ void windowctl_start(const std::wstring& dir)
     for (int i = 0; i < g_dir_count; i++)
     {
         if (!write_text(path_of(g_dirs[i], kRequestName), "0\r\n"))
-            log_line(L"[windowctl] 初始 request.txt 写入失败: " + path_of(g_dirs[i], kRequestName));
+            log_line(L"[windowctl] failed to write initial request.txt: " + path_of(g_dirs[i], kRequestName));
     }
     write_state();
 
@@ -371,12 +377,11 @@ void windowctl_start(const std::wstring& dir)
     if (h != nullptr)
     {
         CloseHandle(h);
-        log_line("[windowctl] 监听目录数: " + std::to_string(g_dir_count));
         return;
     }
 
     // 线程起不来时删掉状态文件, SDK 的 IsAvailable 会返回 false(而不是"请求了没反应")。
-    log_line("[windowctl] 监听线程创建失败, 窗口置前通道不可用");
+    log_line("[windowctl] watch thread creation failed, foreground channel unavailable");
     for (int i = 0; i < g_dir_count; i++)
         DeleteFileW(path_of(g_dirs[i], kStateName).c_str());
 }

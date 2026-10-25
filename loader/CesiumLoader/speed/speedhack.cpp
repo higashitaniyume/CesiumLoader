@@ -18,6 +18,8 @@
 
 #include <atomic>
 #include <cstdint>
+#include <cstdio>
+#include <string>
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -144,7 +146,7 @@ bool speedhack_init()
 
     if (MH_Initialize() != MH_OK)
     {
-        log_line("[speedhack] MinHook 初始化失败");
+        log_line("[speedhack] MinHook init failed");
         return false;
     }
 
@@ -165,7 +167,7 @@ bool speedhack_init()
 
     if (!any)
     {
-        log_line("[speedhack] 全部 hook 创建失败, 变速不可用");
+        log_line("[speedhack] all hooks failed to create, speedhack unavailable");
         MH_Uninitialize();
         return false;
     }
@@ -194,7 +196,7 @@ bool speedhack_init()
 
     if (enabled == 0)
     {
-        log_line("[speedhack] hook 启用失败, 变速不可用");
+        log_line("[speedhack] hook enable failed, speedhack unavailable");
         MH_Uninitialize();
         return false;
     }
@@ -202,7 +204,7 @@ bool speedhack_init()
     g_hooked = true;
     g_enabled.store(true);
     g_hook_count = enabled;
-    log_line("[speedhack] 变速引擎就绪 (speed=1.0, hooks=" + std::to_string(enabled) + "/4)");
+    log_line("[speedhack] engine ready · hooks " + std::to_string(enabled) + "/4");
     return true;
 }
 
@@ -239,13 +241,27 @@ bool speedhack_set_speed(double speed)
     newSt.qpc_offset = virt_qpc(oldSt, newSt.qpc_basetime);
 
     g_state.store(newSt);
-    log_line("[speedhack] 倍率 -> " + std::to_string(speed));
+    log_line("[speedhack] speed -> " + speed_text(speed));
     return true;
 }
 
 double speedhack_get_speed()
 {
     return g_enabled.load() ? g_state.load().speed : 1.0;
+}
+
+std::string speed_text(double speed)
+{
+    char buf[32] = {};
+    std::snprintf(buf, sizeof buf, "%.2f", speed);
+    std::string text(buf);
+    const size_t dot = text.find('.');
+    if (dot != std::string::npos)
+    {
+        // 至少保留一位小数("2.00" -> "2.0"), 免得日志里出现光秃秃的 "2x"
+        while (text.size() > dot + 2 && text.back() == '0') text.pop_back();
+    }
+    return text + "x";
 }
 
 bool speedhack_active()

@@ -119,10 +119,66 @@ static std::string utf8_from_wide(const wchar_t* w)
     return s;
 }
 
+// 耗时的展示文本: "12 ms" / "0.9s"(ms 级给整数, 秒级给一位小数)
+static std::string fmt_ms(ULONGLONG ms)
+{
+    char buf[32] = {};
+    std::snprintf(buf, sizeof buf, "%llu ms", static_cast<unsigned long long>(ms));
+    return buf;
+}
+
+static std::string fmt_seconds(ULONGLONG ms)
+{
+    char buf[32] = {};
+    std::snprintf(buf, sizeof buf, "%.1fs", static_cast<double>(ms) / 1000.0);
+    return buf;
+}
+
 static Il2Cpp g_il2cpp;
 
 // IL2CPP 安全封装用的函数表(由 get_il2cpp 填充)
 static cesium_safe::il2cpp_tbl g_safe_il2cpp;
+
+// ---------- 展示辅助: 路径 / 版本 ----------
+
+static std::wstring parent_dir(const std::wstring& path)
+{
+    const size_t pos = path.find_last_of(L"\\/");
+    return pos == std::wstring::npos ? std::wstring() : path.substr(0, pos);
+}
+
+static std::wstring file_name_of(const std::wstring& path)
+{
+    const size_t pos = path.find_last_of(L"\\/");
+    return pos == std::wstring::npos ? path : path.substr(pos + 1);
+}
+
+// 取 Unity 的 Application.version(bundleVersion, 例如 "3.3.0") —— 游戏版本。
+// 纯展示信息: 找不到 UnityEngine.CoreModule / 方法 / 调用失败都只返回空串,
+// 绝不因为"读不到版本号"影响引导。
+static std::string application_version(Il2CppDomain* domain)
+{
+    void* image = nullptr;
+    size_t count = 0;
+    Il2CppAssembly** asms = g_il2cpp.domain_get_assemblies(domain, &count);
+    for (size_t i = 0; asms != nullptr && i < count; i++)
+    {
+        void* img = g_il2cpp.assembly_get_image(asms[i]);
+        if (!img) continue;
+        const char* name = g_il2cpp.image_get_name(img);
+        if (name && strcmp(name, "UnityEngine.CoreModule") == 0) { image = img; break; }
+    }
+    if (!image) return std::string();
+
+    Il2CppClass* app = g_il2cpp.class_from_name(image, "UnityEngine", "Application");
+    if (!app) return std::string();
+
+    Il2CppMethod* method = g_il2cpp.class_get_method_from_name(app, "get_version", 0);
+    if (!method) return std::string();
+
+    cesium_safe::g_last_error.clear();
+    return cesium_safe::invoke_string(g_safe_il2cpp, method, nullptr);
+}
 
 static bool get_il2cpp(HMODULE game_assembly)
 {
@@ -200,7 +256,7 @@ static bool get_il2cpp(HMODULE game_assembly)
         std::string missing;
         for (auto& e : extra) if (!e.p) { if (!missing.empty()) missing += ", "; missing += e.n; }
         if (!missing.empty())
-            log_line("[hijack] 可选导出缺失(不影响启动, Steam 大厅绕过会自行降级): " + missing);
+            log_line("[loader] optional exports missing (startup unaffected; Steam lobby bypass degrades): " + missing);
     }
     // 关键导出缺失即视为失败
     bool ok = g_il2cpp.domain_get && g_il2cpp.assembly_get_image && g_il2cpp.image_get_assembly &&
@@ -313,8 +369,8 @@ static void dump_aot_assemblies(const std::vector<std::string>& names)
         std::ofstream out(fs::path(dir) / L"aot-assemblies.txt",
                           std::ios::binary | std::ios::trunc);
         if (!out) return;
-        out << "# 游戏 AOT 域内程序集清单(HybridCLR 就绪时枚举, 共 " << names.size() << " 个)\n";
-        out << "# 热更代码与第三方程序集只能引用此处存在的程序集/类型\n";
+        out << "# AOT assemblies in the game domain (enumerated when HybridCLR is ready, total " << names.size() << ")\n";
+        out << "# Hot-update code and third-party assemblies may only reference assemblies/types listed here\n";
         std::vector<std::string> sorted = names;
         std::sort(sorted.begin(), sorted.end());
         for (auto& n : sorted) out << n << "\n";
@@ -351,7 +407,7 @@ static bool wait_hybridclr(Il2CppDomain* domain, DWORD timeout_secs)
         if (!cesium_safe::g_last_error.empty() && GetTickCount64() - last_diag >= 5000)
         {
             last_diag = GetTickCount64();
-            log_line("[hybridclr] 枚举错误: " + cesium_safe::g_last_error);
+            log_line("[hybridclr] enumeration error: " + cesium_safe::g_last_error);
         }
         Sleep(300);
     }
@@ -360,13 +416,21 @@ static bool wait_hybridclr(Il2CppDomain* domain, DWORD timeout_secs)
 // ---------- Assembly.Load(byte[]) ----------
 
 // 在 System.Reflection.Assembly 上找 Load(byte[]) 重载(遍历方法,按参数类型筛选)。
+//
+// 每个程序集(1 个 SDK + N 个 mod)都会走一次这段扫描。旧实现每遇到一个候选重载就打
+// 两行日志, 十个程序集就是 30 行、占整份日志的四分之一 —— 而结论永远只有一句
+// ("有 3 个重载, 选 byte[]")。这里改成**整个进程只报一次结论**, 且合并成一行;
+// 只有找不到 byte[] 重载时才把候选清单打出来(那才是需要人看的失败现场)。
 static Il2CppMethod* find_load_bytearray(Il2CppClass* cls)
 {
+    std::vector<std::string> candidates;
+    Il2CppMethod* chosen = nullptr;
+
     void* iter = nullptr;
     for (;;)
     {
         Il2CppMethod* m = g_il2cpp.class_get_methods(cls, &iter);
-        if (!m) return nullptr;
+        if (!m) break;
         const char* n = g_il2cpp.method_get_name(m);
         if (!n || strcmp(n, "Load") != 0) continue;
         if (g_il2cpp.method_get_param_count(m) != 1) continue;
@@ -374,10 +438,22 @@ static Il2CppMethod* find_load_bytearray(Il2CppClass* cls)
         if (!param) continue;
         const char* tn = g_il2cpp.type_get_name(param);
         if (!tn) continue;
-        log_line("[hijack] Assembly.Load candidate param: ");
-        log_line(tn);
-        if (strcmp(tn, "System.Byte[]") == 0) return m;
+        candidates.emplace_back(tn);
+        if (!chosen && strcmp(tn, "System.Byte[]") == 0) chosen = m;
     }
+
+    static bool reported = false;
+    if (!reported)
+    {
+        std::string list;
+        for (auto& c : candidates) list += (list.empty() ? "" : ", ") + c;
+        if (chosen)
+            log_line("[loader] Assembly.Load overloads: " + list + " -> using byte[]");
+        else
+            log_line("[loader] Assembly.Load(byte[]) not found, candidates: " + (list.empty() ? std::string("(none)") : list));
+        reported = true;
+    }
+    return chosen;
 }
 
 // 枚举域内所有程序集的 image 名称,用于对比 Load 前后新增的程序集。
@@ -437,7 +513,7 @@ static Il2CppAssembly* load_assembly_bytes(Il2CppDomain* domain, const std::vect
         cesium_safe::safe_invoke_static(g_safe_il2cpp, load, nullptr, &arg, "Assembly.Load"));
     if (!asm_obj)
     {
-        err_msg = cesium_safe::g_last_error.empty() ? "Assembly.Load 返回 null" : cesium_safe::g_last_error;
+        err_msg = cesium_safe::g_last_error.empty() ? "Assembly.Load returned null" : cesium_safe::g_last_error;
         return nullptr;
     }
     std::vector<std::string> after = list_assembly_names(domain);
@@ -450,7 +526,7 @@ static Il2CppAssembly* load_assembly_bytes(Il2CppDomain* domain, const std::vect
         for (auto& b : before) if (b == after[i]) { existed = true; break; }
         if (!existed) { new_idx = (int)i; break; }
     }
-    if (new_idx < 0) { err_msg = "未发现新增程序集"; return nullptr; }
+    if (new_idx < 0) { err_msg = "no new assembly appeared after load"; return nullptr; }
 
     size_t count = 0;
     Il2CppAssembly** p = g_il2cpp.domain_get_assemblies(domain, &count);
@@ -576,6 +652,33 @@ static void set_env_w(const wchar_t* name, const std::wstring& value)
     SetEnvironmentVariableW(name, value.c_str());
 }
 
+// 启动环境: 游戏 / 引擎 / 进程。放在 mod 报告之前, 只打印一次。
+//   - 游戏版本 = Unity 的 Application.version(bundleVersion), 取不到就省略;
+//   - 引擎版本 = UnityPlayer.dll 的版本资源(不依赖 il2cpp, 兜底信息);
+//   - 进程号 = 用来和 Windows 任务管理器/崩溃转储对上号。
+// 这里任何一项取不到都只少一个字段, 不影响引导。
+static void log_environment(Il2CppDomain* domain)
+{
+    std::wstring unity = file_version(parent_dir(loader_root()) + L"\\UnityPlayer.dll");
+    const size_t cut = unity.find(L" (");   // "2022.3.62f3 (96770f904ca7)" → 只留版本号
+    if (cut != std::wstring::npos) unity = unity.substr(0, cut);
+
+    const std::string app_version = application_version(domain);
+
+    wchar_t exe[MAX_PATH] = {};
+    GetModuleFileNameW(nullptr, exe, MAX_PATH);
+    const std::string exe_name = utf8_from_wide(file_name_of(exe).c_str());
+
+    std::string line = "[loader] ";
+    if (!app_version.empty()) line += exe_name + " " + app_version + " · ";
+    line += "engine Unity " + (unity.empty() ? std::string("unknown") : utf8_from_wide(unity.c_str()));
+    line += " · pid " + std::to_string(GetCurrentProcessId()) + " (x64)";
+
+    console_set_color(LOG_MAGENTA);
+    log_line(line);
+    console_set_color(LOG_DEFAULT);
+}
+
 static DWORD WINAPI boot_thread(LPVOID)
 {
     // 若由 DllMain(DLL_PROCESS_ATTACH) 启动, 先等 loader lock 释放:
@@ -593,12 +696,12 @@ static DWORD WINAPI boot_thread(LPVOID)
     {
         console_init(cfg.consoleTopmost);
     }
-    log_line("[hijack] version.dll Doorstop 引导线程启动 (enabled=" + std::string(cfg.enabled ? "true" : "false") + ")");
+    log_line("[loader] version.dll Doorstop boot thread started (enabled=" + std::string(cfg.enabled ? "true" : "false") + ")");
 
     // 3. 总开关: disabled 时静默退出, 游戏原样运行
     if (!cfg.enabled)
     {
-        log_line("[hijack] doorstop_config.json enabled=false, 跳过引导");
+        log_line("[loader] doorstop_config.json enabled=false, skipping boot");
         return 0;
     }
 
@@ -612,9 +715,9 @@ static DWORD WINAPI boot_thread(LPVOID)
     if (cfg.speedhackBaseSpeed > 0.0 && cfg.speedhackBaseSpeed != 1.0)
     {
         if (speedhack_set_speed(cfg.speedhackBaseSpeed))
-            log_line("[hijack] 基础倍率已应用: " + std::to_string(cfg.speedhackBaseSpeed) + "x (全程保持)");
+            log_line("[loader] base speed " + speed_text(cfg.speedhackBaseSpeed) + " (kept for the whole session)");
         else
-            log_line("[hijack] 基础倍率应用失败: " + std::to_string(cfg.speedhackBaseSpeed));
+            log_line("[loader] failed to apply base speed: " + speed_text(cfg.speedhackBaseSpeed));
     }
 
     // 3.7 变速控制文件通道(见 speedctl.h): 热更程序集无法 P/Invoke, mod 只能通过文件请求倍率。
@@ -623,32 +726,32 @@ static DWORD WINAPI boot_thread(LPVOID)
     if (cfg.speedControlEnabled)
         speedctl_start(speedctl_dir(), cfg.speedhackBaseSpeed);
     else
-        log_line("[hijack] speedControlEnabled=false, 跳过变速控制文件通道");
+        log_line("[loader] speedControlEnabled=false, skipping speed control file channel");
 
     // 3.7.1 窗口置前控制文件通道(见 windowctl.h): 同样因为热更程序集无法 P/Invoke,
     //       mod 只能写请求文件, 由原生侧调用 SetForegroundWindow。
     if (cfg.windowControlEnabled)
         windowctl_start(windowctl_dir());
     else
-        log_line("[hijack] windowControlEnabled=false, 跳过窗口置前控制文件通道");
+        log_line("[loader] windowControlEnabled=false, skipping foreground control file channel");
 
     // 4. 等待 GameAssembly.dll
     HMODULE ga = wait_module(L"GameAssembly.dll", cfg.gameAssemblyTimeoutSec);
-    if (!ga) { log_line("[hijack] GameAssembly.dll 超时"); return 0; }
-    log_line("[hijack] GameAssembly.dll 已加载");
+    if (!ga) { log_line("[loader] GameAssembly.dll timed out"); return 0; }
+    log_line("[loader] GameAssembly.dll loaded");
 
-    if (!get_il2cpp(ga)) { log_line("[hijack] il2cpp 导出解析失败"); return 0; }
+    if (!get_il2cpp(ga)) { log_line("[loader] failed to resolve il2cpp exports"); return 0; }
 
     Il2CppDomain* domain = nullptr;
     for (;;)
     {
         domain = g_il2cpp.domain_get();
         if (domain) break;
-        if (GetTickCount64() - started > (ULONGLONG)cfg.domainTimeoutSec * 1000) { log_line("[hijack] il2cpp domain 超时"); return 0; }
+        if (GetTickCount64() - started > (ULONGLONG)cfg.domainTimeoutSec * 1000) { log_line("[loader] il2cpp domain timed out"); return 0; }
         Sleep(200);
     }
     g_il2cpp.thread_attach(domain);
-    log_line("[hijack] il2cpp 运行时就绪, 等待 HybridCLR 热更...");
+    log_line("[loader] il2cpp runtime ready, waiting for HybridCLR hot update...");
 
     // 3.8 Steam 绕过(见 steamhack.h)。插入点很关键: 必须在 thread_attach 之后
     //     (IL2CPP 就绪、已挂到运行时上)、wait_hybridclr 之前(此时枚举到的就是 AOT 镜像,
@@ -681,12 +784,12 @@ static DWORD WINAPI boot_thread(LPVOID)
     }
     else
     {
-        log_line("[steamhack] steamBypassEnabled=false 且 steamBypassMatchmaking=false 且 "
-                 "steamBypassLobbyQuery=false, 跳过 Steam 绕过(原版行为)");
+        log_line("[steamhack] all bypass switches off, skipping Steam bypass (vanilla behavior)");
     }
 
-    if (!wait_hybridclr(domain, cfg.hybridclrTimeoutSec)) { log_line("[hijack] AstralParty.Runtime 超时"); return 0; }
-    log_line("[hijack] HybridCLR 热更就绪");
+    if (!wait_hybridclr(domain, cfg.hybridclrTimeoutSec)) { log_line("[loader] AstralParty.Runtime timed out"); return 0; }
+    log_line("[loader] HybridCLR hot update ready");
+    log_environment(domain);
 
     // 5. 设置环境变量, 供托管引导程序与 mod 读取
     std::wstring mods = mods_dir();
@@ -713,15 +816,16 @@ static DWORD WINAPI boot_thread(LPVOID)
     set_env_w(L"CESIUM_ACTIVITY_LOG_FILE", activity_file);
     set_env_w(L"CESIUM_ERROR_LOG_FILE", error_file);
 
-    log_line(L"[hijack] 加载器根目录: " + loader_root());
-    log_line(L"[hijack] bootstrap 目录: " + boot);
-    log_line(L"[hijack] SDK 目录: " + sdk);
-    log_line(L"[hijack] mods 目录: " + mods);
-    log_line(L"[hijack] 日志目录: " + logs);
-    log_line(L"[hijack] 本次启动日志: " + cesium::log::session_id() +
-             L" (引导: " + log_file + L" / mod: " + activity_file + L" / 错误: " + error_file + L")");
-    log_line(L"[hijack] 变速目录: " + speed);
-    log_line(L"[hijack] 窗口控制目录: " + window);
+    // 路径只在"根"上打印一次绝对路径, 其余一律用 <loader>\ 短形式。
+    // 旧实现把同一个 90 列前缀重复了 8 次, 其中"本次启动日志"一行 494 列:
+    // 窄窗口里折成 4~5 行、续行没有缩进, 一条逻辑行看起来像四条。
+    log_line(L"[loader] root " + loader_root());
+    console_set_color(LOG_DIM);
+    log_line(L"[loader] subdirs mods\\ sdk\\ bootstrap\\ logs\\ speed\\ window\\");
+    console_set_color(LOG_DEFAULT);
+    log_line(L"[loader] boot log " + short_path(log_file));
+    log_line(L"[loader] mod log " + short_path(activity_file));
+    log_line(L"[loader] error log " + short_path(error_file));
 
     // 6a. 实验特性: useManagedBootstrap=true 时, 加载 bootstrap DLL 并调用入口,
     //     由托管代码负责 sdk/mods 加载与入口调用(注意 HybridCLR 反射裁剪风险)。
@@ -731,25 +835,25 @@ static DWORD WINAPI boot_thread(LPVOID)
         fs::path bootstrap_path = fs::path(boot) / fs::path(cfg.bootstrapAssembly);
         if (!fs::exists(bootstrap_path))
         {
-            log_line("[hijack] bootstrap 程序集不存在: " + cfg.bootstrapAssembly);
+            log_line("[loader] bootstrap assembly not found: " + cfg.bootstrapAssembly);
             return 0;
         }
         std::ifstream in(bootstrap_path, std::ios::binary);
-        if (!in) { log_line("[hijack] bootstrap 读取失败: " + cfg.bootstrapAssembly); return 0; }
+        if (!in) { log_line("[loader] failed to read bootstrap: " + cfg.bootstrapAssembly); return 0; }
         std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-        log_line("[hijack] 尝试加载 bootstrap: " + cfg.bootstrapAssembly + " (" + std::to_string(bytes.size()) + " bytes)");
+        log_line("[loader] loading bootstrap: " + cfg.bootstrapAssembly + " (" + std::to_string(bytes.size()) + " bytes)");
 
         std::string err;
         Il2CppAssembly* asm_ = load_assembly_bytes(domain, bytes, err);
-        if (!asm_) { log_line("[hijack] bootstrap Assembly.Load 失败: " + err); return 0; }
-        log_line("[hijack] bootstrap Assembly.Load(byte[]) 成功");
+        if (!asm_) { log_line("[loader] bootstrap Assembly.Load failed: " + err); return 0; }
+        log_line("[loader] bootstrap Assembly.Load(byte[]) succeeded");
 
         if (!run_entry(asm_, cfg.bootstrapType.c_str(), cfg.bootstrapMethod.c_str(), err))
         {
-            log_line("[hijack] bootstrap 入口失败: " + err);
+            log_line("[loader] bootstrap entry failed: " + err);
             return 0;
         }
-        log_line("[hijack] bootstrap 入口执行成功, 引导线程结束");
+        log_line("[loader] bootstrap entry ran successfully, boot thread finished");
 
         // 启动"mod 日志 -> 控制台"转发线程(持续运行直到进程退出)
         if (cfg.forwardActivityLog)
@@ -791,12 +895,12 @@ static DWORD WINAPI boot_thread(LPVOID)
             {
                 std::string name = dll.stem().string();
                 std::ifstream in(dll, std::ios::binary);
-                if (!in) { log_line("[hijack] SDK " + name + " 读取失败"); continue; }
+                if (!in) { log_line("[loader] SDK " + name + " read failed"); continue; }
                 std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
                 std::string err;
                 if (load_assembly_bytes(domain, bytes, err))
                 {
-                    log_line("[hijack] SDK " + name + " 加载成功" + (round > 1 ? (" (第 " + std::to_string(round) + " 轮)") : ""));
+                    log_line("[loader] SDK " + name + " loaded" + (round > 1 ? (" (round " + std::to_string(round) + ")") : ""));
                 }
                 else
                 {
@@ -812,13 +916,13 @@ static DWORD WINAPI boot_thread(LPVOID)
         {
             std::string name = dll.stem().string();
             auto it = last_error.find(name);
-            log_line("[hijack] SDK " + name + " 加载失败: " + (it == last_error.end() ? std::string("未知") : it->second));
+            log_line("[loader] SDK " + name + " load failed: " + (it == last_error.end() ? std::string("unknown") : it->second));
         }
     }
 
     if (!fs::exists(mods))
     {
-        log_line(L"[hijack] 读取 mods 目录失败(不存在): " + mods);
+        log_line(L"[loader] mods dir missing/unreadable: " + short_path(mods));
         return 0;
     }
 
@@ -864,57 +968,52 @@ static DWORD WINAPI boot_thread(LPVOID)
     std::sort(rejected.begin(), rejected.end());
     std::sort(to_load.begin(), to_load.end());
 
-    // ---- 彩色分级输出: 要加载的 mod 列表 ----
+    // ---- mod 报告 ----
+    // 布局原则:
+    //   1. 一条事实只出现一次 —— 旧实现在"发现"和"加载结果"里把 mod 名各列一遍,
+    //      还带着与"发现 11 个"自相矛盾的 [1/9] 编号;
+    //   2. 对齐按**显示宽度**(中文/emoji 算 2 列), 列宽取当前这批判 mod 的实际最大值;
+    //   3. 每个 mod 一行: 序号 / 名字 / 版本 / 结果, 结果列直接给结论(成功带耗时)。
+    auto version_of = [&](const std::string& id) -> std::string
+    {
+        auto it = metas.find(id);
+        return (it != metas.end() && !it->second.version.empty()) ? it->second.version : "-";
+    };
+    auto pad_right = [](const std::string& s, int width) -> std::string
+    {
+        const int cur = text_width(s);
+        return cur >= width ? s : s + std::string(static_cast<size_t>(width - cur), ' ');
+    };
+
+    int name_w = text_width("mod");
+    int ver_w = text_width("version");
+    for (auto& n : to_load)  { name_w = (std::max)(name_w, text_width(n)); ver_w = (std::max)(ver_w, text_width(version_of(n))); }
+    for (auto& n : disabled) name_w = (std::max)(name_w, text_width(n));
+    for (auto& n : rejected) name_w = (std::max)(name_w, text_width(n));
+    name_w += 2;
+    ver_w += 2;
+
+    auto row = [&](const std::string& idx, const std::string& name, const std::string& ver,
+                   const std::string& result, WORD color)
+    {
+        console_set_color(color);
+        log_line("  " + pad_right(idx, 3) + pad_right(name, name_w) + pad_right(ver, ver_w) + result);
+        console_set_color(LOG_DEFAULT);
+    };
+
     console_set_color(LOG_CYAN);
     log_line("──────────────────────────────────────────────");
-    log_line(std::string("  CesiumLoader loader v") + cesium::config::LoaderConfig::loaderVersion + " / SDK v" + cfg.sdkVersion + " — mod 加载报告");
+    log_line(" CesiumLoader v" + std::string(cesium::config::LoaderConfig::loaderVersion) +
+             " · SDK v" + cfg.sdkVersion + " · mod load report");
     log_line("──────────────────────────────────────────────");
     console_set_color(LOG_DEFAULT);
 
     console_set_color(LOG_WHITE);
-    log_line("");
-    log_line("▶ 发现 " + std::to_string(mod_locs.size()) + " 个 mod:");
-    console_set_color(LOG_DEFAULT);
-    for (size_t i = 0; i < to_load.size(); i++)
-    {
-        const std::string& n = to_load[i];
-        auto mit = metas.find(n);
-        std::string ver = mit != metas.end() && !mit->second.version.empty() ? mit->second.version : "?";
-        console_set_color(LOG_CYAN);
-        log_line("  [" + std::to_string(i + 1) + "/" + std::to_string(to_load.size()) + "] " + n + "  v" + ver);
-        console_set_color(LOG_DEFAULT);
-    }
-    // 已禁用 / 被拒(不加载的)也列出, 便于用户知道有哪些 mod 没被加载
-    for (auto& n : disabled)
-    {
-        console_set_color(LOG_DIM);
-        log_line("  - " + n + "  (已禁用)");
-        console_set_color(LOG_DEFAULT);
-    }
-    for (auto& n : rejected)
-    {
-        console_set_color(LOG_DIM);
-        log_line("  - " + n + "  (被跳过: 缺失依赖/SDK 版本不符/循环依赖)");
-        console_set_color(LOG_DEFAULT);
-    }
-
-    // 警告: 声明了"操作游戏"能力(GameActions=2)的 mod —— 仅提示, 不阻止。
-    // 权限机制已取消: 任何 mod 都能调用 SDK 的模拟操作 API, 此处仅告知用户。
-    for (auto& kv : metas)
-    {
-        const auto& m = kv.second;
-        if (m.hasSidecar && (m.permissions & 2) != 0 && m.enabled)
-        {
-            console_set_color(LOG_YELLOW);
-            log_line("⚠ 警告: mod '" + m.name + "' (" + kv.first + ") 声明了可操作游戏(模拟操作)的能力, 请确认来源可信");
-            console_set_color(LOG_DEFAULT);
-        }
-    }
-
-    // ---- 逐 mod 加载, 输出成功/失败 ----
-    console_set_color(LOG_WHITE);
-    log_line("");
-    log_line("▶ 加载结果:");
+    log_line("▶ mod load · found " + std::to_string(mod_locs.size()) + " (enabled " +
+             std::to_string(to_load.size()) + " · disabled/skipped " +
+             std::to_string(disabled.size() + rejected.size()) + ")");
+    console_set_color(LOG_DIM);
+    log_line("  " + pad_right("#", 3) + pad_right("mod", name_w) + pad_right("version", ver_w) + "result");
     console_set_color(LOG_DEFAULT);
     int okCount = 0, failCount = 0;
     for (size_t i = 0; i < to_load.size(); i++)
@@ -923,14 +1022,15 @@ static DWORD WINAPI boot_thread(LPVOID)
         auto it = mod_locs.find(name);
         if (it == mod_locs.end()) continue;
         fs::path dll = it->second.dll;
+        const std::string idx = std::to_string(i + 1);
+        const std::string ver = version_of(name);
+        const ULONGLONG t0 = GetTickCount64();
 
         std::ifstream in(dll, std::ios::binary);
         if (!in)
         {
-            console_set_color(LOG_RED);
-            log_line("  ✘ [" + std::to_string(i + 1) + "/" + std::to_string(to_load.size()) + "] " + name + "  读取 DLL 失败");
-            console_set_color(LOG_DEFAULT);
-            write_mod_error(logs, name, "读取 DLL 失败");
+            row(idx, name, ver, "dll read failed", LOG_RED);
+            write_mod_error(logs, name, "DLL read failed");
             failCount++;
             continue;
         }
@@ -940,10 +1040,8 @@ static DWORD WINAPI boot_thread(LPVOID)
         Il2CppAssembly* asm_ = load_assembly_bytes(domain, bytes, err);
         if (!asm_)
         {
-            console_set_color(LOG_RED);
-            log_line("  ✘ [" + std::to_string(i + 1) + "/" + std::to_string(to_load.size()) + "] " + name + "  加载失败: " + err);
-            console_set_color(LOG_DEFAULT);
-            write_mod_error(logs, name, "Assembly.Load 失败: " + err);
+            row(idx, name, ver, "load failed: " + err, LOG_RED);
+            write_mod_error(logs, name, "Assembly.Load failed: " + err);
             failCount++;
             continue;
         }
@@ -951,28 +1049,43 @@ static DWORD WINAPI boot_thread(LPVOID)
         std::string entry_type = name + ".ModEntry";
         if (run_entry(asm_, entry_type.c_str(), "Main", err))
         {
-            console_set_color(LOG_GREEN);
-            log_line("  ✔ [" + std::to_string(i + 1) + "/" + std::to_string(to_load.size()) + "] " + name + "  加载成功");
-            console_set_color(LOG_DEFAULT);
+            row(idx, name, ver, "ok  " + fmt_ms(GetTickCount64() - t0), LOG_GREEN);
             okCount++;
         }
         else
         {
-            console_set_color(LOG_RED);
-            log_line("  ✘ [" + std::to_string(i + 1) + "/" + std::to_string(to_load.size()) + "] " + name + "  入口执行失败: " + err);
-            console_set_color(LOG_DEFAULT);
-            write_mod_error(logs, name, "入口执行失败: " + err);
+            row(idx, name, ver, "entry failed: " + err, LOG_RED);
+            write_mod_error(logs, name, "entry failed: " + err);
             failCount++;
+        }
+    }
+
+    // 没加载的也进同一张表: 用户需要知道"哪些没加载、为什么", 而不是自己去数差集。
+    for (auto& n : disabled) row("-", n, "-", "disabled", LOG_DIM);
+    for (auto& n : rejected) row("-", n, "-", "skipped (missing dep / SDK version)", LOG_YELLOW);
+
+    // 警告: 声明了"操作游戏"能力(GameActions=2)的 mod —— 仅提示, 不阻止。
+    // 权限机制已取消: 任何 mod 都能调用 SDK 的模拟操作 API, 此处仅告知用户。
+    // 放在表格之后: 插在清单中间会把同组信息切断。
+    for (auto& kv : metas)
+    {
+        const auto& m = kv.second;
+        if (m.hasSidecar && (m.permissions & 2) != 0 && m.enabled)
+        {
+            console_set_color(LOG_YELLOW);
+            log_line("⚠ " + kv.first + " declares the game-actions (simulated input) capability; verify the source is trusted");
+            console_set_color(LOG_DEFAULT);
         }
     }
 
     // ---- 总结 ----
     console_set_color(LOG_WHITE);
-    log_line("");
-    log_line("▶ 总结: " + std::to_string(okCount) + " 成功 / " + std::to_string(failCount) + " 失败 / " +
-             std::to_string(disabled.size() + rejected.size()) + " 未加载(禁用/跳过)");
+    log_line("summary " + std::to_string(okCount) + " ok · " + std::to_string(failCount) + " failed · " +
+             std::to_string(disabled.size() + rejected.size()) + " not loaded · " +
+             fmt_seconds(GetTickCount64() - started));
+    console_set_color(LOG_DIM);
+    log_line("[loader] boot thread finished");
     console_set_color(LOG_DEFAULT);
-    log_line("[hijack] 引导线程结束");
 
     // 7. 启动"mod 日志 -> 控制台"转发线程(持续运行直到进程退出)
     if (cfg.forwardActivityLog)

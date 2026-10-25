@@ -176,7 +176,7 @@ void write_state()
     for (int i = 0; i < g_dir_count; i++)
     {
         if (!write_text(path_of(g_dirs[i], kStateName), s))
-            log_line(L"[speedctl] 状态文件写入失败: " + path_of(g_dirs[i], kStateName));
+            log_line(L"[speedctl] failed to write state file: " + path_of(g_dirs[i], kStateName));
     }
 }
 
@@ -190,7 +190,7 @@ void write_initial_files()
     for (int i = 0; i < g_dir_count; i++)
     {
         if (!write_text(path_of(g_dirs[i], kRequestName), init))
-            log_line(L"[speedctl] 初始 request.txt 写入失败, 变速热键仍可通过新写入生效: " +
+            log_line(L"[speedctl] failed to write initial request.txt; later writes still take effect: " +
                      path_of(g_dirs[i], kRequestName));
     }
     write_state();
@@ -198,14 +198,21 @@ void write_initial_files()
 
 DWORD WINAPI watch_thread(LPVOID)
 {
+    // 两个目录内容相同、只差路径; 旧实现每个目录各打一行全路径(约 150 列),
+    // 控制台里看着像同一条日志打印了两次。这里合并成一行, 路径压成 <loader>\ / %LOCALAPPDATA%\。
+    std::wstring dirs;
     for (int i = 0; i < g_dir_count; i++)
-        log_line(L"[speedctl] 变速控制文件通道就绪 (目录: " + g_dirs[i] + L")");
+    {
+        if (i > 0) dirs += L" · ";
+        dirs += short_path(g_dirs[i]);
+    }
+    log_line(L"[speedctl] file channel ready · " + std::to_wstring(g_dir_count) + L" dir(s): " + dirs);
 
     std::string last_seen[kMaxDirs];
     for (int i = 0; i < g_dir_count; i++)
     {
         if (!read_text(path_of(g_dirs[i], kRequestName), last_seen[i]))
-            log_line(L"[speedctl] 读取 request.txt 失败, 等待 mod 写入: " +
+            log_line(L"[speedctl] failed to read request.txt, waiting for mod write: " +
                      path_of(g_dirs[i], kRequestName));
     }
 
@@ -227,18 +234,13 @@ DWORD WINAPI watch_thread(LPVOID)
                 std::string brief = text.substr(0, 32);
                 for (size_t k = 0; k < brief.size(); k++)
                     if (brief[k] == '\r' || brief[k] == '\n') brief[k] = ' ';
-                log_line("[speedctl] 忽略非法倍率请求: '" + brief + "' (只接受 [1,100] 的单个数字; 低于 1 倍被禁止)");
+                log_line("[speedctl] ignoring invalid speed request: '" + brief + "' (single number in [1,100]; below 1x is rejected)");
                 continue;
             }
 
-            if (speedhack_set_speed(want))
-            {
-                log_line("[speedctl] mod 请求倍率 -> " + fmt_speed(speedhack_get_speed()) + "x");
-            }
-            else
-            {
-                log_line("[speedctl] 应用倍率失败(变速引擎不可用): " + fmt_speed(want));
-            }
+            // 成功时由 speedhack 打一行"倍率 -> 2.0x", 这里不再重复同一条事实。
+            if (!speedhack_set_speed(want))
+                log_line("[speedctl] failed to apply speed (speedhack unavailable): " + fmt_speed(want) + "x");
             write_state();   // 无论成功与否都回写, mod 读到的是真实值
         }
     }
@@ -267,9 +269,9 @@ void speedctl_start(const std::wstring& dir, double base_speed)
         g_base = 1.0;
         if (base_speed > 0.0 && base_speed < kSpeedMin)
             log_line("[speedctl] speedhackBaseSpeed=" + fmt_speed(base_speed) +
-                     " 低于下限 1.0, 已按 1.0 处理(不允许减速)");
+                     " is below the 1.0 floor, clamped to 1.0 (slowdown is rejected)");
         else
-            log_line("[speedctl] speedhackBaseSpeed 非法, 已按 1.0 处理");
+            log_line("[speedctl] speedhackBaseSpeed invalid, using 1.0");
     }
 
     // 主目录 + LocalAppData 镜像(后者失败不影响前者)。
@@ -280,13 +282,13 @@ void speedctl_start(const std::wstring& dir, double base_speed)
     if (!mirror.empty())
     {
         if (mirror == dir)
-            log_line("[speedctl] 镜像目录与主目录相同, 只使用一份");
+            log_line("[speedctl] mirror dir equals primary dir, using a single copy");
         else
             g_dirs[g_dir_count++] = mirror;
     }
     else
     {
-        log_line("[speedctl] 取不到 %LOCALAPPDATA%, 只使用主目录");
+        log_line("[speedctl] %LOCALAPPDATA% unavailable, using primary dir only");
     }
 
     // 逐目录创建, 丢掉创建失败的(至少一个可用, 通道才算可用)。
@@ -295,14 +297,14 @@ void speedctl_start(const std::wstring& dir, double base_speed)
     for (int i = 0; i < g_dir_count; i++)
     {
         if (ensure_dir(g_dirs[i])) { kept[keptCount++] = g_dirs[i]; }
-        else log_line(L"[speedctl] 控制目录创建失败, 该目录不可用: " + g_dirs[i]);
+        else log_line(L"[speedctl] failed to create control dir, unusable: " + g_dirs[i]);
     }
     for (int i = 0; i < keptCount; i++) g_dirs[i] = kept[i];
     g_dir_count = keptCount;
 
     if (g_dir_count == 0)
     {
-        log_line("[speedctl] 没有可用的控制目录, 变速控制文件通道不可用");
+        log_line("[speedctl] no usable control dir, speed control file channel unavailable");
         return;
     }
 
@@ -314,13 +316,12 @@ void speedctl_start(const std::wstring& dir, double base_speed)
     if (h)
     {
         CloseHandle(h);
-        log_line("[speedctl] 监听目录数: " + std::to_string(g_dir_count));
         return;
     }
 
     // 线程起不来的话, request.txt 没人听 —— 必须让 mod 判定为"不可用"(而不是按了没反应):
     // 删掉状态文件, SDK 的 IsAvailable 就会因为"读不到状态文件"而返回 false。
-    log_line("[speedctl] 监听线程创建失败, 变速控制文件通道不可用");
+    log_line("[speedctl] watch thread creation failed, speed control file channel unavailable");
     for (int i = 0; i < g_dir_count; i++)
         DeleteFileW(path_of(g_dirs[i], kStateName).c_str());
 }
