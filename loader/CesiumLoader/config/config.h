@@ -34,6 +34,11 @@ struct LoaderConfig
     bool consoleEnabled = true;             // 是否分配控制台窗口
     bool consoleTopmost = false;            // 控制台窗口是否置顶(默认不置顶: 置顶会一直压着游戏)
 
+    // 调试 shell: 在控制台里输入命令, 查环境/看日志/改配置(loader.<字段> 或 <ModId>.<键>)。
+    // 关掉只影响命令行输入, 控制台照常显示日志; 也可在 shell 里 set loader.shellEnabled false。
+    bool shellEnabled = true;
+
+
     // mod 日志 -> 控制台 转发线程
     bool forwardActivityLog = true;
 
@@ -170,7 +175,7 @@ struct LoaderConfig
 
     // 加载器自身版本(SemVer)。与发布 tag (modloader-<版本>) 对应, 启动横幅会打印。
     // 与 sdkVersion 独立递增: 改动引导/互操作/打包时递增此值。
-    static constexpr const char* loaderVersion = "2.7.2";
+    static constexpr const char* loaderVersion = "2.8.0";
 };
 
 // 从 config_path 读取配置。文件不存在/解析失败返回默认配置(不抛异常)。
@@ -181,3 +186,4 @@ namespace cesium::config
 using ::LoaderConfig;
 using ::load_config;
 }
+

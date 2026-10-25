@@ -112,11 +112,16 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="config\config.cpp" />
+    <ClCompile Include="config\jsonc_patch.cpp" />
     <ClCompile Include="platform\console.cpp" />
     <ClCompile Include="platform\exports.cpp" />
     <ClCompile Include="runtime\loader.cpp" />
+    <ClCompile Include="runtime\state.cpp" />
     <ClCompile Include="logging\logging.cpp" />
     <ClCompile Include="mods\modmeta.cpp" />
+    <ClCompile Include="shell\command.cpp" />
+    <ClCompile Include="shell\schema.cpp" />
+    <ClCompile Include="shell\shell.cpp" />
     <ClCompile Include="speed\speedctl.cpp" />
     <ClCompile Include="speed\speedhack.cpp" />
     <ClCompile Include="window\windowctl.cpp" />
@@ -131,9 +136,14 @@
   <ItemGroup>
     <ClInclude Include="config\config.h" />
     <ClInclude Include="config\jsonc.h" />
+    <ClInclude Include="config\jsonc_patch.h" />
     <ClInclude Include="platform\loader.h" />
     <ClInclude Include="logging\logging.h" />
     <ClInclude Include="mods\modmeta.h" />
+    <ClInclude Include="runtime\state.h" />
+    <ClInclude Include="shell\command.h" />
+    <ClInclude Include="shell\schema.h" />
+    <ClInclude Include="shell\shell.h" />
     <ClInclude Include="speed\speedctl.h" />
     <ClInclude Include="speed\speedhack.h" />
     <ClInclude Include="window\request.h" />

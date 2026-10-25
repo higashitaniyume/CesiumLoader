@@ -1,0 +1,4 @@
+# test_shell_command 需要把 shell 的纯逻辑源文件一起编进来(不链接整个加载器)。
+loader/CesiumLoader/shell/command.cpp
+loader/CesiumLoader/shell/schema.cpp
+loader/CesiumLoader/config/jsonc_patch.cpp

@@ -77,6 +77,7 @@ winget install Hiynet.AstralParty.Toys
 | --- | --- |
 | `enabled` | 加载器总开关 |
 | `consoleEnabled` / `consoleTopmost` | 控制台显示与置顶 |
+| `shellEnabled` | 控制台调试 shell 的命令输入（默认开） |
 | `forwardActivityLog` | 将模组行为日志转发到控制台 |
 | `speedhackBaseSpeed` | 启动时的基础倍率，`1.0` 为正常速度 |
 | `speedControlEnabled` | 允许通过文件通道调整倍率 |
@@ -87,7 +88,20 @@ winget install Hiynet.AstralParty.Toys
 
 Steam 绕过涉及多个独立开关，推荐通过 Toys 选择启动方式。原理、配置与回退方法见 [Steam 绕过说明](docs/steam-bypass.md)。
 
-控制台遵循 Windows 的默认终端设置：系统选择 Windows Terminal 时由其承载；未安装、系统不支持接管或接管失败时，由 Windows 回退到传统 conhost。仅安装 Windows Terminal 不会覆盖用户显式选择的 Windows 控制台主机。`consoleTopmost` 仅作用于可见的传统控制台窗口，Windows Terminal 的窗口行为由终端自身管理。
+控制台窗口由加载器通过 `AllocConsole` 分配，始终由传统控制台承载：Windows 的默认终端应用设置只作用于控制台程序启动时创建的控制台，不会接管这里后分配的控制台。`consoleTopmost` 作用于这个控制台窗口。
+
+## 调试 shell
+
+控制台里直接输入命令查看环境、改配置、看日志：
+
+```text
+cesium> ls TurnFocus
+cesium> set TurnFocusMod.cooldownSeconds 2
+cesium> set loader.speedhackBaseSpeed 3
+cesium> exit
+```
+
+配置键为 `loader.<字段>` 或 `<ModId>.<键>`，`ls` 列出全部可配置项，`get` / `set` 读写单个键，`help` 查看全部命令。修改会立即写盘并保留文件原有格式。完整说明见 [调试 shell](docs/工具-调试Shell.md)。
 
 日志按启动会话分别保存，文件名包含时间与进程 ID；排障时保留对应会话的日志及同次构建的 DLL/PDB。
 
@@ -119,6 +133,7 @@ SDK 提供生命周期、游戏事件、玩家数据、相机、输入、UI、�
 | [操作](docs/SDK-操作.md) · [诊断](docs/SDK-诊断.md) | 游戏指令与排障 |
 | [Unity 调用与 ECall 隔离](docs/SDK-Unity调用与ECall隔离.md) · [平台约束](docs/平台约束-第三方库与AOT裁剪.md) | 运行时兼容要求 |
 | [cesium CLI](docs/工具-cesium-CLI.md) | 脚手架、打包与离线预检 |
+| [调试 shell](docs/工具-调试Shell.md) | 控制台命令：查环境、改配置、看日志 |
 | [MCP 桥接](mcp/README.md) · [桥接设计](docs/MCP-Agent桥接.md) | 可选 AI 接管组件，默认发布包不包含 |
 
 ## 构建与发布

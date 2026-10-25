@@ -23,6 +23,7 @@
 #include <cstring>
 #include <cstdint>
 #include <algorithm>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -32,6 +33,18 @@ namespace
 HANDLE g_console = INVALID_HANDLE_VALUE;
 WORD   g_color = LOG_DEFAULT;
 int    g_columns = 0;   // 控制台窗口列数; 0 = 未知(不折行)
+
+// 控制台写锁: 日志行与调试 shell 的提示符/输出必须串行, 否则会出现半行交叉。
+// 用 CRITICAL_SECTION(可重入): shell 的钩子里再调 console_lock 不会自锁。
+CRITICAL_SECTION g_write_cs;
+std::once_flag   g_write_once;
+void (*g_pre_write)() = nullptr;
+void (*g_post_write)() = nullptr;
+
+void ensure_write_lock()
+{
+    std::call_once(g_write_once, [] { InitializeCriticalSection(&g_write_cs); });
+}
 
 // 标签列宽: "[windowctl] " 正好 12 列 —— 所有日志正文从第 13 列开始, 折行缩进也对齐到这一列。
 constexpr int kTagColumns = 12;
@@ -426,7 +439,15 @@ void log_line(const char* msg)
     if (msg == nullptr) return;
     if (*msg == '\0')
     {
-        if (console_ready()) raw_write(L"\n");
+        if (console_ready())
+        {
+            ensure_write_lock();
+            EnterCriticalSection(&g_write_cs);
+            if (g_pre_write) g_pre_write();
+            raw_write(L"\n");
+            if (g_post_write) g_post_write();
+            LeaveCriticalSection(&g_write_cs);
+        }
         return;
     }
     console_write(msg);
@@ -496,20 +517,68 @@ void console_write(const char* utf8_msg)
 {
     if (!console_ready() || utf8_msg == nullptr) return;
 
+    ensure_write_lock();
+    EnterCriticalSection(&g_write_cs);
+    if (g_pre_write) g_pre_write();
+
     std::wstring prefix;
     std::wstring body;
     split_tag(widen(utf8_msg), prefix, body);
     emit(prefix, body, LOG_DIM, g_color);
+
+    if (g_post_write) g_post_write();
+    LeaveCriticalSection(&g_write_cs);
 }
 
 void console_write_w(const wchar_t* msg, size_t len)
 {
     if (!console_ready() || msg == nullptr || len == 0) return;
 
+    ensure_write_lock();
+    EnterCriticalSection(&g_write_cs);
+    if (g_pre_write) g_pre_write();
+
     std::wstring prefix;
     std::wstring body;
     split_tag(std::wstring(msg, len), prefix, body);
     emit(prefix, body, LOG_DIM, g_color);
+
+    if (g_post_write) g_post_write();
+    LeaveCriticalSection(&g_write_cs);
+}
+
+bool console_available()
+{
+    return console_ready();
+}
+
+void console_set_topmost(bool topmost)
+{
+    // 与 console_init 同一套判断: ConPTY/Windows Terminal 下 GetConsoleWindow 是隐藏消息窗,
+    // 不能拿它去 SetWindowPos(会动到终端宿主)。默认终端设置目前不会接管 AllocConsole 的控制台,
+    // 所以实际几乎总是传统 conhost —— 这里的判断只是防御。
+    HWND hwnd = GetConsoleWindow();
+    if (hwnd == nullptr || !IsWindowVisible(hwnd)) return;
+
+    SetWindowPos(hwnd, topmost ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+}
+
+void console_set_write_hooks(void (*pre)(), void (*post)())
+{
+    g_pre_write = pre;
+    g_post_write = post;
+}
+
+void console_lock()
+{
+    ensure_write_lock();
+    EnterCriticalSection(&g_write_cs);
+}
+
+void console_unlock()
+{
+    LeaveCriticalSection(&g_write_cs);
 }
 
 // ---------- 导出(供 C# mod 调用) ----------

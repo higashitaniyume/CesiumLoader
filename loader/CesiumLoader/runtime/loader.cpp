@@ -22,6 +22,8 @@
 #include "mods/modmeta.h"
 #include "logging/logging.h"
 #include "runtime/il2cpp_safe.h"
+#include "runtime/state.h"
+#include "shell/shell.h"
 #include "steam/steamhack.h"
 
 #include <tlhelp32.h>
@@ -595,6 +597,15 @@ static DWORD WINAPI forward_activity_log(LPVOID param)
         LARGE_INTEGER cur;
         cur.HighPart = fad.nFileSizeHigh;
         cur.LowPart = fad.nFileSizeLow;
+
+        // 转发可以被 shell 的 set loader.forwardActivityLog 关掉。关闭期间仍要跟上文件位置,
+        // 否则重新打开时会把关闭期间积累的内容一次性倒到控制台上。
+        if (!cesium::runtime::forward_enabled())
+        {
+            if (cur.QuadPart > last_len.QuadPart) last_len = cur;
+            continue;
+        }
+
         if (cur.QuadPart <= last_len.QuadPart) continue;
 
         HANDLE f = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
@@ -669,6 +680,10 @@ static void log_environment(Il2CppDomain* domain)
     GetModuleFileNameW(nullptr, exe, MAX_PATH);
     const std::string exe_name = utf8_from_wide(file_name_of(exe).c_str());
 
+    // shell 的 status/env 要复用这两个版本号与 exe 路径, 存进运行期快照。
+    cesium::runtime::set_versions(app_version, utf8_from_wide(unity.c_str()));
+    cesium::runtime::set_exe_path(exe);
+
     std::string line = "[loader] ";
     if (!app_version.empty()) line += exe_name + " " + app_version + " · ";
     line += "engine Unity " + (unity.empty() ? std::string("unknown") : utf8_from_wide(unity.c_str()));
@@ -705,6 +720,11 @@ static DWORD WINAPI boot_thread(LPVOID)
         return 0;
     }
 
+    // 运行期状态快照: shell 运行在另一个线程, 从这里读配置/版本/mod 列表。
+    cesium::runtime::mark_started();
+    cesium::runtime::set_config(cfg);
+    cesium::runtime::set_forward_enabled(cfg.forwardActivityLog);
+
     // 3.5 变速引擎: 在 loader lock 释放后安装 hook(不在 DllMain 里做, 避免
     // ERROR_DLL_INIT_FAILED / 内存竞态)。游戏进程已初始化, hook 生效后
     // 游戏感知的时间从此刻开始缩放。
@@ -734,6 +754,35 @@ static DWORD WINAPI boot_thread(LPVOID)
         windowctl_start(windowctl_dir());
     else
         log_line("[loader] windowControlEnabled=false, skipping foreground control file channel");
+
+    // 3.7.2 调试 shell: 控制台就绪后启动, 之后游戏加载 mod 的几秒里就能查状态/改配置。
+    //       没有控制台(consoleEnabled=false 或 AllocConsole 失败)时 shell_start 直接返回 false。
+    if (cfg.consoleEnabled && cfg.shellEnabled)
+    {
+        if (cesium::shell::shell_start())
+        {
+            console_set_color(LOG_CYAN);
+            log_line("[shell] 调试 shell 已就绪 · 输入 help 查看命令");
+            console_set_color(LOG_DEFAULT);
+        }
+        else
+        {
+            log_line("[shell] 启动失败, 继续以纯日志模式运行");
+        }
+    }
+    else if (cfg.consoleEnabled)
+    {
+        log_line("[shell] shellEnabled=false, 不读取控制台输入");
+    }
+
+    // 3.7.3 活动日志转发线程: 常驻, 是否真正转发由 forwardActivityLog 开关控制,
+    //       这样 shell 里可以随时开关(线程本身不重启)。
+    {
+        auto* log_dir_ptr = new std::wstring(logs_dir());
+        HANDLE h = CreateThread(nullptr, 0, forward_activity_log, log_dir_ptr, 0, nullptr);
+        if (h) CloseHandle(h);
+        else delete log_dir_ptr;
+    }
 
     // 4. 等待 GameAssembly.dll
     HMODULE ga = wait_module(L"GameAssembly.dll", cfg.gameAssemblyTimeoutSec);
@@ -854,14 +903,6 @@ static DWORD WINAPI boot_thread(LPVOID)
             return 0;
         }
         log_line("[loader] bootstrap entry ran successfully, boot thread finished");
-
-        // 启动"mod 日志 -> 控制台"转发线程(持续运行直到进程退出)
-        if (cfg.forwardActivityLog)
-        {
-            auto* log_dir_ptr = new std::wstring(logs);
-            HANDLE h = CreateThread(nullptr, 0, forward_activity_log, log_dir_ptr, 0, nullptr);
-            if (h) CloseHandle(h);
-        }
         return 0;
     }
 
@@ -1016,6 +1057,8 @@ static DWORD WINAPI boot_thread(LPVOID)
     log_line("  " + pad_right("#", 3) + pad_right("mod", name_w) + pad_right("version", ver_w) + "result");
     console_set_color(LOG_DEFAULT);
     int okCount = 0, failCount = 0;
+    // shell 的 mods 命令要的是一份"每个 mod 一行结论"的快照(data/ 里没有现成的)。
+    std::vector<cesium::runtime::ModStatus> statuses;
     for (size_t i = 0; i < to_load.size(); i++)
     {
         const std::string& name = to_load[i];
@@ -1031,6 +1074,7 @@ static DWORD WINAPI boot_thread(LPVOID)
         {
             row(idx, name, ver, "dll read failed", LOG_RED);
             write_mod_error(logs, name, "DLL read failed");
+            statuses.push_back({ name, ver, "dll read failed", true, false });
             failCount++;
             continue;
         }
@@ -1042,6 +1086,7 @@ static DWORD WINAPI boot_thread(LPVOID)
         {
             row(idx, name, ver, "load failed: " + err, LOG_RED);
             write_mod_error(logs, name, "Assembly.Load failed: " + err);
+            statuses.push_back({ name, ver, "load failed: " + err, true, false });
             failCount++;
             continue;
         }
@@ -1050,19 +1095,32 @@ static DWORD WINAPI boot_thread(LPVOID)
         if (run_entry(asm_, entry_type.c_str(), "Main", err))
         {
             row(idx, name, ver, "ok  " + fmt_ms(GetTickCount64() - t0), LOG_GREEN);
+            statuses.push_back({ name, ver, "ok  " + fmt_ms(GetTickCount64() - t0), true, true });
             okCount++;
         }
         else
         {
             row(idx, name, ver, "entry failed: " + err, LOG_RED);
             write_mod_error(logs, name, "entry failed: " + err);
+            statuses.push_back({ name, ver, "entry failed: " + err, true, false });
             failCount++;
         }
     }
 
     // 没加载的也进同一张表: 用户需要知道"哪些没加载、为什么", 而不是自己去数差集。
-    for (auto& n : disabled) row("-", n, "-", "disabled", LOG_DIM);
-    for (auto& n : rejected) row("-", n, "-", "skipped (missing dep / SDK version)", LOG_YELLOW);
+    for (auto& n : disabled)
+    {
+        row("-", n, "-", "disabled", LOG_DIM);
+        statuses.push_back({ n, "-", "disabled", false, false });
+    }
+    for (auto& n : rejected)
+    {
+        row("-", n, "-", "skipped (missing dep / SDK version)", LOG_YELLOW);
+        statuses.push_back({ n, "-", "skipped (missing dep / SDK version)", true, false });
+    }
+
+    // 报告已生成, 把同一份结论交给运行期快照(shell 的 mods 命令用)。
+    cesium::runtime::set_mods(std::move(statuses));
 
     // 警告: 声明了"操作游戏"能力(GameActions=2)的 mod —— 仅提示, 不阻止。
     // 权限机制已取消: 任何 mod 都能调用 SDK 的模拟操作 API, 此处仅告知用户。
@@ -1086,14 +1144,6 @@ static DWORD WINAPI boot_thread(LPVOID)
     console_set_color(LOG_DIM);
     log_line("[loader] boot thread finished");
     console_set_color(LOG_DEFAULT);
-
-    // 7. 启动"mod 日志 -> 控制台"转发线程(持续运行直到进程退出)
-    if (cfg.forwardActivityLog)
-    {
-        auto* log_dir_ptr = new std::wstring(logs);
-        HANDLE h = CreateThread(nullptr, 0, forward_activity_log, log_dir_ptr, 0, nullptr);
-        if (h) CloseHandle(h);
-    }
     return 0;
 }
 

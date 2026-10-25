@@ -81,6 +81,21 @@ void console_init(bool topmost);
 void console_write(const char* utf8_msg);
 void console_write_w(const wchar_t* msg, size_t len);
 
+// 控制台是否可用(AllocConsole 成功且拿到了输出句柄)。
+bool console_available();
+
+// 设置/取消控制台窗口置顶(只对可见的传统控制台窗口生效; shell 的 set loader.consoleTopmost 用)。
+void console_set_topmost(bool topmost);
+
+// 写入钩子: 每次 console_write / console_write_w 真正输出**前后**调用, 调用时持有控制台写锁。
+// 调试 shell 用它在日志行之间擦掉/重画输入提示符。传 nullptr 注销。
+void console_set_write_hooks(void (*pre)(), void (*post)());
+
+// 控制台写锁(可重入)。shell 自己操作光标/填充字符时用它和日志输出互斥。
+void console_lock();
+void console_unlock();
+
+
 // ---------- 路径 ----------
 std::wstring loader_root();
 std::wstring bootstrap_dir();
@@ -113,8 +128,13 @@ namespace cesium::platform
 using ::LogColor;
 using ::bootstrap_dir;
 using ::config_path;
+using ::console_available;
 using ::console_init;
+using ::console_lock;
 using ::console_set_color;
+using ::console_set_topmost;
+using ::console_set_write_hooks;
+using ::console_unlock;
 using ::console_write;
 using ::console_write_w;
 using ::loader_root;
