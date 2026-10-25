@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using System.IO;
+using System.Text;
 using CesiumLoader.SDK.Windowing;
 using Xunit;
 
@@ -90,6 +91,105 @@ namespace CesiumLoader.SDK.Tests
             Assert.False(WindowFocus.IsAvailable);
             WriteState("version=2.5.5\r\navailable=1\r\n");
             Assert.True(WindowFocus.IsAvailable);
+        }
+
+        // ---------- 提示音 (2.7.1) ----------
+
+        [Fact]
+        public void SupportsSound_RequiresAudioLine()
+        {
+            WriteState("version=2.7.0\r\navailable=1\r\n");
+            Assert.False(WindowFocus.SupportsSound);   // 旧加载器没有 audio 行
+
+            WriteState("version=2.7.1\r\navailable=1\r\naudio=0\r\n");
+            Assert.False(WindowFocus.SupportsSound);
+
+            WriteState("version=2.7.1\r\navailable=1\r\naudio=wav\r\n");
+            Assert.True(WindowFocus.SupportsSound);
+        }
+
+        [Fact]
+        public void RequestForeground_WithSound_WritesTokenAndPath()
+        {
+            WriteState("version=2.7.1\r\navailable=1\r\naudio=wav\r\n");
+            string sound = Path.Combine(_dir, "sounds", "your-turn.wav");
+
+            Assert.True(WindowFocus.RequestForeground(sound));
+
+            string[] lines = File.ReadAllLines(RequestPath);
+            Assert.Equal(2, lines.Length);
+            Assert.True(long.TryParse(lines[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out _));
+            Assert.Equal(sound, lines[1]);
+        }
+
+        [Fact]
+        public void RequestForeground_WithoutSound_WritesSingleLine()
+        {
+            WriteState("version=2.7.1\r\navailable=1\r\naudio=wav\r\n");
+
+            Assert.True(WindowFocus.RequestForeground(null));
+            Assert.Single(File.ReadAllLines(RequestPath));
+
+            Assert.True(WindowFocus.RequestForeground("   "));
+            Assert.Single(File.ReadAllLines(RequestPath));
+        }
+
+        [Fact]
+        public void RequestForeground_DropsRelativeOrMultilineSound()
+        {
+            WriteState("version=2.7.1\r\navailable=1\r\naudio=wav\r\n");
+
+            // 相对路径: 加载器会按自己的当前目录解析, 不能发出去。
+            Assert.True(WindowFocus.RequestForeground(@"sounds\your-turn.wav"));
+            Assert.Single(File.ReadAllLines(RequestPath));
+
+            // 换行会破坏请求文件的行结构。
+            Assert.True(WindowFocus.RequestForeground("C:\\a.wav\r\nC:\\b.wav"));
+            Assert.Single(File.ReadAllLines(RequestPath));
+        }
+
+        [Theory]
+        [InlineData("C:\\sounds\\ding.wav", true)]
+        [InlineData("C:/sounds/ding.wav", true)]
+        [InlineData("\\\\server\\share\\ding.wav", true)]
+        [InlineData("C:ding.wav", false)]          // 驱动器相对, 不是绝对路径
+        [InlineData("sounds\\ding.wav", false)]
+        [InlineData("/sounds/ding.wav", false)]    // 无驱动器, 加载器不接受
+        [InlineData("", false)]
+        public void IsAbsolutePath_MatchesLoaderRules(string path, bool expected)
+        {
+            Assert.Equal(expected, WindowFocus.IsAbsolutePath(path));
+        }
+
+        [Fact]
+        public void RequestForeground_UnavailableChannel_DoesNotWriteSoundRequest()
+        {
+            string sound = Path.Combine(_dir, "ding.wav");
+            Assert.False(WindowFocus.RequestForeground(sound));
+            Assert.False(File.Exists(RequestPath));
+        }
+
+        [Fact]
+        public void Utf8Bytes_MatchesDotNetEncoding()
+        {
+            // 提示音路径可能是中文: 手写编码必须与 BCL 完全一致(含 4 字节代理对)。
+            foreach (string text in new[]
+            {
+                "C:\\sounds\\ding.wav",
+                "C:\\用户\\提示音.wav",
+                "C:\\emoji\\\U0001F514.wav",
+                "C:\\mixed\\中文-abc-123.wav",
+            })
+            {
+                Assert.Equal(Encoding.UTF8.GetBytes(text), WindowFocus.Utf8Bytes(text));
+            }
+        }
+
+        [Fact]
+        public void BuildRequestText_LaysOutTokenAndPath()
+        {
+            string text = WindowFocus.BuildRequestText(12345, "C:\\a\\ding.wav");
+            Assert.Equal("12345\r\nC:\\a\\ding.wav\r\n", text);
         }
     }
 }

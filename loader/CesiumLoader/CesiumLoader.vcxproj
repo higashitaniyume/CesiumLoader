@@ -136,6 +136,7 @@
     <ClInclude Include="mods\modmeta.h" />
     <ClInclude Include="speed\speedctl.h" />
     <ClInclude Include="speed\speedhack.h" />
+    <ClInclude Include="window\request.h" />
     <ClInclude Include="window\windowctl.h" />
     <ClInclude Include="steam\steamhack.h" />
     <ClInclude Include="steam\steam_diagnostics.h" />

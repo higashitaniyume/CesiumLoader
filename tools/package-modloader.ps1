@@ -164,6 +164,12 @@ if (-not $SkipBuild)
         $sidecarSrc = "mods\$mod\$mod.json"
         if (Test-Path $sidecarSrc) { Copy-Item $sidecarSrc "$modDir\$mod.json" -Force }
         if (-not (Test-Path "$modDir\$mod.json")) { throw "缺少 mod sidecar: $modDir\$mod.json" }
+        # 随 mod 分发的素材(提示音等): 整目录镜像, 保证 dist 与源码一致
+        # 先删后拷: Copy-Item 遇到已存在的目标目录会再嵌一层 sounds\sounds。
+        if (Test-Path "mods\$mod\sounds") {
+            if (Test-Path "$modDir\sounds") { Remove-Item "$modDir\sounds" -Recurse -Force }
+            Copy-Item "mods\$mod\sounds" "$modDir\sounds" -Recurse -Force
+        }
     }
     Write-Host '  dist 已刷新'
 }
@@ -217,6 +223,14 @@ foreach ($mod in $BuiltInMods)
     $manifestFiles += "staging/AstralParty_ModLoader/mods/$mod/$mod.dll"
     $manifestFiles += "staging/AstralParty_ModLoader/mods/$mod/$mod.json"
     $manifestFiles += "staging/AstralParty_ModLoader/mods/$mod/$mod.pdb"
+    if (Test-Path -LiteralPath "$from\sounds") {
+        $toSounds = "$to\sounds"
+        if (Test-Path -LiteralPath $toSounds) { Remove-Item -LiteralPath $toSounds -Recurse -Force }
+        Copy-Item "$from\sounds" $toSounds -Recurse -Force
+        foreach ($file in Get-ChildItem $toSounds -File) {
+            $manifestFiles += "staging/AstralParty_ModLoader/mods/$mod/sounds/$($file.Name)"
+        }
+    }
 }
 
 # 只把真正落盘的文件写进清单。两个理由:
@@ -236,6 +250,7 @@ $readme = @(
     "- AstralParty_ModLoader\sdk\           → SDK 依赖",
     "- AstralParty_ModLoader\mods\          → 用户 mod (每 mod 一个文件夹: mods\{ModId}\{ModId}.dll)",
     "  随包内置: $modList",
+    "TurnFocusMod 在轮到自己/匹配成功时置前; 默认不播放提示音, 在 mods\TurnFocusMod\config.json 的 soundFile 填 WAV 路径后启用(随包附带示例音 sounds\your-turn.wav)。",
     "AutoThanksMod 默认启用: 队友治疗、给牌或转星币给你时自动发送原版感谢短语，默认 2 秒真实时间冷却。",
     "- AstralParty_ModLoader\mods\{ModId}\{ModId}.json → mod sidecar (id/版本/权限/enabled 开关/依赖)",
     "- *.pdb (version.pdb / bootstrap / sdk / mods\*) → 符号文件(与同名 dll 配对):",

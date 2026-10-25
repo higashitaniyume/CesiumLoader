@@ -198,6 +198,18 @@ foreach ($mod in $Mods)
     Deploy-File -From $json -To (Join-Path $loaderDir "mods\$mod\$mod.json") -Optional
 
     Deploy-File -From (Join-Path $from "$mod.pdb") -To (Join-Path $loaderDir "mods\$mod\$mod.pdb") -Optional
+
+    # 随 mod 分发的素材(提示音等): 整目录镜像, 与打包脚本保持一致
+    $sounds = Join-Path $from 'sounds'
+    if (Test-Path -LiteralPath $sounds)
+    {
+        $dest = Join-Path $loaderDir "mods\$mod\sounds"
+        if (-not (Test-Path -LiteralPath $dest)) { New-Item -ItemType Directory -Path $dest -Force | Out-Null }
+        foreach ($asset in Get-ChildItem -LiteralPath $sounds -File)
+        {
+            Deploy-File -From $asset.FullName -To (Join-Path $dest $asset.Name)
+        }
+    }
 }
 
 # 6) 日志目录

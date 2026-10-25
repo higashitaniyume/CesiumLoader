@@ -2,5 +2,7 @@
   "enabled": true,
   "cooldownSeconds": 1,
   "focusOnMatchSuccess": true,
-  "focusOnRoomChat": true
+  "focusOnRoomChat": true,
+  "soundEnabled": true,
+  "soundFile": ""
 }

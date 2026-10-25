@@ -15,12 +15,15 @@ namespace CesiumLoader.SDK.Windowing
     /// <c>user32!SetForegroundWindow</c>。本类只写一个请求文件, 由原生加载器执行:
     ///
     /// <code>
-    ///   &lt;CESIUM_WINDOW_DIR&gt;\request.txt   mod → 加载器: 每次请求写一个新的十进制令牌
-    ///   &lt;CESIUM_WINDOW_DIR&gt;\state.txt     加载器 → mod: version / available
+    ///   &lt;CESIUM_WINDOW_DIR&gt;\request.txt   mod → 加载器: 十进制令牌 + 可选提示音绝对路径
+    ///   &lt;CESIUM_WINDOW_DIR&gt;\state.txt     加载器 → mod: version / available / audio
     /// </code>
     ///
     /// 加载器每 100ms 检查一次请求文件; 游戏窗口已经在前台时静默忽略, 不抢焦点。
     /// 需要加载器提供窗口置前通道; 加载器未提供时 <see cref="IsAvailable"/> 为 <c>false</c>。
+    ///
+    /// 提示音(<see cref="RequestForeground(string)"/>)由加载器原生播放, 不经过游戏音频;
+    /// 加载器是否支持读 <see cref="SupportsSound"/>。
     ///
     /// 注意: Windows 的前台锁定可能拒绝置前(例如前台是全屏游戏或提权窗口),
     /// 此时加载器会闪烁任务栏提醒, 无法保证 100% 抢到前台。
@@ -100,6 +103,24 @@ namespace CesiumLoader.SDK.Windowing
         /// </returns>
         public static bool RequestForeground()
         {
+            return RequestForeground(null);
+        }
+
+        /// <summary>
+        /// 请求加载器把游戏窗口切换到前台, 并在置前时播放提示音。
+        ///
+        /// 提示音由加载器用原生 <c>PlaySound</c> 播放, 不经过游戏的 Wwise 音频,
+        /// 因此游戏内音量/静音不影响它。加载器只播放 **WAV**(建议 16-bit PCM),
+        /// 且只在真正处理这次请求时播放 —— 窗口已经在前台时置前和提示音一起静默跳过。
+        /// </summary>
+        /// <param name="soundFile">
+        /// 提示音的**绝对路径**。传 null/空字符串等于只置前;
+        /// 相对路径、含换行/回车的路径会被忽略(结果同样是只置前)。
+        /// 文件不存在、扩展名不是 .wav 或超过 16 MB 时加载器只记日志, 置前不受影响。
+        /// </param>
+        /// <returns>同 <see cref="RequestForeground()"/>。</returns>
+        public static bool RequestForeground(string soundFile)
+        {
             lock (_lock)
             {
                 if (!IsAvailableLocked()) return false;
@@ -118,9 +139,9 @@ namespace CesiumLoader.SDK.Windowing
                 try { token = DateTime.UtcNow.Ticks + (++_sequence); }
                 catch { token = ++_sequence; }
 
-                var text = token.ToString(CultureInfo.InvariantCulture) + "\r\n";
+                var text = BuildRequestText(token, soundFile);
                 string error;
-                if (!WriteAtomic(path, text, out error))
+                if (!WriteAtomic(path, Utf8Bytes(text), out error))
                 {
                     _unavailableReason = error;
                     return false;
@@ -129,6 +150,65 @@ namespace CesiumLoader.SDK.Windowing
                 _unavailableReason = null;
                 return true;
             }
+        }
+
+        /// <summary>加载器是否提供提示音(读 state.txt 的 audio=wav; 旧加载器没有这一行)。</summary>
+        public static bool SupportsSound
+        {
+            get
+            {
+                lock (_lock)
+                {
+                    var state = ReadState();
+                    if (state == null) return false;
+
+                    string audio;
+                    return state.TryGetValue("audio", out audio) &&
+                           !string.IsNullOrEmpty(audio) && audio != "0";
+                }
+            }
+        }
+
+        /// <summary>请求文本: 第一行令牌, 第二行可选提示音路径(见 windowctl.h 协议)。</summary>
+        internal static string BuildRequestText(long token, string soundFile)
+        {
+            var sb = new StringBuilder();
+            sb.Append(token.ToString(CultureInfo.InvariantCulture)).Append("\r\n");
+
+            string path = NormalizeSoundPath(soundFile);
+            if (path != null) sb.Append(path).Append("\r\n");
+
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// 只接受绝对路径的单行文本: 相对路径会按游戏工作目录解析(行为不确定),
+        /// 换行会破坏请求文件的行结构, 两者都直接丢弃。
+        /// </summary>
+        internal static string NormalizeSoundPath(string soundFile)
+        {
+            if (soundFile == null) return null;
+
+            string path = soundFile.Trim();
+            if (path.Length == 0 || path.Length > 4096) return null;
+            if (path.IndexOf('\r') >= 0 || path.IndexOf('\n') >= 0) return null;
+            if (!IsAbsolutePath(path)) return null;
+
+            return path;
+        }
+
+        /// <summary>
+        /// 绝对路径判定, 与加载器的解析规则一致: 驱动器 + 分隔符("C:\..."、"C:/..."),
+        /// 或 UNC("\\server\...")。不用 <c>Path.IsPathRooted</c> —— 热更侧没验证过这个成员。
+        /// </summary>
+        internal static bool IsAbsolutePath(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return false;
+
+            if (path.Length >= 3 && path[1] == ':' && (path[2] == '\\' || path[2] == '/')) return true;
+            if (path.Length >= 2 && path[0] == '\\' && path[1] == '\\') return true;
+
+            return false;
         }
 
         /// <summary>诊断描述(写进日志用)。</summary>
@@ -140,6 +220,7 @@ namespace CesiumLoader.SDK.Windowing
                 var sb = new StringBuilder();
                 sb.Append(available ? "窗口置前通道可用" : "窗口置前通道不可用");
                 sb.Append(" 目录 ").Append(Directory ?? "(null)");
+                sb.Append(SupportsSound ? " 提示音=wav" : " 提示音=无");
                 if (!available && !string.IsNullOrEmpty(_unavailableReason))
                     sb.Append(" 原因: ").Append(_unavailableReason);
                 return sb.ToString();
@@ -384,18 +465,69 @@ namespace CesiumLoader.SDK.Windowing
             return new string(chars);
         }
 
-        private static byte[] AsciiBytes(string text)
+        /// <summary>
+        /// 手写 UTF-8 编码: 热更 BCL 的 <c>System.Text.Encoding</c> 在本项目里没有实测过,
+        /// 而提示音路径可能是中文, 不能沿用原来"按 ASCII 位与"的写法。
+        /// </summary>
+        internal static byte[] Utf8Bytes(string text)
         {
-            var bytes = new byte[text.Length];
-            for (int i = 0; i < text.Length; i++) bytes[i] = (byte)(text[i] & 0x7F);
-            return bytes;
+            var bytes = new List<byte>(text.Length + 4);
+
+            for (int i = 0; i < text.Length; i++)
+            {
+                int code = text[i];
+
+                if (code >= 0xD800 && code <= 0xDBFF)
+                {
+                    bool paired = false;
+                    if (i + 1 < text.Length)
+                    {
+                        int low = text[i + 1];
+                        if (low >= 0xDC00 && low <= 0xDFFF)
+                        {
+                            code = 0x10000 + ((code - 0xD800) << 10) + (low - 0xDC00);
+                            i++;
+                            paired = true;
+                        }
+                    }
+                    if (!paired) code = 0xFFFD;   // 落单的高代理
+                }
+                else if (code >= 0xDC00 && code <= 0xDFFF)
+                {
+                    code = 0xFFFD;                // 落单的低代理
+                }
+
+                if (code < 0x80)
+                {
+                    bytes.Add((byte)code);
+                }
+                else if (code < 0x800)
+                {
+                    bytes.Add((byte)(0xC0 | (code >> 6)));
+                    bytes.Add((byte)(0x80 | (code & 0x3F)));
+                }
+                else if (code < 0x10000)
+                {
+                    bytes.Add((byte)(0xE0 | (code >> 12)));
+                    bytes.Add((byte)(0x80 | ((code >> 6) & 0x3F)));
+                    bytes.Add((byte)(0x80 | (code & 0x3F)));
+                }
+                else
+                {
+                    bytes.Add((byte)(0xF0 | (code >> 18)));
+                    bytes.Add((byte)(0x80 | ((code >> 12) & 0x3F)));
+                    bytes.Add((byte)(0x80 | ((code >> 6) & 0x3F)));
+                    bytes.Add((byte)(0x80 | (code & 0x3F)));
+                }
+            }
+
+            return bytes.ToArray();
         }
 
-        private static bool WriteAtomic(string path, string text, out string error)
+        private static bool WriteAtomic(string path, byte[] bytes, out string error)
         {
             error = null;
             string tmp = path + ".tmp";
-            var bytes = AsciiBytes(text);
 
             try
             {

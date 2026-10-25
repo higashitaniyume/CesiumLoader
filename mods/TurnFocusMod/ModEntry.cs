@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using CesiumLoader.SDK.Gameplay;
 using CesiumLoader.SDK.Mods;
 using CesiumLoader.SDK.Windowing;
@@ -61,18 +62,27 @@ namespace TurnFocusMod
         private bool _enabled = true;
         private bool _roomChatFocus = true;
         private bool _matchSuccessFocus = true;
+        private bool _soundEnabled = true;
+        private string _soundFile = DefaultSoundFile;
+        private bool _warnedMissingSound;
         private int _cooldownSeconds = TurnFocusPolicy.DefaultCooldownSeconds;
         private long _lastRequestTicks;
         private long _nextHookCheckTicks;
         private long _nextWarnTicks;
         private bool _subscribed;
 
+        /// <summary>
+        /// 默认不播放提示音: 只有用户显式在 soundFile 里填了文件才出声。
+        /// 相对路径按 mod 目录解析(随包提供了一个示例音 sounds/your-turn.wav), 也可用绝对路径。
+        /// </summary>
+        internal const string DefaultSoundFile = "";
+
         public override string Name { get { return "回合置前"; } }
-        public override string Version { get { return "1.3.0"; } }
+        public override string Version { get { return "1.4.0"; } }
         public override string Author { get { return "CesiumLoader"; } }
         public override string Description
         {
-            get { return "轮到自己回合、选择筹码、战斗出牌、攻击或防御、匹配成功，或开房后有人发准备消息时把游戏窗口切换到前台，窗口已在前台时不打扰。"; }
+            get { return "轮到自己回合、选择筹码、战斗出牌、攻击或防御、匹配成功，或开房后有人发准备消息时把游戏窗口切换到前台；配置了提示音时同时播放，窗口已在前台时不打扰。"; }
         }
 
         public override void OnInitialize()
@@ -84,6 +94,8 @@ namespace TurnFocusMod
                 if (!config.Has("cooldownSeconds")) config.Set("cooldownSeconds", TurnFocusPolicy.DefaultCooldownSeconds);
                 if (!config.Has("focusOnRoomChat")) config.Set("focusOnRoomChat", true);
                 if (!config.Has("focusOnMatchSuccess")) config.Set("focusOnMatchSuccess", true);
+                if (!config.Has("soundEnabled")) config.Set("soundEnabled", true);
+                if (!config.Has("soundFile")) config.Set("soundFile", DefaultSoundFile);
                 config.Save();
             }
 
@@ -95,6 +107,12 @@ namespace TurnFocusMod
             Log.Info("已启用回合置前：轮到自己回合、选择筹码、战斗出牌、攻击或防御、匹配成功，或开房后有人发准备消息时切换到前台。");
             if (!WindowFocus.IsAvailable)
                 Log.Warn("窗口置前通道不可用：" + (WindowFocus.UnavailableReason ?? "原因未知"));
+            else if (!_soundEnabled)
+                Log.Info("提示音已关闭，仅置前。");
+            else if (string.IsNullOrEmpty(_soundFile))
+                Log.Info("未指定提示音，仅置前（soundFile 填 WAV 绝对路径或 sounds/your-turn.wav 即可启用）。");
+            else if (!WindowFocus.SupportsSound)
+                Log.Warn("加载器未提供提示音（需要 CesiumLoader 2.7.1 及以上），本次只置前。");
         }
 
         public override void OnConfigChanged()
@@ -103,7 +121,9 @@ namespace TurnFocusMod
             Log.Info("回合置前配置已热重载: enabled=" + _enabled
                 + ", cooldownSeconds=" + _cooldownSeconds
                 + ", focusOnMatchSuccess=" + _matchSuccessFocus
-                + ", focusOnRoomChat=" + _roomChatFocus);
+                + ", focusOnRoomChat=" + _roomChatFocus
+                + ", soundEnabled=" + _soundEnabled
+                + ", soundFile=" + (_soundFile ?? ""));
         }
 
         public override void OnUnload()
@@ -131,8 +151,59 @@ namespace TurnFocusMod
             _enabled = config.GetBool("enabled", true);
             _roomChatFocus = config.GetBool("focusOnRoomChat", true);
             _matchSuccessFocus = config.GetBool("focusOnMatchSuccess", true);
+            _soundEnabled = config.GetBool("soundEnabled", true);
+            _soundFile = config.GetString("soundFile", DefaultSoundFile);
+            if (_soundFile != null) _soundFile = _soundFile.Trim();
+            _warnedMissingSound = false;
             _cooldownSeconds = TurnFocusPolicy.ClampCooldownSeconds(
                 config.GetInt("cooldownSeconds", TurnFocusPolicy.DefaultCooldownSeconds));
+        }
+
+        /// <summary>
+        /// 写一条置前请求。提示音路径跟请求一起交给加载器, 由它决定"这次是否真的
+        /// 需要提醒"(窗口已在前台时置前和提示音一起跳过)。
+        /// </summary>
+        private void RequestFocus(string what)
+        {
+            string sound = ResolveSoundPath();
+
+            if (WindowFocus.RequestForeground(sound))
+            {
+                Log.Info(what + "，已请求把游戏窗口切到前台"
+                    + (sound != null ? "，并播放提示音。" : "。"));
+                return;
+            }
+
+            WarnThrottled("窗口置前请求失败：" + (WindowFocus.UnavailableReason ?? "原因未知"));
+        }
+
+        /// <summary>
+        /// 解析提示音路径: 相对路径按 mod 目录展开, 文件不存在时只提示一次并退回"只置前"。
+        /// </summary>
+        private string ResolveSoundPath()
+        {
+            if (!_soundEnabled || string.IsNullOrEmpty(_soundFile)) return null;
+
+            string path;
+            try
+            {
+                // Path.Combine 的第二参数本身是绝对路径时会原样返回, 不用另判。
+                string dir = Context?.Directory;
+                path = string.IsNullOrEmpty(dir) ? _soundFile : Path.Combine(dir, _soundFile);
+            }
+            catch { return null; }
+
+            if (string.IsNullOrEmpty(path)) return null;
+
+            try { if (File.Exists(path)) return path; }
+            catch { }
+
+            if (!_warnedMissingSound)
+            {
+                _warnedMissingSound = true;
+                Log.Warn("提示音文件不存在，本次只置前：" + path);
+            }
+            return null;
         }
 
         private void OnRawAction(RawActionEvent action)
@@ -171,10 +242,7 @@ namespace TurnFocusMod
                 }
 
                 _lastRequestTicks = now;
-                if (WindowFocus.RequestForeground())
-                    Log.Info("轮到我" + reason + "，已请求把游戏窗口切到前台。");
-                else
-                    WarnThrottled("窗口置前请求失败：" + (WindowFocus.UnavailableReason ?? "原因未知"));
+                RequestFocus("轮到我" + reason);
             }
             catch (Exception e)
             {
@@ -203,10 +271,7 @@ namespace TurnFocusMod
                 }
 
                 _lastRequestTicks = now;
-                if (WindowFocus.RequestForeground())
-                    Log.Info("匹配成功，已请求把游戏窗口切到前台。");
-                else
-                    WarnThrottled("窗口置前请求失败：" + (WindowFocus.UnavailableReason ?? "原因未知"));
+                RequestFocus("匹配成功");
             }
             catch (Exception e)
             {
@@ -239,10 +304,7 @@ namespace TurnFocusMod
                 }
 
                 _lastRequestTicks = now;
-                if (WindowFocus.RequestForeground())
-                    Log.Info("房间里有人发送快捷消息(Index=" + index + ")，已请求把游戏窗口切到前台。");
-                else
-                    WarnThrottled("窗口置前请求失败：" + (WindowFocus.UnavailableReason ?? "原因未知"));
+                RequestFocus("房间里有人发送快捷消息(Index=" + index + ")");
             }
             catch (Exception e)
             {

@@ -41,6 +41,10 @@
     <None Update="config.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <!-- 默认提示音: 相对 mod 目录解析(mods\TurnFocusMod\sounds\your-turn.wav) -->
+    <None Update="sounds\your-turn.wav">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

@@ -8,15 +8,25 @@
 // 双目录: 状态文件同时写 <加载器>\window 和 %LocalAppData%\AstralParty_ModLoader\window,
 // 并同时监听两处的 request.txt。mod 侧(热更程序集)定位目录只能靠环境变量和路径推导,
 // 两个位置都摆一份, 只要命中其中一个通道就是通的。
+//
+// 提示音: request.txt 的第二行可选一个绝对路径(UTF-8), 加载器在置前的同时用
+// PlaySound 异步播放这个 WAV。放在同一个请求里, 是为了让"窗口已在前台"这条
+// 静默规则同时作用于窗口和声音。
 
 #include "window/windowctl.h"
+#include "window/request.h"
 
 #include "config/config.h"
 #include "platform/loader.h"
 
+#include <windows.h>
+#include <mmsystem.h>   // PlaySoundW (WIN32_LEAN_AND_MEAN 不会带进来)
+
 #include <string>
 #include <cwchar>
 #include <cstring>
+
+#pragma comment(lib, "winmm.lib")
 
 namespace
 {
@@ -27,8 +37,11 @@ const wchar_t* kStateName = L"state.txt";
 // 轮询间隔(ms): 与 speedctl 一致, 一次文件读取的代价可以忽略。
 const DWORD kPollMs = 100;
 
-// 请求文件上限: 正常内容只有十几字节, 超过这个长度的一律当垃圾。
+// 请求文件上限: 正常内容只有一行令牌 + 一行路径, 超过这个长度的一律当垃圾。
 const long long kMaxBytes = 4096;
+
+// 提示音上限: 一段 1-2 秒的 WAV 通常 < 1MB, 超过 16MB 的多半是放错文件了。
+const long long kMaxSoundBytes = 16ll * 1024 * 1024;
 
 const int kMaxDirs = 2;
 std::wstring g_dirs[kMaxDirs];
@@ -116,6 +129,8 @@ void write_state()
     std::string s;
     s += "version="; s += cesium::config::LoaderConfig::loaderVersion; s += "\r\n";
     s += "available=1\r\n";
+    // 提示音能力: 目前只支持 WAV(PlaySound)。将来若支持更多格式, 这里写逗号分隔的列表。
+    s += "audio=wav\r\n";
 
     for (int i = 0; i < g_dir_count; i++)
     {
@@ -124,15 +139,45 @@ void write_state()
     }
 }
 
-bool fresh_request(const std::string& text)
+std::wstring utf8_to_wide(const std::string& text)
 {
-    for (size_t i = 0; i < text.size(); i++)
-    {
-        char c = text[i];
-        if (c == ' ' || c == '\t' || c == '\r' || c == '\n') continue;
-        return c != '0';
-    }
-    return false;
+    if (text.empty()) return std::wstring();
+
+    int need = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.c_str(),
+                                   static_cast<int>(text.size()), nullptr, 0);
+    if (need <= 0) return std::wstring();
+
+    std::wstring out(static_cast<size_t>(need), L'\0');
+    int got = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.c_str(),
+                                  static_cast<int>(text.size()), &out[0], need);
+    if (got <= 0) return std::wstring();
+
+    out.resize(static_cast<size_t>(got));
+    return out;
+}
+
+bool ends_with_wav(const std::wstring& path)
+{
+    if (path.size() < 4) return false;
+    return _wcsicmp(path.c_str() + path.size() - 4, L".wav") == 0;
+}
+
+// PlaySound 只认 WAV(其余格式系统会按扩展名猜, 容易放出噪声/静默失败), 所以
+// 扩展名、存在性、类型、大小都在这里先卡住, 失败只记日志。
+bool play_prompt_sound(const std::wstring& path)
+{
+    if (!ends_with_wav(path)) return false;
+
+    WIN32_FILE_ATTRIBUTE_DATA attrs{};
+    if (!GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &attrs)) return false;
+    if ((attrs.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) return false;
+
+    long long size = (static_cast<long long>(attrs.nFileSizeHigh) << 32) | attrs.nFileSizeLow;
+    if (size <= 0 || size > kMaxSoundBytes) return false;
+
+    // SND_ASYNC: 立刻返回, 不占监听线程; 新请求会打断上一段, 不会叠音。
+    // SND_NODEFAULT: 失败时不要用系统默认提示音顶替。
+    return PlaySoundW(path.c_str(), nullptr, SND_FILENAME | SND_ASYNC | SND_NODEFAULT) != FALSE;
 }
 
 struct FindWindowContext
@@ -281,7 +326,7 @@ DWORD WINAPI watch_thread(LPVOID)
         if (i > 0) dirs += L" · ";
         dirs += short_path(g_dirs[i]);
     }
-    log_line(L"[windowctl] file channel ready · " + std::to_wstring(g_dir_count) + L" dir(s): " + dirs);
+    log_line(L"[windowctl] file channel ready · " + std::to_wstring(g_dir_count) + L" dir(s): " + dirs + L" · sound=wav");
 
     std::string last_seen[kMaxDirs];
 
@@ -298,7 +343,9 @@ DWORD WINAPI watch_thread(LPVOID)
             if (text == last_seen[i]) continue;
             last_seen[i] = text;
 
-            if (!fresh_request(text)) continue;   // 初始的 0 或空白: 不是请求
+            // 初始的 0 / 空白 / 乱码: 不是请求。
+            cesium::windowing::FocusRequest request = cesium::windowing::parse_focus_request(text);
+            if (!request.valid()) continue;
 
             HWND hwnd = find_game_window();
             if (hwnd == nullptr)
@@ -307,16 +354,31 @@ DWORD WINAPI watch_thread(LPVOID)
                 continue;
             }
 
+            // 窗口已经在前台: 不抢焦点, 也不放提示音(两者是同一个"提醒"动作)。
             if (is_foreground_game(hwnd))
             {
                 log_line("[windowctl] game window already in foreground, ignoring request");
                 continue;
             }
 
+            // 提示音先播: 系统拒绝置前时它照样能起到提醒作用。
+            bool sound_played = false;
+            if (request.has_sound())
+            {
+                std::wstring path = utf8_to_wide(request.sound_path);
+                if (path.empty())
+                    log_line("[windowctl] prompt sound path is not valid UTF-8, ignored");
+                else if (play_prompt_sound(path))
+                    sound_played = true;
+                else
+                    log_line(L"[windowctl] failed to play prompt sound (need PCM WAV, <= 16 MB): " + short_path(path));
+            }
+
+            const char* suffix = sound_played ? " + prompt sound" : "";
             if (bring_to_foreground(hwnd))
-                log_line("[windowctl] brought game window to foreground");
+                log_line(std::string("[windowctl] brought game window to foreground") + suffix);
             else
-                log_line("[windowctl] system refused foreground switch, flashed taskbar");
+                log_line(std::string("[windowctl] system refused foreground switch, flashed taskbar") + suffix);
         }
     }
     return 0;

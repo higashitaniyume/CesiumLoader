@@ -148,7 +148,7 @@ jobs:
             "ActivityLogMod" = "行为日志"
             "FreeCameraMod"  = "自由相机, 滚轮缩放(视角不变) / F1 恢复原视角"
             "SpeedHackMod"   = "变速, Delete 开关 / Alt+= Alt+- 调倍率"
-            "TurnFocusMod"   = "回合置前, 轮到自己时把游戏窗口切到前台"
+            "TurnFocusMod"   = "回合置前, 轮到自己时把游戏窗口切到前台, 可选播放提示音"
           }
           $modList = @()
           foreach ($mod in $builtInMods) {
@@ -159,6 +159,10 @@ jobs:
               Copy-Item "dist/modloader/AstralParty_ModLoader/mods/$mod/$mod.pdb" "staging/AstralParty_ModLoader/mods/$mod/$mod.pdb" -Force
             } else {
               Write-Warning "符号缺失, 本次发布不含: mods/$mod/$mod.pdb"
+            }
+            # 随 mod 分发的素材(提示音等): 整目录镜像, 与 tools/package-modloader.ps1 一致
+            if (Test-Path "dist/modloader/AstralParty_ModLoader/mods/$mod/sounds") {
+              Copy-Item "dist/modloader/AstralParty_ModLoader/mods/$mod/sounds" "staging/AstralParty_ModLoader/mods/$mod/sounds" -Recurse -Force
             }
             $label = if ($modNames.ContainsKey($mod)) { $modNames[$mod] } else { $mod }
             $modList += "mods\$mod ($label)"
@@ -174,6 +178,7 @@ jobs:
             "- AstralParty_ModLoader\mods\{ModId}\{ModId}.json → mod sidecar (id/版本/权限/enabled 开关/依赖)",
             "- *.pdb (version / bootstrap / sdk / mods\*) → 符号文件(与同名 dll 配对): 把崩溃栈还原成文件行号用, 删掉不影响运行",
             "  随包内置: " + ($modList -join " / "),
+            "TurnFocusMod 默认不播放提示音; 在 mods\TurnFocusMod\config.json 的 soundFile 填 WAV 路径后启用(随包示例 sounds\your-turn.wav)。",
              "AutoThanksMod 默认启用: 队友治疗、给牌或转星币给你时自动发送原版感谢短语，默认 2 秒真实时间冷却。",
             "- AstralParty_ModLoader\logs\          → 日志目录",
             "解压到游戏 exe 目录即完成安装。",
@@ -206,6 +211,11 @@ jobs:
             $files += "staging/AstralParty_ModLoader/mods/$mod/$mod.dll"
             $files += "staging/AstralParty_ModLoader/mods/$mod/$mod.json"
             $files += "staging/AstralParty_ModLoader/mods/$mod/$mod.pdb"
+            # 随 mod 分发的素材(提示音等)
+            if (Test-Path "staging/AstralParty_ModLoader/mods/$mod/sounds") {
+              $files += Get-ChildItem "staging/AstralParty_ModLoader/mods/$mod/sounds" -File |
+                ForEach-Object { "staging/AstralParty_ModLoader/mods/$mod/sounds/$($_.Name)" }
+            }
           }
           # 只收真正落盘的文件: 上一步可能已经警告过某个符号缺失, 而清单必须与 zip 内容严格一致
           # —— Toys 安装时会按清单逐个校验 mods/** 的 SHA256, 多一个不存在的条目就会安装失败。
