@@ -40,5 +40,9 @@ namespace CombatOddsMod
         public bool ShowSkillCooldown = true;
         /// <summary>把技能 CD 的数据与最终显示值打进日志, 便于排查显示问题。</summary>
         public bool LogCdDetail = false;
+        /// <summary>在左侧 HUD 玩家技能 CD 右侧显示剩余手牌数(游戏自己的卡牌图标 + 数字)。</summary>
+        public bool ShowHandCount = true;
+        /// <summary>把每名玩家的手牌数变化写进日志, 便于排查显示问题。</summary>
+        public bool LogHandDetail = false;
     }
 }

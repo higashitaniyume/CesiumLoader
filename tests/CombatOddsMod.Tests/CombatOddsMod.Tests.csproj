@@ -31,6 +31,8 @@
     <Compile Include="..\..\mods\CombatOddsMod\SkillCooldownText.cs" Link="SkillCooldownText.cs" />
     <!-- 回调链包装策略(纯逻辑: 只装一次、包装捕获原始委托, 零游戏依赖)。 -->
     <Compile Include="..\..\mods\CombatOddsMod\HookChain.cs" Link="HookChain.cs" />
+    <!-- 剩余手牌数的取值口径与图标地址解析(纯逻辑, 零游戏依赖)。 -->
+    <Compile Include="..\..\mods\CombatOddsMod\HandCountRules.cs" Link="HandCountRules.cs" />
   </ItemGroup>
 
 </Project>

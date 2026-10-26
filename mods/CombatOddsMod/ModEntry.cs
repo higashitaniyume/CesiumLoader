@@ -59,6 +59,7 @@ namespace CombatOddsMod
         // 主 HUD(左下角)攻击力后面的"筹码加成"追加显示。
         private static HudAtkBonusOverlay _hudBonus;
         private static SkillCooldownOverlay _skillCooldown;
+        private static HandCountOverlay _handCount;
         private static PlayerAttrOverlay _playerAttrOverlay;
         private static object _atkPropBound;        // 已挂监听的 ATK 属性(用于换绑/解绑)
         private static Action<int> _atkListener;    // 保活引用, 便于 RemoveListener
@@ -114,6 +115,8 @@ namespace CombatOddsMod
                     _cfg.LogAtkBonusDetail     = c.GetBool("LogAtkBonusDetail", d.LogAtkBonusDetail);
                     _cfg.LogBattleOdds         = c.GetBool("LogBattleOdds", d.LogBattleOdds);
                     _cfg.ShowSkillCooldown     = c.GetBool("ShowSkillCooldown", d.ShowSkillCooldown);
+                    _cfg.ShowHandCount         = c.GetBool("ShowHandCount", d.ShowHandCount);
+                    _cfg.LogHandDetail         = c.GetBool("LogHandDetail", d.LogHandDetail);
                     // Debug 构建(deploy-combatodds.ps1 部署的那份)默认打开 CD 明细日志, 免去改配置。
 #if COMBATODDS_DEBUG_PROBES
                     _cfg.LogCdDetail       = c.GetBool("LogCdDetail", true);
@@ -121,8 +124,9 @@ namespace CombatOddsMod
                     _cfg.LogCdDetail       = c.GetBool("LogCdDetail", d.LogCdDetail);
 #endif
 
-                    // 仅首次缺失键时补齐默认值, 避免热重载写坏外部文件
-                    if (isInitial && !c.Has("Enabled"))
+                    // 仅初始化时补齐缺失键, 避免热重载写坏外部文件。
+                    // 已有配置也补: 新版本新增的显示项(如 ShowHandCount)要在 Toys 配置页里能看到。
+                    if (isInitial && (!c.Has("Enabled") || !c.Has("ShowHandCount") || !c.Has("LogHandDetail")))
                     {
                         c.Set("Enabled", _cfg.Enabled);
                         c.Set("ShowForOthers", _cfg.ShowForOthers);
@@ -141,6 +145,8 @@ namespace CombatOddsMod
                         c.Set("LogAtkBonusDetail", _cfg.LogAtkBonusDetail);
                         c.Set("LogBattleOdds", _cfg.LogBattleOdds);
                         c.Set("ShowSkillCooldown", _cfg.ShowSkillCooldown);
+                        c.Set("ShowHandCount", _cfg.ShowHandCount);
+                        c.Set("LogHandDetail", _cfg.LogHandDetail);
                         c.Set("LogCdDetail", _cfg.LogCdDetail);
                         if (!c.Save()) SdkLog.Warn("CombatOdds", "配置未能保存，请检查 mod 目录写入权限。");
                     }
@@ -167,6 +173,11 @@ namespace CombatOddsMod
             if (_playerAttrOverlay != null)
             {
                 _playerAttrOverlay.SetEnabled(_cfg.ShowBoardPlayerAttrs);
+            }
+            if (_handCount != null)
+            {
+                _handCount.SetEnabled(_cfg.ShowHandCount);
+                _handCount.SetLogDetail(_cfg.LogHandDetail);
             }
             if (_hudBonus != null)
             {
@@ -206,6 +217,17 @@ namespace CombatOddsMod
                 _ctx?.RegisterCleanup(_skillCooldown.Dispose);
             }
             catch (Exception e) { SdkLog.Warn("CombatOdds", "技能 CD 覆盖层初始化失败: " + e.Message); }
+
+            // 左侧 HUD 每名玩家头像上的剩余手牌数(出牌/摸牌/换牌后随实时数据刷新)。
+            try
+            {
+                _handCount = new HandCountOverlay(_skillCooldown);
+                _handCount.SetEnabled(_cfg.ShowHandCount);
+                _handCount.SetLogDetail(_cfg.LogHandDetail);
+                _handCount.Start();
+                _ctx?.RegisterCleanup(_handCount.Dispose);
+            }
+            catch (Exception e) { SdkLog.Warn("CombatOdds", "手牌计数覆盖层初始化失败: " + e.Message); }
 
             // 主 HUD 攻击力加成(星币锤/手电筒/美工刀): 在左下角攻击力右侧显示, 可悬浮看明细。
             try

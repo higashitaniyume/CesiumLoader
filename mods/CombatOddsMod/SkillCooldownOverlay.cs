@@ -36,6 +36,13 @@ namespace CombatOddsMod
         /// <summary>下一次刷新时向服务器查询所有人的冷却(出牌/释放技能后调用)。</summary>
         public void RequestQueryAll() { _cooldowns.RequestQueryAll(); }
 
+        /// <summary>某个槽位当前用来显示 CD 的文本控件(供其它 HUD 角标排在它右侧); 没有时返回 null。</summary>
+        internal GTextField LabelAt(int index)
+        {
+            var label = index >= 0 && index < _labels.Length ? _labels[index] : null;
+            return label != null && !label.isDisposed ? label : null;
+        }
+
         public void Dispose()
         {
             if (_started) Timers.inst.Remove(Refresh);
