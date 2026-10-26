@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>TurnClockMod</AssemblyName>
+    <RootNamespace>TurnClockMod</RootNamespace>
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 只需要 SDK: 倍率走 SpeedHack（读加载器状态文件），生命周期/配置/日志走 ModBase -->
+    <ProjectReference Include="..\..\loader\CesiumLoader.SDK\CesiumLoader.SDK.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 游戏计时器 GameLogic.OperationTimer: 用 typeof 直接引用(hot-update 里字符串找类型会被裁剪) -->
+    <Reference Include="AstralParty.Runtime">
+      <HintPath>..\..\..\..\extracted_dlls\AstralParty.Runtime.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- 只为 ModBase 的 Scene 签名: 本 mod 不调用任何 Unity API -->
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>..\..\..\..\extracted_dlls\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="TurnClockMod.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
