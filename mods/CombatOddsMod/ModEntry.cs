@@ -59,6 +59,7 @@ namespace CombatOddsMod
         // 主 HUD(左下角)攻击力后面的"筹码加成"追加显示。
         private static HudAtkBonusOverlay _hudBonus;
         private static SkillCooldownOverlay _skillCooldown;
+        private static MonsterCooldownOverlay _monsterCooldown;
         private static HandCountOverlay _handCount;
         private static PlayerAttrOverlay _playerAttrOverlay;
         private static object _atkPropBound;        // 已挂监听的 ATK 属性(用于换绑/解绑)
@@ -117,6 +118,10 @@ namespace CombatOddsMod
                     _cfg.ShowSkillCooldown     = c.GetBool("ShowSkillCooldown", d.ShowSkillCooldown);
                     _cfg.ShowHandCount         = c.GetBool("ShowHandCount", d.ShowHandCount);
                     _cfg.LogHandDetail         = c.GetBool("LogHandDetail", d.LogHandDetail);
+                    _cfg.ShowMonsterSkillCooldown = c.GetBool("ShowMonsterSkillCooldown", d.ShowMonsterSkillCooldown);
+                    _cfg.ShowMonsterCdForAllMonsters = c.GetBool("ShowMonsterCdForAllMonsters", d.ShowMonsterCdForAllMonsters);
+                    _cfg.MonsterCdOffsetX      = c.GetDouble("MonsterCdOffsetX", d.MonsterCdOffsetX);
+                    _cfg.MonsterCdOffsetY      = c.GetDouble("MonsterCdOffsetY", d.MonsterCdOffsetY);
                     // Debug 构建(deploy-combatodds.ps1 部署的那份)默认打开 CD 明细日志, 免去改配置。
 #if COMBATODDS_DEBUG_PROBES
                     _cfg.LogCdDetail       = c.GetBool("LogCdDetail", true);
@@ -126,7 +131,8 @@ namespace CombatOddsMod
 
                     // 仅初始化时补齐缺失键, 避免热重载写坏外部文件。
                     // 已有配置也补: 新版本新增的显示项(如 ShowHandCount)要在 Toys 配置页里能看到。
-                    if (isInitial && (!c.Has("Enabled") || !c.Has("ShowHandCount") || !c.Has("LogHandDetail")))
+                    if (isInitial && (!c.Has("Enabled") || !c.Has("ShowHandCount") || !c.Has("LogHandDetail") ||
+                        !c.Has("ShowMonsterSkillCooldown") || !c.Has("ShowMonsterCdForAllMonsters")))
                     {
                         c.Set("Enabled", _cfg.Enabled);
                         c.Set("ShowForOthers", _cfg.ShowForOthers);
@@ -147,6 +153,10 @@ namespace CombatOddsMod
                         c.Set("ShowSkillCooldown", _cfg.ShowSkillCooldown);
                         c.Set("ShowHandCount", _cfg.ShowHandCount);
                         c.Set("LogHandDetail", _cfg.LogHandDetail);
+                        c.Set("ShowMonsterSkillCooldown", _cfg.ShowMonsterSkillCooldown);
+                        c.Set("ShowMonsterCdForAllMonsters", _cfg.ShowMonsterCdForAllMonsters);
+                        c.Set("MonsterCdOffsetX", _cfg.MonsterCdOffsetX);
+                        c.Set("MonsterCdOffsetY", _cfg.MonsterCdOffsetY);
                         c.Set("LogCdDetail", _cfg.LogCdDetail);
                         if (!c.Save()) SdkLog.Warn("CombatOdds", "配置未能保存，请检查 mod 目录写入权限。");
                     }
@@ -169,6 +179,13 @@ namespace CombatOddsMod
             {
                 _skillCooldown.SetEnabled(_cfg.ShowSkillCooldown);
                 _skillCooldown.SetLogDetail(_cfg.LogCdDetail);
+            }
+            if (_monsterCooldown != null)
+            {
+                _monsterCooldown.SetEnabled(_cfg.ShowMonsterSkillCooldown);
+                _monsterCooldown.SetShowAll(_cfg.ShowMonsterCdForAllMonsters);
+                _monsterCooldown.SetOffset(_cfg.MonsterCdOffsetX, _cfg.MonsterCdOffsetY);
+                _monsterCooldown.SetLogDetail(_cfg.LogCdDetail);
             }
             if (_playerAttrOverlay != null)
             {
@@ -217,6 +234,19 @@ namespace CombatOddsMod
                 _ctx?.RegisterCleanup(_skillCooldown.Dispose);
             }
             catch (Exception e) { SdkLog.Warn("CombatOdds", "技能 CD 覆盖层初始化失败: " + e.Message); }
+
+            // 怪物名字/信息条旁的主动技能 CD(释放时服务器校准, 之后按轮推算)。
+            try
+            {
+                _monsterCooldown = new MonsterCooldownOverlay();
+                _monsterCooldown.SetEnabled(_cfg.ShowMonsterSkillCooldown);
+                _monsterCooldown.SetShowAll(_cfg.ShowMonsterCdForAllMonsters);
+                _monsterCooldown.SetOffset(_cfg.MonsterCdOffsetX, _cfg.MonsterCdOffsetY);
+                _monsterCooldown.SetLogDetail(_cfg.LogCdDetail);
+                _monsterCooldown.Start();
+                _ctx?.RegisterCleanup(_monsterCooldown.Dispose);
+            }
+            catch (Exception e) { SdkLog.Warn("CombatOdds", "怪物 CD 覆盖层初始化失败: " + e.Message); }
 
             // 左侧 HUD 每名玩家头像上的剩余手牌数(出牌/摸牌/换牌后随实时数据刷新)。
             try

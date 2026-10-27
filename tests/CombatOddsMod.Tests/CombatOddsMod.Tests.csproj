@@ -25,6 +25,8 @@
     <Compile Include="..\..\mods\CombatOddsMod\RelicAtkBonus.cs" Link="RelicAtkBonus.cs" />
     <!-- 技能冷却表(纯逻辑: 帧取值规则 + 按玩家维护, 零游戏依赖)。 -->
     <Compile Include="..\..\mods\CombatOddsMod\SkillCooldownTable.cs" Link="SkillCooldownTable.cs" />
+    <!-- 怪物主动技能冷却的按轮推算(纯逻辑, 零游戏依赖)。 -->
+    <Compile Include="..\..\mods\CombatOddsMod\MonsterCooldownTable.cs" Link="MonsterCooldownTable.cs" />
     <!-- 技能冷却会话(纯逻辑: 回合帧/释放技能/冷却修正 -> 剩余值与上限, 零游戏依赖)。 -->
     <Compile Include="..\..\mods\CombatOddsMod\SkillCooldownSession.cs" Link="SkillCooldownSession.cs" />
     <!-- 冷却文本("CD 剩余/上限")。 -->
