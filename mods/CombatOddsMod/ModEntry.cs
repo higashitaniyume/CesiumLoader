@@ -61,6 +61,7 @@ namespace CombatOddsMod
         private static SkillCooldownOverlay _skillCooldown;
         private static MonsterCooldownOverlay _monsterCooldown;
         private static HandCountOverlay _handCount;
+        private static MegasBombardmentOverlay _megasDamage;
         private static PlayerAttrOverlay _playerAttrOverlay;
         private static object _atkPropBound;        // 已挂监听的 ATK 属性(用于换绑/解绑)
         private static Action<int> _atkListener;    // 保活引用, 便于 RemoveListener
@@ -118,6 +119,7 @@ namespace CombatOddsMod
                     _cfg.ShowSkillCooldown     = c.GetBool("ShowSkillCooldown", d.ShowSkillCooldown);
                     _cfg.ShowHandCount         = c.GetBool("ShowHandCount", d.ShowHandCount);
                     _cfg.LogHandDetail         = c.GetBool("LogHandDetail", d.LogHandDetail);
+                    _cfg.ShowMegasDamage       = c.GetBool("ShowMegasDamage", d.ShowMegasDamage);
                     _cfg.ShowMonsterSkillCooldown = c.GetBool("ShowMonsterSkillCooldown", d.ShowMonsterSkillCooldown);
                     _cfg.ShowMonsterCdForAllMonsters = c.GetBool("ShowMonsterCdForAllMonsters", d.ShowMonsterCdForAllMonsters);
                     _cfg.MonsterCdOffsetX      = c.GetDouble("MonsterCdOffsetX", d.MonsterCdOffsetX);
@@ -132,6 +134,7 @@ namespace CombatOddsMod
                     // 仅初始化时补齐缺失键, 避免热重载写坏外部文件。
                     // 已有配置也补: 新版本新增的显示项(如 ShowHandCount)要在 Toys 配置页里能看到。
                     if (isInitial && (!c.Has("Enabled") || !c.Has("ShowHandCount") || !c.Has("LogHandDetail") ||
+                        !c.Has("ShowMegasDamage") ||
                         !c.Has("ShowMonsterSkillCooldown") || !c.Has("ShowMonsterCdForAllMonsters")))
                     {
                         c.Set("Enabled", _cfg.Enabled);
@@ -153,6 +156,7 @@ namespace CombatOddsMod
                         c.Set("ShowSkillCooldown", _cfg.ShowSkillCooldown);
                         c.Set("ShowHandCount", _cfg.ShowHandCount);
                         c.Set("LogHandDetail", _cfg.LogHandDetail);
+                        c.Set("ShowMegasDamage", _cfg.ShowMegasDamage);
                         c.Set("ShowMonsterSkillCooldown", _cfg.ShowMonsterSkillCooldown);
                         c.Set("ShowMonsterCdForAllMonsters", _cfg.ShowMonsterCdForAllMonsters);
                         c.Set("MonsterCdOffsetX", _cfg.MonsterCdOffsetX);
@@ -195,6 +199,10 @@ namespace CombatOddsMod
             {
                 _handCount.SetEnabled(_cfg.ShowHandCount);
                 _handCount.SetLogDetail(_cfg.LogHandDetail);
+            }
+            if (_megasDamage != null)
+            {
+                _megasDamage.SetEnabled(_cfg.ShowMegasDamage);
             }
             if (_hudBonus != null)
             {
@@ -266,6 +274,16 @@ namespace CombatOddsMod
                 _hudBonus.StartHoverPolling();   // 轮询兜底: 不依赖 FairyGUI 的命中测试
             }
             catch (Exception e) { SdkLog.Warn("CombatOdds", "HUD 攻击力加成初始化失败(仅不显示加成): " + e.Message); }
+
+            // 玩梅加斯时, 右下角发动技能按钮上方显示轨道轰炸理论伤害(回放同样显示)。
+            try
+            {
+                _megasDamage = new MegasBombardmentOverlay();
+                _megasDamage.SetEnabled(_cfg.ShowMegasDamage);
+                _megasDamage.Start();
+                _ctx?.RegisterCleanup(_megasDamage.Dispose);
+            }
+            catch (Exception e) { SdkLog.Warn("CombatOdds", "梅加斯理论伤害覆盖层初始化失败: " + e.Message); }
 
             try
             {
@@ -340,8 +358,10 @@ namespace CombatOddsMod
                     _lastOrbitalDiscardCost = hand.Item2;
                     int count = CombatMath.MegasOrbitalBombardmentCount(hand.Item1);
                     int damage = CombatMath.MegasOrbitalBombardmentDamage(hand.Item1, hand.Item2);
+                    int total = CombatMath.MegasOrbitalBombardmentTotalDamage(hand.Item1, hand.Item2);
                     SdkLog.Info("CombatOdds", "[技能估算] 梅加斯·轨道轰炸：弃牌 " + hand.Item1 + " 张，总费用 " + hand.Item2 +
-                        "；轰炸次数 " + count + "；每次伤害 " + damage + "；随机目标为6格内怪物(由服务器决定)");
+                        "；轰炸次数 " + count + "；每次伤害 " + damage + "；理论总伤害 " + total +
+                        "；随机目标为6格内怪物(由服务器决定)");
                 }
                 else if (skillId == 12902 || skillId == 11403 || skillId == 12702)
                 {

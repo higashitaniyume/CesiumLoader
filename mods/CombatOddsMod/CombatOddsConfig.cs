@@ -44,6 +44,8 @@ namespace CombatOddsMod
         public bool ShowHandCount = true;
         /// <summary>把每名玩家的手牌数变化写进日志, 便于排查显示问题。</summary>
         public bool LogHandDetail = false;
+        /// <summary>玩梅加斯时, 在右下角发动技能按钮上方显示轨道轰炸的理论伤害(开炮次数 × 单炮伤害); 回放中同样显示。</summary>
+        public bool ShowMegasDamage = true;
         /// <summary>在棋盘怪物的名字/血量信息条旁显示其主动技能冷却(释放时取服务器值, 之后按轮推算)。</summary>
         public bool ShowMonsterSkillCooldown = true;
         /// <summary>连普通/精英怪物的战斗技能也显示(默认只显示 BOSS 与真正带主动技能的怪物, 避免把普通攻击当成技能 CD)。</summary>

@@ -549,6 +549,16 @@ namespace CombatOddsMod.Tests
             Assert.Equal(2, CombatMath.MegasOrbitalBombardmentCount(5));
             Assert.Equal(5, CombatMath.MegasOrbitalBombardmentDamage(4, 6));
             Assert.Equal(6, CombatMath.MegasOrbitalBombardmentDamage(6, 9));
+
+            // 用户口径：单炮伤害 = 3 + 总费用 ÷ 3 向上取整。
+            Assert.Equal(4, CombatMath.MegasOrbitalBombardmentCount(8));
+            Assert.Equal(8, CombatMath.MegasOrbitalBombardmentDamage(8, 14));
+            Assert.Equal(32, CombatMath.MegasOrbitalBombardmentTotalDamage(8, 14));
+
+            // 不足 2 张时不开炮；费用为 0 时只吃基础 3 点。
+            Assert.Equal(0, CombatMath.MegasOrbitalBombardmentTotalDamage(1, 6));
+            Assert.Equal(3, CombatMath.MegasOrbitalBombardmentDamage(2, 0));
+            Assert.Equal(4, CombatMath.MegasOrbitalBombardmentDamage(2, 2));
         }
 
         [Fact]

@@ -349,17 +349,27 @@ namespace CombatOddsMod
             return false;
         }
 
-        /// <summary>梅加斯轨道轰炸：每丢弃两张牌触发一次，每3点总费用使每次伤害+1。</summary>
+        /// <summary>梅加斯轨道轰炸：每丢弃两张牌触发一次。</summary>
         public static int MegasOrbitalBombardmentCount(int discardedCards)
         {
             return discardedCards > 0 ? discardedCards / 2 : 0;
         }
 
+        /// <summary>
+        /// 单次轨道轰炸伤害 = 3 + 总费用 ÷ 3，向上取整（例：总费用 14 → 3 + ⌈4.67⌉ = 8）。
+        /// 没有触发次数时不产生伤害。
+        /// </summary>
         public static int MegasOrbitalBombardmentDamage(int discardedCards, int discardedCost)
         {
             if (MegasOrbitalBombardmentCount(discardedCards) == 0) return 0;
             if (discardedCost < 0) discardedCost = 0;
-            return 3 + discardedCost / 3;
+            return 3 + (discardedCost + 2) / 3;
+        }
+
+        /// <summary>梅加斯轨道轰炸理论总伤害 = 开炮次数 × 单炮伤害。</summary>
+        public static int MegasOrbitalBombardmentTotalDamage(int discardedCards, int discardedCost)
+        {
+            return MegasOrbitalBombardmentCount(discardedCards) * MegasOrbitalBombardmentDamage(discardedCards, discardedCost);
         }
 
         /// <summary>邦妮攻击带标记(10006)怪物时的额外攻击力。</summary>
