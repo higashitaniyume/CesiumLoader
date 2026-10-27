@@ -1,0 +1,12 @@
+{
+  "enabled": true,
+  "toggleKey": "BackQuote",
+  "pressMode": "Hold",
+  "holdSeconds": 0.35,
+  "hideAllHud": false,
+  "hideHandCards": true,
+  "hideMonsterDisplay": true,
+  "hideAvatars": true,
+  "hideOther": true,
+  "notify": false
+}
