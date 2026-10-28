@@ -28,6 +28,7 @@ namespace CesiumLoader.SDK.Mods
         public bool GetBool(string key, bool fallback) => _values.TryGetValue(key, out var value) ? (bool)value : fallback;
         public int GetInt(string key, int fallback) => _values.TryGetValue(key, out var value) ? (int)value : fallback;
         public void Save() => SaveCount++;
+        public bool SaveIfDirty() { SaveCount++; return true; }
         public void Load() => LoadCount++;
     }
     public sealed class TestLog
@@ -165,6 +166,13 @@ namespace UI
 }
 namespace AutoThanksMod
 {
+    // 说明写入由真实 ModConfig/SDK 覆盖; 这个生命周期测试只验证初始化的默认值与保存时机,
+    // 因此把 Apply 换成不触碰配置的占位实现。
+    internal static class AutoThanksConfigDocs
+    {
+        internal static bool Apply(CesiumLoader.SDK.Mods.TestConfig config) => false;
+    }
+
     // The UI/event implementation is tested by the separate IntegrationTests project.
     // This recorder isolates ModEntry's real lifecycle guards from its rendering dependency.
     internal sealed class SettlementLikes
