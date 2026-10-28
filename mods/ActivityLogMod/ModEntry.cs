@@ -45,6 +45,7 @@ namespace ActivityLogMod
             try
             {
                 var c = _ctx != null ? _ctx.Config : null;
+                bool docsChanged = c != null && ActivityLogConfigDocs.Apply(c);
                 if (c != null && (c.Count > 0 || File.Exists(c.Path)))
                 {
                     _cfg.Enabled = c.GetBool("Enabled", _cfg.Enabled);
@@ -52,6 +53,7 @@ namespace ActivityLogMod
                     _cfg.LogBattle = c.GetBool("LogBattle", _cfg.LogBattle);
                     _cfg.LogEvents = c.GetBool("LogEvents", _cfg.LogEvents);
                     _cfg.LogTurn = c.GetBool("LogTurn", _cfg.LogTurn);
+                    if (docsChanged) c.SaveIfDirty();
                     return;
                 }
 
@@ -60,14 +62,17 @@ namespace ActivityLogMod
                 if (legacy != null) _cfg = legacy;
 
                 // 首次在 mods/ActivityLogMod/config.json 写入默认值
-                if (isInitial && c != null && !c.Has("Enabled"))
+                if (isInitial && c != null)
                 {
-                    c.Set("Enabled", _cfg.Enabled);
-                    c.Set("LogUi", _cfg.LogUi);
-                    c.Set("LogBattle", _cfg.LogBattle);
-                    c.Set("LogEvents", _cfg.LogEvents);
-                    c.Set("LogTurn", _cfg.LogTurn);
-                    c.Save();
+                    if (!c.Has("Enabled"))
+                    {
+                        c.Set("Enabled", _cfg.Enabled);
+                        c.Set("LogUi", _cfg.LogUi);
+                        c.Set("LogBattle", _cfg.LogBattle);
+                        c.Set("LogEvents", _cfg.LogEvents);
+                        c.Set("LogTurn", _cfg.LogTurn);
+                    }
+                    c.SaveIfDirty();
                 }
             }
             catch (Exception e)

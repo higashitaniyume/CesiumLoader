@@ -38,7 +38,7 @@ namespace CameraProbeMod
         public override string Name { get { return "相机探针"; } }
 
         /// <summary>版本。</summary>
-        public override string Version { get { return "2.3.0"; } }
+        public override string Version { get { return "2.4.0"; } }
 
         /// <summary>初始化(主线程, 启动延迟之后)。</summary>
         public override void OnInitialize()
@@ -46,6 +46,9 @@ namespace CameraProbeMod
             _config = Config;
             if (_config != null)
             {
+                CameraProbeConfigDocs.Apply(_config);
+                _config.SetDefault("probeKey", "F9");
+                _config.SaveIfDirty();
                 string keyName = _config.GetString("probeKey", "F9");
                 KeyCode parsed;
                 if (Enum.TryParse(keyName, true, out parsed)) _probeKey = parsed;

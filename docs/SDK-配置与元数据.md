@@ -70,6 +70,68 @@ cfg.Save();
 - 键是字符串；值支持 bool / 整数 / 浮点 / 字符串 / 枚举 / 嵌套简单对象 / List。
 - 解析失败不会抛异常；启动时损坏的文件会备份为 `.bak`，之后使用默认值。
 
+### 配置项说明（_comments）
+
+`config.json` 顶层可以带一个保留键 `_comments`，为每个配置项写一句（或多语言）说明。Toys 的模组配置弹窗会按当前界面语言显示这些说明；没有 `_comments` 的旧配置保持原样。
+
+```json
+{
+  "enabled": true,
+  "cooldownSeconds": 1,
+
+  "_comments": {
+    "cooldownSeconds": {
+      "zh-Hans": "两次置前之间的最短间隔（秒）",
+      "zh-Hant": "兩次置前之間的最短間隔（秒）",
+      "en": "Minimum interval between focus requests, in seconds",
+      "ja": "ウィンドウを前面化する最短間隔（秒）"
+    },
+    "enabled": "是否启用回合置前"
+  }
+}
+```
+
+- `_comments` 是元数据，不是业务配置：`ModConfig.All` / `Count` 不包含它，Toys 保存表单时原样保留并放在文件末尾。
+- 每个字段的值可以是字符串（所有语言共用一句说明，第三方 mod 只写中文也能用），也可以是对象，语言键为 `zh-Hans` / `zh-Hant` / `en` / `ja`，允许只写其中几种。
+- 语言别名会归一：`zh-CN` → `zh-Hans`，`zh-TW` / `zh-HK` → `zh-Hant`，`en-US` → `en`，`ja-JP` → `ja`。
+- 显示回退顺序：当前语言 → 同语系中文 → 英文 → 日文 → 文件里第一个可用语言。
+- 只支持顶层字段；嵌套对象按整个字段给一条说明。说明是纯文本，不解析 HTML，可以带换行，单条最多 2000 字符。
+
+写入说明的 API：
+
+```csharp
+public sealed class ConfigDoc
+{
+    public static ConfigDoc All(string text);                         // 四种语言共用
+    public static ConfigDoc Of(string zhHans, string zhHant = null,    // 按语言分别指定,
+                               string en = null, string ja = null);    // 未提供的语言不写入
+}
+
+public bool Describe(string key, ConfigDoc doc);      // 只写/更新说明, 内容没变不标脏
+public bool SetDefault<T>(string key, T defaultValue, ConfigDoc doc);  // 补默认值 + 写说明
+```
+
+推荐在 mod 初始化时补齐说明，用 `SaveIfDirty()` 落盘；已经存在的用户值不会被覆盖：
+
+```csharp
+public override void OnInitialize()
+{
+    var cfg = Config;
+    if (cfg != null)
+    {
+        cfg.SetDefault("cooldownSeconds", 1, ConfigDoc.Of(
+            "两次置前之间的最短间隔（秒）",
+            "兩次置前之間的最短間隔（秒）",
+            "Minimum interval between focus requests, in seconds",
+            "ウィンドウを前面化する最短間隔（秒）"));
+        cfg.SetDefault("enabled", true, ConfigDoc.All("是否启用本模组"));
+        cfg.SaveIfDirty();
+    }
+}
+```
+
+旧配置升级后会补上说明，值保持不变；重复调用相同内容不会触发保存。旧式 `SdkConfig`（集中放在 `configs/{modName}.json`）不参与这套机制，说明只在该文件里本来就存在时才会被 Toys 显示。
+
 ### 热重载
 
 SDK 在主线程约每秒检查一次已缓存的 `ModConfig` 文件，内容变化且解析成功时自动重载：

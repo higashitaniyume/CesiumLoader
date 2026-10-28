@@ -33,23 +33,31 @@ namespace ForkDirectionMod
         private float _height = .8f;
         private int _fontSize = 24;
         public override string Name { get { return "岔路地块标记"; } }
-        public override string Version { get { return "1.1.0"; } }
+        public override string Version { get { return "1.2.0"; } }
 
         public override void OnInitialize()
         {
-            ReadConfig();
+            ReadConfig(isInitial: true);
             UpdateEvents.LateUpdate += Draw;
             Context?.RegisterCleanup(Stop);
             Log.Info("已启用岔路邻接地块标记：A 红色、B 黄色、C 蓝色，附带地块 ID。");
         }
 
-        private void ReadConfig()
+        private void ReadConfig(bool isInitial = false)
         {
             if (Config != null)
             {
+                if (isInitial)
+                {
+                    ForkDirectionConfigDocs.Apply(Config);
+                    Config.SetDefault("enabled", true);
+                    Config.SetDefault("heightOffset", .8f);
+                    Config.SetDefault("fontSize", 24);
+                }
                 _enabled = Config.GetBool("enabled", true);
                 _height = Clamp(Config.GetFloat("heightOffset", .8f), 0f, 10f, .8f);
                 _fontSize = Math.Max(14, Math.Min(48, Config.GetInt("fontSize", 24)));
+                if (isInitial) Config.SaveIfDirty();
             }
         }
 

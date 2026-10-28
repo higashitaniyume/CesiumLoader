@@ -116,7 +116,7 @@ namespace TurnClockMod
         private int _errors;
 
         public override string Name { get { return "回合时钟"; } }
-        public override string Version { get { return "1.2.0"; } }
+        public override string Version { get { return "1.3.0"; } }
         public override string Author { get { return "CesiumLoader"; } }
 
         public override string Description
@@ -618,10 +618,15 @@ namespace TurnClockMod
             }
 
             // 首次运行: 把默认值整份写出来, 省得用户翻文档猜键名
+            bool docsChanged = TurnClockConfigDocs.Apply(_config);
             if (!_config.Has("enabled"))
             {
                 SaveDefaults();
                 Log.Info("已生成默认配置: " + (_config.Path ?? "(未知路径)"));
+            }
+            else if (docsChanged)
+            {
+                _config.SaveIfDirty();
             }
         }
 

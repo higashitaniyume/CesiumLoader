@@ -43,7 +43,7 @@ namespace AutoThanksMod
         private int _likeInterval = LikePolicy.DefaultIntervalMilliseconds;
 
         public override string Name { get { return "自动感谢"; } }
-        public override string Version { get { return "1.1.0"; } }
+        public override string Version { get { return "1.2.0"; } }
         public override string Author { get { return "CesiumLoader"; } }
         public override string Description { get { return "队友帮助后延迟发送感谢，游戏结束后按间隔自动点赞其他真人玩家。"; } }
 
@@ -60,7 +60,8 @@ namespace AutoThanksMod
                 if (!config.Has("thankDelayMilliseconds")) config.Set("thankDelayMilliseconds", ThanksPolicy.DefaultDelayMilliseconds);
                 if (!config.Has("autoLikeOnGameEnd")) config.Set("autoLikeOnGameEnd", true);
                 if (!config.Has("likeIntervalMilliseconds")) config.Set("likeIntervalMilliseconds", LikePolicy.DefaultIntervalMilliseconds);
-                config.Save();
+                AutoThanksConfigDocs.Apply(config);
+                config.SaveIfDirty();
             }
             ReadConfig();
             Log.Info("自动感谢已初始化：队友帮助后延迟发送感谢，结算时逐个点赞其他真人玩家，回放和观战不发送。");

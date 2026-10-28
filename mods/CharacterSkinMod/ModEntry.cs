@@ -19,7 +19,7 @@ using UnityEngine;
 using UnityEngine.AddressableAssets;
 using UnityEngine.ResourceManagement.AsyncOperations;
 
-[assembly: ModManifest("角色皮肤", "0.2.6", "CesiumLoader", "多角色皮肤方案、官方动画与自定义资源覆盖", Permissions = ModPermission.ReadGameState | ModPermission.UI | ModPermission.ModifyGameState | ModPermission.FileWrite, SdkVersion = "2.4.3")]
+[assembly: ModManifest("角色皮肤", "0.2.7", "CesiumLoader", "多角色皮肤方案、官方动画与自定义资源覆盖", Permissions = ModPermission.ReadGameState | ModPermission.UI | ModPermission.ModifyGameState | ModPermission.FileWrite, SdkVersion = "2.8.6")]
 namespace CharacterSkinMod
 {
     public sealed class ModEntry : ModBase
@@ -92,12 +92,13 @@ namespace CharacterSkinMod
         private long _nextScan, _nextStatus;
         private int _imageApplications, _spriteApplications, _controllerApplications;
         public override string Name => "角色皮肤";
-        public override string Version => "0.2.6";
+        public override string Version => "0.2.7";
         public static void Main() { SdkManifest.ExportSidecar(); Run(new ModEntry(), tag: "CharacterSkin"); }
         public override void OnInitialize()
         {
             try
             {
+                if (Config != null && CharacterSkinConfigDocs.Apply(Config)) Config.SaveIfDirty();
                 string mods = Environment.GetEnvironmentVariable("CESIUM_MODS_DIR");
                 if (string.IsNullOrEmpty(mods)) return;
                 _statusPath = Path.Combine(mods, "CharacterSkinMod", "status.json");

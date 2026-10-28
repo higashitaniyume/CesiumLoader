@@ -255,7 +255,7 @@ namespace FreeCameraMod
 
         public override string Name { get { return "自由相机"; } }
 
-        public override string Version { get { return "2.4.5"; } }
+        public override string Version { get { return "2.5.0"; } }
 
         // =====================================================================
         // 生命周期
@@ -1311,7 +1311,16 @@ namespace FreeCameraMod
         /// <summary>把当前(已兜底的)配置写回文件: 缺键或清掉了旧键时落盘一次, 让用户能直接改。</summary>
         private void WriteDefaults(bool force)
         {
-            if (!force && _config.Has("autoFollow") && _config.Has("zoomStep") && _config.Has("restoreKey")) return;
+            bool docsChanged = FreeCameraConfigDocs.Apply(_config);
+            if (!force && _config.Has("autoFollow") && _config.Has("zoomStep") && _config.Has("restoreKey"))
+            {
+                if (docsChanged)
+                {
+                    _config.SaveIfDirty();
+                    _configFixed = true;
+                }
+                return;
+            }
 
             _config.Set("autoFollow", _autoFollow);
             _config.Set("zoomStep", _zoomStep);

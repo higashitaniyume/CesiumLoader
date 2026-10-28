@@ -100,6 +100,7 @@ namespace CombatOddsMod
                 var d = new CombatOddsConfig();   // 默认值来源
                 if (c != null)
                 {
+                    bool docsChanged = CombatOddsConfigDocs.Apply(c);
                     _cfg.Enabled               = c.GetBool("Enabled", d.Enabled);
                     _cfg.ShowForOthers         = c.GetBool("ShowForOthers", d.ShowForOthers);
                     _cfg.PopupNotification     = c.GetBool("PopupNotification", d.PopupNotification);
@@ -162,7 +163,11 @@ namespace CombatOddsMod
                         c.Set("MonsterCdOffsetX", _cfg.MonsterCdOffsetX);
                         c.Set("MonsterCdOffsetY", _cfg.MonsterCdOffsetY);
                         c.Set("LogCdDetail", _cfg.LogCdDetail);
-                        if (!c.Save()) SdkLog.Warn("CombatOdds", "配置未能保存，请检查 mod 目录写入权限。");
+                        if (!c.SaveIfDirty()) SdkLog.Warn("CombatOdds", "配置未能保存，请检查 mod 目录写入权限。");
+                    }
+                    else if (docsChanged)
+                    {
+                        if (!c.SaveIfDirty()) SdkLog.Warn("CombatOdds", "配置说明未能保存，请检查 mod 目录写入权限。");
                     }
                 }
             }

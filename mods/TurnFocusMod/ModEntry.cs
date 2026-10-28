@@ -80,7 +80,7 @@ namespace TurnFocusMod
         internal const string DefaultSoundFile = "";
 
         public override string Name { get { return "回合置前"; } }
-        public override string Version { get { return "1.4.0"; } }
+        public override string Version { get { return "1.5.0"; } }
         public override string Author { get { return "CesiumLoader"; } }
         public override string Description
         {
@@ -94,7 +94,7 @@ namespace TurnFocusMod
             {
                 // 只在真的补了缺失键时才落盘: 无条件 Save 会把"启动后、初始化前"
                 // 用户手动改的 config.json 覆盖回去(看起来就像热重载没生效)。
-                bool added = false;
+                bool added = TurnFocusConfigDocs.Apply(config);
                 if (!config.Has("enabled")) { config.Set("enabled", true); added = true; }
                 if (!config.Has("cooldownSeconds")) { config.Set("cooldownSeconds", TurnFocusPolicy.DefaultCooldownSeconds); added = true; }
                 if (!config.Has("focusOnRoomChat")) { config.Set("focusOnRoomChat", true); added = true; }
@@ -102,7 +102,7 @@ namespace TurnFocusMod
                 if (!config.Has("soundEnabled")) { config.Set("soundEnabled", true); added = true; }
                 if (!config.Has("soundFile")) { config.Set("soundFile", DefaultSoundFile); added = true; }
                 if (!config.Has("alwaysPlaySound")) { config.Set("alwaysPlaySound", false); added = true; }
-                if (added) config.Save();
+                if (added) config.SaveIfDirty();
             }
 
             ReadConfig();

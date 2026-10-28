@@ -97,7 +97,7 @@ namespace SpeedHackMod
         private float _saveAt;             // 可以落盘的时刻
         private double _restoreSpeed;      // 被 toggleKey 压到 1.0x 之前的倍率(0 = 本次运行还没记过)
 
-        public override string Version { get { return "2.3.0"; } }
+        public override string Version { get { return "2.4.0"; } }
 
         // =====================================================================
         // 生命周期
@@ -358,6 +358,8 @@ namespace SpeedHackMod
             _toggleRestoresSpeed = _config.GetBool("toggleRestoresSpeed", _toggleRestoresSpeed);
             _repeatInterval = _config.GetFloat("repeatInterval", _repeatInterval);
 
+            bool docsChanged = SpeedHackConfigDocs.Apply(_config);
+
             // 夹紧范围。注意要放在**读完全部键之后**: SaveConfig 会把所有键整份重写,
             // 提前调用会把还没读到的键写回默认值(等于吃掉用户的配置)。
             bool boundsFixed = ClampConfigBounds();
@@ -374,6 +376,10 @@ namespace SpeedHackMod
                 // 免得每次启动都警告、也免得用户以为"改小就能减速"。
                 SaveConfig();
                 Log.Info("配置里的倍率范围已按新规则纠正(下限 1.0, 不允许减速)");
+            }
+            else if (docsChanged)
+            {
+                _config.SaveIfDirty();
             }
         }
 

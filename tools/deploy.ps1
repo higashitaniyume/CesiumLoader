@@ -157,6 +157,17 @@ function Deploy-File
 
 $netstd = "bin\$Configuration\netstandard2.0"
 
+# 原生产物的实际输出目录: 通过解决方案构建时 $(SolutionDir) 指向仓库根 (CesiumLoader.vcxproj 的 OutDir),
+# 直接构建 vcxproj 时才落在 loader\CesiumLoader\bin。两种都兼容; 两处都存在时取较新的那份, 避免复制旧 DLL。
+$nativeCandidates = @(
+    (Join-Path $repo "bin\$Configuration"),
+    (Join-Path $loaderSrc "CesiumLoader\bin\$Configuration")
+) | Where-Object { Test-Path -LiteralPath (Join-Path $_ 'version.dll') } |
+    Sort-Object { (Get-Item -LiteralPath (Join-Path $_ 'version.dll')).LastWriteTime } -Descending
+
+if (-not $nativeCandidates) { throw "找不到 version.dll，请先构建原生加载器。" }
+$nativeOut = $nativeCandidates[0]
+
 # 1) 原生加载器 -> 游戏 exe 同目录
 if (Test-Path -LiteralPath (Join-Path $gameDir 'version.dll'))
 {
@@ -164,9 +175,9 @@ if (Test-Path -LiteralPath (Join-Path $gameDir 'version.dll'))
     Copy-Item -LiteralPath (Join-Path $gameDir 'version.dll') -Destination $backup -Force
     Write-Host "已备份原有 version.dll -> version.dll.bak"
 }
-Deploy-File -From (Join-Path $loaderSrc "CesiumLoader\bin\$Configuration\version.dll") -To (Join-Path $gameDir 'version.dll')
+Deploy-File -From (Join-Path $nativeOut 'version.dll') -To (Join-Path $gameDir 'version.dll')
 # 符号: 放在 dll 同目录, 调试器(或看崩溃转储)会自动找到它, 把加载器内部的地址还原成源码行。
-Deploy-File -From (Join-Path $loaderSrc "CesiumLoader\bin\$Configuration\version.pdb") -To (Join-Path $gameDir 'version.pdb') -Optional
+Deploy-File -From (Join-Path $nativeOut 'version.pdb') -To (Join-Path $gameDir 'version.pdb') -Optional
 
 # 2) 加载器配置
 Deploy-File -From (Join-Path $repo 'dist\modloader\AstralParty_ModLoader\doorstop_config.json') `

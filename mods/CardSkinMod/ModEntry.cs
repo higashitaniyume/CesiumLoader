@@ -10,13 +10,13 @@ using party.model;
 
 [assembly: ModManifest("手牌卡面皮肤", CardSkinMod.ModEntry.ModVersion, "CesiumLoader",
     "自定义手牌、事件、命运、地图事件及图鉴卡面，支持素材名、ID和中文名，支持序列帧动态卡面与显式动态异画，静态异画及未指定卡面保留原版",
-    Permissions = ModPermission.ReadGameState | ModPermission.UI, SdkVersion = "2.3.2")]
+    Permissions = ModPermission.ReadGameState | ModPermission.UI, SdkVersion = "2.8.6")]
 
 namespace CardSkinMod
 {
     public sealed class ModEntry : ModBase
     {
-        public const string ModVersion = "1.2.0";
+        public const string ModVersion = "1.2.1";
 
         public override string Name => "手牌卡面皮肤";
         public override string Version => ModVersion;
@@ -43,10 +43,11 @@ namespace CardSkinMod
             _activeSkin = Config?.GetString("ActiveSkin", "default") ?? "default";
             _forceFullCard = Config?.GetBool("ForceFullCard", false) ?? false;
 
+            CardSkinConfigDocs.Apply(Config);
             Config?.Set("Enabled", _enabled);
             Config?.Set("ActiveSkin", _activeSkin);
             Config?.Set("ForceFullCard", _forceFullCard);
-            Config?.Save();
+            Config?.SaveIfDirty();
 
             _model = new CardSkinModel();
             _loader = new CardTextureLoader();

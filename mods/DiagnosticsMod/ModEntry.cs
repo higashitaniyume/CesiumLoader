@@ -43,7 +43,7 @@ namespace DiagnosticsMod
         public override string Name { get { return "诊断工具"; } }
 
         /// <summary>版本。</summary>
-        public override string Version { get { return "2.3.0"; } }
+        public override string Version { get { return "2.4.0"; } }
 
         /// <summary>初始化。</summary>
         public override void OnInitialize()
@@ -67,15 +67,22 @@ namespace DiagnosticsMod
             _dumpAllKey = ParseKey(_config.GetString("dumpAllKey", "F10"), _dumpAllKey);
             _dumpCameraKey = ParseKey(_config.GetString("dumpCameraKey", "F11"), _dumpCameraKey);
             _dumpSceneKey = ParseKey(_config.GetString("dumpSceneKey", "F12"), _dumpSceneKey);
-            _dumpOnSceneChange = _config.GetBool("dumpSceneOnChange", true);
+            // 旧版把键名写成了 dumpOnSceneChange；读的时候兼容，写回统一用 dumpSceneOnChange。
+            bool legacySceneKey = _config.Has("dumpOnSceneChange");
+            _dumpOnSceneChange = _config.GetBool("dumpSceneOnChange",
+                _config.GetBool("dumpOnSceneChange", true));
 
-            if (isInitial && !_config.Has("dumpAllKey"))
+            if (isInitial)
             {
-                _config.Set("dumpAllKey", _dumpAllKey.ToString());
-                _config.Set("dumpCameraKey", _dumpCameraKey.ToString());
-                _config.Set("dumpSceneKey", _dumpSceneKey.ToString());
-                _config.Set("dumpOnSceneChange", _dumpOnSceneChange);
-                _config.Save();
+                DiagnosticsConfigDocs.Apply(_config);
+                if (legacySceneKey && !_config.Has("dumpSceneOnChange"))
+                    _config.Set("dumpSceneOnChange", _dumpOnSceneChange);
+                _config.SetDefault("dumpAllKey", _dumpAllKey.ToString());
+                _config.SetDefault("dumpCameraKey", _dumpCameraKey.ToString());
+                _config.SetDefault("dumpSceneKey", _dumpSceneKey.ToString());
+                _config.SetDefault("dumpSceneOnChange", _dumpOnSceneChange);
+                if (legacySceneKey) _config.Remove("dumpOnSceneChange");
+                _config.SaveIfDirty();
             }
         }
 

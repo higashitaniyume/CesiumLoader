@@ -24,6 +24,13 @@ namespace CesiumLoader.SDK.Configuration
     /// </summary>
     public sealed class ModConfig
     {
+        /// <summary>
+        /// 配置项说明的保留键。值是一个对象: <c>{ "键名": { "zh-Hans": "...", "en": "..." } }</c>，
+        /// 也允许某个键直接写字符串表示所有语言共用。它不是业务配置:
+        /// <see cref="All"/> / <see cref="Count"/> 不包含它，Toys 保存表单时也会原样保留。
+        /// </summary>
+        public const string CommentsKey = "_comments";
+
         private static readonly Dictionary<string, ModConfig> _cache =
             new Dictionary<string, ModConfig>(StringComparer.OrdinalIgnoreCase);
         private static readonly object _cacheLock = new object();
@@ -59,10 +66,22 @@ namespace CesiumLoader.SDK.Configuration
         /// <summary>是否有未保存的修改。</summary>
         public bool IsDirty { get { lock (_lock) { return _dirty; } } }
 
-        /// <summary>全部键值(只读快照)。</summary>
+        /// <summary>全部业务键值(只读快照, 不含保留键 <see cref="CommentsKey"/>)。</summary>
         public IReadOnlyDictionary<string, object> All
         {
-            get { lock (_lock) { return new Dictionary<string, object>(_data, StringComparer.Ordinal); } }
+            get
+            {
+                lock (_lock)
+                {
+                    var snapshot = new Dictionary<string, object>(StringComparer.Ordinal);
+                    foreach (var pair in _data)
+                    {
+                        if (string.Equals(pair.Key, CommentsKey, StringComparison.Ordinal)) continue;
+                        snapshot[pair.Key] = pair.Value;
+                    }
+                    return snapshot;
+                }
+            }
         }
 
         // =====================================================================
@@ -128,8 +147,17 @@ namespace CesiumLoader.SDK.Configuration
             lock (_lock) { return _data.ContainsKey(key); }
         }
 
-        /// <summary>键数量。</summary>
-        public int Count { get { lock (_lock) { return _data.Count; } } }
+        /// <summary>业务键数量(不含保留键 <see cref="CommentsKey"/>)。</summary>
+        public int Count
+        {
+            get
+            {
+                lock (_lock)
+                {
+                    return _data.ContainsKey(CommentsKey) ? _data.Count - 1 : _data.Count;
+                }
+            }
+        }
 
         /// <summary>读值(类型不匹配时返回默认值, 不抛异常)。</summary>
         public T Get<T>(string key, T defaultValue = default(T))
@@ -269,6 +297,73 @@ namespace CesiumLoader.SDK.Configuration
                 _data[key] = CesiumJson.ToDictionary(new Wrapper<T> { Value = defaultValue })["Value"];
                 _dirty = true;
                 return true;
+            }
+        }
+
+        /// <summary>
+        /// 补默认值并写入多语言说明: 键已存在时保留用户的值，只补/更新说明。
+        /// 返回是否新增了键或改动了说明；推荐在 mod 初始化末尾调用 <see cref="SaveIfDirty"/>。
+        /// </summary>
+        public bool SetDefault<T>(string key, T defaultValue, ConfigDoc doc)
+        {
+            bool added = SetDefault(key, defaultValue);
+            bool described = Describe(key, doc);
+            return added || described;
+        }
+
+        /// <summary>
+        /// 写入/更新某个配置项的多语言说明。已有说明的其他语言会保留，只覆盖本次提供的语言。
+        /// 返回说明是否真的发生变化(没有变化不会标脏，也不会触发保存)。
+        /// </summary>
+        public bool Describe(string key, ConfigDoc doc)
+        {
+            if (string.IsNullOrEmpty(key) || doc == null || doc.IsEmpty) return false;
+
+            lock (_lock)
+            {
+                object rawComments;
+                _data.TryGetValue(CommentsKey, out rawComments);
+                var comments = rawComments as IDictionary<string, object>;
+                if (comments == null)
+                {
+                    // 保留键被写成非对象时无法合并: 重建一份，避免整份配置因此不可用。
+                    comments = new Dictionary<string, object>(StringComparer.Ordinal);
+                    _data[CommentsKey] = comments;
+                }
+
+                object rawEntry;
+                comments.TryGetValue(key, out rawEntry);
+                var entry = rawEntry as IDictionary<string, object>;
+                if (entry == null)
+                {
+                    entry = new Dictionary<string, object>(StringComparer.Ordinal);
+                    // 旧写法: "key": "所有语言共用的一句说明" —— 展开成四种语言再合并。
+                    string shorthand = rawEntry as string;
+                    if (!string.IsNullOrWhiteSpace(shorthand))
+                    {
+                        entry[ConfigDoc.SimplifiedChinese] = shorthand;
+                        entry[ConfigDoc.TraditionalChinese] = shorthand;
+                        entry[ConfigDoc.English] = shorthand;
+                        entry[ConfigDoc.Japanese] = shorthand;
+                    }
+                    comments[key] = entry;
+                }
+
+                bool changed = false;
+                foreach (var pair in doc.ToPairs())
+                {
+                    object existing;
+                    if (entry.TryGetValue(pair.Key, out existing)
+                        && string.Equals(existing as string, pair.Value, StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+                    entry[pair.Key] = pair.Value;
+                    changed = true;
+                }
+
+                if (changed) _dirty = true;
+                return changed;
             }
         }
 
@@ -441,7 +536,26 @@ namespace CesiumLoader.SDK.Configuration
                 if (string.IsNullOrEmpty(Path)) return false;
 
                 string json;
-                lock (_lock) { json = CesiumJson.SerializePretty(_data); }
+                lock (_lock)
+                {
+                    object comments;
+                    if (_data.TryGetValue(CommentsKey, out comments) && _data.Count > 1)
+                    {
+                        // 说明放文件末尾: 用户打开 config.json 时先看到可编辑的值。
+                        var ordered = new Dictionary<string, object>(StringComparer.Ordinal);
+                        foreach (var pair in _data)
+                        {
+                            if (string.Equals(pair.Key, CommentsKey, StringComparison.Ordinal)) continue;
+                            ordered[pair.Key] = pair.Value;
+                        }
+                        ordered[CommentsKey] = comments;
+                        json = CesiumJson.SerializePretty(ordered);
+                    }
+                    else
+                    {
+                        json = CesiumJson.SerializePretty(_data);
+                    }
+                }
 
                 string dir = System.IO.Path.GetDirectoryName(Path);
                 if (!string.IsNullOrEmpty(dir)) System.IO.Directory.CreateDirectory(dir);

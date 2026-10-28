@@ -32,7 +32,7 @@ namespace HideHudMod
         private string _lastError;
 
         public override string Name { get { return "隐藏HUD"; } }
-        public override string Version { get { return "1.0.0"; } }
+        public override string Version { get { return "1.1.0"; } }
         public override string Author { get { return "CesiumLoader"; } }
         public override string Description
         {

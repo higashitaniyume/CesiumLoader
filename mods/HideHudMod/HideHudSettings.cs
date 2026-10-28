@@ -51,7 +51,7 @@ namespace HideHudMod
         {
             if (config == null) return;
 
-            bool added = false;
+            bool added = HideHudConfigDocs.Apply(config);
             Add(config, "enabled", true, ref added);
             Add(config, "toggleKey", DefaultKeyName, ref added);
             Add(config, "pressMode", DefaultPressMode, ref added);
@@ -62,7 +62,7 @@ namespace HideHudMod
             Add(config, "hideAvatars", true, ref added);
             Add(config, "hideOther", true, ref added);
             Add(config, "notify", false, ref added);
-            if (added) config.Save();
+            if (added) config.SaveIfDirty();
         }
 
         private static void Add(ModConfig config, string key, object value, ref bool added)
