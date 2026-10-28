@@ -59,7 +59,7 @@ jobs:
           # refs/game 是编译期唯一的游戏程序集来源, 校验它在检出里完整且与清单记录的哈希一致 ——
           # 少了或对不上就让构建在这里停下, 而不是等到某个 csproj 报"找不到类型"。
           $manifest = Get-Content "refs/game/sources.json" -Raw | ConvertFrom-Json
-          $assemblies = $manifest.assemblies.PSObject.Properties
+          $assemblies = @($manifest.assemblies.PSObject.Properties)
           if ($assemblies.Count -eq 0) { throw "refs/game/sources.json 没有列出程序集" }
           foreach ($assembly in $assemblies) {
             $path = "refs/game/$($assembly.Name)"
