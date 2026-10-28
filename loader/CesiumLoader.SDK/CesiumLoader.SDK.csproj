@@ -29,22 +29,22 @@
   <ItemGroup>
     <!-- 游戏热更程序集:所有游戏类型(UIManager / GameLogicManager / RoomInfo / 各RPC / party.protocol / party.model) -->
     <Reference Include="AstralParty.Runtime">
-      <HintPath>..\..\..\..\extracted_dlls\AstralParty.Runtime.dll</HintPath>
+      <HintPath>$(GameRefsDir)AstralParty.Runtime.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <!-- UnityEngine.CoreModule: MonoBehaviour / GameObject / Time -->
     <Reference Include="UnityEngine.CoreModule">
-      <HintPath>..\..\..\..\extracted_dlls\UnityEngine.CoreModule.dll</HintPath>
+      <HintPath>$(GameRefsDir)UnityEngine.CoreModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <!-- UniTask: 后台轮询 + RPC 回调 -->
     <Reference Include="UniTask">
-      <HintPath>..\..\..\..\extracted_dlls\UniTask.dll</HintPath>
+      <HintPath>$(GameRefsDir)UniTask.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <!-- Google.Protobuf: RepeatedField / MapField / ByteString -->
     <Reference Include="Google.Protobuf.Runtime">
-      <HintPath>..\..\..\..\extracted_dlls\Google.Protobuf.Runtime.dll</HintPath>
+      <HintPath>$(GameRefsDir)Google.Protobuf.Runtime.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>

@@ -12,8 +12,8 @@
     <Compile Include="../../mods/AutoThanksMod/SettlementLikes.cs" Link="Product/SettlementLikes.cs" />
     <Compile Include="../../mods/AutoThanksMod/LikePolicy.cs" Link="Product/LikePolicy.cs" />
     <Compile Include="../../mods/AutoThanksMod/ThanksPolicy.cs" Link="Product/ThanksPolicy.cs" />
-    <Compile Include="../../../../decomp/_full/FairyGUI/EventBridge.cs" Link="Game/EventBridge.cs" />
-    <Compile Include="../../../../decomp/_full/FairyGUI/EventListener.cs" Link="Game/EventListener.cs" />
-    <AssemblyMetadata Include="RuntimeAssemblyPath" Value="$(MSBuildProjectDirectory)/../../../../extracted_dlls/AstralParty.Runtime.dll" />
+    <!-- Game/*.cs 是游戏 FairyGUI 事件派发的反编译实现, 由默认编译项自动收录(见 Game/README.md)。
+         集成测试要跑真实 EventBridge/EventListener, 而不是测试自己写的一份近似实现。 -->
+    <AssemblyMetadata Include="RuntimeAssemblyPath" Value="$(GameRefsDir)AstralParty.Runtime.dll" />
   </ItemGroup>
 </Project>

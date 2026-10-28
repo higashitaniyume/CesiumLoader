@@ -6,7 +6,7 @@
     与 CI (.github\workflows\release-modloader.yml) 保持同一套步骤，便于打 tag 前先在本地验证：
       1. MSBuild 构建原生加载器 version.dll (Release x64)
       2. dotnet 构建托管层: CesiumLoader.Bootstrap / CesiumLoader.SDK / 各 mod
-      3. 刷新 dist\modloader\ 分发目录(加载器 + bootstrap + sdk + 内置 mod)
+      3. 刷新 dist\modloader\ 分发布局(tools\stage-modloader-dist.ps1, CI 复用同一份脚本)
       4. 组装 staging\ 部署布局 + README.txt
       5. 生成 cesium-loader.json 清单(含每个文件的 SHA256)
       6. 构建 cesium CLI 自包含单文件 → sdk-staging\ + README.txt
@@ -14,9 +14,12 @@
                    cesium-sdk-tools-<版本>.zip / cesium-sdk-tools.zip
                    cesium-default-skins-<版本>.zip / cesium-default-skins.zip
 
+    所有程序集都在本机现场构建: 编译期需要的游戏程序集随仓库放在 refs\game\, 所以
+    git clone 之后不需要任何本地提取目录就能跑完整条流程。
+
     符号(.pdb): 每一份随包 dll 都配一个同目录同名 .pdb(version.pdb / bootstrap / SDK / 各 mod),
     并且都进清单做哈希校验。理由: 用户端崩溃只有一个栈帧地址时, 没有 pdb 就只能看到偏移;
-    有了 pdb 才能把 mod 的异常栈还原到具体文件行。缺符号只警告不阻塞发布(见 Resolve-Pdb)。
+    有了 pdb 才能把 mod 的异常栈还原到具体文件行。缺符号只警告不阻塞发布(见 tools\stage-modloader-dist.ps1)。
 
     版本号单一来源: loader\CesiumLoader.SDK\Manifests\SdkVersion.cs 里的 SdkVersion.Current。
     加载器版本与之一致(加载器横幅同时打印两者, 见 config.h 的 loaderVersion)。
@@ -55,28 +58,6 @@ $BuiltInMods = @(
 if ($BuiltInMods.Count -eq 0) { throw 'tools\builtin-mods.json 里没有内置 mod, 请先补上' }
 
 function Write-Step([string] $text) { Write-Host "`n=== $text ===" -ForegroundColor Cyan }
-
-# ---------------------------------------------------------------- 符号文件
-# 每个 dll 的符号就是同目录同名的 .pdb(MSVC 与 dotnet 都是这个约定)。
-# 找不到时只记下来并警告, 不 throw —— 符号缺失不该拦住一次发布, 但必须在日志里显眼。
-$script:MissingPdbs = @()
-
-function Resolve-Pdb([string] $binaryPath)
-{
-    $pdb = [System.IO.Path]::ChangeExtension($binaryPath, '.pdb')
-    if (Test-Path -LiteralPath $pdb) { return $pdb }
-    $script:MissingPdbs += $pdb
-    return $null
-}
-
-# 把 $from 的符号复制到 $to 旁边(同名 .pdb); 拿不到就跳过。
-function Copy-PdbNextTo([string] $fromBinary, [string] $toBinary)
-{
-    $pdb = Resolve-Pdb $fromBinary
-    if (-not $pdb) { return $false }
-    Copy-Item -LiteralPath $pdb -Destination ([System.IO.Path]::ChangeExtension($toBinary, '.pdb')) -Force
-    return $true
-}
 
 # ---------------------------------------------------------------- 版本号
 function Resolve-Version
@@ -138,40 +119,10 @@ if (-not $SkipBuild)
         if ($LASTEXITCODE -ne 0) { throw "$mod 构建失败" }
     }
 
-    Write-Step '3. 刷新 dist\modloader\ 分发目录'
-    $dist = 'dist\modloader'
-    $layout = @(
-        @{ From = $nativeDll;                                                              To = "$dist\version.dll" },
-        @{ From = 'loader\CesiumLoader.Bootstrap\bin\Release\netstandard2.0\CesiumLoader.Bootstrap.dll'; To = "$dist\AstralParty_ModLoader\bootstrap\CesiumLoader.Bootstrap.dll" },
-        @{ From = 'loader\CesiumLoader.SDK\bin\Release\netstandard2.0\CesiumLoader.SDK.dll';   To = "$dist\AstralParty_ModLoader\sdk\CesiumLoader.SDK.dll" }
-    )
-    foreach ($item in $layout)
-    {
-        if (-not (Test-Path $item.From)) { throw "缺少构建产物: $($item.From)" }
-        New-Item -ItemType Directory -Path (Split-Path -Parent $item.To) -Force | Out-Null
-        Copy-Item $item.From $item.To -Force
-        Copy-PdbNextTo $item.From $item.To | Out-Null
-    }
-    foreach ($mod in $BuiltInMods)
-    {
-        $modDir = "$dist\AstralParty_ModLoader\mods\$mod"
-        New-Item -ItemType Directory -Path $modDir -Force | Out-Null
-        $built = "mods\$mod\bin\Release\netstandard2.0\$mod.dll"
-        if (-not (Test-Path $built)) { throw "缺少 mod 产物: $built" }
-        Copy-Item $built "$modDir\$mod.dll" -Force
-        Copy-PdbNextTo $built "$modDir\$mod.dll" | Out-Null
-        # sidecar: 有的 mod 源码里带 .json(如 FreeCameraMod), 有的只在 dist 里维护(如 ActivityLogMod)
-        $sidecarSrc = "mods\$mod\$mod.json"
-        if (Test-Path $sidecarSrc) { Copy-Item $sidecarSrc "$modDir\$mod.json" -Force }
-        if (-not (Test-Path "$modDir\$mod.json")) { throw "缺少 mod sidecar: $modDir\$mod.json" }
-        # 随 mod 分发的素材(提示音等): 整目录镜像, 保证 dist 与源码一致
-        # 先删后拷: Copy-Item 遇到已存在的目标目录会再嵌一层 sounds\sounds。
-        if (Test-Path "mods\$mod\sounds") {
-            if (Test-Path "$modDir\sounds") { Remove-Item "$modDir\sounds" -Recurse -Force }
-            Copy-Item "mods\$mod\sounds" "$modDir\sounds" -Recurse -Force
-        }
-    }
-    Write-Host '  dist 已刷新'
+    Write-Step '3. 刷新 dist\modloader\ 分发布局'
+    # 与 CI 共用同一份脚本: 布局规则(哪些文件、sidecar 从哪来、符号成对复制)只维护一处。
+    & (Join-Path $PSScriptRoot 'stage-modloader-dist.ps1') -NativeDll $nativeDll -Configuration Release
+    if ($LASTEXITCODE -ne 0) { throw "刷新 dist 失败 (exit $LASTEXITCODE)" }
 }
 else
 {
@@ -349,10 +300,5 @@ Get-ChildItem $OutputDir -File | Select-Object Name, @{n='KB';e={[math]::Round($
 Write-Host "打包完成: $OutputDir" -ForegroundColor Green
 Write-Host "  清单版本: $((Get-Content 'staging\cesium-loader.json' -Raw | ConvertFrom-Json).version)"
 Write-Host "  符号文件: $symbolCount 个 (.pdb 与对应 dll 同目录, 并已写进清单)"
-if ($script:MissingPdbs.Count -gt 0)
-{
-    Write-Warning "这些构建产物没有符号, 本次发布不含它们:"
-    foreach ($p in $script:MissingPdbs) { Write-Warning "  $p" }
-}
 Write-Host "  发布提示: 打 tag 后 CI 会用同一套步骤构建并发布 GitHub Release:"
 Write-Host "    git tag modloader-$version && git push origin modloader-$version"

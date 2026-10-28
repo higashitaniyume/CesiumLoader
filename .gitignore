@@ -374,18 +374,15 @@ tools/smoke/configtest/*.obj
 tools/smoke/env/
 tools/smoke/env2/
 
-# dist 里由 CI 现场构建覆盖的产物 (version.dll / bootstrap dll 不入库,
-# 只入库 SDK/mod 预编译产物与配置文件)
-dist/modloader/version.dll
-dist/modloader/AstralParty_ModLoader/bootstrap/
-
-# 符号文件: SDK / mod 的 .pdb 必须与它们的 dll 成对入库 —— 两者的 hash 是绑定的
-# (PDB 里存着 dll 的 GUID+Age), 分两次构建出来的 pdb 贴上去会让调试器直接拒绝加载符号。
-# 加载器 version.pdb 与 bootstrap 的 pdb 和它们的 dll 一样由 CI 现场构建, 不入库。
-!dist/modloader/AstralParty_ModLoader/sdk/*.pdb
-!dist/modloader/AstralParty_ModLoader/mods/**/*.pdb
-# AI 接管包(可选组件)里的同一个 mod 同理
-!dist/agent/**/*.pdb
+# dist 只入库"装进去什么"的输入: 配置、mod sidecar 与默认皮肤素材。
+# 所有程序集(version.dll / bootstrap / sdk / mods / agent)都由构建现场产出、不入库 ——
+# 源码 + refs/game 在这份仓库里齐全, 本地与 CI 用同一条命令就能重新生成它们。
+# 生成的布局仍写在 dist/ 下, 供 tools\package-modloader.ps1、部署脚本与打包校验复用;
+# 它们被忽略, 所以构建不会把工作区弄脏。
+dist/modloader/**/*.dll
+dist/modloader/**/*.pdb
+dist/agent/**/*.dll
+dist/agent/**/*.pdb
 
 # 变速引擎冒烟测试 (本地编译/运行产物)
 tools/smoke/speedtest/*.exe

@@ -1,13 +1,12 @@
 name: Release ModLoader
 
-# 每次打 modloader-* tag 时: 构建 C++ 加载器(version.dll) + C# 托管引导程序,
-# 打包「解压即部署」的 zip 作为 GitHub release 资产。
-# AstralParty.Toys 的 Mod 管理功能从这里下载安装: 
+# 每次打 modloader-* tag 时: 从源码构建全部产物 → 跑测试 → 打包「解压即部署」的 zip 作为 GitHub release 资产。
+# AstralParty.Toys 的 Mod 管理功能从这里下载安装:
 #   https://github.com/higashitaniyume/CesiumLoader/releases/latest/download/cesium-loader.zip
 #
-# 说明: C# SDK 与示例 mod 引用游戏热更程序集(extracted_dlls, 游戏私有 DLL 不入库),
-# 因此它们用 dist/ 里的预编译产物; C++ 加载器无游戏依赖, 在 CI 现场构建;
-# CesiumLoader.Bootstrap 自包含(零引用), 也在 CI 现场构建。
+# 构建是完全自包含的: 编译期需要的游戏程序集(AstralParty.Runtime 等)随仓库放在 refs/game/,
+# 所以 CI 与任何 clone 出来的机器走同一条构建路径 —— 仓库里没有"只在某台机器上构建好"的
+# 预编译程序集, dist/ 里的 dll/pdb 也全部由本次运行现场产出。
 
 on:
   push:
@@ -38,6 +37,11 @@ jobs:
       - name: Set up MSBuild
         uses: microsoft/setup-msbuild@v2
 
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
       - name: Resolve version
         id: version
         shell: pwsh
@@ -49,10 +53,26 @@ jobs:
           }
           "version=$version" >> $env:GITHUB_OUTPUT
 
-      - name: Build C++ loader (version.dll)
+      - name: Verify game reference assemblies
         shell: pwsh
         run: |
-          # 只构建 C++ 加载器(vcxproj), 不构建 sln —— sln 里还有 C# 项目(需 restore)
+          # refs/game 是编译期唯一的游戏程序集来源, 校验它在检出里完整且与清单记录的哈希一致 ——
+          # 少了或对不上就让构建在这里停下, 而不是等到某个 csproj 报"找不到类型"。
+          $manifest = Get-Content "refs/game/sources.json" -Raw | ConvertFrom-Json
+          $assemblies = $manifest.assemblies.PSObject.Properties
+          if ($assemblies.Count -eq 0) { throw "refs/game/sources.json 没有列出程序集" }
+          foreach ($assembly in $assemblies) {
+            $path = "refs/game/$($assembly.Name)"
+            if (-not (Test-Path -LiteralPath $path)) { throw "缺少游戏引用程序集: $path" }
+            $actual = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actual -ne $assembly.Value) { throw "refs/game/$($assembly.Name) 与 sources.json 记录的哈希不一致" }
+          }
+          Write-Host "refs/game 完整: $($assemblies.Count) 个程序集 ($($manifest.baseline))"
+
+      - name: Build all projects
+        shell: pwsh
+        run: |
+          # 1) 原生加载器: .vcxproj 只能用 MSBuild(dotnet 不支持 C++ 项目)
           & msbuild loader\CesiumLoader\CesiumLoader.vcxproj /p:Configuration=Release /p:Platform=x64 /m /nologo /v:minimal
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $vdbin = "loader/CesiumLoader/bin/Release/version.dll"
@@ -67,23 +87,45 @@ jobs:
           } else {
             Write-Warning "version.pdb 未生成: 本次发布包不含加载器符号"
           }
-          Write-Host "version.dll 已复制到 bin/Release/"
 
-      - name: Build managed bootstrap
+          # 2) 托管侧: 仓库里每个 csproj 都构建一遍(含 SDK / Bootstrap / 全部 mod / MCP / 测试)——
+          #    任何一个项目编译不过都不发布。
+          $projects = @(Get-ChildItem -Recurse -File -Filter *.csproj |
+            Where-Object { $_.FullName -notmatch '\\(obj|bin|artifacts|staging|sdk-staging|agent-staging)\\' } |
+            Sort-Object FullName)
+          if ($projects.Count -lt 20) { throw "只找到 $($projects.Count) 个 csproj, 检出内容不完整?" }
+          $failed = @()
+          foreach ($project in $projects) {
+            $rel = $project.FullName.Substring((Get-Location).Path.Length + 1)
+            Write-Host "== $rel"
+            dotnet build $rel -c Release --nologo -v:minimal
+            if ($LASTEXITCODE -ne 0) { $failed += $rel }
+          }
+          if ($failed.Count -gt 0) { throw "构建失败: $($failed -join ', ')" }
+          Write-Host "已构建 $($projects.Count) 个托管项目"
+
+      - name: Stage distribution layout
         shell: pwsh
         run: |
-          dotnet build loader\CesiumLoader.Bootstrap\CesiumLoader.Bootstrap.csproj -c Release --nologo
+          # 与本地 tools\package-modloader.ps1 共用同一份脚本: dist 布局只有一处定义。
+          pwsh -NoProfile -File tools/stage-modloader-dist.ps1 -NativeDll bin/Release/version.dll -Configuration Release
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $bootstrap = "loader/CesiumLoader.Bootstrap/bin/Release/netstandard2.0/CesiumLoader.Bootstrap.dll"
-          if (-not (Test-Path $bootstrap)) { throw "CesiumLoader.Bootstrap.dll 未生成" }
-          New-Item -ItemType Directory -Path "dist/modloader/AstralParty_ModLoader/bootstrap" -Force | Out-Null
-          Copy-Item $bootstrap "dist/modloader/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll" -Force
-          $bootstrapPdb = "loader/CesiumLoader.Bootstrap/bin/Release/netstandard2.0/CesiumLoader.Bootstrap.pdb"
-          if (Test-Path $bootstrapPdb) {
-            Copy-Item $bootstrapPdb "dist/modloader/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.pdb" -Force
-          } else {
-            Write-Warning "CesiumLoader.Bootstrap.pdb 未生成"
+
+      - name: Run tests
+        shell: pwsh
+        run: |
+          # dist 布局已就绪, DistributionAbiTests 会按打包结果严格校验随包程序集; 所有测试项目都必须通过。
+          $testProjects = @(Get-ChildItem tests -Directory | ForEach-Object {
+              Get-ChildItem $_.FullName -Filter *.csproj -File | Select-Object -First 1
+            } | Where-Object { $_ -and (Select-String -Path $_.FullName -Pattern 'xunit' -Quiet) } | Sort-Object Name)
+          if ($testProjects.Count -lt 5) { throw "只找到 $($testProjects.Count) 个测试项目, 检出内容不完整?" }
+          $failed = @()
+          foreach ($project in $testProjects) {
+            Write-Host "== $($project.BaseName)"
+            dotnet test $project.FullName -c Release --nologo
+            if ($LASTEXITCODE -ne 0) { $failed += $project.BaseName }
           }
+          if ($failed.Count -gt 0) { throw "测试失败: $($failed -join ', ')" }
 
       - name: Build SDK tools (cesium CLI)
         shell: pwsh
@@ -99,7 +141,7 @@ jobs:
       - name: Verify dist prerequisites
         shell: pwsh
         run: |
-          # version.dll 由上面的 msbuild 现场构建; bootstrap 已复制; dist 只需 SDK + 内置 mod。
+          # 上一步刚由源码构建出全部产物; 这里再按清单核对一遍, 避免打包步骤引用到不存在的文件。
           # 内置 mod 清单来自 tools/builtin-mods.json(与 tools/package-modloader.ps1 共用同一来源)。
           $builtInMods = @(Get-Content "tools/builtin-mods.json" -Raw | ConvertFrom-Json)
           if ($builtInMods.Count -eq 0) { throw "tools/builtin-mods.json 里没有内置 mod" }
@@ -112,9 +154,9 @@ jobs:
             $required += "dist/modloader/AstralParty_ModLoader/mods/$mod/$mod.dll"
             $required += "dist/modloader/AstralParty_ModLoader/mods/$mod/$mod.json"
           }
-          foreach ($f in $required) { if (-not (Test-Path $f)) { throw "缺少预编译产物: $f" } }
-          Write-Host "dist 预编译产物齐全: $($builtInMods -join ', ')"
-          # 符号也要在(与 dll 成对入库, 见 .gitignore): 缺了只警告 —— 符号不全不该拦住一次发布。
+          foreach ($f in $required) { if (-not (Test-Path $f)) { throw "缺少构建产物: $f" } }
+          Write-Host "dist 构建产物齐全: $($builtInMods -join ', ')"
+          # 符号也要在(与 dll 成对, 见 .gitignore): 缺了只警告 —— 符号不全不该拦住一次发布。
           $symbols = @("dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.pdb")
           foreach ($mod in $builtInMods) { $symbols += "dist/modloader/AstralParty_ModLoader/mods/$mod/$mod.pdb" }
           $missingSymbols = @($symbols | Where-Object { -not (Test-Path $_) })
@@ -141,7 +183,7 @@ jobs:
             )) {
             if (Test-Path $p.From) { Copy-Item $p.From $p.To -Force } else { Write-Warning "符号缺失, 本次发布不含: $($p.From)" }
           }
-          # 内置 mod: 每 mod 一个文件夹(mods\{ModId}\{ModId}.dll + .json)
+          # 内置 mod: 每 mod 一个文件夹(mods\{ModId}\{ModId}.dll + .json + .pdb)
           # 清单来源: tools/builtin-mods.json(单一来源, 与打包脚本共用)
           $builtInMods = @(Get-Content "tools/builtin-mods.json" -Raw | ConvertFrom-Json)
           $modNames = @{
@@ -161,7 +203,7 @@ jobs:
             } else {
               Write-Warning "符号缺失, 本次发布不含: mods/$mod/$mod.pdb"
             }
-            # 随 mod 分发的素材(提示音等): 整目录镜像, 与 tools/package-modloader.ps1 一致
+            # 随 mod 分发的素材(提示音等): 整目录镜像, 与 tools/stage-modloader-dist.ps1 一致
             if (Test-Path "dist/modloader/AstralParty_ModLoader/mods/$mod/sounds") {
               Copy-Item "dist/modloader/AstralParty_ModLoader/mods/$mod/sounds" "staging/AstralParty_ModLoader/mods/$mod/sounds" -Recurse -Force
             }
@@ -293,10 +335,10 @@ jobs:
             exit 0
           }
           # 这一包**不进** cesium-loader.zip: AI 接管是可选能力, 不默认塞给所有用户。
-          # 游戏内 mod(AstralParty.AgentMod)需要游戏热更 DLL 才能编译, CI 没有 → 用 dist\agent 下
-          # 本地预编译并入库的产物(与 dist\ 里其它托管产物同一约定); MCP server 无游戏依赖, CI 现场构建。
-          $modSrc = "dist/agent/AstralParty.AgentMod"
-          if (-not (Test-Path "$modSrc/AstralParty.AgentMod.dll")) { throw "缺少预编译产物: $modSrc/AstralParty.AgentMod.dll" }
+          # 游戏内 mod(AstralParty.AgentMod)同样由上面的全量构建产出; MCP server 在这里发布成自包含单文件。
+          $modSrc = "mcp/AstralParty.AgentMod"
+          $modBin = "$modSrc/bin/Release/netstandard2.0"
+          if (-not (Test-Path "$modBin/AstralParty.AgentMod.dll")) { throw "缺少构建产物: $modBin/AstralParty.AgentMod.dll" }
           if (-not (Test-Path "$modSrc/AstralParty.AgentMod.json")) { throw "缺少 sidecar: $modSrc/AstralParty.AgentMod.json" }
 
           # 自包含单文件(与 cesium.exe 同样的理由: 目标机不一定装了 .NET 8)
@@ -308,11 +350,11 @@ jobs:
 
           New-Item -ItemType Directory -Path "agent-staging/mods/AstralParty.AgentMod", "agent-staging/docs" -Force | Out-Null
           Copy-Item "agent-tools/AstralParty.Mcp.exe" "agent-staging/AstralParty.Mcp.exe" -Force
-          Copy-Item "$modSrc/AstralParty.AgentMod.dll"  "agent-staging/mods/AstralParty.AgentMod/AstralParty.AgentMod.dll"  -Force
+          Copy-Item "$modBin/AstralParty.AgentMod.dll"  "agent-staging/mods/AstralParty.AgentMod/AstralParty.AgentMod.dll"  -Force
           Copy-Item "$modSrc/AstralParty.AgentMod.json" "agent-staging/mods/AstralParty.AgentMod/AstralParty.AgentMod.json" -Force
-          # 符号同样带上(与 dll 成对入库, 见 .gitignore): 桥接是实验性代码, 出问题要看栈的行号。
-          if (Test-Path "$modSrc/AstralParty.AgentMod.pdb") {
-            Copy-Item "$modSrc/AstralParty.AgentMod.pdb" "agent-staging/mods/AstralParty.AgentMod/AstralParty.AgentMod.pdb" -Force
+          # 符号同样带上(与 dll 成对, 见 .gitignore): 桥接是实验性代码, 出问题要看栈的行号。
+          if (Test-Path "$modBin/AstralParty.AgentMod.pdb") {
+            Copy-Item "$modBin/AstralParty.AgentMod.pdb" "agent-staging/mods/AstralParty.AgentMod/AstralParty.AgentMod.pdb" -Force
           } else {
             Write-Warning "符号缺失, 本包不含 AstralParty.AgentMod.pdb"
           }

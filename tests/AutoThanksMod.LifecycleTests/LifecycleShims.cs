@@ -15,6 +15,7 @@ namespace CesiumLoader.SDK.Mods
         public abstract string Description { get; }
         public virtual void OnInitialize() { }
         public virtual void OnUpdate() { }
+        public virtual void OnConfigChanged() { }
         public virtual void OnUnload() { }
         public static void Run(ModBase mod) => mod.OnInitialize();
     }

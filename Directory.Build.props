@@ -1,0 +1,32 @@
+<Project>
+
+  <!--
+    仓库级构建属性: 游戏引用程序集的位置。
+
+    加载器本身(原生 version.dll / Bootstrap / CLI)不依赖游戏, 但 SDK、内置模组和
+    引用 SDK 的测试都要在编译期绑定游戏热更程序集(AstralParty.Runtime 等)与 Unity 依赖。
+    这些程序集随仓库放在 refs/game/, 所以 git clone 后的任何机器都能直接构建,
+    不需要在本地先准备一份提取好的游戏 DLL。
+
+    想改用本机更新版本的游戏程序集(比如核对新版本游戏的枚举/成员):
+      pwsh -File tools/fetch-game-refs.ps1 -Source <提取目录>
+    或临时指定目录(结尾有无分隔符都可以):
+      $env:CESIUM_GAME_REFS = 'D:\extract\extracted_dlls'
+      MSBuild CesiumLoader.sln /p:GameRefsDir=D:\extract\extracted_dlls\
+  -->
+  <PropertyGroup>
+    <GameRefsDir Condition="'$(GameRefsDir)' == '' and '$(CESIUM_GAME_REFS)' != ''">$([MSBuild]::EnsureTrailingSlash('$(CESIUM_GAME_REFS)'))</GameRefsDir>
+    <GameRefsDir Condition="'$(GameRefsDir)' == ''">$(MSBuildThisFileDirectory)refs\game\</GameRefsDir>
+  </PropertyGroup>
+
+  <!-- 引用了不存在程序集时给出可执行的报错, 而不是让编译器在几十行之后报"找不到类型"。 -->
+  <Target Name="CesiumVerifyReferencePaths" BeforeTargets="PrepareForBuild">
+    <ItemGroup>
+      <_CesiumMissingReference Include="@(Reference)"
+                               Condition="'%(Reference.HintPath)' != '' and !Exists('%(Reference.HintPath)')" />
+    </ItemGroup>
+    <Error Condition="'@(_CesiumMissingReference)' != ''"
+           Text="CesiumLoader: 找不到被引用的程序集 → @(_CesiumMissingReference->'%(HintPath)', '; ')。游戏程序集应随仓库放在 refs/game/ (见 refs/game/README.md); 检出内容不完整时重新 clone, 不要手工补齐 dist/。" />
+  </Target>
+
+</Project>

@@ -93,7 +93,7 @@ MCP host（Claude Desktop、自研 agent、脚本），而不用把 agent 塞进
 ## 构建
 
 ```powershell
-# 游戏内 mod(需要仓库同级的 extracted_dlls\ 里有游戏 DLL)
+# 游戏内 mod(编译期用 refs\game\ 里随仓库提供的游戏程序集)
 dotnet build mcp\AstralParty.AgentMod\AstralParty.AgentMod.csproj -c Release
 
 # MCP server

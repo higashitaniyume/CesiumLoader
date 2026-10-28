@@ -6,7 +6,7 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
     <Compile Include="../../mods/AutoThanksMod/ThanksPolicy.cs" Link="ThanksPolicy.cs" />
     <Compile Include="../../mods/AutoThanksMod/LikePolicy.cs" Link="LikePolicy.cs" />
-    <Reference Include="AstralParty.Runtime"><HintPath>../../../../extracted_dlls/AstralParty.Runtime.dll</HintPath><Private>true</Private></Reference>
-    <Reference Include="Google.Protobuf.Runtime"><HintPath>../../../../extracted_dlls/Google.Protobuf.Runtime.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="AstralParty.Runtime"><HintPath>$(GameRefsDir)AstralParty.Runtime.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="Google.Protobuf.Runtime"><HintPath>$(GameRefsDir)Google.Protobuf.Runtime.dll</HintPath><Private>true</Private></Reference>
   </ItemGroup>
 </Project>

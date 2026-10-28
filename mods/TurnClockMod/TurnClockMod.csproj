@@ -17,12 +17,12 @@
   <ItemGroup>
     <!-- 游戏计时器 GameLogic.OperationTimer: 用 typeof 直接引用(hot-update 里字符串找类型会被裁剪) -->
     <Reference Include="AstralParty.Runtime">
-      <HintPath>..\..\..\..\extracted_dlls\AstralParty.Runtime.dll</HintPath>
+      <HintPath>$(GameRefsDir)AstralParty.Runtime.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <!-- 只为 ModBase 的 Scene 签名: 本 mod 不调用任何 Unity API -->
     <Reference Include="UnityEngine.CoreModule">
-      <HintPath>..\..\..\..\extracted_dlls\UnityEngine.CoreModule.dll</HintPath>
+      <HintPath>$(GameRefsDir)UnityEngine.CoreModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>

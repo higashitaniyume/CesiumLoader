@@ -2,7 +2,7 @@
 
 > 面向 CombatOddsMod 的 buff 逆向记录：游戏的 buff 是怎么组织的、哪些 buff 会改"受到伤害"、
 > 客户端能实时读到什么、以及 mod 如何把它换算成击倒/击杀率的修正。
-> 全部结论来自**只读**反编译（`extracted_dlls/AstralParty.Runtime.dll`）与配置解包
+> 全部结论来自**只读**反编译（`refs/game/AstralParty.Runtime.dll`）与配置解包
 > （`config_extract/Buff.bin`、`STRBuff.bin`、`STRCard.bin`），提取工具在 `buffcat/`。
 
 ---

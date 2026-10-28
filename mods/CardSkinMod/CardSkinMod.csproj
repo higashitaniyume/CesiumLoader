@@ -7,10 +7,10 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../loader/CesiumLoader.SDK/CesiumLoader.SDK.csproj" />
-    <Reference Include="AstralParty.Runtime"><HintPath>../../../../extracted_dlls/AstralParty.Runtime.dll</HintPath><Private>false</Private></Reference>
-    <Reference Include="UnityEngine.CoreModule"><HintPath>../../../../extracted_dlls/UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
-    <Reference Include="UniTask"><HintPath>../../../../extracted_dlls/UniTask.dll</HintPath><Private>false</Private></Reference>
-    <Reference Include="Google.Protobuf.Runtime"><HintPath>../../../../extracted_dlls/Google.Protobuf.Runtime.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="AstralParty.Runtime"><HintPath>$(GameRefsDir)AstralParty.Runtime.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.CoreModule"><HintPath>$(GameRefsDir)UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UniTask"><HintPath>$(GameRefsDir)UniTask.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Google.Protobuf.Runtime"><HintPath>$(GameRefsDir)Google.Protobuf.Runtime.dll</HintPath><Private>false</Private></Reference>
     <None Update="CardSkinMod.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

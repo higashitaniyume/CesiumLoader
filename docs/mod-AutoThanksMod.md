@@ -59,7 +59,7 @@ dotnet test tests/AutoThanksMod.IntegrationTests/AutoThanksMod.IntegrationTests.
 dotnet test tests/AutoThanksMod.LifecycleTests/AutoThanksMod.LifecycleTests.csproj -c Release
 ```
 
-构建、协议映射和元数据合约测试需要工作区的 `extracted_dlls/AstralParty.Runtime.dll` 等游戏程序集；结算事件集成测试另外直接编译 `decomp/_full/FairyGUI/EventBridge.cs` 和 `EventListener.cs`。这些游戏私有文件不随加载器仓库分发。生命周期测试使用最小单例、配置和 RPC 桩执行实际 `ModEntry`，不启动游戏。
+构建、协议映射和元数据合约测试使用随仓库提供的 `refs/game/AstralParty.Runtime.dll` 等游戏程序集；结算事件集成测试另外直接编译 `tests/AutoThanksMod.IntegrationTests/Game/` 下从游戏反编译保留的 `EventBridge.cs` 与 `EventListener.cs`（说明见该目录 README）。生命周期测试使用最小单例、配置和 RPC 桩执行实际 `ModEntry`，不启动游戏。这些测试在 clone 后即可直接运行，不需要本地提取目录或反编译代码。
 
 策略测试覆盖实际协议枚举映射、玩家过滤、独立开关、延迟边界及 3 秒上限、延迟与冷却组合、过期通知、点赞间隔、跨局重置和每人去重。离线集成测试执行实际结算点赞代码，并使用游戏原有的 FairyGUI EventListener/EventBridge 验证按钮锁定与事件行为；生命周期测试执行实际 OnUpdate，覆盖真实对局到结算、回放/观战/退出过滤、配置禁用、延迟队列清理和卸载回调恢复。已加入 `tools/builtin-mods.json`，标准打包流程会构建和复制 DLL/PDB/元数据。实际服务器接受和 HybridCLR 中的执行仍需真机对局验证。
 

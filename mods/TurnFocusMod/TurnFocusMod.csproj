@@ -17,19 +17,19 @@
   <ItemGroup>
     <!-- 游戏热更程序集: ActionStartNotifyS2C / GameLogicManager / NetManager -->
     <Reference Include="AstralParty.Runtime">
-      <HintPath>..\..\..\..\extracted_dlls\AstralParty.Runtime.dll</HintPath>
+      <HintPath>$(GameRefsDir)AstralParty.Runtime.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="UniTask">
-      <HintPath>..\..\..\..\extracted_dlls\UniTask.dll</HintPath>
+      <HintPath>$(GameRefsDir)UniTask.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="Google.Protobuf.Runtime">
-      <HintPath>..\..\..\..\extracted_dlls\Google.Protobuf.Runtime.dll</HintPath>
+      <HintPath>$(GameRefsDir)Google.Protobuf.Runtime.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="UnityEngine.CoreModule">
-      <HintPath>..\..\..\..\extracted_dlls\UnityEngine.CoreModule.dll</HintPath>
+      <HintPath>$(GameRefsDir)UnityEngine.CoreModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>

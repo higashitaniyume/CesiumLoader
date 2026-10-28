@@ -158,10 +158,13 @@ pwsh -NoProfile -File tools/package-modloader.ps1
 | `mcp/` | 游戏内桥接模组与 MCP server |
 | `tools/` | CLI、打包与部署脚本 |
 | `tests/` / `smoke/` | 单元测试与变速冒烟测试 |
-| `dist/modloader/` | 用于发布的预编译托管产物 |
+| `refs/game/` | 编译期引用的游戏程序集（随仓库提供，见 [说明](refs/game/README.md)） |
+| `dist/modloader/` | 打包时生成的分发布局；其中的程序集不入库 |
 | `third_party/` | 随仓库提供的第三方依赖 |
 
-发布由 `modloader-<版本>` 标签触发。CI 构建原生加载器、Bootstrap 与 CLI，SDK 和内置模组使用 `dist/` 中的预编译产物；内置清单统一读取 `tools/builtin-mods.json`。更新 SDK 或模组后先运行打包脚本，将 DLL 与同次构建的 PDB 一起更新并提交。
+仓库自带全部构建输入：SDK、内置模组与测试在编译期需要的游戏程序集放在 `refs/game/`，因此 `git clone` 之后无需本地提取目录、也无需任何预编译产物即可构建。游戏更新后运行 `tools/fetch-game-refs.ps1` 可整组刷新这些程序集。
+
+发布由 `modloader-<版本>` 标签触发。CI 从源码构建原生加载器、Bootstrap、SDK、全部内置模组与 CLI，运行测试，再用 `tools/stage-modloader-dist.ps1` 组装 `dist/modloader/` 分发布局并打包；内置清单统一读取 `tools/builtin-mods.json`。`tools/package-modloader.ps1` 复刻同一套步骤，打 tag 前可先在本地验证。
 
 Release 提供加载器包、SDK 工具包及独立默认皮肤包，加载器与工具包均有版本化名称和固定下载名称。**先发布 CesiumLoader，再发布 Toys**，确保 Toys 内嵌最新加载器。部署包细节见 [发布包布局](docs/发布包布局.md)。
 

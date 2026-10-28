@@ -18,14 +18,23 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\loader\CesiumLoader.SDK\CesiumLoader.SDK.csproj" />
+    <!-- DistributionAbiTests 会检查实际分发的 CardSkinMod.dll; 这里只用于保证它先被构建,
+         不引用它的输出(ReferenceOutputAssembly=false), 免得 mod 的游戏引用混进测试程序集。 -->
+    <ProjectReference Include="..\..\mods\CardSkinMod\CardSkinMod.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 游戏热更程序集的位置由 Directory.Build.props 统一定义, 供 ABI 测试读取枚举常量 -->
+    <AssemblyMetadata Include="GameRuntimeAssemblyPath" Value="$(GameRefsDir)AstralParty.Runtime.dll" />
   </ItemGroup>
 
   <ItemGroup>
     <!-- CameraState / InputService 用到 Vector3 / Quaternion / Color / KeyCode:
          必须复制到测试输出目录, 否则 net8.0 测试进程运行时加载不到。
-         路径深度与 CesiumLoader.SDK.csproj 一致(4 级回到仓库根, 再进 extracted_dlls)。 -->
+         路径由仓库根的 Directory.Build.props 统一定义($(GameRefsDir) → refs/game/)。 -->
     <Reference Include="UnityEngine.CoreModule">
-      <HintPath>..\..\..\..\extracted_dlls\UnityEngine.CoreModule.dll</HintPath>
+      <HintPath>$(GameRefsDir)UnityEngine.CoreModule.dll</HintPath>
       <Private>true</Private>
     </Reference>
     <!-- UniTask: SDK 的异步生命周期(ModBase.RunAsync / UniTaskVoid)引用它。
@@ -35,7 +44,7 @@
          相关的 FindType 测试全部拿不到类型。游戏内 UniTask 一定存在, 所以这纯粹是
          测试环境需要补齐的依赖。 -->
     <Reference Include="UniTask">
-      <HintPath>..\..\..\..\extracted_dlls\UniTask.dll</HintPath>
+      <HintPath>$(GameRefsDir)UniTask.dll</HintPath>
       <Private>true</Private>
     </Reference>
   </ItemGroup>

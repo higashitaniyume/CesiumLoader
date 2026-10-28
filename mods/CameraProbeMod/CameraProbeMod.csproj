@@ -18,7 +18,7 @@
   <ItemGroup>
     <!-- UnityEngine.CoreModule: Camera / KeyCode / Vector3 等 -->
     <Reference Include="UnityEngine.CoreModule">
-      <HintPath>..\..\..\..\extracted_dlls\UnityEngine.CoreModule.dll</HintPath>
+      <HintPath>$(GameRefsDir)UnityEngine.CoreModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>

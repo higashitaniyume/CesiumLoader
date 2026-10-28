@@ -12,11 +12,11 @@
   <ItemGroup>
     <ProjectReference Include="..\..\loader\CesiumLoader.SDK\CesiumLoader.SDK.csproj" />
     <Reference Include="AstralParty.Runtime">
-      <HintPath>..\..\..\..\extracted_dlls\AstralParty.Runtime.dll</HintPath>
+      <HintPath>$(GameRefsDir)AstralParty.Runtime.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="UnityEngine.CoreModule">
-      <HintPath>..\..\..\..\extracted_dlls\UnityEngine.CoreModule.dll</HintPath>
+      <HintPath>$(GameRefsDir)UnityEngine.CoreModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>

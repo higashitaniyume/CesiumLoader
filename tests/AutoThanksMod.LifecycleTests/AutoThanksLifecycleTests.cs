@@ -45,7 +45,6 @@ public sealed class AutoThanksLifecycleTests
         public void Initialize()
         {
             Mod.OnInitialize();
-            Set("_nextConfigRead", long.MaxValue);
         }
         public object Get(string name) => typeof(AutoThanks).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic).GetValue(Mod);
         public void Set(string name, object value) => typeof(AutoThanks).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic).SetValue(Mod, value);
@@ -56,8 +55,9 @@ public sealed class AutoThanksLifecycleTests
         }
         public void Configure(string key, object value)
         {
+            // 配置热重载走 SDK 的 OnConfigChanged 回调(不再由 mod 在 OnUpdate 里轮询读取配置)
             Mod.Config.Set(key, value);
-            Set("_nextConfigRead", 0L);
+            Mod.OnConfigChanged();
         }
         public static SayPhraseNotifyS2C Notice(int type = 3) => new()
         {

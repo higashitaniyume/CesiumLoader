@@ -1,0 +1,13 @@
+{
+  "description": "编译期引用用的游戏程序集清单。tools/fetch-game-refs.ps1 读写这个文件；改动 refs/game 下的 DLL 后一起提交。",
+  "baseline": "工作区记录的 3.3.0 / Unity 2022 基线提取目录",
+  "updatedAt": "2026-10-28",
+  "assemblies": {
+    "AstralParty.Runtime.dll": "7aa7ee1350d038caddbc74d20ad662c10f8c97cda07109d70b3a30c8a2e5643d",
+    "Google.Protobuf.Runtime.dll": "54ea0f7e7afa73beeb1c70cf867f70cfe26fcbf1095d70a440a6188f20c1af43",
+    "UniTask.dll": "01d900c18b4d8c639260a339b15e92fb4c6848c1b48627619f372bbf06a67823",
+    "Unity.Addressables.dll": "70fd4438f534e4ffb22aa82e6941ebcb7ff44ff23e522e73870d6ab251811634",
+    "Unity.ResourceManager.dll": "f832ab6af0bc1a93b5883ad7f717e8f8d03d6adf254c8efaf0e969f3367afcbb",
+    "UnityEngine.CoreModule.dll": "2fe31d172eaac6a40a76d1605377620d496343894d48961eba3efb0342b413d9"
+  }
+}

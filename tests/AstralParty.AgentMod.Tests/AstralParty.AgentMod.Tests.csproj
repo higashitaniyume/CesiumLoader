@@ -44,11 +44,11 @@
     <!-- 与 CesiumLoader.SDK.Tests 同样的补齐: SDK 程序集里有引用 UniTask / UnityEngine 的类型,
          测试进程加载 SDK 程序集时需要能解析它们。 -->
     <Reference Include="UnityEngine.CoreModule">
-      <HintPath>..\..\..\..\extracted_dlls\UnityEngine.CoreModule.dll</HintPath>
+      <HintPath>$(GameRefsDir)UnityEngine.CoreModule.dll</HintPath>
       <Private>true</Private>
     </Reference>
     <Reference Include="UniTask">
-      <HintPath>..\..\..\..\extracted_dlls\UniTask.dll</HintPath>
+      <HintPath>$(GameRefsDir)UniTask.dll</HintPath>
       <Private>true</Private>
     </Reference>
   </ItemGroup>

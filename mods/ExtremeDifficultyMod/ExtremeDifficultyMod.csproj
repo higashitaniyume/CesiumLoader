@@ -17,17 +17,17 @@
     <!-- 游戏热更程序集: StaticConfigure / MapConfigure / MapMapLevelConfigure(Item) /
          FixMapMapLevelConfigureItem / GameLogicManager / RoomInfo 都在这里 -->
     <Reference Include="AstralParty.Runtime">
-      <HintPath>..\..\..\..\extracted_dlls\AstralParty.Runtime.dll</HintPath>
+      <HintPath>$(GameRefsDir)AstralParty.Runtime.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <!-- Google.Protobuf: Timestamp / MapField / RepeatedField -->
     <Reference Include="Google.Protobuf.Runtime">
-      <HintPath>..\..\..\..\extracted_dlls\Google.Protobuf.Runtime.dll</HintPath>
+      <HintPath>$(GameRefsDir)Google.Protobuf.Runtime.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <!-- UnityEngine.CoreModule: Scene / LoadSceneMode -->
     <Reference Include="UnityEngine.CoreModule">
-      <HintPath>..\..\..\..\extracted_dlls\UnityEngine.CoreModule.dll</HintPath>
+      <HintPath>$(GameRefsDir)UnityEngine.CoreModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>
