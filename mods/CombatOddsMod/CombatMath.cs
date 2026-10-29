@@ -314,7 +314,7 @@ namespace CombatOddsMod
         // 关键结论(反编译 465 条 Buff 说明, buffcat 工具逐条提取):
         //   · "受到伤害/受到的伤害 ±N" 只有下表这些 buff 携带; 攻击力加成(如狂暴+3攻、逆鳞+2攻)
         //     一般已并入服务器下发的 BattleRole.Atk, 故本表【只取受伤侧的 ±N】, 不重复加攻。
-        //   · 标记(10006)= 每层受伤+1, 玩家与怪物通用, 是最常见、用户点名的"标记—受到伤害+1"。
+        //   · 标记(10006)= 受到伤害+1（固定，不按层数叠加）；层数是剩余持续/消耗次数。
         //   · 卡牌【狂暴】(卡 20008 → buff 2000801)= 每层攻+3、受伤+1, 可叠多层。
         //   · 免疫类(护盾 1071101 下次-99、深度改造 10331101 受伤降为0)按"这一击伤害归零"处理。
         //   · 语境限定类(精准打击只吃【轨道轰炸】、渊蚀印记只吃魔渊触须)【不进】普通投牌结算,
@@ -444,7 +444,7 @@ namespace CombatOddsMod
             void Add(BuffDamageEffect e) { t[e.BuffId] = e; }
 
             // —— 易伤(受到伤害+) ——
-            Add(new BuffDamageEffect(10006,   "标记",     +1, true,  true,  false, "每层受到伤害+1(玩家/怪物通用)"));
+            Add(new BuffDamageEffect(10006,   "标记",     +1, false, true,  false, "被标记目标受到伤害+1; 层数只影响持续时间", layerScoped: true));
             Add(new BuffDamageEffect(2000801, "狂暴",     +1, true,  true,  false, "卡牌狂暴: 每层攻击+3、受到伤害+1"));
             Add(new BuffDamageEffect(1140101, "宿命回响", +1, false, true,  false, "蓝海晴PVP: 受到伤害+1, 2回合"));
             Add(new BuffDamageEffect(1140102, "虚弱印记", +1, false, true,  false, "蓝海晴PVE: 怪物受到伤害+1, 2回合"));

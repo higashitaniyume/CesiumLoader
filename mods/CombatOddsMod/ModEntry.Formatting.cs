@@ -62,7 +62,7 @@ namespace CombatOddsMod
             var names = new List<string>();
             foreach (var a in applied)
             {
-                // a 形如 "标记x2 +2" / "狂暴 +1"; 只取名字部分。
+                // a 形如 "标记 +1" / "狂暴 +1"; 只取名字部分。
                 int sp = a.IndexOf(' ');
                 names.Add(sp > 0 ? a.Substring(0, sp) : a);
                 if (names.Count >= 2) break;

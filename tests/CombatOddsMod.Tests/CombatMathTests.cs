@@ -408,19 +408,21 @@ namespace CombatOddsMod.Tests
             Assert.True(t.ContainsKey(10006), "应含标记 10006");
             Assert.True(t.ContainsKey(2000801), "应含卡牌狂暴 2000801");
             Assert.Equal(1, t[10006].PerUnit);
-            Assert.True(t[10006].PerLayer);
+            Assert.False(t[10006].PerLayer);
+            Assert.True(t[10006].LayerScoped);
             Assert.True(t[10006].GeneralCombat);
             Assert.Equal(1, t[2000801].PerUnit);
             Assert.True(t[2000801].PerLayer);
         }
 
         [Fact]
-        public void EvaluateTargetBuffs_MarkStacks_PerLayer()
+        public void EvaluateTargetBuffs_MarkLayers_AreNotPerLayerDamage()
         {
             var t = CombatMath.DefaultBuffTable();
-            var buffs = new[] { new CombatMath.TargetBuff(10006, 3) }; // 标记 3 层
+            // 标记层数是持续时间/消耗次数，不是每层 +1 伤害。
+            var buffs = new[] { new CombatMath.TargetBuff(10006, 3) };
             var adj = CombatMath.EvaluateTargetBuffs(buffs, t);
-            Assert.Equal(3, adj.Delta);            // 每层 +1 × 3
+            Assert.Equal(1, adj.Delta);
             Assert.False(adj.Immune);
             Assert.Single(adj.Applied);
         }
@@ -431,7 +433,7 @@ namespace CombatOddsMod.Tests
             var list = CombatMath.WithMarkLayers(
                 new[] { new CombatMath.TargetBuff(10551101, 1) }, 2); // 稳定中枢 1 层 + 标记 2 层
             var adj = CombatMath.EvaluateTargetBuffs(list, CombatMath.DefaultBuffTable());
-            Assert.Equal(1, adj.Delta); // 标记 +2, 稳定中枢 -1
+            Assert.Equal(0, adj.Delta); // 标记固定 +1, 稳定中枢 -1
         }
 
         [Fact]
@@ -461,11 +463,11 @@ namespace CombatOddsMod.Tests
             var t = CombatMath.DefaultBuffTable();
             var buffs = new[]
             {
-                new CombatMath.TargetBuff(10006, 2),   // 标记 x2 => +2
+                new CombatMath.TargetBuff(10006, 2),   // 标记 x2 => 固定 +1
                 new CombatMath.TargetBuff(2000801, 3), // 狂暴 x3 => +3
             };
             var adj = CombatMath.EvaluateTargetBuffs(buffs, t);
-            Assert.Equal(5, adj.Delta);
+            Assert.Equal(4, adj.Delta);
         }
 
         [Fact]
