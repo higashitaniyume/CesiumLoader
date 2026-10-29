@@ -108,6 +108,7 @@ namespace CombatOddsMod
                     _cfg.DodgeKeepsBaseDefense = c.GetBool("DodgeKeepsBaseDefense", d.DodgeKeepsBaseDefense);
                     _cfg.ColorHighlight        = c.GetBool("ColorHighlight", d.ColorHighlight);
                     _cfg.ShowBuffBreakdown     = c.GetBool("ShowBuffBreakdown", d.ShowBuffBreakdown);
+                    _cfg.ShowMosesDodge        = c.GetBool("ShowMosesDodge", d.ShowMosesDodge);
                     _cfg.InGameOverlay         = c.GetBool("InGameOverlay", d.InGameOverlay);
                     _cfg.OverlayFontScale      = c.GetDouble("OverlayFontScale", d.OverlayFontScale);
                     _cfg.OverlayAnchor         = c.GetString("OverlayAnchor", d.OverlayAnchor);
@@ -476,6 +477,30 @@ namespace CombatOddsMod
                     int initDef = SafeInt(() => def.InitDef);
                     int maxDef = SafeInt(() => def.MaxDef);
 
+                    // 摩西 PVE 被动【精密技巧】: 每层使闪避最小骰点 +1。层数从目标 buff 读取,
+                    // 队友/观战对象的摩西同样适用(ShowForOthers 控制是否显示别人的战斗)。
+                    // 有层数时显示骰面范围; 0 层时也显示一行, 避免看起来像功能没生效。
+                    // 只在能看到 1251201 这个 PVE buff 时显示: PVP 摩西的被动不同, 不套用。
+                    int mosesStacks = 0;
+                    bool mosesHasPrecision = false;
+                    string mosesLine = null;
+                    if (_cfg.ShowMosesDodge && SafeInt(() => def.HeroId) == CombatMath.MosesHeroId)
+                    {
+                        var mosesBuffs = TargetBuffsOf(def.PlayerId);
+                        mosesStacks = CombatMath.MosesDodgeStacks(CombatMath.MosesHeroId, mosesBuffs);
+                        for (int i = 0; i < mosesBuffs.Count; i++)
+                        {
+                            if (mosesBuffs[i].BuffId != CombatMath.PrecisionBuffId) continue;
+                            mosesHasPrecision = true;
+                            break;
+                        }
+                        if (mosesStacks > 0)
+                            mosesLine = "🔫 精密技巧×" + mosesStacks + " → 闪避骰 " + (mosesStacks + 1) + "~" + JudgeFaces();
+                        else if (mosesHasPrecision)
+                            mosesLine = "🔫 精密技巧×0（无闪避加成）";
+                    }
+                    int dodgeMinPoint = mosesStacks > 0 ? mosesStacks + 1 : 0;
+
                     // 防御 = MinDef..MaxDef 的范围随机值 + 一颗判定骰。
                     int flat; int[] dice;
                     CombatMath.RangeWithJudgeDice(SafeInt(() => def.MinDef), maxDef, out flat, out dice, JudgeFaces());
@@ -484,21 +509,25 @@ namespace CombatOddsMod
                     {
                         var d = CombatMath.Defend(finalAtk, hp, flat, dice, 1, dmgAdjust, targetImmune, dmgCap);
                         int dodgeFailDmg = _cfg.DodgeKeepsBaseDefense ? Math.Max(1, finalAtk - initDef) : Math.Max(1, finalAtk);
-                        var dodge = CombatMath.Dodge(finalAtk, hp, atkPoint, JudgeFaces(), dodgeFailDmg, dmgAdjust, targetImmune, dmgCap);
+                        var dodge = CombatMath.Dodge(finalAtk, hp, atkPoint, JudgeFaces(), dodgeFailDmg, dmgAdjust, targetImmune, dmgCap, dodgeMinPoint);
+                        bool dodgeSure = dodge.SuccessProb >= 1.0 - 1e-9;
 
                         bool defBetter = d.KnockdownProb < dodge.KnockdownProb - 1e-4;
                         bool dodgeBetter = d.KnockdownProb > dodge.KnockdownProb + 1e-4;
 
                         // 第 1 行: 一眼看懂的大字结论(带颜色)。
                         if (defBetter) sb.Append(Big(C("🛡 该防御", Blue)));
-                        else if (dodgeBetter) sb.Append(Big(C("💨 该闪避", Green)));
+                        else if (dodgeBetter) sb.Append(Big(C(dodgeSure ? "💨 必闪" : "💨 该闪避", Green)));
                         else sb.Append(Big(C("⚖ 防闪都行", Gray)));
 
                         // 第 2 行: 两个被击倒率, 推荐项加 ★, 颜色按危险度。
                         sb.Append('\n').Append("🛡防 ").Append(KnockChip(d.KnockdownProb, defBetter))
                           .Append("    💨闪 ").Append(KnockChip(dodge.KnockdownProb, dodgeBetter));
 
-                        // 第 3 行: 情境小字。
+                        // 第 3 行: 摩西的精技巧层数与闪避骰范围(单行, 只在有层数时出现)。
+                        if (mosesLine != null) sb.Append('\n').Append(C(mosesLine, Yellow));
+
+                        // 第 4 行: 情境小字。
                         sb.Append('\n').Append(Dim(defName + " " + hp + "血  <  " + atkName + " " + finalAtk + "攻"));
                     }
                     else
@@ -508,6 +537,7 @@ namespace CombatOddsMod
                         var d = CombatMath.Defend(atkMax, hp, flat, dice, 1, dmgAdjust, targetImmune, dmgCap);
                         sb.Append(Big(C("⏳ 等对方投骰", Gray)));
                         sb.Append('\n').Append(Dim(defName + " " + hp + "血, 最坏被击倒 " + PctPlain(d.KnockdownProb)));
+                        if (mosesLine != null) sb.Append('\n').Append(C(mosesLine, Yellow));
                     }
                     if (SafeBool(() => def.CanNotFightBack)) sb.Append('\n').Append(Dim("(本场无法反击)"));
                 }
@@ -696,6 +726,7 @@ namespace CombatOddsMod
         private static List<CombatMath.TargetBuff> TargetBuffsOf(long targetId)
         {
             var list = new List<CombatMath.TargetBuff>();
+            bool found = false;
             try
             {
                 // 与游戏 buff 界面同源的实时容器优先; 容器存在但为空 = 真的没有 buff(不能回退旧快照)。
@@ -708,31 +739,69 @@ namespace CombatOddsMod
                         if (b == null) continue;
                         list.Add(new CombatMath.TargetBuff(b.BuffId, b.Progress));
                     }
-                    return list;
-                }
-
-                var hero = Players.Get(targetId)?.player?.Hero ?? RoomHeroOf(targetId);
-                if (hero?.Buffs != null)
-                {
-                    foreach (var pair in hero.Buffs)
-                    {
-                        var b = pair.Value;
-                        if (b == null) continue;
-                        list.Add(new CombatMath.TargetBuff(b.BuffId, b.Progress));
-                    }
-                    return list;
+                    found = true;
                 }
             }
             catch { }
 
-            // 两条路都取不到时退回 SDK 列表(层数已兜底 ≥1)。
+            if (!found)
+            {
+                try
+                {
+                    var hero = Players.Get(targetId)?.player?.Hero ?? RoomHeroOf(targetId);
+                    if (hero?.Buffs != null)
+                    {
+                        foreach (var pair in hero.Buffs)
+                        {
+                            var b = pair.Value;
+                            if (b == null) continue;
+                            list.Add(new CombatMath.TargetBuff(b.BuffId, b.Progress));
+                        }
+                        found = true;
+                    }
+                }
+                catch { }
+            }
+
+            if (!found)
+            {
+                // 两条路都取不到时退回 SDK 列表(层数已兜底 ≥1)。
+                try
+                {
+                    foreach (var b in Players.BuffsOf(targetId))
+                        list.Add(new CombatMath.TargetBuff(b.BuffId, b.Layers));
+                }
+                catch { }
+            }
+
+            // 标记(10006)不在 buff 容器里, 单独从 MarkNum/MarkCount 补一条。
+            return CombatMath.WithMarkLayers(list, MarkLayersOf(targetId));
+        }
+
+        /// <summary>
+        /// 标记层数。游戏把标记存在 <c>Hero.MarkNum</c>, 战斗内实时值为
+        /// <c>BattleProperty.MarkCount</c>(buff 10006 的进度), 不在 buffContainer / Hero.Buffs 里。
+        /// 读不到时返回 0, 不影响其他 buff。
+        /// </summary>
+        private static int MarkLayersOf(long unitId)
+        {
             try
             {
-                foreach (var b in Players.BuffsOf(targetId))
-                    list.Add(new CombatMath.TargetBuff(b.BuffId, b.Layers));
+                var pd = Players.Get(unitId);
+                if (pd?.Property?.MarkCount != null)
+                {
+                    // 实时属性是权威值：标记被消耗后这里是 0，不能再回退到 Hero.MarkNum 的旧快照。
+                    return Math.Max(0, pd.Property.MarkCount.property.Value);
+                }
             }
             catch { }
-            return list;
+            try
+            {
+                var hero = Players.Get(unitId)?.player?.Hero ?? RoomHeroOf(unitId);
+                if (hero != null) return Math.Max(0, hero.MarkNum);
+            }
+            catch { }
+            return 0;
         }
 
         /// <summary>不在战斗玩家表里的单位(怪物/观战对象)从房间花名册取 Hero 快照。</summary>

@@ -17,6 +17,8 @@ namespace CombatOddsMod
         public bool ColorHighlight = true;
         /// <summary>是否显示目标身上"受到伤害±"类 buff 明细(标记/狂暴/护盾/蓝海晴印记等), 并把它们计入伤害与击倒率。</summary>
         public bool ShowBuffBreakdown = true;
+        /// <summary>玩摩西时, 把【精密技巧】层数对应的闪避最小骰点计入闪避概率, 并在战斗面板显示闪避骰范围。</summary>
+        public bool ShowMosesDodge = true;
         /// <summary>是否把读数以 FairyGUI 覆盖层显示在 FightWindow 上(真机验证; 失败自动降级到控制台/通知)。</summary>
         public bool InGameOverlay = true;
         /// <summary>覆盖层字号缩放(1.0=默认已放大版; 想更大调 1.2~1.5, 想更小调 0.8)。</summary>

@@ -24,6 +24,15 @@ namespace CombatOddsMod
         /// <summary>游戏判定骰面数(Global.GAME_JUDGE_DICE_LIMIT), 闪避判定用。</summary>
         public const int DefaultJudgeDiceFaces = 6;
 
+        /// <summary>摩西(枪匠)的角色 id。</summary>
+        public const int MosesHeroId = 125;
+
+        /// <summary>摩西 PVE 被动【精密技巧】的 buff id。</summary>
+        public const int PrecisionBuffId = 1251201;
+
+        /// <summary>【精密技巧】最高层数。</summary>
+        public const int MaxPrecisionStacks = 3;
+
         // =====================================================================
         // 骰池分布
         // =====================================================================
@@ -144,23 +153,29 @@ namespace CombatOddsMod
         /// finalAttack = 攻方最终攻击; damageOnFail = 闪避失败时承受的伤害
         /// (通常为全额攻击，保底 1；由调用方按是否保留基础防御决定，特殊 buff 随后修正)。
         /// maxDamage 为单次受伤上限(0 = 无上限)。
+        /// minPoint 为闪避骰的最小点数(默认 1)。摩西【精密技巧】把下限抬到 层数+1 时，
+        /// 骰面变为 [minPoint, judgeFaces]；minPoint=1 与旧版完全一致。
         /// </summary>
         public static DodgeResult Dodge(int finalAttack, int defenderHp, int attackerPoint,
-            int judgeFaces = DefaultJudgeDiceFaces, int damageOnFail = -1, int damageAdjust = 0, bool immune = false, int maxDamage = 0)
+            int judgeFaces = DefaultJudgeDiceFaces, int damageOnFail = -1, int damageAdjust = 0, bool immune = false, int maxDamage = 0,
+            int minPoint = 0)
         {
             if (judgeFaces <= 0) judgeFaces = DefaultJudgeDiceFaces;
+            if (minPoint < 1) minPoint = 1;
+            if (minPoint > judgeFaces) minPoint = judgeFaces;
             if (damageOnFail < 0) damageOnFail = Math.Max(1, finalAttack); // 默认: 失败承受全额攻击(未防御)
 
+            int diceSpan = judgeFaces - minPoint + 1;
             // 闪避成功的点数个数: 一般需掷 > attackerPoint; 当 attackerPoint 达到上限时需 = 上限。
             int successFaces;
             if (attackerPoint >= judgeFaces)
                 successFaces = 1;                       // 只有掷出上限本身才算(">="上限)
             else
-                successFaces = judgeFaces - attackerPoint; // 掷出 (point, faces] 的点数
+                successFaces = judgeFaces - Math.Max(attackerPoint, minPoint - 1); // 掷出 (point, faces] 的点数
             if (successFaces < 0) successFaces = 0;
-            if (successFaces > judgeFaces) successFaces = judgeFaces;
+            if (successFaces > diceSpan) successFaces = diceSpan;
 
-            double success = (double)successFaces / judgeFaces;
+            double success = (double)successFaces / diceSpan;
             double fail = 1.0 - success;
 
             int dmgFail = Math.Max(1, damageOnFail);
@@ -293,6 +308,8 @@ namespace CombatOddsMod
         // 针对【目标身上实时可读的 buff】: 服务器把每个单位的激活 buff 放在
         //   Hero.Buffs(MapField<long,Buff>), 每条含 BuffId + Progress(层数)。mod 通过
         //   Players.BuffsOf(unitId) 读到后, 用下表把"受到伤害±N"类效果换算成对该单位这一击的伤害修正。
+        //   标记(10006)例外: 它不在 buff 列表里, 而是 Hero.MarkNum / BattleProperty.MarkCount,
+        //   由 WithMarkLayers 补成合成条目后再走同一张表。
         //
         // 关键结论(反编译 465 条 Buff 说明, buffcat 工具逐条提取):
         //   · "受到伤害/受到的伤害 ±N" 只有下表这些 buff 携带; 攻击力加成(如狂暴+3攻、逆鳞+2攻)
@@ -469,6 +486,40 @@ namespace CombatOddsMod
             /// <summary>buff 的原始进度(游戏里图标上的层数)。0 = 已归零: 效果结束, 图标可能仍在。</summary>
             public int Layers;
             public TargetBuff(int id, int layers) { BuffId = id; Layers = layers; }
+        }
+
+        /// <summary>
+        /// 标记(10006)在游戏里不是普通 Buff: 它存放在 <c>Hero.MarkNum</c> /
+        /// <c>BattleProperty.MarkCount</c>, <c>buffContainer</c> 与 <c>Hero.Buffs</c> 里都没有
+        /// 10006 条目。把层数补成一条合成条目, 供受伤修正与"带标记"判定使用; 已有 10006 时不重复。
+        /// </summary>
+        public static List<TargetBuff> WithMarkLayers(IEnumerable<TargetBuff> buffs, int markLayers)
+        {
+            var list = buffs != null ? new List<TargetBuff>(buffs) : new List<TargetBuff>();
+            if (markLayers <= 0) return list;
+
+            for (int i = 0; i < list.Count; i++)
+            {
+                if (list[i].BuffId != 10006) continue;
+                if (list[i].Layers < markLayers)
+                    list[i] = new TargetBuff(10006, markLayers);
+                return list;
+            }
+            list.Add(new TargetBuff(10006, markLayers));
+            return list;
+        }
+
+        /// <summary>
+        /// 摩西 PVE 被动【精密技巧】的当前层数: 只认 heroId=125 且 buff 1251201,
+        /// 层数限制在 0..3。每层使闪避最小骰点 +1, 所以闪避骰下限 = 层数 + 1。
+        /// </summary>
+        public static int MosesDodgeStacks(int heroId, IEnumerable<TargetBuff> buffs)
+        {
+            if (heroId != MosesHeroId || buffs == null) return 0;
+            int layers = 0;
+            foreach (var b in buffs)
+                if (b.BuffId == PrecisionBuffId && b.Layers > layers) layers = b.Layers;
+            return layers > MaxPrecisionStacks ? MaxPrecisionStacks : layers;
         }
 
         /// <summary>对目标 buff 求值后的伤害修正。</summary>

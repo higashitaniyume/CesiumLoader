@@ -217,6 +217,44 @@ namespace CombatOddsMod.Tests
         }
 
         [Fact]
+        public void Dodge_MosesPrecisionStacks_RaiseMinPoint()
+        {
+            // 2 层【精密技巧】: 闪避骰只有 3..6 (4 面)。
+            Assert.Equal(1.0, CombatMath.Dodge(10, 6, 2, minPoint: 3).SuccessProb, 12);
+            Assert.Equal(3.0 / 4.0, CombatMath.Dodge(10, 6, 3, minPoint: 3).SuccessProb, 12);
+            Assert.Equal(2.0 / 4.0, CombatMath.Dodge(10, 6, 4, minPoint: 3).SuccessProb, 12);
+            Assert.Equal(1.0 / 4.0, CombatMath.Dodge(10, 6, 5, minPoint: 3).SuccessProb, 12);
+            Assert.Equal(1.0 / 4.0, CombatMath.Dodge(10, 6, 6, minPoint: 3).SuccessProb, 12);
+
+            // 3 层: 闪避骰只有 4..6 (3 面)。
+            Assert.Equal(1.0, CombatMath.Dodge(10, 6, 3, minPoint: 4).SuccessProb, 12);
+            Assert.Equal(2.0 / 3.0, CombatMath.Dodge(10, 6, 4, minPoint: 4).SuccessProb, 12);
+            Assert.Equal(1.0 / 3.0, CombatMath.Dodge(10, 6, 5, minPoint: 4).SuccessProb, 12);
+            Assert.Equal(1.0 / 3.0, CombatMath.Dodge(10, 6, 6, minPoint: 4).SuccessProb, 12);
+
+            // 下限超过骰面上限时按上限处理，必闪。
+            Assert.Equal(1.0, CombatMath.Dodge(10, 6, 0, minPoint: 9).SuccessProb, 12);
+        }
+
+        [Fact]
+        public void Dodge_MinPoint_KnockdownUsesFailProbability()
+        {
+            var r = CombatMath.Dodge(10, 6, 5, damageOnFail: 10, minPoint: 4);
+            Assert.Equal(1.0 / 3.0, r.SuccessProb, 12);
+            Assert.Equal(2.0 / 3.0, r.KnockdownProb, 12);
+        }
+
+        [Fact]
+        public void MosesDodgeStacks_OnlyMosesPrecisionBuff()
+        {
+            var buffs = new[] { new CombatMath.TargetBuff(1251201, 2) };
+            Assert.Equal(2, CombatMath.MosesDodgeStacks(125, buffs));
+            Assert.Equal(0, CombatMath.MosesDodgeStacks(124, buffs));       // 非摩西
+            Assert.Equal(0, CombatMath.MosesDodgeStacks(125, new[] { new CombatMath.TargetBuff(1251102, 3) })); // PVP 被动
+            Assert.Equal(3, CombatMath.MosesDodgeStacks(125, new[] { new CombatMath.TargetBuff(1251201, 9) })); // 封顶 3
+        }
+
+        [Fact]
         public void Dodge_FailDamageBelowHp_NoKnockdown()
         {
             // 失败只受 2 点, 血 6 => 不会被击倒, 但仍有期望伤害。
@@ -314,6 +352,20 @@ namespace CombatOddsMod.Tests
         }
 
         [Fact]
+        public void Attack_TwoHpWithOneMark_IsGuaranteedKill()
+        {
+            // 标记 +1 是"受伤侧"修正: 即使攻击低于防御, 命中保底 1 + 标记 1 = 2,
+            // 对 2 血目标必定击倒; 缺了这条标记会显示成 <100%。
+            var marked = CombatMath.Attack(1, null, 10, null, targetHp: 2, minChip: 1, damageAdjust: 1);
+            Assert.Equal(1.0, marked.KillProb, 12);
+            Assert.Equal(2, marked.MinDamage);
+
+            var unmarked = CombatMath.Attack(1, null, 10, null, targetHp: 2, minChip: 1, damageAdjust: 0);
+            Assert.Equal(0.0, unmarked.KillProb, 12);
+            Assert.Equal(1, unmarked.MinDamage);
+        }
+
+        [Fact]
         public void Attack_WithDice_KillProbBetweenZeroAndOne()
         {
             // 我攻 = 5 + d6 (6..11), 目标防固定 4, 目标血 5 => 伤害 = max(0, 攻-4) = 2..7。
@@ -371,6 +423,36 @@ namespace CombatOddsMod.Tests
             Assert.Equal(3, adj.Delta);            // 每层 +1 × 3
             Assert.False(adj.Immune);
             Assert.Single(adj.Applied);
+        }
+
+        [Fact]
+        public void WithMarkLayers_AppendsSyntheticMark()
+        {
+            var list = CombatMath.WithMarkLayers(
+                new[] { new CombatMath.TargetBuff(10551101, 1) }, 2); // 稳定中枢 1 层 + 标记 2 层
+            var adj = CombatMath.EvaluateTargetBuffs(list, CombatMath.DefaultBuffTable());
+            Assert.Equal(1, adj.Delta); // 标记 +2, 稳定中枢 -1
+        }
+
+        [Fact]
+        public void WithMarkLayers_DoesNotDuplicateExistingMark()
+        {
+            var list = CombatMath.WithMarkLayers(
+                new[] { new CombatMath.TargetBuff(10006, 3) }, 2);
+            int count = 0, layers = -1;
+            foreach (var b in list)
+                if (b.BuffId == 10006) { count++; layers = b.Layers; }
+            Assert.Equal(1, count);
+            Assert.Equal(3, layers); // 保留原有更高层数
+        }
+
+        [Fact]
+        public void WithMarkLayers_ZeroOrNegativeMark_LeavesListUnchanged()
+        {
+            var list = CombatMath.WithMarkLayers(
+                new[] { new CombatMath.TargetBuff(10551101, 1) }, 0);
+            Assert.Single(list);
+            Assert.Equal(10551101, list[0].BuffId);
         }
 
         [Fact]

@@ -44,6 +44,11 @@ namespace CombatOddsMod
                 "顯示目標身上的受傷/減傷 Buff 明細，並計入結果。",
                 "Show incoming damage/reduction buffs on the target and include them in the result.",
                 "対象のダメージ増減バフを表示し、計算に含めます。"));
+            changed |= config.Describe("ShowMosesDodge", D(
+                "玩摩西时，把【精密技巧】层数对应的闪避最小骰点计入闪避概率，并在战斗面板显示闪避骰范围。",
+                "玩摩西時，把【精密技巧】層數對應的閃避最小骰點計入閃避機率，並在戰鬥面板顯示閃避骰範圍。",
+                "When playing Moses, include the dodge-die floor from Precision Technique in the dodge odds and show the dodge range on the battle panel.",
+                "モーゼス使用時、【精密無比】のスタック数による回避ダイスの下限を回避確率に反映し、戦闘パネルに回避ダイスの範囲を表示します。"));
             changed |= config.Describe("InGameOverlay", D(
                 "在战斗窗口显示 FairyGUI 覆盖层；失败时自动降级到通知或控制台。",
                 "在戰鬥視窗顯示 FairyGUI 覆蓋層；失敗時自動降級到通知或主控台。",

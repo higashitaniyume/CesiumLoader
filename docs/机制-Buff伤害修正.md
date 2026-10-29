@@ -128,8 +128,12 @@ BattleUpdate(Battle b)                        // 攻=b.Attacker, 守=b.Defender�
 ```
 
 - `Layers` 取 `Buff.Progress`。SDK 的 `Players.BuffsOf` 为了展示会把进度 0 兜底成 1 层；
-  本 mod 不走这个兜底，直接从实时容器 / `Hero.Buffs` 读原始 `Progress`。标记也可用
-  `BattleProperty.MarkCount.Value`（=`Hero.MarkNum`）交叉校验。
+  本 mod 不走这个兜底，直接从实时容器 / `Hero.Buffs` 读原始 `Progress`。
+- **标记（`10006`）不是 buff 条目**：游戏把它存在 `Hero.MarkNum`，战斗内实时值是
+  `BattleProperty.MarkCount.property.Value`（buff 图标只是用这个属性渲染）。
+  `buffContainer._buffDict` / `Hero.Buffs` 里没有 `10006`，所以 mod 在读完 buff 列表后
+  用 `CombatMath.WithMarkLayers` 补一条合成条目；否则"2 血 + 标记"会被算成伤害保底 1、
+  击杀率不足 100%。邦妮的"带标记怪物 +3 攻"也走同一条合成条目。
 - **进度 0 ≠ 1 层**：`IsShowIconProgressZero` 为 true 的 buff 在层数归零后仍会留在
   `Hero.Buffs`/`_buffDict` 里（图标照常显示），但效果已经结束。按层数生效的修正与免疫
   （如幽魂暗巷科学怪人的【深度改造】：初始 3 层，每击倒一个人工生命体移除 1 层）必须在
