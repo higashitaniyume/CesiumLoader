@@ -192,6 +192,7 @@ jobs:
             "SpeedHackMod"   = "变速, Delete 开关 / Alt+= Alt+- 调倍率"
             "TurnFocusMod"   = "回合置前, 轮到自己时把游戏窗口切到前台, 可选播放提示音"
             "HideHudMod"     = "隐藏HUD, 长按反引号(Tab 上方)隐藏战斗 HUD, 可改为按一下切换"
+            "QuickChatPlusMod" = "快捷短语扩展, 战斗内快捷短语补全并支持滚动"
           }
           $modList = @()
           foreach ($mod in $builtInMods) {
