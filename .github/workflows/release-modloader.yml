@@ -195,6 +195,7 @@ jobs:
             "QuickChatPlusMod" = "快捷短语扩展, 战斗内快捷短语补全并支持滚动"
             "HomeBottomBarMod" = "主页底栏调整, 隐藏公告 / 设置左移 / 右侧增加退出按钮"
             "UnlockFrameRateMod" = "帧率解锁, 帧率列表追加 144/165/240/360/不限帧"
+            "LanguageUnlockMod" = "多语言支持, 国服启用英文/日文/繁中语言选项"
           }
           $modList = @()
           foreach ($mod in $builtInMods) {
@@ -209,6 +210,10 @@ jobs:
             # 随 mod 分发的素材(提示音等): 整目录镜像, 与 tools/stage-modloader-dist.ps1 一致
             if (Test-Path "dist/modloader/AstralParty_ModLoader/mods/$mod/sounds") {
               Copy-Item "dist/modloader/AstralParty_ModLoader/mods/$mod/sounds" "staging/AstralParty_ModLoader/mods/$mod/sounds" -Recurse -Force
+            }
+            # 随 mod 分发的数据包(多语言数据等): 同样整目录镜像
+            if (Test-Path "dist/modloader/AstralParty_ModLoader/mods/$mod/data") {
+              Copy-Item "dist/modloader/AstralParty_ModLoader/mods/$mod/data" "staging/AstralParty_ModLoader/mods/$mod/data" -Recurse -Force
             }
             $label = if ($modNames.ContainsKey($mod)) { $modNames[$mod] } else { $mod }
             $modList += "mods\$mod ($label)"
@@ -229,6 +234,7 @@ jobs:
             "HideHudMod 默认启用: 长按反引号键（Tab 上方）隐藏战斗 HUD，松开恢复；可在 config.json 改成按一下切换，并分别开关手牌、怪物信息、头像与其他 HUD。",
             "HomeBottomBarMod 默认启用: 主页底栏隐藏公告，设置左移一位，最右侧增加退出按钮（沿用游戏原生退出确认）。",
             "UnlockFrameRateMod 默认启用: 在游戏「设置→屏幕→帧率」列表追加 144/165/240/360/不限帧 选项，选中后由游戏自己应用。",
+            "LanguageUnlockMod 默认启用: 国服在游戏「设置→屏幕→语言」里启用英文 / 日文 / 繁中；国际服原生支持，模组自动不介入。",
             "- AstralParty_ModLoader\logs\          → 日志目录",
             "解压到游戏 exe 目录即完成安装。",
             "默认皮肤单独提供: cesium-default-skins.zip，解压到同一游戏 exe 目录。",
@@ -264,6 +270,11 @@ jobs:
             if (Test-Path "staging/AstralParty_ModLoader/mods/$mod/sounds") {
               $files += Get-ChildItem "staging/AstralParty_ModLoader/mods/$mod/sounds" -File |
                 ForEach-Object { "staging/AstralParty_ModLoader/mods/$mod/sounds/$($_.Name)" }
+            }
+            # 随 mod 分发的数据包(多语言数据等)
+            if (Test-Path "staging/AstralParty_ModLoader/mods/$mod/data") {
+              $files += Get-ChildItem "staging/AstralParty_ModLoader/mods/$mod/data" -File |
+                ForEach-Object { "staging/AstralParty_ModLoader/mods/$mod/data/$($_.Name)" }
             }
           }
           # 只收真正落盘的文件: 上一步可能已经警告过某个符号缺失, 而清单必须与 zip 内容严格一致

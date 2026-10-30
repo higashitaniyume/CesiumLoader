@@ -221,6 +221,18 @@ foreach ($mod in $Mods)
             Deploy-File -From $asset.FullName -To (Join-Path $dest $asset.Name)
         }
     }
+
+    # 随 mod 分发的数据包(多语言数据等): 同样整目录镜像
+    $dataDir = Join-Path $from 'data'
+    if (Test-Path -LiteralPath $dataDir)
+    {
+        $dest = Join-Path $loaderDir "mods\$mod\data"
+        if (-not (Test-Path -LiteralPath $dest)) { New-Item -ItemType Directory -Path $dest -Force | Out-Null }
+        foreach ($asset in Get-ChildItem -LiteralPath $dataDir -File)
+        {
+            Deploy-File -From $asset.FullName -To (Join-Path $dest $asset.Name)
+        }
+    }
 }
 
 # 6) 日志目录

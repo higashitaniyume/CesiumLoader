@@ -84,6 +84,12 @@ foreach ($mod in $builtInMods)
         if (Test-Path -LiteralPath "$modDir\sounds") { Remove-Item -LiteralPath "$modDir\sounds" -Recurse -Force }
         Copy-Item -LiteralPath "mods\$mod\sounds" -Destination "$modDir\sounds" -Recurse -Force
     }
+    # 随 mod 分发的数据包(多语言数据等): 同样整目录镜像。
+    if (Test-Path -LiteralPath "mods\$mod\data")
+    {
+        if (Test-Path -LiteralPath "$modDir\data") { Remove-Item -LiteralPath "$modDir\data" -Recurse -Force }
+        Copy-Item -LiteralPath "mods\$mod\data" -Destination "$modDir\data" -Recurse -Force
+    }
     $staged += "AstralParty_ModLoader/mods/$mod/$mod.dll"
 }
 

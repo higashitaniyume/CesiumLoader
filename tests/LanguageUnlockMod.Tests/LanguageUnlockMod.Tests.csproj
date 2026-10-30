@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 语言枚举与 STR 配置表是游戏热更程序集里的 protobuf 类型; 复制到测试输出, 离线也能实例化 -->
+    <Reference Include="AstralParty.Runtime">
+      <HintPath>$(GameRefsDir)AstralParty.Runtime.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Google.Protobuf.Runtime">
+      <HintPath>$(GameRefsDir)Google.Protobuf.Runtime.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\mods\LanguageUnlockMod\LanguageCodes.cs" Link="LanguageCodes.cs" />
+    <Compile Include="..\..\mods\LanguageUnlockMod\LanguagePack.cs" Link="LanguagePack.cs" />
+    <Compile Include="..\..\mods\LanguageUnlockMod\Reflective.cs" Link="Reflective.cs" />
+    <Compile Include="..\..\mods\LanguageUnlockMod\StrTableMerge.cs" Link="StrTableMerge.cs" />
+    <Compile Include="..\..\mods\LanguageUnlockMod\BannerImageAlign.cs" Link="BannerImageAlign.cs" />
+  </ItemGroup>
+
+</Project>
+
