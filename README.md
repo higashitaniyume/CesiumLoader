@@ -71,6 +71,7 @@ winget install Hiynet.AstralParty.Toys
 | [TurnFocusMod](mods/TurnFocusMod/README.md) | 轮到自己回合、选择筹码、战斗出牌、攻击或防御、匹配成功，或开房后有人发准备消息时把游戏窗口切到前台，可选播放提示音 |
 | [QuickChatPlusMod](mods/QuickChatPlusMod/README.md) | 战斗内快捷短语面板补入房间等待、结算与其他模式的既有短语，可按类别与模式开关 |
 | [HomeBottomBarMod](mods/HomeBottomBarMod/README.md) | 主页底栏隐藏公告，设置左移一位，最右侧增加退出按钮 |
+| [UnlockFrameRateMod](mods/UnlockFrameRateMod/README.md) | 在游戏帧率列表追加 144/165/240/360/不限帧 选项，选中后由游戏自己应用 |
 
 内置模组的 `config.json` 带简中、繁中、英文、日文配置说明，Toys 会按界面语言显示；第三方模组可按 [配置与元数据](docs/SDK-配置与元数据.md) 用 `ConfigDoc` 提供说明。
 
@@ -124,7 +125,7 @@ cesium verify <mods_dir>
 
 模组使用 `netstandard2.0`，以 `{ModId}.ModEntry.Main()` 为入口。脚手架自动生成 SDK 引用、程序集元数据与分发布局；直接使用游戏类型时，将所需热更程序集放入项目 `refs/`。
 
-SDK 提供生命周期、游戏事件、玩家数据、相机、输入、UI、场景、协程、诊断与游戏操作 API。加载器依据元数据检查 SDK 版本与依赖，并按依赖顺序加载；单个模组失败会记录日志，不中断其他模组。能力声明用于展示提示，不限制 API 调用。
+SDK 提供生命周期、游戏事件、玩家数据、相机、输入、UI、场景、协程、诊断、帧率与游戏操作 API。加载器依据元数据检查 SDK 版本与依赖，并按依赖顺序加载；单个模组失败会记录日志，不中断其他模组。能力声明用于展示提示，不限制 API 调用。
 
 **HybridCLR 热更侧受 AOT 裁剪约束，无法任意使用 P/Invoke 或完整 .NET BCL。** 开发前请阅读平台约束与 Unity 调用说明。
 
@@ -134,7 +135,7 @@ SDK 提供生命周期、游戏事件、玩家数据、相机、输入、UI、�
 | [配置与元数据](docs/SDK-配置与元数据.md) · [能力声明](docs/SDK-能力声明与元数据.md) | 配置、版本、依赖与能力描述 |
 | [事件](docs/SDK-事件.md) · [玩家与名字](docs/SDK-玩家与名字.md) | 对局事件与数据查询 |
 | [相机](docs/SDK-相机.md) · [输入与光标](docs/SDK-输入与光标.md) · [UI](docs/SDK-UI.md) | 交互与覆盖层 |
-| [场景与协程](docs/SDK-场景与协程.md) · [变速](docs/SDK-变速.md) | 场景、调度与时间控制 |
+| [场景与协程](docs/SDK-场景与协程.md) · [变速](docs/SDK-变速.md) · [帧率](docs/SDK-帧率.md) | 场景、调度、时间与画面帧率控制 |
 | [窗口焦点](docs/SDK-窗口焦点.md) | 把游戏窗口切到前台并播放提示音的文件通道 |
 | [操作](docs/SDK-操作.md) · [诊断](docs/SDK-诊断.md) | 游戏指令与排障 |
 | [Unity 调用与 ECall 隔离](docs/SDK-Unity调用与ECall隔离.md) · [平台约束](docs/平台约束-第三方库与AOT裁剪.md) | 运行时兼容要求 |

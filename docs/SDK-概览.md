@@ -23,7 +23,7 @@ SDK 类型全部位于 `CesiumLoader.SDK` 根命名空间之下的子命名空�
 | `CesiumLoader.SDK.UserInterface` | `UiService`、UI data types |
 | `CesiumLoader.SDK.Events` | UI, scene, camera and update events |
 | `CesiumLoader.SDK.Diagnostics` | diagnostic snapshots and collectors |
-| `CesiumLoader.SDK.Engine` | Unity object, transform and time helpers |
+| `CesiumLoader.SDK.Engine` | Unity object, transform, time and frame-rate helpers |
 | `CesiumLoader.SDK.Runtime` | main-thread and runtime assembly services |
 | `CesiumLoader.SDK.Internals` | loader-only implementation details |
 
@@ -126,6 +126,7 @@ public static class ModEntry
 | [SDK-玩家与名字.md](SDK-玩家与名字.md) | Players 玩家数据 / Names 名字解析 |
 | [SDK-操作.md](SDK-操作.md) | GameActions 投骰/移动/用牌/选择 (⚠ 声明后可操作, 工具/加载器会警告) |
 | [SDK-变速.md](SDK-变速.md) | SpeedHack 游戏变速 (加载器内置功能, 也可 mod 编程控制) |
+| [SDK-帧率.md](SDK-帧率.md) | UnityFrameRate 帧率与垂直同步 (运行时修改, 不写游戏存档) |
 | [SDK-窗口焦点.md](SDK-窗口焦点.md) | WindowFocus 把游戏窗口切到前台 (加载器文件通道) |
 | [SDK-能力声明与元数据.md](SDK-能力声明与元数据.md) | 能力声明(仅警告) / sidecar 元数据 / 依赖解析 / 版本协商 |
 | [SDK-配置与元数据.md](SDK-配置与元数据.md) | SdkConfig JSON 配置 / ModManifest 元数据 / SdkManifest sidecar |

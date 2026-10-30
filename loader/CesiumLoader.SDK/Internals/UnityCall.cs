@@ -154,6 +154,40 @@ namespace CesiumLoader.SDK.Internals
         internal static int ScreenHeight() { try { return RawScreenHeight(); } catch { return 0; } }
 
         // =====================================================================
+        // Quality / 帧率
+        // =====================================================================
+
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        internal static int RawTargetFrameRate() { return Application.targetFrameRate; }
+
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        internal static void RawSetTargetFrameRate(int value) { Application.targetFrameRate = value; }
+
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        internal static int RawVSyncCount() { return QualitySettings.vSyncCount; }
+
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        internal static void RawSetVSyncCount(int value) { QualitySettings.vSyncCount = value; }
+
+        /// <summary>目标帧率; 不可用时 0。</summary>
+        internal static int TargetFrameRate() { try { return RawTargetFrameRate(); } catch { return 0; } }
+
+        /// <summary>设置目标帧率; 不可用时返回 false。</summary>
+        internal static bool SetTargetFrameRate(int value)
+        {
+            try { RawSetTargetFrameRate(value); return true; } catch { return false; }
+        }
+
+        /// <summary>垂直同步计数; 不可用时 0。</summary>
+        internal static int VSyncCount() { try { return RawVSyncCount(); } catch { return 0; } }
+
+        /// <summary>设置垂直同步计数; 不可用时返回 false。</summary>
+        internal static bool SetVSyncCount(int value)
+        {
+            try { RawSetVSyncCount(value); return true; } catch { return false; }
+        }
+
+        // =====================================================================
         // Camera(只放"取相机实例"这类 ECall; 属性读写见下)
         // =====================================================================
 
