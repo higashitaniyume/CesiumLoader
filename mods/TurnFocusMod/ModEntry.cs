@@ -16,14 +16,16 @@ namespace TurnFocusMod
     }
 
     /// <summary>
-    /// 轮到自己需要操作, 匹配成功, 或匹配成功开房后队友喊"准备"时, 通过加载器的
-    /// 窗口置前通道把游戏窗口切到前台。
+    /// 轮到自己需要操作, 匹配成功, 收到房间邀请, 或匹配成功开房后队友喊"准备"时,
+    /// 通过加载器的窗口置前通道把游戏窗口切到前台。
     ///
-    /// 四个触发来源:
+    /// 五个触发来源:
     ///   - 行动开始通知(ActionStartNotifyS2C, 1026): 轮到自己的回合;
     ///   - SDK 原始动作流(RawAction): 5211 筹码三选一 / 5047 战斗询问 /
     ///     5035 战斗出牌 / 5037 攻击骰 / 5039 防御选择;
     ///   - 匹配成功(MatchSuccessS2C, 5226): 匹配成功时立即提醒;
+    ///   - 房间邀请(FriendInviteNotifyS2C): 好友邀请你加入房间, 游戏在右上角
+    ///     显示邀请按钮时提醒;
     ///   - 房间快捷消息(RoomShortChatS2C / MatchTeamChatS2C): 匹配成功开房后,
     ///     其他玩家发送"准备"之类的消息。
     /// 回合相关只处理 PlayerId 为自己的动作; 房间消息只处理别人发的消息;
@@ -57,10 +59,16 @@ namespace TurnFocusMod
         private MatchSuccessS2CRPC.OnMatchSuccessS2CServerDelegate _matchSuccessWrapped;
         private int _matchSuccessInstalls;
 
+        private FriendInviteNotifyS2CRPC _inviteRpc;
+        private FriendInviteNotifyS2CRPC.OnFriendInviteNotifyS2CServerDelegate _inviteOriginal;
+        private FriendInviteNotifyS2CRPC.OnFriendInviteNotifyS2CServerDelegate _inviteWrapped;
+        private int _inviteInstalls;
+
         private Core.Net.RPCMsgManager _rpcManager;
 
         private bool _enabled = true;
         private bool _roomChatFocus = true;
+        private bool _roomInviteFocus = true;
         private bool _matchSuccessFocus = true;
         private bool _soundEnabled = true;
         private string _soundFile = DefaultSoundFile;
@@ -80,11 +88,11 @@ namespace TurnFocusMod
         internal const string DefaultSoundFile = "";
 
         public override string Name { get { return "回合置前"; } }
-        public override string Version { get { return "1.5.0"; } }
+        public override string Version { get { return "1.6.0"; } }
         public override string Author { get { return "CesiumLoader"; } }
         public override string Description
         {
-            get { return "轮到自己回合、选择筹码、战斗出牌、攻击或防御、匹配成功，或开房后有人发准备消息时把游戏窗口切换到前台；配置了提示音时同时播放，窗口已在前台时不打扰。"; }
+            get { return "轮到自己回合、选择筹码、战斗出牌、攻击或防御、匹配成功、收到房间邀请，或开房后有人发准备消息时把游戏窗口切换到前台；配置了提示音时同时播放，窗口已在前台时不打扰。"; }
         }
 
         public override void OnInitialize()
@@ -98,6 +106,7 @@ namespace TurnFocusMod
                 if (!config.Has("enabled")) { config.Set("enabled", true); added = true; }
                 if (!config.Has("cooldownSeconds")) { config.Set("cooldownSeconds", TurnFocusPolicy.DefaultCooldownSeconds); added = true; }
                 if (!config.Has("focusOnRoomChat")) { config.Set("focusOnRoomChat", true); added = true; }
+                if (!config.Has("focusOnRoomInvite")) { config.Set("focusOnRoomInvite", true); added = true; }
                 if (!config.Has("focusOnMatchSuccess")) { config.Set("focusOnMatchSuccess", true); added = true; }
                 if (!config.Has("soundEnabled")) { config.Set("soundEnabled", true); added = true; }
                 if (!config.Has("soundFile")) { config.Set("soundFile", DefaultSoundFile); added = true; }
@@ -110,7 +119,7 @@ namespace TurnFocusMod
             _subscribed = true;
             Context?.RegisterCleanup(Unhook);
 
-            Log.Info("已启用回合置前：轮到自己回合、选择筹码、战斗出牌、攻击或防御、匹配成功，或开房后有人发准备消息时切换到前台。");
+            Log.Info("已启用回合置前：轮到自己回合、选择筹码、战斗出牌、攻击或防御、匹配成功、收到房间邀请，或开房后有人发准备消息时切换到前台。");
             if (!WindowFocus.IsAvailable)
                 Log.Warn("窗口置前通道不可用：" + (WindowFocus.UnavailableReason ?? "原因未知"));
             else if (!_soundEnabled)
@@ -175,6 +184,7 @@ namespace TurnFocusMod
                 + ", cooldownSeconds=" + _cooldownSeconds
                 + ", focusOnMatchSuccess=" + _matchSuccessFocus
                 + ", focusOnRoomChat=" + _roomChatFocus
+                + ", focusOnRoomInvite=" + _roomInviteFocus
                 + ", soundEnabled=" + _soundEnabled
                 + ", soundFile=" + (_soundFile ?? "")
                 + ", alwaysPlaySound=" + _alwaysPlaySound);
@@ -187,6 +197,7 @@ namespace TurnFocusMod
 
             _enabled = config.GetBool("enabled", true);
             _roomChatFocus = config.GetBool("focusOnRoomChat", true);
+            _roomInviteFocus = config.GetBool("focusOnRoomInvite", true);
             _matchSuccessFocus = config.GetBool("focusOnMatchSuccess", true);
             _soundEnabled = config.GetBool("soundEnabled", true);
             _soundFile = config.GetString("soundFile", DefaultSoundFile);
@@ -318,6 +329,37 @@ namespace TurnFocusMod
         }
 
         /// <summary>
+        /// 房间邀请触发点: 好友邀请你加入房间时, 游戏在主界面右上角显示邀请按钮。
+        /// 按游戏同一套条件判断按钮会不会出现(不在房间里、不在组队里), 避免在
+        /// 按钮本就不显示的场合抢焦点; 回放、观战不触发。
+        /// </summary>
+        private void FocusForRoomInvite()
+        {
+            if (!_enabled || !_roomInviteFocus) return;
+
+            try
+            {
+                var gm = SimpleSingletonProvider<GameLogicManager>.inst;
+                long now = DateTime.UtcNow.Ticks;
+                bool available = WindowFocus.IsAvailable;
+                if (!TurnFocusPolicy.ShouldRequestRoomInvite(_enabled, _roomInviteFocus,
+                        CanShowInviteSignal(gm), IsReplayOrWatcher(gm), available, now,
+                        _lastRequestTicks, _cooldownSeconds))
+                {
+                    if (!available) WarnThrottled("窗口置前通道不可用：" + (WindowFocus.UnavailableReason ?? "原因未知"));
+                    return;
+                }
+
+                _lastRequestTicks = now;
+                RequestFocus("收到房间邀请");
+            }
+            catch (Exception e)
+            {
+                WarnThrottled("窗口置前执行失败：" + e.Message);
+            }
+        }
+
+        /// <summary>
         /// 房间快捷消息触发点: 匹配成功开房后, 其他玩家发"准备"之类的消息时置前。
         /// 只处理房间等待阶段, 战斗内的快捷消息不抢焦点。
         /// </summary>
@@ -399,8 +441,8 @@ namespace TurnFocusMod
         }
 
         /// <summary>
-        /// 包装匹配成功与房间快捷消息的 RPC。它们由游戏在登录后常驻注册, 不依赖战斗,
-        /// 所以不能用 IsLiveBattle 作为安装条件; 用 hasInstance 避免提前创建 NetManager。
+        /// 包装匹配成功、房间邀请与房间快捷消息的 RPC。它们由游戏在登录后常驻注册,
+        /// 不依赖战斗, 所以不能用 IsLiveBattle 作为安装条件; 用 hasInstance 避免提前创建 NetManager。
         /// 房间消息有两种通道: 组队匹配成功后走 MatchTeamChatS2C, 否则走 RoomShortChatS2C。
         /// </summary>
         private void EnsureRoomHooks()
@@ -422,6 +464,7 @@ namespace TurnFocusMod
                     _roomChatInstalls = 0;
                     _teamChatInstalls = 0;
                     _matchSuccessInstalls = 0;
+                    _inviteInstalls = 0;
                     _roomChatRpc = null;
                     _roomChatOriginal = null;
                     _roomChatWrapped = null;
@@ -431,16 +474,54 @@ namespace TurnFocusMod
                     _matchSuccessRpc = null;
                     _matchSuccessOriginal = null;
                     _matchSuccessWrapped = null;
+                    _inviteRpc = null;
+                    _inviteOriginal = null;
+                    _inviteWrapped = null;
                 }
 
                 HookMatchSuccess(net);
+                HookFriendInviteNotify(net);
                 HookRoomShortChat(net);
                 HookMatchTeamChat(net);
             }
             catch (Exception e)
             {
-                WarnThrottled("安装房间快捷消息挂钩失败：" + e.Message);
+                WarnThrottled("安装房间通知挂钩失败：" + e.Message);
             }
+        }
+
+        /// <summary>
+        /// 包装房间邀请通知(FriendInviteNotifyS2C)。好友邀请你加入房间时游戏会下发
+        /// 这条消息并在右上角显示邀请按钮; 这里只关心"收到了邀请"这件事, 消息体本身
+        /// 没有字段。游戏自己的处理照常执行。
+        /// </summary>
+        private void HookFriendInviteNotify(Core.Net.RPCMsgManager net)
+        {
+            var rpc = net.FriendInviteNotifyS2C;
+            if (rpc == null) return;
+
+            var current = rpc.OnFriendInviteNotifyS2CServerCallBackAsync;
+            if (current == null || ReferenceEquals(current, _inviteWrapped)) return;
+            if (_inviteInstalls >= MaxRoomHookInstallsPerLogin) return;
+
+            var original = current;
+            FriendInviteNotifyS2CRPC.OnFriendInviteNotifyS2CServerDelegate wrapped =
+                (model, errId, isDispatch) =>
+                {
+                    try
+                    {
+                        if (errId == 0 && model != null) FocusForRoomInvite();
+                    }
+                    catch (Exception e) { WarnThrottled("处理房间邀请失败：" + e.Message); }
+                    return original(model, errId, isDispatch);
+                };
+
+            _inviteInstalls++;
+            _inviteRpc = rpc;
+            _inviteOriginal = original;
+            _inviteWrapped = wrapped;
+            rpc.OnFriendInviteNotifyS2CServerCallBackAsync = wrapped;
+            Log.Info("已挂钩房间邀请通知。");
         }
 
         private void HookMatchSuccess(Core.Net.RPCMsgManager net)
@@ -554,6 +635,26 @@ namespace TurnFocusMod
             return state == RoomStateType.WAIT || state == RoomStateType.CHOICE || state == RoomStateType.READY;
         }
 
+        /// <summary>
+        /// 房间邀请的右上角按钮会不会出现: 游戏只在不在房间、也不在组队时显示,
+        /// 这里按同样的条件判断, 免得按钮本就不显示时还把窗口拉到前台。
+        /// </summary>
+        private static bool CanShowInviteSignal(GameLogicManager gm)
+        {
+            if (gm == null) return false;
+
+            try { if (gm.room != null && gm.room.IsInRoom) return false; }
+            catch { }
+
+            try
+            {
+                if (gm.match != null && gm.match.matchData != null && gm.match.matchData.InTeam) return false;
+            }
+            catch { }
+
+            return true;
+        }
+
         private static bool IsReplayOrWatcher(GameLogicManager gm)
         {
             try { if (gm.replay != null && gm.replay.Session != null && gm.replay.Session.IsReplay) return true; }
@@ -608,6 +709,13 @@ namespace TurnFocusMod
             }
             catch { }
 
+            try
+            {
+                if (_inviteRpc != null && ReferenceEquals(_inviteRpc.OnFriendInviteNotifyS2CServerCallBackAsync, _inviteWrapped))
+                    _inviteRpc.OnFriendInviteNotifyS2CServerCallBackAsync = _inviteOriginal;
+            }
+            catch { }
+
             _rpc = null;
             _original = null;
             _wrapped = null;
@@ -620,6 +728,9 @@ namespace TurnFocusMod
             _matchSuccessRpc = null;
             _matchSuccessOriginal = null;
             _matchSuccessWrapped = null;
+            _inviteRpc = null;
+            _inviteOriginal = null;
+            _inviteWrapped = null;
             _rpcManager = null;
         }
     }

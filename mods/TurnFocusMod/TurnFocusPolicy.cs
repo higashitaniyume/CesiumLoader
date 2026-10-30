@@ -110,6 +110,22 @@ namespace TurnFocusMod
         }
 
         /// <summary>
+        /// 收到房间邀请(FriendInviteNotifyS2C, 游戏在右上角显示邀请按钮)时的置前判定:
+        /// 房间邀请开关打开 / 邀请按钮确实会出现(不在房间、不在组队) / 不在回放或观战 /
+        /// 加载器通道可用 / 冷却已过。
+        /// </summary>
+        internal static bool ShouldRequestRoomInvite(bool enabled, bool roomInviteFocus,
+            bool inviteSignalVisible, bool replayOrWatcher, bool channelAvailable, long nowTicks,
+            long lastRequestTicks, int cooldownSeconds)
+        {
+            if (!enabled || !roomInviteFocus) return false;
+            if (!inviteSignalVisible) return false;
+            if (replayOrWatcher) return false;
+            if (!channelAvailable) return false;
+            return CooldownElapsed(nowTicks, lastRequestTicks, cooldownSeconds);
+        }
+
+        /// <summary>
         /// 匹配成功(MatchSuccessS2C)时的置前判定: 开关打开 / 不在回放或观战 /
         /// 加载器通道可用 / 冷却已过。匹配成功本身就是要提醒的事件, 不依赖房间状态,
         /// 因为这条通知到达时游戏才刚创建房间。

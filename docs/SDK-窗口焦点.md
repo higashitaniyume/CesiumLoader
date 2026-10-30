@@ -65,4 +65,4 @@ if (WindowFocus.SupportsSound && WindowFocus.RequestForeground(@"C:\...\sounds\y
 
 ## 相关模组
 
-内置 [TurnFocusMod](../mods/TurnFocusMod/README.md) 在轮到自己回合、选择筹码、战斗出牌、攻击骰或防御选择时调用本接口；匹配成功时，以及匹配成功开房后其他玩家发送“准备”等快捷消息时也会调用。提示音默认关闭，模组配置里指定 `soundFile` 后才播放。
+内置 [TurnFocusMod](../mods/TurnFocusMod/README.md) 在轮到自己回合、选择筹码、战斗出牌、攻击骰或防御选择时调用本接口；匹配成功时、收到房间邀请（右上角出现邀请按钮）时，以及匹配成功开房后其他玩家发送“准备”等快捷消息时也会调用。提示音默认关闭，模组配置里指定 `soundFile` 后才播放。

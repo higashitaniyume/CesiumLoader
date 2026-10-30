@@ -24,6 +24,11 @@ namespace TurnFocusMod
                 "開房後有人傳送準備訊息時切到遊戲視窗。",
                 "Focus the game window when someone sends a ready message in your room.",
                 "ルームで準備メッセージが届いたときにゲームウィンドウへ切り替えます。"));
+            changed |= config.Describe("focusOnRoomInvite", D(
+                "收到房间邀请（右上角出现邀请按钮）时切到游戏窗口。",
+                "收到房間邀請（右上角出現邀請按鈕）時切到遊戲視窗。",
+                "Focus the game window when you receive a room invitation (the invite button in the top-right corner).",
+                "ルーム招待を受け取ったとき（右上に招待ボタンが表示されたとき）にゲームウィンドウへ切り替えます。"));
             changed |= config.Describe("focusOnMatchSuccess", D(
                 "匹配成功时切到游戏窗口。",
                 "配對成功時切到遊戲視窗。",

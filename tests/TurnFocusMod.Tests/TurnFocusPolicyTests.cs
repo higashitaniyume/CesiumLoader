@@ -125,5 +125,26 @@ namespace TurnFocusMod.Tests
             Assert.False(TurnFocusPolicy.ShouldRequestMatchSuccess(true, true, false, true, now + 1, now, 3));
             Assert.True(TurnFocusPolicy.ShouldRequestMatchSuccess(true, true, false, true, now + 3 * Second, now, 3));
         }
+
+        [Fact]
+        public void ShouldRequestRoomInvite_RequiresEveryCondition()
+        {
+            long now = 10 * Second;
+            Assert.True(TurnFocusPolicy.ShouldRequestRoomInvite(true, true, true, false, true, now, 0, 3));
+
+            Assert.False(TurnFocusPolicy.ShouldRequestRoomInvite(false, true, true, false, true, now, 0, 3));
+            Assert.False(TurnFocusPolicy.ShouldRequestRoomInvite(true, false, true, false, true, now, 0, 3));
+            Assert.False(TurnFocusPolicy.ShouldRequestRoomInvite(true, true, false, false, true, now, 0, 3));
+            Assert.False(TurnFocusPolicy.ShouldRequestRoomInvite(true, true, true, true, true, now, 0, 3));
+            Assert.False(TurnFocusPolicy.ShouldRequestRoomInvite(true, true, true, false, false, now, 0, 3));
+        }
+
+        [Fact]
+        public void ShouldRequestRoomInvite_RespectsCooldown()
+        {
+            long last = 10 * Second;
+            Assert.False(TurnFocusPolicy.ShouldRequestRoomInvite(true, true, true, false, true, last + 1, last, 3));
+            Assert.True(TurnFocusPolicy.ShouldRequestRoomInvite(true, true, true, false, true, last + 3 * Second, last, 3));
+        }
     }
 }
