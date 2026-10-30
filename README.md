@@ -70,6 +70,7 @@ winget install Hiynet.AstralParty.Toys
 | [HideHudMod](docs/mod-HideHudMod.md) | 长按反引号键（Tab 上方）隐藏战斗 HUD，可改为按一下切换；手牌、怪物信息、头像与其他 HUD 可分别开关 |
 | [TurnFocusMod](mods/TurnFocusMod/README.md) | 轮到自己回合、选择筹码、战斗出牌、攻击或防御、匹配成功，或开房后有人发准备消息时把游戏窗口切到前台，可选播放提示音 |
 | [QuickChatPlusMod](mods/QuickChatPlusMod/README.md) | 战斗内快捷短语面板补入房间等待、结算与其他模式的既有短语，可按类别与模式开关 |
+| [HomeBottomBarMod](mods/HomeBottomBarMod/README.md) | 主页底栏隐藏公告，设置左移一位，最右侧增加退出按钮 |
 
 内置模组的 `config.json` 带简中、繁中、英文、日文配置说明，Toys 会按界面语言显示；第三方模组可按 [配置与元数据](docs/SDK-配置与元数据.md) 用 `ConfigDoc` 提供说明。
 

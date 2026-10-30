@@ -204,6 +204,7 @@ $readme = @(
     "TurnFocusMod 在轮到自己/匹配成功时置前; 默认不播放提示音, 在 mods\TurnFocusMod\config.json 的 soundFile 填 WAV 路径后启用(随包附带示例音 sounds\your-turn.wav)。",
     "AutoThanksMod 默认启用: 队友治疗、给牌或转星币给你时自动发送原版感谢短语，默认 2 秒真实时间冷却。",
     "HideHudMod 默认启用: 长按反引号键（Tab 上方）隐藏战斗 HUD，松开恢复；可在 config.json 改成按一下切换，并分别开关手牌、怪物信息、头像与其他 HUD。",
+    "HomeBottomBarMod 默认启用: 主页底栏隐藏公告，设置左移一位，最右侧增加退出按钮（沿用游戏原生退出确认）。",
     "- AstralParty_ModLoader\mods\{ModId}\{ModId}.json → mod sidecar (id/版本/权限/enabled 开关/依赖)",
     "- *.pdb (version.pdb / bootstrap / sdk / mods\*) → 符号文件(与同名 dll 配对):",
     "  把 dll 的崩溃栈还原成文件行号用, 删掉不影响运行; 调试器会自动在 dll 同目录找它。",
