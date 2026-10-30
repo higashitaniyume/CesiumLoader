@@ -33,6 +33,8 @@ namespace LanguageUnlockMod
         private int _suppress;
         private int _framesSinceHook;
         private DateTime _dialogUntil = DateTime.MinValue;
+        private bool _loggedLayout;
+        private readonly System.Collections.Generic.List<GObject> _rowObjects = new System.Collections.Generic.List<GObject>();
 
         internal SettingsUi(LanguageController owner, ModLogger log)
         {
@@ -89,6 +91,12 @@ namespace LanguageUnlockMod
                 _combo = combo;
                 _hooked = true;
                 _framesSinceHook = 0;
+                ForceVisible(combo);
+                if (!_loggedLayout)
+                {
+                    _loggedLayout = true;
+                    DumpLayout(screen, combo);
+                }
             }
             else if (++_framesSinceHook >= 30)
             {
@@ -99,6 +107,7 @@ namespace LanguageUnlockMod
             }
 
             if (!combo.visible) combo.visible = true;
+            KeepRowVisible();
             Sync(combo);
         }
 
@@ -206,12 +215,122 @@ namespace LanguageUnlockMod
             return -1;
         }
 
+        private void ForceVisible(GComboBox combo)
+        {
+            try
+            {
+                GComponent parent = combo.parent;
+                GGroup group = combo.group;
+                if (parent != null && group != null)
+                {
+                    // 语言这一行(标题底板 + 下拉框)被编在同一个 GGroup 里, 国服的 country 控制器
+                    // 把整组隐藏。只把下拉框露出来会出现"有框没标题", 所以把同组的兄弟对象一起
+                    // 从组里移出来, 并逐个恢复 visible/alpha。
+                    var siblings = new System.Collections.Generic.List<GObject>();
+                    for (int i = 0; i < parent.numChildren; i++)
+                    {
+                        GObject child = parent.GetChildAt(i);
+                        if (child != null && ReferenceEquals(child.group, group)) siblings.Add(child);
+                    }
+
+                    for (int i = 0; i < siblings.Count; i++)
+                    {
+                        GObject child = siblings[i];
+                        parent.RemoveChild(child);
+                        parent.AddChild(child);
+                        child.visible = true;
+                        child.alpha = 1f;
+                    }
+
+                    _rowObjects.Clear();
+                    _rowObjects.AddRange(siblings);
+                    _log.Info("语言行已从隐藏分组 " + (group.name ?? "(null)") + " 移出, 对象数 " + siblings.Count);
+                }
+
+                combo.visible = true;
+                combo.alpha = 1f;
+                combo.touchable = true;
+                if (parent != null && parent.numChildren > 1)
+                {
+                    parent.SetChildIndex(combo, parent.numChildren - 1);
+                }
+            }
+            catch (Exception e)
+            {
+                _log.Warn("调整语言控件失败: " + e.Message);
+            }
+        }
+
+        private void KeepRowVisible()
+        {
+            for (int i = 0; i < _rowObjects.Count; i++)
+            {
+                GObject child = _rowObjects[i];
+                if (child == null || child.isDisposed) continue;
+                if (!child.visible) child.visible = true;
+                if (child.alpha < 1f) child.alpha = 1f;
+            }
+        }
+
         private void Reset()
         {
             _hooked = false;
             _window = null;
             _combo = null;
+            _rowObjects.Clear();
+        }
+
+        /// <summary>只打一次: 记录语言控件在画面页里的真实布局, 便于判断它为什么看不见。</summary>
+        private void DumpLayout(UISetting_Com_Screen screen, GComboBox combo)
+        {
+            try
+            {
+                var text = new System.Text.StringBuilder();
+                text.Append("画面页布局: languages=").Append(StaticConfigure.Settings == null ? -1 : StaticConfigure.Settings.Languages.Count);
+                text.Append(", current=").Append(Core.GameSettings.GetLanguagesType());
+                text.Append(", screen=").Append(screen.width).Append('x').Append(screen.height).Append(" children=").Append(screen.numChildren);
+                Controller country = screen.country;
+                if (country != null) text.Append(", country=").Append(country.selectedIndex).Append('/').Append(country.pageCount);
+                _log.Info(text.ToString());
+
+                if (combo != null)
+                {
+                    _log.Info("com_Language: name=" + (combo.name ?? "(null)")
+                              + " xy=" + combo.x + "," + combo.y
+                              + " size=" + combo.width + "x" + combo.height
+                              + " visible=" + combo.visible + " alpha=" + combo.alpha
+                              + " touchable=" + combo.touchable
+                              + " parent=" + (combo.parent == null ? "(null)" : combo.parent.name)
+                              + " group=" + (combo.group == null ? "(null)" : combo.group.name)
+                              + " index=" + (combo.parent == null ? -1 : combo.parent.GetChildIndex(combo))
+                              + " sort=" + combo.sortingOrder
+                              + " items=" + (combo.items == null ? -1 : combo.items.Length));
+                }
+
+                for (int i = 0; i < screen.numChildren; i++)
+                {
+                    GObject child = screen.GetChildAt(i);
+                    if (child == null) continue;
+                    _log.Info("  child[" + i + "] " + (child.name ?? "(null)")
+                              + " xy=" + child.x + "," + child.y
+                              + " size=" + child.width + "x" + child.height
+                              + " visible=" + child.visible + " alpha=" + child.alpha
+                              + " group=" + (child.group == null ? "(null)" : child.group.name));
+                }
+            }
+            catch (Exception e)
+            {
+                _log.Warn("布局诊断失败: " + e.Message);
+            }
         }
     }
 }
+
+
+
+
+
+
+
+
 

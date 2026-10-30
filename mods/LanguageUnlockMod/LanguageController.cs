@@ -37,7 +37,7 @@ namespace LanguageUnlockMod
         private readonly HashSet<LanguageType> _merged = new HashSet<LanguageType>();
 
         public override string Name { get { return "多语言支持"; } }
-        public override string Version { get { return "1.0.0"; } }
+        public override string Version { get { return "1.0.1"; } }
         public override string Author { get { return "CesiumLoader"; } }
 
         public override string Description
@@ -339,6 +339,7 @@ namespace LanguageUnlockMod
         }
     }
 }
+
 
 
 
