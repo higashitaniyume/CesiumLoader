@@ -26,44 +26,52 @@ namespace FreeCameraMod
     }
 
     /// <summary>
-    /// 滚轮缩放(v2.4.5 —— 旧版"F1 开关俯瞰视角"已整体重写)。
+    /// 滚轮缩放 + 左右方向键旋转地图(v2.6.0 新增旋转)。
     ///
     /// 要的行为:
     ///   1) 进游戏后<b>什么都不做</b>: 画面就是游戏自己的默认视角, 没有开关、没有自动接管;
     ///   2) <b>滚轮 = 放大/缩小, 且保持原来的视角</b>: 相机沿"当前视线方向"前后移动
     ///      (向前滚 = 拉近/放大), 朝向、俯角、滚转一律不写 —— 画面不会歪、不会变成俯视,
     ///      只是把同一个视角拉近/拉远;
-    ///   3) <b>F1(可改键) = 恢复原来的视角</b>: 立刻回到游戏自己的机位, 并把相机交还给游戏;
-    ///   4) <b>autoFollow=false(可选)</b>: 关掉游戏自带的自动跟随, 见下。
+    ///   3) <b>按住 ← / →(可改键) = 旋转地图</b>: 相机绕"当前观察点"的竖直线环绕,
+    ///      观察点始终留在画面中心, 俯角/滚转保持不变 —— 看起来就是整张棋盘在转向;
+    ///   4) <b>F1(可改键) = 恢复原来的视角</b>: 缩放偏移与旋转角一起归零,
+    ///      立刻回到游戏自己的机位, 并把相机交还给游戏;
+    ///   5) <b>autoFollow=false(可选)</b>: 关掉游戏自带的自动跟随, 见下。
     ///
     /// 为什么这么实现(本作实测约束, 详见 docs/SDK-相机.md / docs/mod-FreeCameraMod.md):
     ///   - 菜单/过渡期 Cinemachine Brain 可能在失活对象上, 靠 vcam 抢优先级不生效,
-    ///     所以滚轮缩放只有"每帧直接写主相机"可靠; 战斗内角色相机的跟随仍由 vcam 驱动;
+    ///     所以缩放/旋转只有"每帧直接写主相机"可靠; 战斗内角色相机的跟随仍由 vcam 驱动;
     ///   - 游戏自己的相机逻辑每帧都写相机, 所以我们的写入要放在 UpdateService 的
     ///     LateUpdate(实际时机 PostLateUpdate) 才不会被覆盖;
-    ///   - 游戏自己完全没用滚轮(反编译确认没有任何 "Mouse ScrollWheel" 读取), 所以滚轮是
-    ///     "白拿"的一个轴, 不会和游戏的操作打架。
+    ///   - 旋转中心取"当前 vcam 的 Follow 目标"(自由相机对象 / 角色)。游戏自己的
+    ///     GM 相机(Core.Camera.GMFreeCamera)也是绕 Follow 目标转, 所以这是本作认可的旋转方式;
+    ///   - 游戏自己用 ←/→ 读 "Horizontal" 轴做键盘平移(FreeCameraObject.HandleMoveCamera),
+    ///     按住旋转键时同一次按键也会推着自由相机往侧面走。因此 blockPanWhileRotate=true(默认)
+    ///     会把自由相机对象的位置拉回本帧开始前, 让"左右键 = 只旋转地图";
+    ///   - 游戏的拖拽/键盘平移用的是自由相机对象的<b>世界</b>轴, 而画面已经转了 yawDelta;
+    ///     不换算的话旋转后平移方向会歪同样的角度, 所以每帧把实际位移绕基准点转 yawDelta 度。
     ///
     /// 安全保证:
     ///   - 只读输入(滚轮 + 热键), 不 Capture、不拦截、不改键位;
-    ///   - 滚轮缩放只写相机位置(+ 拉远时按需抬高 farClip 防远处被裁), 不写朝向/FOV/nearClip;
+    ///   - 缩放只写相机位置; 旋转额外写朝向(yaw 加同一个角度), 俯角/滚转/FOV/nearClip 不写;
     ///   - autoFollow=false 时为锁定画面会同时写回位置和朝向(默认模式不写);
-    ///   - 每帧以"游戏本帧写下的位姿"为基准再加偏移, 所以缩放期间游戏的鼠标拖拽平移 /
-    ///     键盘平移仍然有效(一边拉远看全图, 一边照样拖地图);
-    ///   - 结束缩放(滚轮滚回原位 / 按复原键 / 切场景 / 换相机 / mod 卸载)时, 把"游戏自己的位姿"
-    ///     写回去并还原 farClip —— 绝不会把相机永久丢在缩放后的位置。
+    ///   - 每帧以"游戏本帧写下的位姿"为基准再加偏移/旋转, 所以旋转期间游戏的鼠标拖拽平移 /
+    ///     键盘平移仍然有效(一边转地图, 一边照样拖), 且方向按地图角度换算;
+    ///   - 结束接管(滚轮回原位且旋转归零 / 按复原键 / 切场景 / 换相机 / mod 卸载)时,
+    ///     把"游戏自己的位姿"写回去并还原 farClip —— 绝不会把相机永久留在改动后的状态。
     ///
     /// 配置: mods\FreeCameraMod\config.json(旧版 v2.x 的键会在启动时自动清理)
     ///   autoFollow / zoomStep / zoomInMax / zoomOutMax / invertWheel / smooth / smoothTime /
     ///   ensureFarClip / requireReadyCamera / maxReadyCameraHeight / notify /
-    ///   restoreKey / resetKey
+    ///   restoreKey / resetKey / rotateLeftKey / rotateRightKey / rotateSpeed / rotateStep /
+    ///   blockPanWhileRotate
     ///
     /// 自动跟随(autoFollow, 默认 true):
     ///   - true = 完全保持游戏原样, 角色移动时镜头照常跟着走;
     ///   - false = 锁定当前画面: 角色相机的 Follow 换成固定锚点(角色移动/换角色不带动镜头),
     ///     同时在 PostLateUpdate 把主相机位姿锁回固定值(回合开始/刷怪/演出运镜也不移动画面)。
     ///     锚点/锁定位置每个场景只取一次; 只有玩家主动拖拽/按键平移自由相机时才更新。
-    ///     配置在启动时读一次。
     /// </summary>
     public sealed class ZoomCameraController : ModBase
     {
@@ -109,6 +117,24 @@ namespace FreeCameraMod
 
         /// <summary>第二个复原键(默认 F2; 设成 None 就只认 restoreKey)。</summary>
         private KeyCode _resetKey = KeyCode.F2;
+
+        /// <summary>向左旋转地图的按键(默认 LeftArrow; 设成 None 可关掉)。</summary>
+        private KeyCode _rotateLeftKey = KeyCode.LeftArrow;
+
+        /// <summary>向右旋转地图的按键(默认 RightArrow; 设成 None 可关掉)。</summary>
+        private KeyCode _rotateRightKey = KeyCode.RightArrow;
+
+        /// <summary>按住旋转键时的旋转速度(度/秒)。</summary>
+        private float _rotateSpeed = FreeCameraMath.DefaultRotateSpeed;
+
+        /// <summary>点按一次旋转键的最小步进(度); 0 = 只保留按住连续旋转。</summary>
+        private float _rotateStep = FreeCameraMath.DefaultRotateStep;
+
+        /// <summary>反转左右方向(默认 false: → 让视点向右转; true: → 让地图向右转)。</summary>
+        private bool _invertRotate;
+
+        /// <summary>旋转时是否抵掉游戏自己的方向键平移(默认 true: 左右键只旋转, 不把地图推走)。</summary>
+        private bool _blockPanWhileRotate = true;
 
         // =====================================================================
         // 运行态
@@ -165,6 +191,44 @@ namespace FreeCameraMod
 
         /// <summary>"当前是菜单相机"的提示只记一次。</summary>
         private bool _placeholderWarned;
+
+        /// <summary>"当前没有可用主相机"的提示只记一次(按住旋转键时不要每帧刷日志)。</summary>
+        private bool _noCameraWarned;
+
+        /// <summary>"找不到旋转中心"的提示只记一次。</summary>
+        private bool _pivotWarned;
+
+        // ---- 旋转地图(左右方向键) ----
+
+        /// <summary>当前实际生效的旋转角(度): &gt;0 = 向右转(相机绕观察点顺时针), &lt;0 = 向左转。</summary>
+        private float _yawDelta;
+
+        /// <summary>按键直接累加的目标旋转角; <see cref="_yawDelta"/> 平滑逼近它。</summary>
+        private float _targetYawDelta;
+
+        /// <summary>本帧是否按住了旋转键(在 OnUpdate 里采一次, 供锁定/平移判断复用)。</summary>
+        private bool _rotateHeldNow;
+
+        /// <summary>我们是否给相机写过朝向(只有写过才需要在交还时还原)。</summary>
+        private bool _rotationWritten;
+
+        /// <summary>是否已经提示过"正在旋转地图"。</summary>
+        private bool _rotationNotified;
+
+        /// <summary>最近一次旋转用的观察点(自由相机对象 / 角色位置)。</summary>
+        private Vector3 _orbitPivot;
+
+        /// <summary>是否已有可用的旋转中心(换场景/换相机后失效)。</summary>
+        private bool _hasOrbitPivot;
+
+        /// <summary>是否正在跟踪/换算自由相机对象的位置(旋转或按住旋转键时)。</summary>
+        private bool _panTracking;
+
+        /// <summary>自由相机对象位置快照(本帧开始前的位置); 每帧位移按旋转角换算。</summary>
+        private Vector3 _panSnapshot;
+
+        /// <summary>参与换算的自由相机对象(游戏换相机后重新取)。</summary>
+        private Transform _panTarget;
 
         // =====================================================================
         // 自动跟随(仅 autoFollow=false 时使用)
@@ -255,7 +319,7 @@ namespace FreeCameraMod
 
         public override string Name { get { return "自由相机"; } }
 
-        public override string Version { get { return "2.5.0"; } }
+        public override string Version { get { return "2.6.0"; } }
 
         // =====================================================================
         // 生命周期
@@ -281,9 +345,12 @@ namespace FreeCameraMod
                 });
             }
 
-            Log.Info("自由相机(滚轮缩放)已就绪: 滚轮" + (_invertWheel ? "下" : "上") + "=拉近, 每格 " +
+            Log.Info("自由相机(滚轮缩放 + 方向键旋转)已就绪: 滚轮" + (_invertWheel ? "下" : "上") + "=拉近, 每格 " +
                      F(_zoomStep) + "m (向前上限 " + F(_zoomInMax) + "m / 向后上限 " + F(_zoomOutMax) + "m), " +
                      "平滑=" + (_smooth ? F(_smoothTime) + "s" : "关") + ", " +
+                     "旋转=" + DescribeRotateKeys() + " (" + F(_rotateSpeed) + "°/秒, 点按 " + F(_rotateStep) + "°" +
+                     (_invertRotate ? ", 反向" : "") + ")" +
+                     (_blockPanWhileRotate ? ", 旋转时抵掉游戏方向键平移" : "") + ", " +
                      _restoreKey + "=恢复原来的视角" +
                      (_resetKey != KeyCode.None && _resetKey != _restoreKey ? " (" + _resetKey + " 同效)" : "") +
                      "; 自动跟随=" + (_autoFollow ? "开(游戏原样, 锁定镜头未启用)" : "关(锁定当前镜头)") +
@@ -311,6 +378,9 @@ namespace FreeCameraMod
 
             Log.Info("自由相机配置已热重载: 滚轮" + (_invertWheel ? "下" : "上") + "=拉近, 每格 " +
                      F(_zoomStep) + "m, 向前上限 " + F(_zoomInMax) + "m / 向后上限 " + F(_zoomOutMax) + "m, " +
+                     "旋转=" + DescribeRotateKeys() + " (" + F(_rotateSpeed) + "°/秒, 点按 " + F(_rotateStep) + "°" +
+                     (_invertRotate ? ", 反向" : "") + ") " +
+                     (_blockPanWhileRotate ? "抵掉游戏方向键平移" : "保留游戏方向键平移") + ", " +
                      _restoreKey + "=恢复原来的视角");
         }
 
@@ -319,32 +389,43 @@ namespace FreeCameraMod
         {
             try
             {
+                // 左右方向键同时是游戏"键盘平移"的 Horizontal 轴, 每帧先确定一次,
+                // 后面判断"玩家是否在平移自由相机"时要把它们排除(它们只负责旋转地图)。
+                _rotateHeldNow = IsRotateHeld();
+
                 // ---- 自动跟随(autoFollow=false 时每帧维护"固定跟随锚点") ----
                 MaintainAutoFollow();
 
-                if (UiService.ShouldBlockGameInput) return;
+                if (UiService.ShouldBlockGameInput)
+                {
+                    _rotateHeldNow = false;
+                    return;
+                }
 
                 // ---- 复原键(默认 F1; 没接管时按了不做事) ----
                 if ((_restoreKey != KeyCode.None && InputService.IsKeyPressed(_restoreKey)) ||
                     (_resetKey != KeyCode.None && InputService.IsKeyPressed(_resetKey)))
                 {
-                    if (_active || _targetOffset != 0f)
+                    if (_active || _targetOffset != 0f || HasRotation)
                     {
                         // 真正处理放到 OnLateUpdate: 那一刻相机里正是"游戏本帧写下的位姿",
-                        // 复原时直接把它写回去, 不会复原到上一帧的缩放位姿。
+                        // 复原时直接把它写回去, 不会复原到上一帧的缩放/旋转位姿。
                         _restoreRequested = true;
                         _restoreReason = "按键 " + (_restoreKey != KeyCode.None ? _restoreKey.ToString() : _resetKey.ToString());
                         return;
                     }
                 }
 
-                // ---- 滚轮: 唯一的入场方式(没有任何开关) ----
+                // ---- 滚轮: 缩放(不需要任何开关) ----
                 float scroll = InputService.GetMouseScroll();
                 if (Math.Abs(scroll) > 0.0001f)
                 {
                     if (_invertWheel) scroll = -scroll;
                     HandleZoomScroll(scroll);
                 }
+
+                // ---- 左右方向键: 旋转地图(同样不需要开关) ----
+                HandleRotateInput();
             }
             catch (Exception e)
             {
@@ -356,16 +437,23 @@ namespace FreeCameraMod
         /// 每帧 LateUpdate(主线程, 实际时机是 PostLateUpdate)。
         ///
         /// 游戏自己的相机逻辑(Cinemachine Brain 等)跑完之后我们再写, 所以本帧渲染用的
-        /// 就是缩放后的机位 —— 这是本作里唯一可靠的接管点(实测 Brain 在失活对象上, 单靠
-        /// VirtualCamera 不生效)。<c>autoFollow=false</c> 时这里还会把主相机位姿锁回固定
-        /// 视角(游戏自动运镜、回合开始、刷怪都不让画面移动); 滚轮缩放只写位置。
+        /// 就是缩放/旋转后的机位 —— 这是本作里唯一可靠的接管点(实测 Brain 在失活对象上,
+        /// 单靠 VirtualCamera 不生效)。<c>autoFollow=false</c> 时这里还会把主相机位姿锁回
+        /// 固定视角(游戏自动运镜、回合开始、刷怪都不让画面移动)。
+        ///
+        /// 写什么:
+        ///   - 缩放只写位置(沿视线前后移动, 朝向不变);
+        ///   - 旋转是把位置绕观察点转 yawDelta、同时把朝向的 yaw 加同一个角度,
+        ///     俯角/滚转/FOV 都不动 —— 观察点留在画面中心, 看起来就是整张地图在转;
+        ///   - 和缩放一样, 基准仍然是"游戏本帧写下的位姿", 所以旋转期间玩家的
+        ///     鼠标拖拽/键盘平移依然有效。
         /// </summary>
         public override void OnLateUpdate()
         {
             try
             {
                 // 自动跟随关闭时: 先把主相机锁回固定视角(玩家正在主动平移自由相机时除外)。
-                // 这一步在滚轮缩放之前做, 缩放会以锁定位姿作为基准再叠加距离偏移。
+                // 这一步在缩放/旋转之前做, 后面会以锁定位姿作为基准再叠加偏移与旋转。
                 bool cameraLocked = UpdateFollowCameraLock();
 
                 if (!_active) return;
@@ -374,16 +462,16 @@ namespace FreeCameraMod
                 if (!UnityObject.IsAlive(camera))
                 {
                     // 相机没了(切场景/游戏换相机): 新相机是游戏自己的, 我们只需放弃接管
-                    Log.Warn("滚轮缩放: 原相机已失效, 结束接管(新相机由游戏自己控制)");
+                    Log.Warn("自由相机: 原相机已失效, 结束接管(新相机由游戏自己控制)");
                     ResetRuntime();
                     return;
                 }
                 _driven = camera;
 
-                // 1) 识别"游戏本帧写下的位姿"当缩放基准。
+                // 1) 识别"游戏本帧写下的位姿"当缩放/旋转基准。
                 //    要排除我们自己上一帧写进去的值: 若当前位姿与我们上次写入的完全一致,
                 //    说明游戏这帧没动相机(静态/暂停), 继续沿用上次识别出的基准 ——
-                //    否则会在"已经拉远的位置"上再加一次偏移, 越滚越远。
+                //    否则会在"已经拉远/转过"的位置上再叠加一次, 越滚越远、越转越多。
                 Vector3 gamePosition = CameraService.GetPosition(camera);
                 Vector3 gameEuler = CameraService.GetEulerAngles(camera);
                 if (cameraLocked)
@@ -408,64 +496,112 @@ namespace FreeCameraMod
                 // 2) 复原(按键): 把游戏自己的位姿写回去, 相机交还游戏
                 if (_restoreRequested)
                 {
-                    float restored = _offset;
+                    float restoredOffset = _offset;
+                    float restoredYaw = _yawDelta;
                     RestoreBasePose(camera);
                     ResetRuntime();
-                    Log.Info("滚轮缩放: 已恢复原来的视角" +
+                    Log.Info("自由相机: 已恢复原来的视角" +
                              (string.IsNullOrEmpty(_restoreReason) ? "" : " (" + _restoreReason + ")") +
-                             ", 偏移 " + F(restored) + "m -> 0");
+                             ", 偏移 " + F(restoredOffset) + "m -> 0, 旋转 " + F(restoredYaw) + "° -> 0");
                     Notify("自由相机: 已恢复原来的视角");
                     return;
                 }
 
-                // 3) 平滑逼近目标偏移(停手后还能顺势滑一小段, 不会一格一跳)
+                // 3) 平滑逼近目标(停手后还能顺势滑一小段, 不会一格一跳、一按一转)
+                float dt = UnityTime.DeltaTime;
+                if (dt <= 0f || dt > 0.25f) dt = 1f / 60f;   // 卡顿时限制单帧位移, 避免"瞬移"
                 if (_smooth && _smoothTime > 0f)
                 {
-                    float dt = UnityTime.DeltaTime;
-                    if (dt <= 0f || dt > 0.25f) dt = 1f / 60f;   // 卡顿时限制单帧位移, 避免"瞬移"
                     _offset = FreeCameraMath.SmoothTowards(_offset, _targetOffset, _smoothTime, dt);
+                    _yawDelta = FreeCameraMath.SmoothTowards(_yawDelta, _targetYawDelta, _smoothTime, dt);
                 }
                 else
                 {
                     _offset = _targetOffset;
+                    _yawDelta = _targetYawDelta;
                 }
 
-                // 4) 滚回原位 -> 自动交还相机(不需要再按 F1)
-                if (_targetOffset == 0f && FreeCameraMath.IsSettled(_offset, 0f, 0.25f))
+                // 收敛后把旋转角折回 (-180, 180]: 转很多圈也不会让浮点精度变差, 画面完全不变
+                if (FreeCameraMath.IsSettled(_yawDelta, _targetYawDelta, 0.001f))
+                {
+                    _yawDelta = NormalizeAngle(_yawDelta);
+                    _targetYawDelta = _yawDelta;
+                }
+
+                // 4) 缩回到原位且没有旋转 -> 自动交还相机(不需要再按 F1)
+                bool zoomSettled = _targetOffset == 0f && FreeCameraMath.IsSettled(_offset, 0f, 0.25f);
+                bool rotationSettled = FreeCameraMath.IsSettled(_yawDelta, 0f, 0.01f) &&
+                                       FreeCameraMath.IsSettled(_targetYawDelta, 0f, 0.01f);
+                if (zoomSettled && rotationSettled)
                 {
                     RestoreBasePose(camera);
                     ResetRuntime();
-                    Log.Info("滚轮缩放: 偏移已回到原位, 自动交还相机");
+                    Log.Info("自由相机: 偏移已回到原位, 自动交还相机");
                     Notify("自由相机: 已回到原来的视角 (滚轮归位)");
                     return;
                 }
 
-                // 5) 写位置 = 游戏位姿 + forward × 偏移。朝向/俯角/FOV 一律不写。
-                float fx, fy, fz;
-                FreeCameraMath.ForwardVector(_baseEuler.y, NormalizeAngle(_baseEuler.x), out fx, out fy, out fz);
+                // 5) 旋转需要"观察点": 取当前 vcam 的 Follow 目标(自由相机对象 / 角色)。
+                //    找不到就退回上一帧的观察点, 再不行就放弃这一帧的旋转(缩放照常)。
+                //    只做缩放时不取观察点, 省掉每帧的 Follow 解析。
+                float yawDelta = _yawDelta;
+                Vector3 pivot = _basePosition;
+                if (Math.Abs(yawDelta) > 0.0001f && !TryGetOrbitPivot(out pivot))
+                {
+                    if (!_pivotWarned)
+                    {
+                        _pivotWarned = true;
+                        Log.Warn("旋转地图: 找不到旋转中心(相机没有 Follow 目标), 暂停旋转; 缩放不受影响");
+                    }
+                    yawDelta = 0f;
+                    _yawDelta = 0f;
+                    _targetYawDelta = 0f;
+                    pivot = _basePosition;
+                }
 
-                float x, y, z;
-                FreeCameraMath.DollyPosition(_basePosition.x, _basePosition.y, _basePosition.z,
-                    fx, fy, fz, _offset, out x, out y, out z);
+                // 6) 写位姿 = 绕观察点旋转 + 沿新视线缩放。俯角/滚转/FOV 不动。
+                float x, y, z, writtenYaw;
+                FreeCameraMath.ComposeOrbitDolly(pivot.x, pivot.z,
+                    _basePosition.x, _basePosition.y, _basePosition.z,
+                    _baseEuler.y, NormalizeAngle(_baseEuler.x),
+                    yawDelta, _offset,
+                    out x, out y, out z, out writtenYaw);
 
                 CameraService.SetPosition(camera, new Vector3(x, y, z));
 
-                // 6) 拉远时按需抬高 farClip, 免得远处的棋盘被裁掉(退出时还原成原值)
+                // 旋转时朝向只加 yaw; 不旋转就完全不写朝向(缩放保持"视角不变")
+                if (Math.Abs(yawDelta) > 0.0001f)
+                {
+                    CameraService.SetEulerAngles(camera,
+                        new Vector3(NormalizeAngle(_baseEuler.x), writtenYaw, _baseEuler.z));
+                    _rotationWritten = true;
+                }
+
+                // 7) 拉远时按需抬高 farClip, 免得远处的棋盘被裁掉(退出时还原成原值)
                 EnsureFarClip(camera);
 
                 _lastWrittenPosition = new Vector3(x, y, z);
-                _lastWrittenYaw = _baseEuler.y;
+                _lastWrittenYaw = writtenYaw;
                 _lastWrittenPitch = NormalizeAngle(_baseEuler.x);
                 _hasWrittenPose = true;
 
-                if (!_zoomNotified)
+                if (!_zoomNotified && Math.Abs(_offset) > 0.01f)
                 {
                     _zoomNotified = true;
                     Notify("自由相机: 滚轮缩放中 (" + _restoreKey + " 恢复原视角)");
                 }
+                if (!_rotationNotified && Math.Abs(yawDelta) > 0.01f)
+                {
+                    _rotationNotified = true;
+                    Notify("自由相机: 方向键旋转地图中 (" + _restoreKey + " 恢复原视角)");
+                }
 
                 _frames++;
-                if (_frames == 60 || _frames == 300) LogZoomCheck(camera, gamePosition, gameEuler);
+                if (_frames == 60 || _frames == 300) LogDriveCheck(camera, gamePosition, gameEuler);
+
+                // 8) 按住旋转键时, 游戏自己的 ←/→ 键盘平移会同时把自由相机往侧面推。
+                //    这里把自由相机对象拉回本帧开始前的位置, 让左右键只旋转地图。
+                UpdateRotatePan();
             }
             catch (Exception e)
             {
@@ -473,14 +609,14 @@ namespace FreeCameraMod
             }
         }
 
-        /// <summary>场景加载完成: 新场景 = 新相机, 偏移一律清零, 绝不跨场景沿用。</summary>
+        /// <summary>场景加载完成: 新场景 = 新相机, 偏移与旋转一律清零, 绝不跨场景沿用。</summary>
         public override void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
             // 旧场景的相机/锚点已经(或即将)销毁: 先尽量还原, 再丢弃全部自动跟随状态
             ResetFollowOverride();
 
             if (!_active) return;
-            Log.Info("滚轮缩放: 场景切换(" + (scene.IsValid() ? scene.name : "?") + "), 结束接管并清零偏移");
+            Log.Info("自由相机: 场景切换(" + (scene.IsValid() ? scene.name : "?") + "), 结束接管并清零偏移/旋转");
             ResetRuntime();
         }
 
@@ -492,7 +628,7 @@ namespace FreeCameraMod
                 var camera = CameraService.GetMainCamera();
                 if (UnityObject.IsAlive(camera)) RestoreBasePose(camera);
                 ResetRuntime();
-                Log.Info("滚轮缩放: 卸载前已把相机交还给游戏");
+                Log.Info("自由相机: 卸载前已把相机交还给游戏");
             }
             if (_config != null) _config.SaveIfDirty();
             ResetFollowOverride();
@@ -500,7 +636,7 @@ namespace FreeCameraMod
         }
 
         // =====================================================================
-        // 缩放
+        // 缩放 / 旋转
         // =====================================================================
 
         /// <summary>
@@ -509,30 +645,7 @@ namespace FreeCameraMod
         /// </summary>
         private void HandleZoomScroll(float scroll)
         {
-            if (!_active)
-            {
-                var camera = CameraService.GetMainCamera();
-                if (!UnityObject.IsAlive(camera))
-                {
-                    Log.Warn("滚轮缩放: 当前没有可用主相机, 忽略这次滚轮");
-                    return;
-                }
-
-                // 菜单/加载过渡期的占位相机(实测停在 Y≈1002.75、euler=(0,0,0)): 缩放它毫无意义
-                if (_requireReadyCamera &&
-                    IsPlaceholderCamera(CameraService.GetPosition(camera), CameraService.GetEulerAngles(camera)))
-                {
-                    if (!_placeholderWarned)
-                    {
-                        _placeholderWarned = true;
-                        Log.Info("滚轮缩放: 当前是菜单/过渡相机, 等进入棋盘后再滚" +
-                                 "(requireReadyCamera=false 可关掉这个判断)");
-                    }
-                    return;
-                }
-
-                Activate(camera);
-            }
+            if (!TryBeginDrive("滚轮缩放")) return;
 
             float before = _targetOffset;
             _targetOffset = FreeCameraMath.ApplyScrollToZoom(_targetOffset, scroll, _zoomStep,
@@ -544,8 +657,72 @@ namespace FreeCameraMod
                       "m (每格 " + F(_zoomStep) + "m)");
         }
 
-        /// <summary>开始接管: 记下镜头参数快照, 之后每帧在 PostLateUpdate 按偏移写位置。</summary>
-        private void Activate(Camera camera)
+        /// <summary>
+        /// 左右方向键来了: 先确保接管, 再把目标旋转角往左/右推。
+        /// 约定(默认): → = 让视点向右转(yaw 增大), ← = 让视点向左转; 地图在画面里往反方向转。
+        /// <c>invertRotate=true</c> 时反过来(→ = 地图向右转)。方向键本身永远按"左/右"读, 不受反转影响。
+        /// 按住 = 按 <c>rotateSpeed</c> 连续转; 点按 = 至少转 <c>rotateStep</c> 度(所以按一下也看得出来)。
+        /// </summary>
+        private void HandleRotateInput()
+        {
+            float direction = RotateDirection();
+            if (direction == 0f) return;
+            if (_invertRotate) direction = -direction;
+
+            if (!TryBeginDrive("方向键旋转")) return;
+
+            // 点按步进只在这一帧刚按下时补一次(按的是哪个键决定方向, 反转只改角度符号)
+            bool justPressed = IsKeyPressed(_rotateLeftKey) || IsKeyPressed(_rotateRightKey);
+            float step = justPressed ? FreeCameraMath.ComposeRotateStep(direction, _rotateStep) : 0f;
+
+            float delta = FreeCameraMath.ComposeRotateDelta(direction, _rotateSpeed, UnityTime.DeltaTime) + step;
+            if (delta == 0f) return;
+
+            float before = _targetYawDelta;
+            _targetYawDelta += delta;
+            if (!_smooth) _yawDelta = _targetYawDelta;
+
+            // 连续转动时不刷屏; 调试日志只在 Debug 级别
+            Log.Debug("方向键旋转 " + (direction < 0f ? "←" : "→") + " 目标 " + F(before) + "° -> " +
+                      F(_targetYawDelta) + "° (速度 " + F(_rotateSpeed) + "°/秒" +
+                      (step != 0f ? ", 点按步进 " + F(step) + "°" : "") + ")");
+        }
+
+        /// <summary>按住旋转键、且确实接管了相机时才写相机; 菜单/没相机时忽略。</summary>
+        private bool TryBeginDrive(string reason)
+        {
+            if (_active && UnityObject.IsAlive(_driven)) return true;
+
+            var camera = CameraService.GetMainCamera();
+            if (!UnityObject.IsAlive(camera))
+            {
+                if (!_noCameraWarned)
+                {
+                    _noCameraWarned = true;
+                    Log.Warn("自由相机: 当前没有可用主相机, 忽略这次" + reason);
+                }
+                return false;
+            }
+
+            // 菜单/加载过渡期的占位相机(实测停在 Y≈1002.75、euler=(0,0,0)): 动它毫无意义
+            if (_requireReadyCamera &&
+                IsPlaceholderCamera(CameraService.GetPosition(camera), CameraService.GetEulerAngles(camera)))
+            {
+                if (!_placeholderWarned)
+                {
+                    _placeholderWarned = true;
+                    Log.Info("自由相机: 当前是菜单/过渡相机, 等进入棋盘后再滚/按方向键" +
+                             "(requireReadyCamera=false 可关掉这个判断)");
+                }
+                return false;
+            }
+
+            Activate(camera, reason);
+            return true;
+        }
+
+        /// <summary>开始接管: 记下镜头参数快照, 之后每帧在 PostLateUpdate 按偏移/旋转写位姿。</summary>
+        private void Activate(Camera camera, string reason)
         {
             _driven = camera;
             _savedState = CameraService.CaptureState(camera);
@@ -554,10 +731,19 @@ namespace FreeCameraMod
             _hasBasePose = false;      // 第一帧在 OnLateUpdate 里从"游戏本帧的位姿"重新识别基准
             _frames = 0;
             _zoomNotified = false;
+            _rotationNotified = false;
+            _noCameraWarned = false;
+            _pivotWarned = false;
             _offset = 0f;
             _targetOffset = 0f;
+            _yawDelta = 0f;
+            _targetYawDelta = 0f;
+            _rotationWritten = false;
+            _hasOrbitPivot = false;
+            _panTracking = false;
+            _panTarget = null;
             _active = true;
-            Log.Info("滚轮缩放: 开始接管相机(只改位置, 不动朝向/FOV)" +
+            Log.Info("自由相机: 开始接管相机(" + reason + "; 位置随缩放/旋转改写, 俯角/FOV 不动)" +
                      (_savedState.Valid ? " 进入前: " + _savedState.Describe() : ""));
         }
 
@@ -566,19 +752,27 @@ namespace FreeCameraMod
         {
             try
             {
-                // 朝向我们从来没写过, 所以这里也不用写(写回去也只是同一个值)
-                if (_hasBasePose) CameraService.SetPosition(camera, _basePosition);
+                if (!_hasBasePose) return;
+
+                CameraService.SetPosition(camera, _basePosition);
+                // 旋转过才写过朝向, 也只有那时才需要把游戏原来的朝向写回去
+                if (_rotationWritten)
+                    CameraService.SetEulerAngles(camera, new Vector3(_baseEuler.x, _baseEuler.y, _baseEuler.z));
             }
             catch (Exception e)
             {
                 Log.ReportCrash("RestoreBasePose", e);
             }
-            RestoreFarClip(camera);
+            finally
+            {
+                RestoreFarClip(camera);
+            }
         }
 
         /// <summary>
         /// 拉远时把 farClip 抬到"仍能看到原来的瞄准点": farClip = 原值 + |偏移|。
         /// 只在需要抬高时写一次, 结束时按快照还原(ensureFarClip=false 就完全不碰裁剪面)。
+        /// 旋转不会改变相机到观察点的距离, 所以不参与这里的计算。
         /// </summary>
         private void EnsureFarClip(Camera camera)
         {
@@ -596,16 +790,22 @@ namespace FreeCameraMod
             if (!_farClipRaised) return;
             _farClipRaised = false;
             if (_savedState.Valid && CameraService.SetFarClipPlane(camera, _savedState.FarClipPlane))
-                Log.Info("滚轮缩放: farClip 已还原为 " + F(_savedState.FarClipPlane));
+                Log.Info("自由相机: farClip 已还原为 " + F(_savedState.FarClipPlane));
         }
 
-        /// <summary>清空运行态(不碰相机)。</summary>
+        /// <summary>清空运行态(不碰相机)。旋转角一起清掉: 下次触发旋转从"游戏当前朝向"重新开始。</summary>
         private void ResetRuntime()
         {
             _active = false;
             _driven = null;
             _offset = 0f;
             _targetOffset = 0f;
+            _yawDelta = 0f;
+            _targetYawDelta = 0f;
+            _rotationWritten = false;
+            _rotationNotified = false;
+            _hasOrbitPivot = false;
+            _orbitPivot = Vector3.zero;
             _hasBasePose = false;
             _hasWrittenPose = false;
             _restoreRequested = false;
@@ -614,24 +814,221 @@ namespace FreeCameraMod
             _frames = 0;
             _farClipRaised = false;
             _savedState = default(CameraState);
+            _rotateHeldNow = false;
+            _panTracking = false;
+            _panTarget = null;
+            _panSnapshot = Vector3.zero;
+            _noCameraWarned = false;
+            _pivotWarned = false;
         }
 
         /// <summary>
-        /// 接管校验(排查"看起来没生效"用): 写完立刻回读, 偏差 ≈ 0 = 本帧渲染用的就是缩放后的机位;
+        /// 接管校验(排查"看起来没生效"用): 写完立刻回读, 偏差 ≈ 0 = 本帧渲染用的就是改过的机位;
         /// 基准位姿每帧都在变 = 游戏自己的鼠标/键盘操作仍然有效。
         /// </summary>
-        private void LogZoomCheck(Camera camera, Vector3 gamePosition, Vector3 gameEuler)
+        private void LogDriveCheck(Camera camera, Vector3 gamePosition, Vector3 gameEuler)
         {
             Vector3 actual = CameraService.GetPosition(camera);
             float error = Distance(actual, _lastWrittenPosition);
-            Log.Info("缩放校验(第" + _frames + "帧): 游戏位姿=(" + F(gamePosition.x) + "," + F(gamePosition.y) + "," +
+            Log.Info("自由相机校验(第" + _frames + "帧): 游戏位姿=(" + F(gamePosition.x) + "," + F(gamePosition.y) + "," +
                      F(gamePosition.z) + ") euler=(" + F(gameEuler.x) + "," + F(gameEuler.y) + "," + F(gameEuler.z) +
-                     ") | 偏移=" + F(_offset) + "m 目标=" + F(_targetOffset) + "m 写入=(" +
+                     ") | 偏移=" + F(_offset) + "m 目标=" + F(_targetOffset) + "m 旋转=" + F(_yawDelta) + "° 目标=" +
+                     F(_targetYawDelta) + "° 写入=(" +
                      F(_lastWrittenPosition.x) + "," + F(_lastWrittenPosition.y) + "," + F(_lastWrittenPosition.z) +
                      ") 实际=(" + F(actual.x) + "," + F(actual.y) + "," + F(actual.z) + ") 偏差=" + F(error) + "m" +
                      (error < 0.5f ? " (写入生效)" : " (写入未生效!)"));
             if (error > 0.5f)
-                Log.Warn("缩放位姿没写进相机: 相机可能拒绝外部写入(偏差 " + F(error) + "m)");
+                Log.Warn("自由相机位姿没写进相机: 相机可能拒绝外部写入(偏差 " + F(error) + "m)");
+        }
+
+        // =====================================================================
+        // 旋转地图
+        // =====================================================================
+
+        /// <summary>一次平移换算/回拉的最大水平距离(米): 超过就是游戏在搬自由相机, 不是玩家拖拽/按键平移。</summary>
+        private const float MaxPanSuppressDistance = 60f;
+
+        /// <summary>是否按住左/右旋转键(两个一起按时互相抵消, 视为没按)。</summary>
+        private bool IsRotateHeld()
+        {
+            return RotateDirection() != 0f;
+        }
+
+        /// <summary>旋转方向: -1 = 向左(←), +1 = 向右(→), 0 = 没按或同时按住。</summary>
+        private float RotateDirection()
+        {
+            float direction = 0f;
+            if (_rotateLeftKey != KeyCode.None && InputService.IsKeyHeld(_rotateLeftKey)) direction -= 1f;
+            if (_rotateRightKey != KeyCode.None && InputService.IsKeyHeld(_rotateRightKey)) direction += 1f;
+            return direction;
+        }
+
+        private static bool IsKeyPressed(KeyCode key)
+        {
+            return key != KeyCode.None && InputService.IsKeyPressed(key);
+        }
+
+        /// <summary>当前是否有需要我们维持的旋转(已转过或正在平滑)。</summary>
+        private bool HasRotation
+        {
+            get { return Math.Abs(_yawDelta) > 0.001f || Math.Abs(_targetYawDelta) > 0.001f; }
+        }
+
+        /// <summary>日志用: 当前生效的旋转键。</summary>
+        private string DescribeRotateKeys()
+        {
+            if (_rotateLeftKey == KeyCode.None && _rotateRightKey == KeyCode.None) return "关";
+            string left = _rotateLeftKey == KeyCode.None ? "(无)" : _rotateLeftKey.ToString();
+            string right = _rotateRightKey == KeyCode.None ? "(无)" : _rotateRightKey.ToString();
+            return left + "/" + right;
+        }
+
+        /// <summary>
+        /// 旋转中心: 当前活动 vcam 的 Follow 目标(自由相机对象 / 角色)。
+        ///
+        /// 本作自己的 GM 相机(<c>Core.Camera.GMFreeCamera</c>)就是绕 Follow 目标转的
+        /// (旋转 followTarget, 再给 vcam 写同样的 yaw), 所以这里取同一个点 —— 旋转过程中
+        /// 观察点留在画面中心, 看起来才是"地图在转"而不是"相机在飘"。
+        /// 取不到时退回上一帧的观察点, 再不行用视线与地面的交点。
+        /// </summary>
+        private bool TryGetOrbitPivot(out Vector3 pivot)
+        {
+            pivot = Vector3.zero;
+
+            var brain = GetBrain();
+            if (brain != null)
+            {
+                var vcam = CinemachineService.GetActiveVirtualCamera(brain);
+                Transform follow = CinemachineService.GetFollow(vcam);
+                if (UnityObject.IsAlive(follow))
+                {
+                    pivot = TransformService.GetPosition(follow);
+                    _orbitPivot = pivot;
+                    _hasOrbitPivot = true;
+                    return true;
+                }
+            }
+
+            if (_hasOrbitPivot)
+            {
+                pivot = _orbitPivot;
+                return true;
+            }
+
+            // 兜底(没有 vcam/没有 Follow): 用视线与地面(y=0)的交点当观察点
+            float fx, fy, fz;
+            FreeCameraMath.ForwardVector(_baseEuler.y, NormalizeAngle(_baseEuler.x), out fx, out fy, out fz);
+            if (fy < -0.01f)
+            {
+                float t = -_basePosition.y / fy;
+                if (!float.IsNaN(t) && t > 0f && t < 500f)
+                {
+                    pivot = new Vector3(_basePosition.x + fx * t, 0f, _basePosition.z + fz * t);
+                    _orbitPivot = pivot;
+                    _hasOrbitPivot = true;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// 玩家自由相机对象(Core.FreeCameraObject)的 Transform; 当前活动 vcam 不跟随它时返回 null。
+        ///
+        /// 注意拿的是"挂着 FreeCameraObject 的那个对象"而不是 vcam 的 Follow 节点: 本作这两者
+        /// 可能不是同一个(Follow 可以是子节点), 改子节点只会在父对象里积累局部偏移。
+        /// </summary>
+        private Transform GetFreeCameraObject()
+        {
+            var brain = GetBrain();
+            if (brain == null) return null;
+
+            var vcam = CinemachineService.GetActiveVirtualCamera(brain);
+            if (vcam == null) return null;
+
+            return CinemachineService.GetFreeCameraObjectTransform(vcam);
+        }
+
+        /// <summary>
+        /// 让游戏自己的拖拽/键盘平移跟着地图角度走(默认开启, blockPanWhileRotate 关闭时也仍然换算方向)。
+        ///
+        /// 背景: 游戏的 <c>FreeCameraObject.HandleMoveCamera</c> / <c>HandleControlCamera</c>
+        /// 用的是自由相机对象的<b>世界</b> forward/right(Unity 默认把 ←/→ 也映射进 Horizontal 轴),
+        /// 而画面已经被我们绕观察点转了 <c>yawDelta</c>。相机实际是沿世界轴平移、朝向却转了,
+        /// 所以旋转后拖拽/键盘平移会歪掉同样的角度(+/- 方向)。
+        ///
+        /// 处理: 每帧最后取"本帧自由相机对象移动了多少", 把这个位移绕基准点转 <c>yawDelta</c> 度后写回:
+        /// 世界位移 = R(yawDelta) × 游戏本来要走的位移, 于是画面上仍是想拖的方向。
+        ///   - 按住旋转键(blockPanWhileRotate=true)时, 这一帧位移整个抵掉, 左右键只旋转地图;
+        ///   - 没有旋转时完全不碰自由相机;
+        ///   - 游戏主动搬运相机(换玩家/演出摆放, 位移很大)时只重新取基准, 不换算。
+        ///
+        /// 只对自由相机对象生效; 角色相机/演出相机不做任何位置改写。
+        /// </summary>
+        private void UpdateRotatePan()
+        {
+            // 没有旋转、也没在按旋转键: 不需要干预自由相机
+            if (!HasRotation && !_rotateHeldNow)
+            {
+                _panTracking = false;
+                return;
+            }
+
+            var target = GetFreeCameraObject();
+            if (target == null)
+            {
+                // 不是玩家在操作自由相机(角色相机/演出): 游戏也不会用方向键推它
+                _panTarget = null;
+                _panTracking = false;
+                return;
+            }
+
+            Vector3 position = TransformService.GetPosition(target);
+            if (!_panTracking || !ReferenceEquals(target, _panTarget))
+            {
+                // 第一帧(或刚换了目标): 以当前位置为基准, 本帧不换算
+                _panTarget = target;
+                _panSnapshot = position;
+                _panTracking = true;
+                return;
+            }
+
+            float moved = HorizontalDistance(position, _panSnapshot);
+            if (moved > MaxPanSuppressDistance)
+            {
+                // 游戏主动把自由相机搬到了别处(换玩家/演出摆放): 不换算, 重新取基准
+                _panSnapshot = position;
+                return;
+            }
+
+            float newX = position.x;
+            float newZ = position.z;
+
+            if (_rotateHeldNow && _blockPanWhileRotate)
+            {
+                // 按住旋转键: 抵掉游戏自己的方向键平移, 让左右键只旋转地图
+                newX = _panSnapshot.x;
+                newZ = _panSnapshot.z;
+            }
+            else if (HasRotation && moved > 0.000001f)
+            {
+                // 按当前地图角度换算这一帧的位移: 旋转后拖拽/键盘平移方向仍与画面对应
+                FreeCameraMath.RotateAroundVertical(position.x, position.z,
+                    _panSnapshot.x, _panSnapshot.z, NormalizeAngle(_yawDelta), out newX, out newZ);
+            }
+
+            if (Math.Abs(newX - position.x) > 0.0001f || Math.Abs(newZ - position.z) > 0.0001f)
+                TransformService.SetPosition(target, new Vector3(newX, position.y, newZ));
+
+            _panSnapshot = new Vector3(newX, position.y, newZ);
+        }
+
+        /// <summary>水平(XZ)距离。</summary>
+        private static float HorizontalDistance(Vector3 a, Vector3 b)
+        {
+            float dx = a.x - b.x, dz = a.z - b.z;
+            return (float)Math.Sqrt(dx * dx + dz * dz);
         }
 
         // =====================================================================
@@ -642,7 +1039,7 @@ namespace FreeCameraMod
         {
             ResetBrainCache();
             if (!_active) return;
-            Log.Warn("滚轮缩放: 主相机消失, 结束接管(下一帧由游戏自己接回相机)");
+            Log.Warn("自由相机: 主相机消失, 结束接管(下一帧由游戏自己接回相机)");
             ResetRuntime();
         }
 
@@ -650,7 +1047,7 @@ namespace FreeCameraMod
         {
             ResetBrainCache();
             if (!_active) return;
-            Log.Info("滚轮缩放: 主相机更换, 结束接管并清零偏移");
+            Log.Info("自由相机: 主相机更换, 结束接管并清零偏移/旋转");
             ResetRuntime();
         }
 
@@ -964,11 +1361,21 @@ namespace FreeCameraMod
             // 主相机临时挪到 (0,0,0) 或高处(或者禁用), 释放锁定就会让镜头跟着游戏跑到
             // 新位置; 切场景时 OnSceneLoaded 会统一 ResetFollowOverride。
 
-            // 玩家主动平移自由相机: 让游戏相机正常移动, 并把固定视角更新到当前画面
+            // 玩家主动平移自由相机: 让游戏相机正常移动, 并把固定视角更新到当前画面。
+            // 相机里可能还留着本 mod 写的缩放/旋转, 不能直接把它当成"锁定值", 否则下一次锁定
+            // 会把这些偏移再叠加一次(旋转会越转越多)。此时用上一帧识别到的游戏位姿。
             if (IsPlayerPanningFreeCamera())
             {
-                _lockedCameraPosition = currentPosition;
-                _lockedCameraEuler = currentEuler;
+                if (_active && _hasBasePose)
+                {
+                    _lockedCameraPosition = _basePosition;
+                    _lockedCameraEuler = _baseEuler;
+                }
+                else
+                {
+                    _lockedCameraPosition = currentPosition;
+                    _lockedCameraEuler = currentEuler;
+                }
                 return false;
             }
 
@@ -976,7 +1383,8 @@ namespace FreeCameraMod
             _baseEuler = _lockedCameraEuler;
             _hasBasePose = true;
 
-            // 缩放接管时只写位置(由滚轮缩放代码按 _basePosition 叠加偏移); 没缩放时位置和朝向都写
+            // 朝向每帧都写回锁定值(接管时也写: 旋转会在后面再叠加 yaw);
+            // 位置只在没接管时写 —— 接管时的位置由缩放/旋转代码按 _basePosition 叠加。
             CameraService.SetEulerAngles(camera, _lockedCameraEuler);
             if (!_active) CameraService.SetPosition(camera, _lockedCameraPosition);
             return true;
@@ -1114,6 +1522,10 @@ namespace FreeCameraMod
         /// <summary>
         /// 玩家是否正在主动移动自由相机(鼠标左键拖拽或方向键)。
         /// 只有这种输入才允许移动固定镜头; 游戏事件用自由相机运镜不算。
+        ///
+        /// 注意: ←/→ 会被游戏当成 "Horizontal" 轴(键盘平移)。按住旋转键时它们只负责旋转地图,
+        /// 而且那点平移会被 <see cref="UpdateRotatePan"/> 拉回去, 所以不能算"玩家在平移" ——
+        /// 否则锁定镜头会跟着漂、锚点也会被带走。同一帧按住 W/S 仍然算平移。
         /// </summary>
         private bool IsPlayerMovingFreeCamera()
         {
@@ -1148,9 +1560,12 @@ namespace FreeCameraMod
                     _hasLastMousePosition = false;
                 }
 
-                Vector2 move = InputService.GetMoveAxis();
+                float horizontal = InputService.GetAxis("Horizontal");
+                if (_rotateHeldNow) horizontal = 0f;   // ←/→ 正在旋转地图, 不算平移
+                float vertical = InputService.GetAxis("Vertical");
+
                 // 留死区: 手柄漂移/极小轴值不应该把固定镜头解除锁定
-                return move.sqrMagnitude > 0.04f;
+                return horizontal * horizontal + vertical * vertical > 0.04f;
             }
             catch { return false; }
         }
@@ -1294,6 +1709,25 @@ namespace FreeCameraMod
             _resetKey = ParseKey(_config.GetString("resetKey", "F2"), _resetKey);
             if (isInitial && _config.Remove("toggleKey")) legacyRemoved = true;
 
+            // 旋转地图: ←/→ 默认; 键名写 "None" 可单独关掉某个方向。
+            // 键名以 Key 结尾(rotateLeftKey)是配置页"按键捕获"控件的约定; 早期 2.6.0 测试配置
+            // 用过 rotateKeyLeft/rotateKeyRight, 这里继承旧值并删掉旧键。
+            string rotateLeft = _config.GetString("rotateLeftKey", null);
+            if (string.IsNullOrEmpty(rotateLeft) && isInitial) rotateLeft = _config.GetString("rotateKeyLeft", null);
+            _rotateLeftKey = ParseKey(rotateLeft, _rotateLeftKey);
+            string rotateRight = _config.GetString("rotateRightKey", null);
+            if (string.IsNullOrEmpty(rotateRight) && isInitial) rotateRight = _config.GetString("rotateKeyRight", null);
+            _rotateRightKey = ParseKey(rotateRight, _rotateRightKey);
+            if (isInitial)
+            {
+                if (_config.Remove("rotateKeyLeft")) legacyRemoved = true;
+                if (_config.Remove("rotateKeyRight")) legacyRemoved = true;
+            }
+            _rotateSpeed = _config.GetFloat("rotateSpeed", _rotateSpeed);
+            _rotateStep = _config.GetFloat("rotateStep", _rotateStep);
+            _invertRotate = _config.GetBool("invertRotate", _invertRotate);
+            _blockPanWhileRotate = _config.GetBool("blockPanWhileRotate", _blockPanWhileRotate);
+
             // 数值兜底: 配置写坏也不能变成"滚轮没反应"或"一滚飞出去"
             if (!IsUsable(_zoomStep)) _zoomStep = FreeCameraMath.DefaultZoomStep;
             if (!IsUsable(_zoomInMax)) _zoomInMax = FreeCameraMath.DefaultZoomInMax;
@@ -1305,6 +1739,14 @@ namespace FreeCameraMod
             _zoomOutMax = Math.Min(_zoomOutMax, 20000f);
             _smoothTime = Math.Min(_smoothTime, 2f);
 
+            // 旋转速度 0 = 不连续转(只按点按步进); 非法值退回默认, 上限防止"一按转好几圈"
+            if (float.IsNaN(_rotateSpeed) || float.IsInfinity(_rotateSpeed) || _rotateSpeed < 0f)
+                _rotateSpeed = FreeCameraMath.DefaultRotateSpeed;
+            _rotateSpeed = Math.Min(_rotateSpeed, FreeCameraMath.MaxRotateSpeed);
+            if (float.IsNaN(_rotateStep) || float.IsInfinity(_rotateStep) || _rotateStep < 0f)
+                _rotateStep = FreeCameraMath.DefaultRotateStep;
+            _rotateStep = Math.Min(_rotateStep, 180f);
+
             if (isInitial) WriteDefaults(legacyRemoved);
         }
 
@@ -1312,7 +1754,9 @@ namespace FreeCameraMod
         private void WriteDefaults(bool force)
         {
             bool docsChanged = FreeCameraConfigDocs.Apply(_config);
-            if (!force && _config.Has("autoFollow") && _config.Has("zoomStep") && _config.Has("restoreKey"))
+            if (!force && _config.Has("autoFollow") && _config.Has("zoomStep") && _config.Has("restoreKey") &&
+                _config.Has("rotateLeftKey") && _config.Has("rotateSpeed") && _config.Has("rotateStep") &&
+                _config.Has("invertRotate"))
             {
                 if (docsChanged)
                 {
@@ -1335,6 +1779,12 @@ namespace FreeCameraMod
             _config.Set("notify", _notify);
             _config.Set("restoreKey", _restoreKey.ToString());
             _config.Set("resetKey", _resetKey.ToString());
+            _config.Set("rotateLeftKey", _rotateLeftKey.ToString());
+            _config.Set("rotateRightKey", _rotateRightKey.ToString());
+            _config.Set("rotateSpeed", _rotateSpeed);
+            _config.Set("rotateStep", _rotateStep);
+            _config.Set("invertRotate", _invertRotate);
+            _config.Set("blockPanWhileRotate", _blockPanWhileRotate);
             _config.SaveIfDirty();
             _configFixed = true;
         }

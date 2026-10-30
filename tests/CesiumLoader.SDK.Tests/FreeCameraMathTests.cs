@@ -657,6 +657,167 @@ namespace CesiumLoader.SDK.Tests
             Assert.False(FreeCameraMath.IsSettled(0f, float.NaN, 0.25f));
         }
 
+        // ---------------- 旋转地图(左右方向键) ----------------
+
+        [Fact]
+        public void RotateAroundVertical_TurnsLikeYawAndKeepsDistance()
+        {
+            float x, z;
+
+            // yaw +90°: +Z 处的点转到 +X(与 ForwardVector 的约定一致, 旋转方向和相机转向相同)
+            FreeCameraMath.RotateAroundVertical(0f, 10f, 0f, 0f, 90f, out x, out z);
+            Assert.Equal(10f, x, 3);
+            Assert.Equal(0f, z, 3);
+
+            // 绕任意观察点: 水平距离不变(环绕的硬性不变量)
+            float pivotX = 3f, pivotZ = -4f;
+            float original = (float)Math.Sqrt((7f - pivotX) * (7f - pivotX) + (11f - pivotZ) * (11f - pivotZ));
+            for (float deg = -180f; deg <= 180f; deg += 30f)
+            {
+                FreeCameraMath.RotateAroundVertical(7f, 11f, pivotX, pivotZ, deg, out x, out z);
+                float dx = x - pivotX, dz = z - pivotZ;
+                Assert.Equal(original, (float)Math.Sqrt(dx * dx + dz * dz), 3);
+            }
+        }
+
+        [Fact]
+        public void RotateAroundVertical_FullTurnAndInvalidAnglesLeavePointUnchanged()
+        {
+            float x, z;
+
+            FreeCameraMath.RotateAroundVertical(2f, -5f, 1f, 1f, 0f, out x, out z);
+            Assert.Equal(2f, x, 3); Assert.Equal(-5f, z, 3);
+
+            FreeCameraMath.RotateAroundVertical(2f, -5f, 1f, 1f, 360f, out x, out z);
+            Assert.Equal(2f, x, 3); Assert.Equal(-5f, z, 3);
+
+            // 角度来自累加/配置, 写坏时按 0 度处理, 不能把相机送进 NaN
+            FreeCameraMath.RotateAroundVertical(2f, -5f, 1f, 1f, float.NaN, out x, out z);
+            Assert.Equal(2f, x, 3); Assert.Equal(-5f, z, 3);
+        }
+
+        [Fact]
+        public void ComposeRotateDelta_ScalesWithDirectionSpeedAndTime()
+        {
+            Assert.Equal(-90f, FreeCameraMath.ComposeRotateDelta(-1f, 90f, 1f), 3);
+            Assert.Equal(45f, FreeCameraMath.ComposeRotateDelta(1f, 90f, 0.5f), 3);
+            Assert.Equal(0f, FreeCameraMath.ComposeRotateDelta(0f, 90f, 1f), 3);
+
+            // 方向只取符号: 传 5 也只按 +1 处理, 不会因为轴值抖动转得更快
+            Assert.Equal(90f, FreeCameraMath.ComposeRotateDelta(5f, 90f, 1f), 3);
+        }
+
+        [Fact]
+        public void ComposeRotateDelta_InvalidInputsNeverMove()
+        {
+            Assert.Equal(0f, FreeCameraMath.ComposeRotateDelta(1f, 90f, 0f), 3);
+            Assert.Equal(0f, FreeCameraMath.ComposeRotateDelta(1f, 90f, float.NaN), 3);
+            Assert.Equal(0f, FreeCameraMath.ComposeRotateDelta(1f, 90f, -1f), 3);
+            Assert.Equal(0f, FreeCameraMath.ComposeRotateDelta(float.NaN, 90f, 1f), 3);
+
+            // 速度写坏(0/负/NaN/Inf)时退回默认速度, 而不是"按键没反应"
+            foreach (var speed in new[] { 0f, -1f, float.NaN, float.PositiveInfinity })
+                Assert.Equal(FreeCameraMath.DefaultRotateSpeed, FreeCameraMath.ComposeRotateDelta(1f, speed, 1f), 3);
+        }
+
+        [Fact]
+        public void ComposeRotateStep_TapAddsConfiguredAngle()
+        {
+            Assert.Equal(-15f, FreeCameraMath.ComposeRotateStep(-1f, 15f), 3);
+            Assert.Equal(15f, FreeCameraMath.ComposeRotateStep(1f, 15f), 3);
+            Assert.Equal(0f, FreeCameraMath.ComposeRotateStep(0f, 15f), 3);
+        }
+
+        [Fact]
+        public void ComposeRotateStep_NonPositiveStepDisablesTapRotation()
+        {
+            // 0 = 关掉"点按也转一点", 只保留按住连续旋转; 非法值同样不产生跳变
+            foreach (var step in new[] { 0f, -10f, float.NaN, float.PositiveInfinity })
+                Assert.Equal(0f, FreeCameraMath.ComposeRotateStep(1f, step), 3);
+        }
+
+        [Fact]
+        public void ComposeOrbitDolly_ZeroYawIsExactlyDollyPosition()
+        {
+            float fx, fy, fz;
+            FreeCameraMath.ForwardVector(30f, 40f, out fx, out fy, out fz);
+
+            float x, y, z, yaw;
+            FreeCameraMath.ComposeOrbitDolly(100f, 100f, 5f, 50f, -7f, 30f, 40f, 0f, 25f,
+                out x, out y, out z, out yaw);
+
+            float dx, dy, dz;
+            FreeCameraMath.DollyPosition(5f, 50f, -7f, fx, fy, fz, 25f, out dx, out dy, out dz);
+
+            Assert.Equal(dx, x, 4);
+            Assert.Equal(dy, y, 4);
+            Assert.Equal(dz, z, 4);
+            Assert.Equal(30f, yaw, 4);   // 不旋转时朝向不变 —— 缩放仍然"不改视角"
+        }
+
+        [Fact]
+        public void ComposeOrbitDolly_RotatesPositionAndYawAroundPivot()
+        {
+            float x, y, z, yaw;
+
+            // 相机在观察点 -Z 方向 10m、高度不变, 向右转 90°: 相机绕到 -X, yaw +90°(俯角 45° 不参与)
+            FreeCameraMath.ComposeOrbitDolly(0f, 0f, 0f, 10f, -10f, 0f, 45f, 90f, 0f,
+                out x, out y, out z, out yaw);
+
+            Assert.Equal(-10f, x, 3);
+            Assert.Equal(10f, y, 3);
+            Assert.Equal(0f, z, 3);
+            Assert.Equal(90f, yaw, 3);
+        }
+
+        [Fact]
+        public void ComposeOrbitDolly_KeepsHorizontalDistanceToPivotAndHeight()
+        {
+            // 环绕的硬性不变量: 转多少度, 水平距离与高度都不变(否则画面会上下跳/拉近)
+            float pivotX = 4f, pivotZ = -6f;
+            float expected = (float)Math.Sqrt(12f * 12f + 5f * 5f);
+
+            for (float deg = -180f; deg <= 180f; deg += 45f)
+            {
+                float x, y, z, yaw;
+                FreeCameraMath.ComposeOrbitDolly(pivotX, pivotZ, pivotX + 12f, 20f, pivotZ + 5f,
+                    0f, 50f, deg, 0f, out x, out y, out z, out yaw);
+
+                float dx = x - pivotX, dz = z - pivotZ;
+                Assert.Equal(expected, (float)Math.Sqrt(dx * dx + dz * dz), 2);
+                Assert.Equal(20f, y, 3);
+            }
+        }
+
+        [Fact]
+        public void RotateAroundVertical_KeepsPanDirectionAlignedWithRotatedView()
+        {
+            // 旋转后拖拽/键盘平移要按地图角度换算:
+            // 平移方向在旋转前是相机 right; 把位移绕基准点转 yawDelta 后,
+            // 在"已经转了 yawDelta 的相机"画面里必须仍然是同一个屏幕方向。
+            const float baseYaw = 315f;
+            const float pan = 10f;
+            float baseRad = baseYaw * (float)Math.PI / 180f;
+            float vx = (float)Math.Cos(baseRad) * pan;   // 相机 right = (cos yaw, -sin yaw)
+            float vz = -(float)Math.Sin(baseRad) * pan;
+
+            foreach (float delta in new[] { -90f, -15f, 15f, 90f, 180f })
+            {
+                float x, z;
+                FreeCameraMath.RotateAroundVertical(vx, vz, 0f, 0f, delta, out x, out z);
+
+                float yawRad = (baseYaw + delta) * (float)Math.PI / 180f;
+                float rightX = (float)Math.Cos(yawRad);
+                float rightZ = -(float)Math.Sin(yawRad);
+                float forwardX = (float)Math.Sin(yawRad);
+                float forwardZ = (float)Math.Cos(yawRad);
+
+                // 换算后的位移: 沿旋转后画面的 right 走 pan 米, 不夹带前后分量
+                Assert.Equal(pan, x * rightX + z * rightZ, 3);
+                Assert.Equal(0f, x * forwardX + z * forwardZ, 3);
+            }
+        }
+
         // ---------------- 杂项 ----------------
 
         [Fact]
@@ -753,6 +914,9 @@ namespace CesiumLoader.SDK.Tests
             Assert.Equal(20f, FreeCameraMath.DefaultZoomStep);
             Assert.Equal(120f, FreeCameraMath.DefaultZoomInMax);
             Assert.Equal(1500f, FreeCameraMath.DefaultZoomOutMax);
+            Assert.Equal(90f, FreeCameraMath.DefaultRotateSpeed);
+            Assert.Equal(15f, FreeCameraMath.DefaultRotateStep);
+            Assert.Equal(720f, FreeCameraMath.MaxRotateSpeed);
             Assert.True(Eps > 0f);
         }
     }

@@ -128,12 +128,19 @@ Transform follow = CinemachineService.GetFollow(vcam);
 bool isCharacter = CinemachineService.IsCharacterTransform(follow);   // Core.Unit.Character
 bool isFreeCamera = CinemachineService.IsFollowingFreeCamera(vcam);   // Core.FreeCameraObject
 CinemachineService.SetFollow(vcam, fixedAnchorTransform);
+
+// Follow 可能是自由相机对象的子节点: 需要移动/抵掉自由相机平移时取真正的对象
+Transform freeObject = CinemachineService.GetFreeCameraObjectTransform(vcam);   // 不跟随自由相机时 null
 ```
 
 `IsCharacterTransform` 只认游戏角色组件（`Core.Unit.Character`），`IsFollowingFreeCamera`
 认玩家拖拽用的自由相机对象（`Core.FreeCameraObject`）。两者用来区分「跟随角色的相机」
 「跟随自由相机对象 / 演出镜头锁的相机」。自由相机 mod 的 `autoFollow=false` 只改角色相机，
 并且只在自由相机移动时让固定锚点跟着走，所以玩家拖拽平移不受影响、演出运镜也不会改掉固定镜头。
+
+`GetFreeCameraObjectTransform` 返回**挂着 `Core.FreeCameraObject` 组件的对象**（不是 Follow 节点）。
+本作的 `Follow` 可能指向该对象的子节点，直接改子节点只会在父对象里积累局部偏移，
+所以需要移动自由相机（例如抵掉游戏自己的方向键平移）时必须用它。
 
 > 实测结论(2026-09-20)：菜单/场景过渡期 Brain 可能挂在失活对象上，此时靠 vcam 抢优先级
 > 不生效；自由相机的**滚轮缩放**因此采用"每帧直接写 Main Camera 位姿"的方式接管。
@@ -144,7 +151,8 @@ CinemachineService.SetFollow(vcam, fixedAnchorTransform);
 
 纯托管数学，离线可测：`ForwardVector(yaw, pitch)`、`ClampPitch`（±89°）、`OrbitPosition`、
 `ApplyScrollToFieldOfView` / `ApplyScrollToDistance`、`ApplyHeightStep`、
-`ApplyScrollToZoom` / `SmoothTowards` / `DollyPosition` / `IsSettled`。
+`ApplyScrollToZoom` / `SmoothTowards` / `DollyPosition` / `IsSettled`、
+`RotateAroundVertical` / `ComposeRotateDelta` / `ComposeRotateStep` / `ComposeOrbitDolly`。
 约定：yaw=0 指向 +Z；`pitch` 为正表示低头（与 `Quaternion.Euler` 一致）。
 
 `ApplyHeightStep(height, delta, step)` 是"游戏内实时调相机高度"用的纯函数：只做
@@ -159,3 +167,15 @@ CinemachineService.SetFollow(vcam, fixedAnchorTransform);
 "视角一点不变、只改远近"的缩放。
 `SmoothTowards` 是指数逼近（每帧保留 `exp(-dt/smoothTime)` 的剩余差，帧率无关，掉帧不会冲过头；
 `smoothTime <= 0` 直接返回目标），`IsSettled` 用来判断"是否已经回到原位"，据此自动把相机交还游戏。
+
+旋转地图（左右方向键）用的纯函数：
+- `RotateAroundVertical(x, z, pivotX, pivotZ, degrees)` —— 把水平面上的点绕"过观察点的竖直线"转，
+  只动 X/Z；方向与 yaw 一致（+90° 把 +Z 处的点转到 +X）；
+- `ComposeRotateDelta(direction, degreesPerSecond, deltaTime)` —— 按住方向的连续旋转量（度/帧），
+  方向只取符号，`deltaTime` 非法返回 0，速度非法退回 `DefaultRotateSpeed`(90)；
+- `ComposeRotateStep(direction, step)` —— 点按一次的最小步进（`step <= 0` 表示关掉点按）；
+- `ComposeOrbitDolly(...)` —— 一次算完"位置绕观察点旋转 + yaw 加同一个角度 + 沿新视线 dolly"，
+  `yawDelta = 0` 时与 `DollyPosition` 完全一致。观察点留在画面中心、俯角不变，所以看起来是地图在转。
+
+`GetFreeCameraObjectTransform` 之外，相机写入仍然遵循 §7 的结论：每帧在 `PostLateUpdate`
+直接写主相机是唯一可靠的接管点；旋转只加 `yaw`，俯角/滚转/FOV 不动。

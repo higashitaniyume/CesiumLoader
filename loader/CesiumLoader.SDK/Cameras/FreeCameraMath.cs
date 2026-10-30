@@ -52,6 +52,15 @@ namespace CesiumLoader.SDK.Cameras
         /// <summary>滚轮缩放: 沿视线<b>向后</b>(拉远/缩小)的默认上限(米)。给足"拉到很高看整张地图"的余地。</summary>
         public const float DefaultZoomOutMax = 1500f;
 
+        /// <summary>左右方向键旋转地图的默认速度(度/秒)。</summary>
+        public const float DefaultRotateSpeed = 90f;
+
+        /// <summary>左右方向键旋转地图: 点按一次的最小步进(度)。</summary>
+        public const float DefaultRotateStep = 15f;
+
+        /// <summary>旋转速度上限(度/秒), 防止把配置写成"一按就转好几圈"。</summary>
+        public const float MaxRotateSpeed = 720f;
+
         /// <summary>加速倍率。</summary>
         public const float FastMultiplier = 4f;
 
@@ -352,6 +361,81 @@ namespace CesiumLoader.SDK.Cameras
         {
             if (float.IsNaN(current) || float.IsNaN(target)) return false;
             return Math.Abs(current - target) <= Math.Abs(tolerance);
+        }
+
+        // =====================================================================
+        // 旋转地图(左右方向键绕竖直轴环绕)
+        // =====================================================================
+
+        /// <summary>
+        /// 把水平面上的一个点绕"过 (<paramref name="pivotX"/>, <paramref name="pivotZ"/>) 的竖直线"
+        /// 旋转 <paramref name="degrees"/> 度(右手为负、左手为正, 与 <see cref="ForwardVector"/> 一致)。
+        ///
+        /// 只动 X/Z, 高度不变 —— 于是"把相机绕观察点转一圈"不会让画面上下跳。
+        /// 与 Unity 的 yaw 完全对齐: yaw +90° 会把 +Z 处的点转到 +X。
+        /// </summary>
+        public static void RotateAroundVertical(float x, float z, float pivotX, float pivotZ, float degrees,
+            out float newX, out float newZ)
+        {
+            double rad = NormalizeAngle180(degrees) * Deg2Rad;
+            double cos = Math.Cos(rad);
+            double sin = Math.Sin(rad);
+            double dx = x - pivotX;
+            double dz = z - pivotZ;
+            newX = (float)(pivotX + dx * cos + dz * sin);
+            newZ = (float)(pivotZ - dx * sin + dz * cos);
+        }
+
+        /// <summary>
+        /// 按住左右键时的旋转增量(度/帧): <paramref name="direction"/> 为 -1(左)/+1(右), 其余按 0 处理。
+        /// <paramref name="deltaTime"/> 非法或 ≤ 0 时返回 0(暂停/首帧不动);
+        /// <paramref name="degreesPerSecond"/> 非法时退回 <see cref="DefaultRotateSpeed"/>, 免得配置写坏就"按键没反应"。
+        /// </summary>
+        public static float ComposeRotateDelta(float direction, float degreesPerSecond, float deltaTime)
+        {
+            if (float.IsNaN(direction) || direction == 0f) return 0f;
+            if (float.IsNaN(deltaTime) || float.IsInfinity(deltaTime) || deltaTime <= 0f) return 0f;
+            if (float.IsNaN(degreesPerSecond) || float.IsInfinity(degreesPerSecond) || degreesPerSecond <= 0f)
+                degreesPerSecond = DefaultRotateSpeed;
+            return Clamp(direction, -1f, 1f) * degreesPerSecond * deltaTime;
+        }
+
+        /// <summary>
+        /// 点按一次左右键的最小旋转步进(度): <paramref name="step"/> ≤ 0 / NaN / Inf 时返回 0
+        /// (即关掉"点按也转一点"的行为, 只保留按住连续旋转)。
+        /// </summary>
+        public static float ComposeRotateStep(float direction, float step)
+        {
+            if (float.IsNaN(direction) || direction == 0f) return 0f;
+            if (float.IsNaN(step) || float.IsInfinity(step) || step <= 0f) return 0f;
+            return Clamp(direction, -1f, 1f) * step;
+        }
+
+        /// <summary>
+        /// 把"游戏本帧的相机位姿"变成"绕观察点旋转 + 沿新视线缩放"之后的位姿:
+        ///   1) 位置绕 (<paramref name="pivotX"/>, <paramref name="pivotZ"/>) 旋转 <paramref name="yawDeltaDeg"/> 度(只动水平面);
+        ///   2) 朝向 yaw 加同一个角度(pitch/roll 不变, 所以俯角、滚转和游戏原来一样);
+        ///   3) 再沿旋转后的朝向 dolly <paramref name="zoomOffset"/> 米(滚轮缩放)。
+        ///
+        /// <paramref name="yawDeltaDeg"/> = 0 时结果与 <see cref="DollyPosition"/> 完全一致(缩放不改视角);
+        /// 观察点就是相机正在看的那个点, 所以旋转过程中它一直留在画面中心。
+        /// </summary>
+        public static void ComposeOrbitDolly(
+            float pivotX, float pivotZ,
+            float baseX, float baseY, float baseZ,
+            float baseYawDeg, float basePitchDeg,
+            float yawDeltaDeg, float zoomOffset,
+            out float x, out float y, out float z, out float yawDeg)
+        {
+            float rotatedX, rotatedZ;
+            RotateAroundVertical(baseX, baseZ, pivotX, pivotZ, yawDeltaDeg, out rotatedX, out rotatedZ);
+
+            yawDeg = NormalizeAngle180(baseYawDeg + yawDeltaDeg);
+
+            float fx, fy, fz;
+            ForwardVector(yawDeg, basePitchDeg, out fx, out fy, out fz);
+
+            DollyPosition(rotatedX, baseY, rotatedZ, fx, fy, fz, zoomOffset, out x, out y, out z);
         }
 
         /// <summary>两位小数的文本(日志用)。</summary>

@@ -397,6 +397,30 @@ namespace CesiumLoader.SDK.Cameras
         }
 
         /// <summary>
+        /// 取 vcam 跟随的自由相机对象(<c>Core.FreeCameraObject</c>)的 Transform。
+        ///
+        /// 和 <see cref="IsFollowingFreeCamera"/> 的区别: Follow 可能指向对象本身、也可能是它的
+        /// 子节点, 这里返回<b>挂着 FreeCameraObject 组件的那个对象</b>。需要移动 / 抵掉自由相机
+        /// 的平移时应当用它 —— 直接改子节点只会在父对象里积累局部偏移, 停止改写后画面会跳。
+        /// 不跟随自由相机时返回 null。
+        /// </summary>
+        public static Transform GetFreeCameraObjectTransform(object vcam)
+        {
+            Transform follow = GetFollow(vcam);
+            if (!UnityObject.IsAlive(follow)) return null;
+            try
+            {
+                var type = RuntimeAssemblyService.FindType("Core.FreeCameraObject");
+                if (type == null) return null;
+                var go = UnityObject.GetGameObject(follow);
+                if (go == null) return null;
+                var component = UnityCall.GetComponentInParent(go, type);
+                return component != null ? component.transform : null;
+            }
+            catch { Interlocked.Increment(ref _failCount); return null; }
+        }
+
+        /// <summary>
         /// 创建一个独立的 VirtualCamera 并挂到指定父节点下。
         /// 失败返回 null(Cinemachine 不可用时属正常情况)。
         /// </summary>

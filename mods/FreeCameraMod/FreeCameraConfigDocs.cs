@@ -60,10 +60,10 @@ namespace FreeCameraMod
                 "Height threshold for detecting menu/transition cameras in meters (default 500).",
                 "メニュー/遷移カメラ判定の高さしきい値（メートル、既定 500）。"));
             changed |= config.Describe("notify", D(
-                "显示滚轮缩放/恢复的屏幕提示。",
-                "顯示滾輪縮放/還原的螢幕提示。",
-                "Show on-screen notices when zooming or restoring the camera.",
-                "ズームや視点復元時に画面へ通知を表示します。"));
+                "显示滚轮缩放/方向键旋转/恢复的屏幕提示。",
+                "顯示滾輪縮放/方向鍵旋轉/還原的螢幕提示。",
+                "Show on-screen notices when zooming, rotating or restoring the camera.",
+                "ズーム・回転・視点復元時に画面へ通知を表示します。"));
             changed |= config.Describe("restoreKey", D(
                 "恢复原视角的按键，默认 F1。",
                 "還原原視角的按鍵，預設 F1。",
@@ -74,6 +74,36 @@ namespace FreeCameraMod
                 "第二個還原鍵，預設 F2；None 表示不用。",
                 "Second restore key (default F2); None disables it.",
                 "2 つ目の視点復元キー（既定 F2）。None で無効になります。"));
+            changed |= config.Describe("rotateLeftKey", D(
+                "向左侧旋转地图的按键，默认 LeftArrow；None 表示关掉这个方向。",
+                "向左側旋轉地圖的按鍵，預設 LeftArrow；None 表示關閉這個方向。",
+                "Key that rotates the map to the left (default LeftArrow); None disables this direction.",
+                "地図を左へ回転するキー（既定 LeftArrow）。None でこの方向を無効にします。"));
+            changed |= config.Describe("rotateRightKey", D(
+                "向右侧旋转地图的按键，默认 RightArrow；None 表示关掉这个方向。",
+                "向右側旋轉地圖的按鍵，預設 RightArrow；None 表示關閉這個方向。",
+                "Key that rotates the map to the right (default RightArrow); None disables this direction.",
+                "地図を右へ回転するキー（既定 RightArrow）。None でこの方向を無効にします。"));
+            changed |= config.Describe("rotateSpeed", D(
+                "按住旋转键时的速度（度/秒），默认 90；0 表示只能点按。",
+                "按住旋轉鍵時的速度（度/秒），預設 90；0 表示只能點按。",
+                "Rotation speed while a rotate key is held, in degrees per second (default 90); 0 keeps tap-only rotation.",
+                "回転キーを押し続けたときの速度（度/秒、既定 90）。0 ではタップ回転のみになります。"));
+            changed |= config.Describe("rotateStep", D(
+                "点按一次旋转键转过的角度（度），默认 15；0 表示关掉点按步进。",
+                "點按一次旋轉鍵轉過的角度（度），預設 15；0 表示關閉點按步進。",
+                "Angle rotated by one tap of a rotate key in degrees (default 15); 0 disables tap rotation.",
+                "回転キーを 1 回押したときの角度（度、既定 15）。0 でタップ回転を無効にします。"));
+            changed |= config.Describe("invertRotate", D(
+                "反转左右旋转方向，默认 false：→ 让视点向右转；改成 true 则 → 让地图向右转。",
+                "反轉左右旋轉方向，預設 false：→ 讓視點向右轉；改為 true 則 → 讓地圖向右轉。",
+                "Invert the left/right rotation direction (default false: → turns the view right; true: → turns the map right).",
+                "左右の回転方向を反転します（既定 false：→ で視点が右へ回る。true：→ で地図が右へ回る）。"));
+            changed |= config.Describe("blockPanWhileRotate", D(
+                "旋转时抵掉游戏自己的左右方向键平移，默认 true；改成 false 则旋转的同时地图也会被推走。",
+                "旋轉時抵掉遊戲自己的左右方向鍵平移，預設 true；改為 false 則旋轉的同時地圖也會被推走。",
+                "Cancel the game's own left/right arrow pan while rotating (default true); false lets the map slide while rotating.",
+                "回転中にゲーム自身の左右キー移動を打ち消します（既定 true）。false では回転と同時に地図も動きます。"));
             return changed;
         }
 
