@@ -9,10 +9,10 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/higashitaniyume/CesiumLoader</PackageProjectUrl>
     <!-- SDK 版本: 与 SdkVersion.Current 保持一致, 发布时同步递增 -->
-    <Version>2.8.8</Version>
+    <Version>2.8.9</Version>
     <!-- 保持程序集标识 2.5.1.0: 新增 API 是二进制兼容的, 旧 mod 仍按原名/版本解析到本次 SDK -->
     <AssemblyVersion>2.5.1.0</AssemblyVersion>
-    <FileVersion>2.8.8.0</FileVersion>
+    <FileVersion>2.8.9.0</FileVersion>
     <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- 不生成 XML 文档, 减少构建噪音 -->
