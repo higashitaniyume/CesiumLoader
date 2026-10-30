@@ -193,6 +193,7 @@ jobs:
             "TurnFocusMod"   = "回合置前, 轮到自己时把游戏窗口切到前台, 可选播放提示音"
             "HideHudMod"     = "隐藏HUD, 长按反引号(Tab 上方)隐藏战斗 HUD, 可改为按一下切换"
             "QuickChatPlusMod" = "快捷短语扩展, 战斗内快捷短语补全并支持滚动"
+            "ChatDurationMod" = "消息停留时间, 战斗消息与表情按真实时间停留, 不受变速影响"
             "HomeBottomBarMod" = "主页底栏调整, 隐藏公告 / 设置左移 / 右侧增加退出按钮"
             "UnlockFrameRateMod" = "帧率解锁, 帧率列表追加 144/165/240/360/不限帧"
             "LanguageUnlockMod" = "多语言支持, 国服启用英文/日文/繁中语言选项"
@@ -232,6 +233,7 @@ jobs:
             "TurnFocusMod 默认不播放提示音; 在 mods\TurnFocusMod\config.json 的 soundFile 填 WAV 路径后启用(随包示例 sounds\your-turn.wav)。",
              "AutoThanksMod 默认启用: 队友治疗、给牌或转星币给你时自动发送原版感谢短语，默认 2 秒真实时间冷却。",
             "HideHudMod 默认启用: 长按反引号键（Tab 上方）隐藏战斗 HUD，松开恢复；可在 config.json 改成按一下切换，并分别开关手牌、怪物信息、头像与其他 HUD。",
+            "ChatDurationMod 默认启用: 战斗中的快捷消息与表情按真实时间停留 15 秒(可在 config.json 调整)，变速不会缩短停留时间。",
             "HomeBottomBarMod 默认启用: 主页底栏隐藏公告，设置左移一位，最右侧增加退出按钮（沿用游戏原生退出确认）。",
             "UnlockFrameRateMod 默认启用: 在游戏「设置→屏幕→帧率」列表追加 144/165/240/360/不限帧 选项，选中后由游戏自己应用。",
             "LanguageUnlockMod 默认启用: 国服在游戏「设置→屏幕→语言」里启用英文 / 日文 / 繁中；国际服原生支持，模组自动不介入。",

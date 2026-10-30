@@ -70,6 +70,7 @@ winget install Hiynet.AstralParty.Toys
 | [HideHudMod](docs/mod-HideHudMod.md) | 长按反引号键（Tab 上方）隐藏战斗 HUD，可改为按一下切换；手牌、怪物信息、头像与其他 HUD 可分别开关 |
 | [TurnFocusMod](mods/TurnFocusMod/README.md) | 轮到自己回合、选择筹码、战斗出牌、攻击或防御、匹配成功，或开房后有人发准备消息时把游戏窗口切到前台，可选播放提示音 |
 | [QuickChatPlusMod](mods/QuickChatPlusMod/README.md) | 战斗内快捷短语面板补入房间等待、结算与其他模式的既有短语，可按类别与模式开关 |
+| [ChatDurationMod](docs/mod-ChatDurationMod.md) | 战斗中的快捷消息与表情按真实时间停留（默认 15 秒），不受变速影响 |
 | [HomeBottomBarMod](mods/HomeBottomBarMod/README.md) | 主页底栏隐藏公告，设置左移一位，最右侧增加退出按钮 |
 | [UnlockFrameRateMod](mods/UnlockFrameRateMod/README.md) | 在游戏帧率列表追加 144/165/240/360/不限帧 选项，选中后由游戏自己应用 |
 | [LanguageUnlockMod](mods/LanguageUnlockMod/README.md) | 国服启用设置里已有的英文 / 日文 / 繁中语言选项，切换后重登生效 |
