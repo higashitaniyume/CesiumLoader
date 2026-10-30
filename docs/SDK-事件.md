@@ -15,7 +15,7 @@ public static void GameEvents.EnsureHooked();
 - 安全：只在确认战斗中挂钩（`GameLogicManager.battle` 存在且有玩家），避免启动早期强制创建 NetManager 单例崩溃。
 - 包装后的回调会**转发给游戏原回调**，不干扰游戏逻辑。
 
-## 16 个事件
+## 17 个事件
 
 ### 战斗用牌
 
@@ -46,6 +46,23 @@ public static void GameEvents.EnsureHooked();
 |---|---|---|
 | `BattleUpdate` | `Action<Battle>` `(b)` | 战斗更新（攻防变化/结束时触发，**已去重**）。`Battle` 为游戏类型 `party.model.Battle` |
 | `BattleDice` | `Action<long, int>` `(playerId, point)` | 战斗攻击骰子 |
+| `BattlePhaseChanged` | `Action<Battle, BattlePhase>` `(b, phase)` | 战斗子阶段变化。攻方投出骰子（含 0 点）时触发 |
+
+### 战斗子阶段
+
+服务器没有下发战斗阶段字段，`GameEvents` 按战斗快照与投骰广播的先后顺序推导：
+
+| 成员 | 类型 | 含义 |
+|---|---|---|
+| `CurrentBattlePhase` | `BattlePhase` | `None` / `AttackerRollPending` / `AttackerRolled` / `Ended` |
+| `AttackerHasRolled` | `bool` | 当前战斗的攻方是否已经投骰 |
+| `AttackerPoint` | `int` | 攻方骰点：未投骰为 `-1`，已投骰为 `0..6` |
+
+`BattleRole.Point` 是普通 proto3 整数：攻方尚未投骰与投出 0 点都是 `0`，仅看该字段无法判断骰子是否已经落地。判断方式用 `AttackerPoint >= 0`（或 `AttackerHasRolled`），不要用 `Point > 0`。
+
+0 是有效点数（例如摩西【破绽】把怪物战斗骰点压到 0），按 0 点计算闪避时必定闪避成功。投出 0 点时战斗数值可能不变，`BattleUpdate` 会被去重，需要在骰子落地瞬间重算的订阅方应同时处理 `BattlePhaseChanged`。
+
+重连后通常只拿得到战斗快照：快照里的骰点大于 0 时一律视为已投骰；骰点为 0 且没有收到投骰广播时，子阶段停在 `AttackerRollPending`。
 
 ### 商店 / 遗物 / 手牌
 
@@ -83,5 +100,6 @@ static void OnTick()
 
 - 事件参数里的 `playerId` 都是服务器下发的 `long`（玩家 ID），可用 `Players.IsSelf(pid)` 判断是否是自己。
 - `HandChanged` 队友手牌 CardId 为负数（服务器掩码），`Names.Card` 对负数会返回 `卡{id}`。
-- `BattleUpdate` 已按"攻防数值或结束状态变化"去重，相同状态不会重复触发。
+- `BattleUpdate` 已按"战斗子阶段 + 攻防数值 + 结束状态"去重，相同状态不会重复触发。
+- 攻方投出 0 点时数值不变，但 `BattlePhaseChanged` 仍会触发；需要“骰子落地就重算”的 mod 两个事件都订阅。
 - `ShopCandidates` / `RelicCandidates` 内部按 action Sn 去重，同一候选只报一次。

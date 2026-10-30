@@ -75,6 +75,13 @@ namespace CesiumLoader.SDK.Gameplay
         public static event Action<Battle> BattleUpdate;
         /// <summary>战斗攻击骰子: (playerId, 点数)。</summary>
         public static event Action<long, int> BattleDice;
+        /// <summary>
+        /// 战斗子阶段变化: (battle, phase)。
+        ///
+        /// 攻方投出骰子的瞬间触发一次（包括投出 0 点）。投出 0 点时战斗数值可能完全不变,
+        /// <see cref="BattleUpdate"/> 不会触发, 需要立刻重算的订阅方应同时处理本事件。
+        /// </summary>
+        public static event Action<Battle, BattlePhase> BattlePhaseChanged;
         /// <summary>回合结束选奖励卡: (playerId, cardId)。</summary>
         public static event Action<long, int> RewardCardSelected;
         /// <summary>商店待选卡: (playerId, cardId列表)。</summary>
@@ -106,7 +113,22 @@ namespace CesiumLoader.SDK.Gameplay
         public static event Action<RawActionEvent> RawAction;
 
         /// <summary>已定义的事件数量(静态常量)。</summary>
-        public static int EventCount => 16;
+        public static int EventCount => 17;
+
+        /// <summary>当前战斗的子阶段(由战斗快照与投骰广播的先后顺序推导)。</summary>
+        public static BattlePhase CurrentBattlePhase => _battlePhase.Phase;
+
+        /// <summary>当前战斗的攻方是否已经投骰。</summary>
+        public static bool AttackerHasRolled => _battlePhase.AttackerHasRolled;
+
+        /// <summary>
+        /// 当前战斗攻方的骰点: 尚未投骰时为 -1, 已投骰时为 0..6。
+        ///
+        /// 0 是有效点数(例如摩西【破绽】把怪物战斗骰点压到 0), 不能用
+        /// <c>BattleRole.Point &gt; 0</c> 判断骰子是否已经落地 —— 未投骰时该字段同样是 0。
+        /// 战斗结束后保留该场骰点, 直到下一场战斗开始。
+        /// </summary>
+        public static int AttackerPoint => _battlePhase.AttackerPoint;
 
         // ---------- hook 状态 ----------
 
@@ -114,6 +136,8 @@ namespace CesiumLoader.SDK.Gameplay
         private static readonly HashSet<long> _reportedShopSn = new HashSet<long>();
         private static readonly HashSet<long> _reportedRelicSn = new HashSet<long>();
         private static string _lastBattleKey;
+        private static readonly BattlePhaseTracker _battlePhase = new BattlePhaseTracker();
+        private static Battle _currentBattle;
 
         private static Core.Net.PredictActionS2CRPC.OnPredictActionS2CServerDelegate _myWrappedPredict;
         private static Core.Net.BattleUseCardS2CRPC.OnBattleUseCardS2CServerDelegate _myWrappedBattleUseCard;
@@ -480,17 +504,57 @@ namespace CesiumLoader.SDK.Gameplay
             if (model == null || errId != 0 || model.Battle == null) return;
             var b = model.Battle;
             if (b.Attacker == null || b.Defender == null) return;
-            // 去重: 攻防数值或结束状态变化才触发
-            string key = $"{b.Attacker.PlayerId}|{b.Defender.PlayerId}|{b.Attacker.Point}|{b.Defender.Point}|{b.Attacker.Atk}|{b.Defender.Def}|{b.IsEnd}";
-            if (key == _lastBattleKey) return;
-            _lastBattleKey = key;
-            BattleUpdate?.Invoke(b);
+
+            BattlePhase before = _battlePhase.Phase;
+            bool newBattle = _battlePhase.ObserveBattle(
+                b.BattleId, b.Attacker.PlayerId, b.Defender.PlayerId, b.IsEnd, b.Attacker.Point);
+            if (newBattle) _lastBattleKey = null;   // 新战斗即使数值相同也必须重新通知
+            _currentBattle = b.IsEnd ? null : b;
+
+            PublishBattleUpdate(b);
+
+            if (_battlePhase.Phase != before) RaiseBattlePhaseChanged(b);
         }
 
         private static void OnBattleDice(BattleThrowDiceS2C model, int errId, bool isDispatch)
         {
             if (model == null || errId != 0) return;
+
+            bool changed = _battlePhase.ObserveAttackerDice(model.PlayerId, model.Val);
             BattleDice?.Invoke(model.PlayerId, model.Val);
+            // 投出 0 点时战斗数值可能不变(BattleUpdate 会被去重), 这里补一次阶段变化通知。
+            if (changed)
+            {
+                // 同步去重键: 随后到达的同值快照不必再触发一次 BattleUpdate。
+                if (_currentBattle != null) _lastBattleKey = BattleKey(_currentBattle);
+                RaiseBattlePhaseChanged(_currentBattle);
+            }
+        }
+
+        /// <summary>
+        /// 按"阶段 + 战斗标识 + 攻防数值 + 结束状态"去重后通知 <see cref="BattleUpdate"/>。
+        /// </summary>
+        private static void PublishBattleUpdate(Battle b)
+        {
+            if (b == null || b.Attacker == null || b.Defender == null) return;
+            string key = BattleKey(b);
+            if (key == _lastBattleKey) return;
+            _lastBattleKey = key;
+            BattleUpdate?.Invoke(b);
+        }
+
+        private static string BattleKey(Battle b)
+        {
+            return _battlePhase.Phase + "|" + b.BattleId + "|" +
+                   b.Attacker.PlayerId + "|" + b.Defender.PlayerId + "|" +
+                   b.Attacker.Point + "|" + b.Defender.Point + "|" +
+                   b.Attacker.Atk + "|" + b.Defender.Def + "|" + b.IsEnd;
+        }
+
+        private static void RaiseBattlePhaseChanged(Battle b)
+        {
+            if (b == null) return;
+            BattlePhaseChanged?.Invoke(b, _battlePhase.Phase);
         }
 
         private static void OnMove(MoveS2C model, int errId, bool isDispatch)

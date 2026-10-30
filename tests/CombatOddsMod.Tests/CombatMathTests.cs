@@ -217,6 +217,16 @@ namespace CombatOddsMod.Tests
         }
 
         [Fact]
+        public void Dodge_DeterminedZeroPoint_AlwaysSucceeds()
+        {
+            // 攻方已投出有效 0 点(例如摩西【破绽】把怪物骰点压到 0): 任意闪避骰都 > 0。
+            var r = CombatMath.Dodge(10, 6, 0);
+            Assert.Equal(1.0, r.SuccessProb, 12);
+            Assert.Equal(0.0, r.KnockdownProb, 12);
+            Assert.Equal(0.0, r.ExpectedDamage, 12);
+        }
+
+        [Fact]
         public void Dodge_MosesPrecisionStacks_RaiseMinPoint()
         {
             // 2 层【精密技巧】: 闪避骰只有 3..6 (4 面)。

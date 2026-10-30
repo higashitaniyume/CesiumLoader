@@ -19,6 +19,7 @@ namespace CombatOddsMod
     ///   · 闪避: 被击倒率 (d6 判定, 精确)
     ///   · 我方攻击: 期望伤害 + 击杀概率
     /// 每次攻/防数值或骰点变化(BattleUpdate 去重)即重算一次, 满足"每投一张更新一次"。
+    /// 攻方投出 0 点时数值不变, 由 GameEvents.BattlePhaseChanged 补一次重算。
     ///
     /// 数据来源(反编译验证): 服务器把 party.model.BattleRole 的
     ///   Atk/Def、MinAtk/MaxAtk、MinDef/MaxDef、InitAtk/InitDef、Point、Dodge、CanNotFightBack
@@ -228,6 +229,7 @@ namespace CombatOddsMod
                 return;
             }
             GameEvents.BattleUpdate += OnBattleUpdate;
+            GameEvents.BattlePhaseChanged += OnBattlePhaseChanged;
             GameEvents.CardUsed += OnCombatCardUsed;
             GameEvents.EffectCardUsed += OnCombatEffectCardUsed;
             GameEvents.QuickCardUsed += OnCombatQuickCardUsed;
@@ -424,6 +426,13 @@ namespace CombatOddsMod
             catch { }
         }
 
+        private static void OnBattlePhaseChanged(Battle b, BattlePhase phase)
+        {
+            // 攻方刚投骰: 投出 0 点时 Atk/Point 都不变, BattleUpdate 会被去重, 这里补一次重算。
+            if (phase != BattlePhase.AttackerRolled) return;
+            OnBattleUpdate(b);
+        }
+
         private static void OnBattleUpdate(Battle b)
         {
             try
@@ -454,11 +463,13 @@ namespace CombatOddsMod
                 // 观战(非自己参战): 顶部一行小字标注谁打谁。
                 if (!involved) sb.Append(Dim("👁 " + atkName + " ⚔ " + defName)).Append('\n');
 
-                int atkPoint = SafeInt(() => atk.Point);
+                // 攻方骰点: 未投骰 = -1(此时 Point 固定为 0, 不代表点数), 已投骰 = 0..6。
+                // 0 是有效点数(摩西【破绽】可把怪物战斗骰点压到 0), 不能用 Point > 0 判断是否投过。
+                int atkPoint = GameEvents.AttackerPoint;
                 int finalAtk = SafeInt(() => atk.Atk);
                 int bonnieBonus = BonnieMarkedMonsterBonus(atk, def);
                 finalAtk += bonnieBonus;
-                bool attackerThrew = atkPoint > 0;
+                bool attackerThrew = atkPoint >= 0;
 
                 // 目标(防守方/被击中者)身上的实时 buff → 受伤修正(易伤/减伤/免疫)。
                 // 攻、守两个视角命中的都是同一个"被击中者"= 防守方, 故只求一次。
