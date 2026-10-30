@@ -16,8 +16,6 @@ namespace CombatOddsMod
             return s.Length >= 4 ? s : new string(' ', 4 - s.Length) + s;
         }
 
-        private static string Fmt1(double v) => v.ToString("0.#");
-
         // ============================== 颜色/排版(UBB) ==============================
         // FairyGUI GTextField 开启 ubbEnabled 后支持 [color=#rgb]/[size=n]/[b]。
         // ColorHighlight=false 或送控制台时, 一律降级为纯文本(StripUbb)。

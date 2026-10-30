@@ -15,9 +15,9 @@ namespace CombatOddsMod
 {
     /// <summary>
     /// 战斗胜率助手 —— 在打怪投牌(FightWindow)界面实时计算并显示:
-    ///   · 防御: 期望受到伤害 + 被击倒率
+    ///   · 防御: 被击倒率
     ///   · 闪避: 被击倒率 (d6 判定, 精确)
-    ///   · 我方攻击: 期望伤害 + 击杀概率
+    ///   · 我方攻击: 预计伤害(伤害分布的众数, 无唯一众数时取中位数并四舍五入) + 击杀概率
     /// 每次攻/防数值或骰点变化(BattleUpdate 去重)即重算一次, 满足"每投一张更新一次"。
     /// 攻方投出 0 点时数值不变, 由 GameEvents.BattlePhaseChanged 补一次重算。
     ///
@@ -578,7 +578,7 @@ namespace CombatOddsMod
                     if (showDefender) sb.Append('\n');
                     sb.Append(Big("🎯 击杀 " + C(PctPlain(r.KillProb), KillColor(r.KillProb))));
                     sb.Append(Dim("（目标防御）"));
-                    sb.Append('\n').Append(Dim(atkName + " > " + defName + " " + targetHp + "血 · 期望伤害 " + Fmt1(r.ExpectedDamage)));
+                    sb.Append('\n').Append(Dim(atkName + " > " + defName + " " + targetHp + "血 · 预计伤害 " + r.TypicalDamage));
                     if (SafeBool(() => def.CanNotFightBack)) sb.Append(Dim("  (无法反击)"));
                 }
 

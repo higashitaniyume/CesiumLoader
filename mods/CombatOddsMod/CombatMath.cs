@@ -73,13 +73,80 @@ namespace CombatOddsMod
         }
 
         // =====================================================================
+        // 代表值(界面显示口径)
+        // =====================================================================
+
+        /// <summary>
+        /// 从"伤害值 → 概率"分布里取一个最贴近实际的整数伤害, 供界面显示:
+        /// 有唯一众数时取众数; 并列众数或无众数(各值等概率)时取中位数,
+        /// 中位数落在两个整数之间时四舍五入。这样不会显示平均值的小数。
+        /// </summary>
+        public static int TypicalDamageOf(IReadOnlyDictionary<int, double> distribution)
+        {
+            if (distribution == null || distribution.Count == 0) return 0;
+
+            var values = new List<int>(distribution.Count);
+            var probs = new List<double>(distribution.Count);
+            foreach (var pair in distribution)
+            {
+                if (pair.Value <= 0.0) continue;
+                values.Add(pair.Key);
+                probs.Add(pair.Value);
+            }
+            if (values.Count == 0) return 0;
+
+            // 1) 唯一众数: 概率严格最高的那个伤害值。
+            double best = -1.0;
+            int bestIndex = -1;
+            bool tied = false;
+            for (int i = 0; i < probs.Count; i++)
+            {
+                double p = probs[i];
+                if (p > best + 1e-12)
+                {
+                    best = p;
+                    bestIndex = i;
+                    tied = false;
+                }
+                else if (Math.Abs(p - best) <= 1e-12)
+                {
+                    tied = true;
+                }
+            }
+            if (!tied && bestIndex >= 0) return values[bestIndex];
+
+            // 2) 没有唯一众数 → 中位数。按伤害值排序后累计概率;
+            //    累计恰好到 50% 时, 中位数落在当前值与下一个值中间, 取中点再四舍五入。
+            var order = new int[values.Count];
+            for (int i = 0; i < order.Length; i++) order[i] = i;
+            Array.Sort(order, delegate (int a, int b) { return values[a].CompareTo(values[b]); });
+
+            double cumulative = 0.0;
+            for (int k = 0; k < order.Length; k++)
+            {
+                int i = order[k];
+                cumulative += probs[i];
+                if (cumulative > 0.5 + 1e-9) return values[i];
+                if (Math.Abs(cumulative - 0.5) <= 1e-9)
+                {
+                    if (k + 1 < order.Length)
+                        return (int)Math.Round((values[i] + values[order[k + 1]]) / 2.0, MidpointRounding.AwayFromZero);
+                    return values[i];
+                }
+            }
+            return values[order[order.Length - 1]];
+        }
+
+        // =====================================================================
         // 防御
         // =====================================================================
 
         public struct DefendResult
         {
-            /// <summary>期望受到的伤害。</summary>
+            /// <summary>期望受到的伤害(概率加权平均, 内部参考值)。</summary>
             public double ExpectedDamage;
+            /// <summary>界面上代表"这一下大概掉多少血"的整数伤害(众数/中位数)。</summary>
+            public int TypicalDamage;
             /// <summary>被击倒(受伤 >= 血量)的概率, 0..1。</summary>
             public double KnockdownProb;
             /// <summary>最小可能受伤。</summary>
@@ -105,6 +172,7 @@ namespace CombatOddsMod
 
             double expDmg = 0.0, knock = 0.0;
             int minDmg = int.MaxValue, maxDmg = int.MinValue;
+            var damageDist = new Dictionary<int, double>();
             for (int i = 0; i < dist.Length; i++)
             {
                 double p = dist[i];
@@ -118,6 +186,7 @@ namespace CombatOddsMod
                 if (maxDamage > 0 && dmg > maxDamage) dmg = maxDamage; // 单次受伤上限
                 if (immune) dmg = 0;                 // 护盾/免疫: 这一击归零
                 expDmg += p * dmg;
+                damageDist[dmg] = (damageDist.TryGetValue(dmg, out double acc) ? acc : 0.0) + p;
                 if (dmg < minDmg) minDmg = dmg;
                 if (dmg > maxDmg) maxDmg = dmg;
                 if (defenderHp > 0 && dmg >= defenderHp) knock += p;
@@ -127,6 +196,7 @@ namespace CombatOddsMod
             return new DefendResult
             {
                 ExpectedDamage = expDmg,
+                TypicalDamage = TypicalDamageOf(damageDist),
                 KnockdownProb = knock,
                 MinDamage = minDmg,
                 MaxDamage = maxDmg,
@@ -144,8 +214,10 @@ namespace CombatOddsMod
             public double SuccessProb;
             /// <summary>被击倒的概率, 0..1。</summary>
             public double KnockdownProb;
-            /// <summary>期望受到的伤害。</summary>
+            /// <summary>期望受到的伤害(概率加权平均, 内部参考值)。</summary>
             public double ExpectedDamage;
+            /// <summary>界面上代表"这一下大概掉多少血"的整数伤害(众数/中位数)。</summary>
+            public int TypicalDamage;
         }
 
         /// <summary>
@@ -185,22 +257,30 @@ namespace CombatOddsMod
             if (immune) dmgFail = 0;                     // 护盾/免疫
             bool knockOnFail = defenderHp > 0 && dmgFail >= defenderHp;
 
+            var damageDist = new Dictionary<int, double>();
+            if (success > 0.0) damageDist[0] = success;
+            if (fail > 0.0)
+                damageDist[dmgFail] = (damageDist.TryGetValue(dmgFail, out double acc) ? acc : 0.0) + fail;
+
             return new DodgeResult
             {
                 SuccessProb = success,
                 KnockdownProb = knockOnFail ? fail : 0.0,
-                ExpectedDamage = fail * dmgFail
+                ExpectedDamage = fail * dmgFail,
+                TypicalDamage = TypicalDamageOf(damageDist)
             };
         }
 
         // =====================================================================
-        // 攻击(我方攻击目标: 期望伤害 + 击杀率)
+        // 攻击(我方攻击目标: 预计伤害 + 击杀率)
         // =====================================================================
 
         public struct AttackResult
         {
-            /// <summary>期望造成的伤害。</summary>
+            /// <summary>期望造成的伤害(概率加权平均, 内部参考值)。</summary>
             public double ExpectedDamage;
+            /// <summary>界面上代表"这一下大概打多少"的整数伤害(众数/中位数)。</summary>
+            public int TypicalDamage;
             /// <summary>击杀(伤害 >= 目标血量)的概率, 0..1。</summary>
             public double KillProb;
             public int MinDamage;
@@ -223,6 +303,7 @@ namespace CombatOddsMod
 
             double expDmg = 0.0, kill = 0.0;
             int minDmg = int.MaxValue, maxDmg = int.MinValue;
+            var damageDist = new Dictionary<int, double>();
             for (int a = 0; a < atk.Length; a++)
             {
                 double pa = atk[a];
@@ -242,6 +323,7 @@ namespace CombatOddsMod
                     if (immune) dmg = 0;                 // 目标护盾/免疫
                     double p = pa * pd;
                     expDmg += p * dmg;
+                    damageDist[dmg] = (damageDist.TryGetValue(dmg, out double acc) ? acc : 0.0) + p;
                     if (dmg < minDmg) minDmg = dmg;
                     if (dmg > maxDmg) maxDmg = dmg;
                     if (targetHp > 0 && dmg >= targetHp) kill += p;
@@ -252,6 +334,7 @@ namespace CombatOddsMod
             return new AttackResult
             {
                 ExpectedDamage = expDmg,
+                TypicalDamage = TypicalDamageOf(damageDist),
                 KillProb = kill,
                 MinDamage = minDmg,
                 MaxDamage = maxDmg

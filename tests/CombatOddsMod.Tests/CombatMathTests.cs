@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Xunit;
 using CombatOddsMod;
 
@@ -43,6 +44,91 @@ namespace CombatOddsMod.Tests
             Assert.Equal(1.0 / 60.0, d[0], 12);
             // 和=4 => (1,3)(2,2)(3,1) = 3/60
             Assert.Equal(3.0 / 60.0, d[2], 12);
+        }
+
+        // ============================ 显示用的代表值(众数/中位数) ============================
+
+        [Fact]
+        public void TypicalDamageOf_UniqueModeWins()
+        {
+            // 用户例子: 受到的伤害 3、2、1、1、1、1 → 众数 1。
+            var dist = new Dictionary<int, double>
+            {
+                { 3, 1.0 / 6.0 }, { 2, 1.0 / 6.0 }, { 1, 4.0 / 6.0 },
+            };
+            Assert.Equal(1, CombatMath.TypicalDamageOf(dist));
+        }
+
+        [Fact]
+        public void TypicalDamageOf_UniformValues_UseMedianRounded()
+        {
+            // 4、5、6、7、8、9 各 1/6, 无唯一众数 → 中位数 6.5 → 7。
+            var dist = new Dictionary<int, double>();
+            for (int v = 4; v <= 9; v++) dist[v] = 1.0 / 6.0;
+            Assert.Equal(7, CombatMath.TypicalDamageOf(dist));
+        }
+
+        [Fact]
+        public void TypicalDamageOf_TiedModes_UseMedian()
+        {
+            // 1 和 2 并列最高, 无唯一众数 → 中位数 1.5 → 2。
+            var dist = new Dictionary<int, double> { { 1, 0.5 }, { 2, 0.5 } };
+            Assert.Equal(2, CombatMath.TypicalDamageOf(dist));
+        }
+
+        [Fact]
+        public void TypicalDamageOf_EmptyOrZeroProb_IsZero()
+        {
+            Assert.Equal(0, CombatMath.TypicalDamageOf(null));
+            Assert.Equal(0, CombatMath.TypicalDamageOf(new Dictionary<int, double>()));
+            Assert.Equal(0, CombatMath.TypicalDamageOf(new Dictionary<int, double> { { 5, 0.0 } }));
+        }
+
+        [Fact]
+        public void Defend_TypicalDamage_UsesMode()
+        {
+            // 攻 5, 防 1+d6 → 伤害 3、2、1、1、1、1 → 众数 1。
+            var r = CombatMath.Defend(5, 6, 1, new[] { 6 });
+            Assert.Equal(1, r.TypicalDamage);
+            Assert.Equal(1.5, r.ExpectedDamage, 12);
+        }
+
+        [Fact]
+        public void Attack_TypicalDamage_UsesMode()
+        {
+            var r = CombatMath.Attack(5, null, 1, new[] { 6 }, targetHp: 6);
+            Assert.Equal(1, r.TypicalDamage);
+        }
+
+        [Fact]
+        public void Defend_TypicalDamage_Uniform_UsesMedian()
+        {
+            // 攻 13, 防 3+d6 → 伤害 4..9 各 1/6 → 中位数 6.5 → 7。
+            var r = CombatMath.Defend(13, 6, 3, new[] { 6 });
+            Assert.Equal(7, r.TypicalDamage);
+        }
+
+        [Fact]
+        public void Attack_TypicalDamage_Uniform_UsesMedian()
+        {
+            var r = CombatMath.Attack(13, null, 3, new[] { 6 }, targetHp: 6);
+            Assert.Equal(7, r.TypicalDamage);
+        }
+
+        [Fact]
+        public void Dodge_TypicalDamage_IsMostLikelyOutcome()
+        {
+            // 阈值 5 → 闪避只成功 1/6, 失败(10 伤) 5/6 → 众数 10。
+            Assert.Equal(10, CombatMath.Dodge(10, 3, 5).TypicalDamage);
+            // 阈值 1 → 闪避成功 5/6 → 众数 0。
+            Assert.Equal(0, CombatMath.Dodge(10, 3, 1).TypicalDamage);
+        }
+
+        [Fact]
+        public void TypicalDamage_ImmuneTarget_IsZero()
+        {
+            Assert.Equal(0, CombatMath.Defend(99, 1, 0, null, 1, 0, true).TypicalDamage);
+            Assert.Equal(0, CombatMath.Attack(99, null, 0, null, 1, 1, 0, true).TypicalDamage);
         }
 
         // ============================ c204 的实例(红绿校验) ============================
