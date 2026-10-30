@@ -383,6 +383,8 @@ dist/modloader/**/*.dll
 dist/modloader/**/*.pdb
 dist/agent/**/*.dll
 dist/agent/**/*.pdb
+# mod 数据包由 stage 脚本从源码目录复制生成, 源码侧已跟踪, dist 里不重复入库
+dist/modloader/**/mods/*/data/
 
 # 变速引擎冒烟测试 (本地编译/运行产物)
 tools/smoke/speedtest/*.exe
