@@ -24,20 +24,52 @@
 namespace
 {
 
-void inject(const std::wstring& text)
+// 一次按键: 字符键(VK=0) / 功能键(VK 有值, 字符为 0) / 带修饰键。
+struct KeyStroke
+{
+    wchar_t ch;
+    WORD vk;
+    DWORD state;
+};
+
+KeyStroke char_key(wchar_t ch)
+{
+    if (ch == L'\r') return KeyStroke{ ch, VK_RETURN, 0 };
+    if (ch == L'\t') return KeyStroke{ ch, VK_TAB, 0 };
+    return KeyStroke{ ch, 0, 0 };
+}
+
+KeyStroke vk_key(WORD vk) { return KeyStroke{ 0, vk, 0 }; }
+
+KeyStroke ctrl_char(wchar_t ch)
+{
+    return KeyStroke{ ch, 0, LEFT_CTRL_PRESSED };
+}
+
+std::vector<KeyStroke> text(const std::wstring& s)
+{
+    std::vector<KeyStroke> out;
+    out.reserve(s.size());
+    for (wchar_t ch : s) out.push_back(char_key(ch));
+    return out;
+}
+
+void inject(const std::vector<KeyStroke>& keys)
 {
     HANDLE in = GetStdHandle(STD_INPUT_HANDLE);
     if (in == nullptr || in == INVALID_HANDLE_VALUE) return;
 
     std::vector<INPUT_RECORD> records;
-    for (wchar_t ch : text)
+    records.reserve(keys.size() * 2);
+    for (const KeyStroke& key : keys)
     {
         INPUT_RECORD down{};
         down.EventType = KEY_EVENT;
         down.Event.KeyEvent.bKeyDown = TRUE;
         down.Event.KeyEvent.wRepeatCount = 1;
-        down.Event.KeyEvent.uChar.UnicodeChar = ch;
-        down.Event.KeyEvent.wVirtualKeyCode = (ch == L'\r') ? VK_RETURN : 0;
+        down.Event.KeyEvent.uChar.UnicodeChar = key.ch;
+        down.Event.KeyEvent.wVirtualKeyCode = key.vk;
+        down.Event.KeyEvent.dwControlKeyState = key.state;
         records.push_back(down);
 
         INPUT_RECORD up = down;
@@ -48,6 +80,8 @@ void inject(const std::wstring& text)
     DWORD written = 0;
     WriteConsoleInputW(in, records.data(), (DWORD)records.size(), &written);
 }
+
+void inject(const std::wstring& s) { inject(text(s)); }
 
 void dump_screen(const std::wstring& path, bool append, const std::wstring& label)
 {
@@ -158,31 +192,110 @@ int main(int argc, char** argv)
     screen += L"\\shell-screen.txt";
     DeleteFileW(screen.c_str());
 
-    struct Step { const wchar_t* keys; const wchar_t* label; bool clearBefore; };
-    const Step script[] = {
-        { L"help\r", L"help", true },
-        { L"help set\r", L"help set", true },
-        { L"set --help\r", L"set --help", true },
-        { L"status\r", L"status", true },
-        { L"ls TurnFocus\r", L"ls TurnFocus", true },
-        { L"set TurnFocusMod.cooldownSeconds 3\r", L"set TurnFocusMod.cooldownSeconds 3", true },
-        { L"set loader.consoleTopmost true\r", L"set loader.consoleTopmost true", true },
-        { L"set loader.speedhackBaseSpeed 0.5\r", L"set loader.speedhackBaseSpeed 0.5", true },
-        { L"set loader.domainTimeoutSec 45\r", L"set loader.domainTimeoutSec 45", true },
-        { L"get loader.domainTimeoutSec\r", L"get loader.domainTimeoutSec", true },
-        { L"mods\r", L"mods", true },
-        { L"env\r", L"env", true },
-        { L"\x16", L"paste Ctrl+V(不回车)", true },
-        { L"\r", L"回车执行粘贴内容", false },   // 不能先 clear, 否则会粘到上一行后面
-        { L"detach\r", L"detach", true },
+    struct Step
+    {
+        std::vector<KeyStroke> keys;
+        std::wstring label;
+        bool clearBefore;
     };
+
+    std::vector<Step> script;
+    auto add = [&script](std::wstring label, std::vector<KeyStroke> keys, bool clearBefore)
+    {
+        script.push_back(Step{ std::move(keys), std::move(label), clearBefore });
+    };
+
+    add(L"help", text(L"help\r"), true);
+    add(L"help set", text(L"help set\r"), true);
+    add(L"set --help", text(L"set --help\r"), true);
+    add(L"status", text(L"status\r"), true);
+    add(L"ls TurnFocus", text(L"ls TurnFocus\r"), true);
+    add(L"set TurnFocusMod.cooldownSeconds 3", text(L"set TurnFocusMod.cooldownSeconds 3\r"), true);
+    add(L"set loader.consoleTopmost true", text(L"set loader.consoleTopmost true\r"), true);
+    add(L"set loader.speedhackBaseSpeed 0.5", text(L"set loader.speedhackBaseSpeed 0.5\r"), true);
+    add(L"set loader.domainTimeoutSec 45", text(L"set loader.domainTimeoutSec 45\r"), true);
+    add(L"get loader.domainTimeoutSec", text(L"get loader.domainTimeoutSec\r"), true);
+    add(L"mods", text(L"mods\r"), true);
+    add(L"env", text(L"env\r"), true);
+
+    // ---- 行编辑: 每条都只靠按键完成, 期望结果写在 label 里 ----
+    {
+        // 打错中间一个字符: 左移到错字后面, 退格删掉, 回车 —— 期望 consoleTopmost = true
+        std::vector<KeyStroke> keys = text(L"set loader.consoleTopmost truXe");
+        keys.push_back(vk_key(VK_LEFT));
+        keys.push_back(vk_key(VK_BACK));
+        keys.push_back(vk_key(VK_RETURN));
+        add(L"编辑: ← + 退格修正中间字符 → true", std::move(keys), true);
+    }
+    {
+        // 行首多打一个 X: Ctrl+A 回行首, Delete 删掉 —— 期望 consoleTopmost = false
+        std::vector<KeyStroke> keys = text(L"Xset loader.consoleTopmost false");
+        keys.push_back(ctrl_char(1));
+        keys.push_back(vk_key(VK_DELETE));
+        keys.push_back(vk_key(VK_RETURN));
+        add(L"编辑: Ctrl+A + Delete 删行首 → false", std::move(keys), true);
+    }
+    {
+        // Ctrl+W 删掉末尾多打的词 —— 期望 consoleTopmost = true
+        std::vector<KeyStroke> keys = text(L"set loader.consoleTopmost true extra");
+        keys.push_back(ctrl_char(23));
+        keys.push_back(vk_key(VK_RETURN));
+        add(L"编辑: Ctrl+W 删末词 → true", std::move(keys), true);
+    }
+    {
+        // 光标插在中间输入: 先打 "et", Home 回行首, 再打 g —— 期望执行 get 的用法提示
+        std::vector<KeyStroke> keys = text(L"et");
+        keys.push_back(vk_key(VK_HOME));
+        keys.push_back(char_key(L'g'));
+        keys.push_back(vk_key(VK_RETURN));
+        add(L"编辑: Home + 中间插入 → get", std::move(keys), true);
+    }
+    {
+        // 历史草稿: 打一半翻上一条, 再翻回最新 —— 期望提示符里还是 "sta"
+        std::vector<KeyStroke> keys = text(L"sta");
+        keys.push_back(vk_key(VK_UP));
+        keys.push_back(vk_key(VK_DOWN));
+        add(L"历史: ↑↓ 后恢复正在编辑的内容", std::move(keys), true);
+    }
+
+    // ---- Tab 补全 ----
+    {
+        std::vector<KeyStroke> keys = text(L"statu");
+        keys.push_back(vk_key(VK_TAB));
+        add(L"补全: 命令名 → status", std::move(keys), true);
+    }
+    {
+        std::vector<KeyStroke> keys = text(L"get loader.consoleT");
+        keys.push_back(vk_key(VK_TAB));
+        add(L"补全: 配置键 → loader.consoleTopmost", std::move(keys), true);
+    }
+    {
+        std::vector<KeyStroke> keys = text(L"s");
+        keys.push_back(vk_key(VK_TAB));
+        add(L"补全: 多候选列清单(set/status)", std::move(keys), true);
+    }
+    {
+        std::vector<KeyStroke> keys = text(L"ls Turn");
+        keys.push_back(vk_key(VK_TAB));
+        keys.push_back(vk_key(VK_TAB));
+        add(L"补全: 配置键多候选 → TurnFocusMod.", std::move(keys), true);
+    }
+
+    add(L"paste Ctrl+V(不回车)", text(L"\x16"), true);
+    add(L"回车执行粘贴内容", text(L"\r"), false);   // 不能先 clear, 否则会粘到上一行后面
+    add(L"detach", text(L"detach\r"), true);
 
     for (const Step& step : script)
     {
         // 先清屏, 每次只抓这一条命令的结果(控制台的可读区域有限, 滚动历史读不到)。
+        // 有的步骤故意不回车(补全/历史), 输入行里还留着字; 先 Esc 清空再 clear,
+        // 否则 "clear" 会被接在残留内容后面。
         if (step.clearBefore)
         {
-            inject(L"clear\r");
+            std::vector<KeyStroke> reset = { vk_key(VK_ESCAPE) };
+            const std::vector<KeyStroke> clear = text(L"clear\r");
+            reset.insert(reset.end(), clear.begin(), clear.end());
+            inject(reset);
             Sleep(250);
         }
         inject(step.keys);

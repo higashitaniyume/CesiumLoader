@@ -115,6 +115,8 @@
     <ClCompile Include="config\jsonc_patch.cpp" />
     <ClCompile Include="platform\console.cpp" />
     <ClCompile Include="platform\exports.cpp" />
+    <ClCompile Include="runtime\activity_forward.cpp" />
+    <ClCompile Include="runtime\il2cpp_boot.cpp" />
     <ClCompile Include="runtime\loader.cpp" />
     <ClCompile Include="runtime\state.cpp" />
     <ClCompile Include="logging\logging.cpp" />
@@ -122,6 +124,11 @@
     <ClCompile Include="shell\command.cpp" />
     <ClCompile Include="shell\schema.cpp" />
     <ClCompile Include="shell\shell.cpp" />
+    <ClCompile Include="shell\shell_commands.cpp" />
+    <ClCompile Include="shell\shell_config.cpp" />
+    <ClCompile Include="shell\shell_config_io.cpp" />
+    <ClCompile Include="shell\shell_lineedit.cpp" />
+    <ClCompile Include="shell\shell_prompt.cpp" />
     <ClCompile Include="speed\speedctl.cpp" />
     <ClCompile Include="speed\speedhack.cpp" />
     <ClCompile Include="window\windowctl.cpp" />
@@ -140,10 +147,13 @@
     <ClInclude Include="platform\loader.h" />
     <ClInclude Include="logging\logging.h" />
     <ClInclude Include="mods\modmeta.h" />
+    <ClInclude Include="runtime\loader_internal.h" />
     <ClInclude Include="runtime\state.h" />
     <ClInclude Include="shell\command.h" />
+    <ClInclude Include="shell\lineedit.h" />
     <ClInclude Include="shell\schema.h" />
     <ClInclude Include="shell\shell.h" />
+    <ClInclude Include="shell\shell_internal.h" />
     <ClInclude Include="speed\speedctl.h" />
     <ClInclude Include="speed\speedhack.h" />
     <ClInclude Include="window\request.h" />
@@ -156,8 +166,15 @@
     <None Include="platform\version.def" />
     <None Include="steam\steamhack_core_part.cpp" />
     <None Include="steam\steamhack_matchmaking_part.cpp" />
-    <None Include="steam\steamhack_lobby_part.cpp" />
-    <None Include="steam\steamhack_lobby_hooks_part.cpp" />
+    <None Include="steam\steamhack_pod_part.cpp" />
+    <None Include="steam\steamhack_lobby_diag_part.cpp" />
+    <None Include="steam\steamhack_task_factory_part.cpp" />
+    <None Include="steam\steamhack_task_resolve_part.cpp" />
+    <None Include="steam\steamhack_lobby_stage_part.cpp" />
+    <None Include="steam\steamhack_lobby_noop_part.cpp" />
+    <None Include="steam\steamhack_lobby_query_part.cpp" />
+    <None Include="steam\steamhack_lobby_query_install_part.cpp" />
+    <None Include="steam\steamhack_lobby_task_part.cpp" />
     <None Include="steam\steamhack_entry_part.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

@@ -68,6 +68,9 @@ int console_width();
 // UTF-8 文本的显示列宽(中文/emoji 记 2 列), 表格对齐用。
 int text_width(const std::string& utf8);
 
+// UTF-16 文本的显示列宽(同一套宽度规则; shell 的光标定位要按列算)。
+int text_width_w(const std::wstring& text);
+
 // PE 文件版本资源: 优先 ProductVersion 字符串(如 "Unity 2022.3.62f3 (hash)"),
 // 退回 FileVersion, 再退回固定版本号; 读不到返回空串。只用于展示, 失败不致命。
 std::wstring file_version(const std::wstring& path);
@@ -80,6 +83,11 @@ std::wstring short_path(const std::wstring& path);
 void console_init(bool topmost);
 void console_write(const char* utf8_msg);
 void console_write_w(const wchar_t* msg, size_t len);
+
+// 一行里前缀与正文分开着色(前缀不参与正文颜色), 用于 mod 日志转发:
+// "[时间] [级别] " 置暗, 正文按级别取色。空前缀等价于 console_write(msg)。
+void console_write_styled(const char* utf8_prefix, const char* utf8_body,
+                          WORD prefix_color, WORD body_color);
 
 // 控制台是否可用(AllocConsole 成功且拿到了输出句柄)。
 bool console_available();
@@ -136,12 +144,14 @@ using ::console_set_topmost;
 using ::console_set_write_hooks;
 using ::console_unlock;
 using ::console_write;
+using ::console_write_styled;
 using ::console_write_w;
 using ::loader_root;
 using ::log_line;
 using ::logs_dir;
 using ::mods_dir;
 using ::sdk_dir;
+using ::text_width_w;
 }
 
 namespace cesium::runtime

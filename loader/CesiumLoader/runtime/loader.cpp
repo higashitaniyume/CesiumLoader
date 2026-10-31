@@ -1,17 +1,19 @@
-// loader.cpp - IL2CPP 桥 + 引导线程 (Doorstop 式薄引导)
+// loader.cpp - 引导线程 (Doorstop 式薄引导)
 //
 // 原生层只负责:
 //   1. 读取 doorstop_config.json(enabled 开关 / 超时 / 控制台)
 //   2. 等待 GameAssembly.dll 加载(超时)
-//   3. 解析 il2cpp_* 导出函数
-//   4. 等待 il2cpp domain 就绪 + thread_attach
-//   5. 等待 HybridCLR 热更(AstralParty.Runtime 出现)
+//   3. 解析 il2cpp_* 导出函数                                   -> runtime/il2cpp_boot.cpp
+//   4. 等待 il2cpp domain 就绪 + thread_attach                  -> 本文件(调用 il2cpp_boot)
+//   5. 等待 HybridCLR 热更(AstralParty.Runtime 出现)            -> runtime/il2cpp_boot.cpp
 //   6. 设置环境变量 CESIUM_* 目录 + 本次启动的日志文件路径(每次启动一套)
 //   7. 通过 Assembly.Load(byte[]) 加载托管引导程序 (CesiumLoader.Bootstrap.dll)
-//      并调用其入口 —— SDK 加载 / mod 枚举 / 入口调用 全部在托管层完成
-//   8. 启动 activity-mod-<会话>.log -> 控制台 转发线程
+//      并调用其入口 —— SDK 加载 / mod 枚举 / 入口调用 全部在托管层完成(本文件编排,
+//      Assembly.Load/入口调用本身在 runtime/il2cpp_boot.cpp)
+//   8. 启动 activity-mod-<会话>.log -> 控制台 转发线程          -> runtime/activity_forward.cpp
 //
 // 这样 native 保持薄引导, mod 编排逻辑在 C# 里(可脱离游戏单元测试)。
+// 内部接口(IL2CPP 函数表 / 转发线程)见 runtime/loader_internal.h; 对外仍是 platform/loader.h。
 
 #include "platform/loader.h"
 
@@ -21,7 +23,7 @@
 #include "window/windowctl.h"
 #include "mods/modmeta.h"
 #include "logging/logging.h"
-#include "runtime/il2cpp_safe.h"
+#include "runtime/loader_internal.h"
 #include "runtime/state.h"
 #include "shell/shell.h"
 #include "steam/steamhack.h"
@@ -37,78 +39,8 @@
 
 namespace fs = std::filesystem;
 
-// IL2CPP 安全封装的运行时错误缓冲(定义)
-namespace cesium_safe { std::string g_last_error; }
-
-// ---------- IL2CPP 导出函数类型 ----------
-
-using Il2CppDomain = void;
-using Il2CppAssembly = void;
-using Il2CppClass = void;
-using Il2CppMethod = void;
-using Il2CppObject = void;
-using Il2CppException = void;
-using Il2CppThread = void;
-using Il2CppString = void;
-
-struct Il2Cpp
-{
-    Il2CppDomain* (*domain_get)() = nullptr;
-    void* (*assembly_get_image)(Il2CppAssembly*) = nullptr;
-    Il2CppAssembly* (*image_get_assembly)(void*) = nullptr;
-    Il2CppClass* (*class_from_name)(void*, const char*, const char*) = nullptr;
-    Il2CppMethod* (*class_get_method_from_name)(Il2CppClass*, const char*, int) = nullptr;
-    Il2CppMethod* (*class_get_methods)(Il2CppClass*, void**) = nullptr;
-    const char* (*method_get_name)(Il2CppMethod*) = nullptr;
-    void* (*method_get_param)(Il2CppMethod*, uint32_t) = nullptr;
-    uint32_t (*method_get_param_count)(Il2CppMethod*) = nullptr;
-    Il2CppObject* (*runtime_invoke)(Il2CppMethod*, Il2CppObject*, void**, Il2CppException**) = nullptr;
-    Il2CppThread* (*thread_attach)(Il2CppDomain*) = nullptr;
-    Il2CppAssembly** (*domain_get_assemblies)(Il2CppDomain*, size_t*) = nullptr;
-    const char* (*image_get_name)(void*) = nullptr;
-    void* (*get_corlib)() = nullptr;
-    const char* (*type_get_name)(void*) = nullptr;
-    Il2CppClass* (*array_class_get)(Il2CppClass*, uint32_t) = nullptr;
-    Il2CppObject* (*array_new)(Il2CppClass*, size_t) = nullptr;
-    size_t (*array_object_header_size)() = nullptr;
-    Il2CppString* (*exception_get_message)(Il2CppException*) = nullptr;
-    const wchar_t* (*string_chars)(Il2CppString*) = nullptr;
-    // Steam 大厅绕过(steamhack.cpp 第二阶段)新增: 从返回值 MethodInfo 推导闭合泛型类并造默认返回值。
-    // 全部**可选**: 不在下面的 ok 必需项里, 缺失只记日志, 由调用方自行放弃该功能。
-    void* (*method_get_return_type)(const Il2CppMethod*) = nullptr;
-    Il2CppObject* (*type_get_object)(const void*) = nullptr;
-    Il2CppClass* (*class_from_system_type)(Il2CppObject*) = nullptr;
-    Il2CppObject* (*object_new)(Il2CppClass*) = nullptr;
-    Il2CppObject* (*value_box)(Il2CppClass*, void*) = nullptr;
-    void* (*class_get_property_from_name)(Il2CppClass*, const char*) = nullptr;
-    Il2CppMethod* (*property_get_get_method)(void*) = nullptr;
-    Il2CppClass* (*object_get_class)(Il2CppObject*) = nullptr;
-    const char* (*class_get_name)(Il2CppClass*) = nullptr;
-    bool (*class_is_valuetype)(const Il2CppClass*) = nullptr;
-    void* (*object_unbox)(Il2CppObject*) = nullptr;
-    Il2CppClass* (*class_get_parent)(Il2CppClass*) = nullptr;
-    // 阶段3(steamhack.cpp): Nullable<Lobby>.get_HasValue 挂钩 + hasValue 字段诊断。
-    // 同样全部可选, 缺失只记日志。
-    void* (*class_get_field_from_name)(Il2CppClass*, const char*) = nullptr;
-    size_t (*field_get_offset)(void*) = nullptr;
-    void (*field_get_value)(void*, void*, void*) = nullptr;
-    Il2CppObject* (*field_get_value_object)(void*, Il2CppObject*) = nullptr;
-    // 方案B(steamhack.cpp): Lobby 类字段枚举 + Id 是字段还是属性的判定 + get_Id 返回值尺寸核对。
-    void* (*class_get_fields)(Il2CppClass*, void**) = nullptr;
-    const char* (*field_get_name)(void*) = nullptr;
-    uint32_t (*class_value_size)(Il2CppClass*, uint32_t*) = nullptr;
-    // 阶段5(steamhack.cpp): LobbyQuery.RequestAsync 兜底 —— 读空数组的元素个数 + 显式 GC root。
-    // 同样全部可选, 缺失只记日志。
-    uint32_t (*array_length)(Il2CppObject*) = nullptr;
-    uint32_t (*gchandle_new)(Il2CppObject*, bool) = nullptr;
-};
-
-// ---------- 工具 ----------
-
-static void* load_symbol(HMODULE module, const char* name)
-{
-    return reinterpret_cast<void*>(GetProcAddress(module, name));
-}
+namespace boot = cesium::runtime::boot;
+namespace forward = cesium::runtime::forward;
 
 // 宽字符 → UTF-8
 static std::string utf8_from_wide(const wchar_t* w)
@@ -136,11 +68,6 @@ static std::string fmt_seconds(ULONGLONG ms)
     return buf;
 }
 
-static Il2Cpp g_il2cpp;
-
-// IL2CPP 安全封装用的函数表(由 get_il2cpp 填充)
-static cesium_safe::il2cpp_tbl g_safe_il2cpp;
-
 // ---------- 展示辅助: 路径 / 版本 ----------
 
 static std::wstring parent_dir(const std::wstring& path)
@@ -154,499 +81,6 @@ static std::wstring file_name_of(const std::wstring& path)
     const size_t pos = path.find_last_of(L"\\/");
     return pos == std::wstring::npos ? path : path.substr(pos + 1);
 }
-
-// 取 Unity 的 Application.version(bundleVersion, 例如 "3.3.0") —— 游戏版本。
-// 纯展示信息: 找不到 UnityEngine.CoreModule / 方法 / 调用失败都只返回空串,
-// 绝不因为"读不到版本号"影响引导。
-static std::string application_version(Il2CppDomain* domain)
-{
-    void* image = nullptr;
-    size_t count = 0;
-    Il2CppAssembly** asms = g_il2cpp.domain_get_assemblies(domain, &count);
-    for (size_t i = 0; asms != nullptr && i < count; i++)
-    {
-        void* img = g_il2cpp.assembly_get_image(asms[i]);
-        if (!img) continue;
-        const char* name = g_il2cpp.image_get_name(img);
-        if (name && strcmp(name, "UnityEngine.CoreModule") == 0) { image = img; break; }
-    }
-    if (!image) return std::string();
-
-    Il2CppClass* app = g_il2cpp.class_from_name(image, "UnityEngine", "Application");
-    if (!app) return std::string();
-
-    Il2CppMethod* method = g_il2cpp.class_get_method_from_name(app, "get_version", 0);
-    if (!method) return std::string();
-
-    cesium_safe::g_last_error.clear();
-    return cesium_safe::invoke_string(g_safe_il2cpp, method, nullptr);
-}
-
-static bool get_il2cpp(HMODULE game_assembly)
-{
-    auto* p = g_il2cpp.domain_get = reinterpret_cast<Il2CppDomain* (*)()>(load_symbol(game_assembly, "il2cpp_domain_get"));
-    if (!p) return false;
-    g_il2cpp.assembly_get_image = reinterpret_cast<void* (*)(Il2CppAssembly*)>(load_symbol(game_assembly, "il2cpp_assembly_get_image"));
-    g_il2cpp.image_get_assembly = reinterpret_cast<Il2CppAssembly* (*)(void*)>(load_symbol(game_assembly, "il2cpp_image_get_assembly"));
-    g_il2cpp.class_from_name = reinterpret_cast<Il2CppClass* (*)(void*, const char*, const char*)>(load_symbol(game_assembly, "il2cpp_class_from_name"));
-    g_il2cpp.class_get_method_from_name = reinterpret_cast<Il2CppMethod* (*)(Il2CppClass*, const char*, int)>(load_symbol(game_assembly, "il2cpp_class_get_method_from_name"));
-    g_il2cpp.class_get_methods = reinterpret_cast<Il2CppMethod* (*)(Il2CppClass*, void**)>(load_symbol(game_assembly, "il2cpp_class_get_methods"));
-    g_il2cpp.method_get_name = reinterpret_cast<const char* (*)(Il2CppMethod*)>(load_symbol(game_assembly, "il2cpp_method_get_name"));
-    g_il2cpp.method_get_param = reinterpret_cast<void* (*)(Il2CppMethod*, uint32_t)>(load_symbol(game_assembly, "il2cpp_method_get_param"));
-    g_il2cpp.method_get_param_count = reinterpret_cast<uint32_t (*)(Il2CppMethod*)>(load_symbol(game_assembly, "il2cpp_method_get_param_count"));
-    g_il2cpp.runtime_invoke = reinterpret_cast<Il2CppObject* (*)(Il2CppMethod*, Il2CppObject*, void**, Il2CppException**)>(load_symbol(game_assembly, "il2cpp_runtime_invoke"));
-    g_il2cpp.thread_attach = reinterpret_cast<Il2CppThread* (*)(Il2CppDomain*)>(load_symbol(game_assembly, "il2cpp_thread_attach"));
-    g_il2cpp.domain_get_assemblies = reinterpret_cast<Il2CppAssembly** (*)(Il2CppDomain*, size_t*)>(load_symbol(game_assembly, "il2cpp_domain_get_assemblies"));
-    g_il2cpp.image_get_name = reinterpret_cast<const char* (*)(void*)>(load_symbol(game_assembly, "il2cpp_image_get_name"));
-    g_il2cpp.get_corlib = reinterpret_cast<void* (*)()>(load_symbol(game_assembly, "il2cpp_get_corlib"));
-    g_il2cpp.type_get_name = reinterpret_cast<const char* (*)(void*)>(load_symbol(game_assembly, "il2cpp_type_get_name"));
-    g_il2cpp.array_class_get = reinterpret_cast<Il2CppClass* (*)(Il2CppClass*, uint32_t)>(load_symbol(game_assembly, "il2cpp_array_class_get"));
-    g_il2cpp.array_new = reinterpret_cast<Il2CppObject* (*)(Il2CppClass*, size_t)>(load_symbol(game_assembly, "il2cpp_array_new"));
-    g_il2cpp.array_object_header_size = reinterpret_cast<size_t (*)()>(load_symbol(game_assembly, "il2cpp_array_object_header_size"));
-    g_il2cpp.exception_get_message = reinterpret_cast<Il2CppString* (*)(Il2CppException*)>(load_symbol(game_assembly, "il2cpp_exception_get_message"));
-    g_il2cpp.string_chars = reinterpret_cast<const wchar_t* (*)(Il2CppString*)>(load_symbol(game_assembly, "il2cpp_string_chars"));
-    // Steam 大厅绕过(第二阶段)新增导出: 缺失不影响启动(下面单独记日志), 不进 ok 必需项。
-    g_il2cpp.method_get_return_type = reinterpret_cast<void* (*)(const Il2CppMethod*)>(load_symbol(game_assembly, "il2cpp_method_get_return_type"));
-    g_il2cpp.type_get_object = reinterpret_cast<Il2CppObject* (*)(const void*)>(load_symbol(game_assembly, "il2cpp_type_get_object"));
-    g_il2cpp.class_from_system_type = reinterpret_cast<Il2CppClass* (*)(Il2CppObject*)>(load_symbol(game_assembly, "il2cpp_class_from_system_type"));
-    g_il2cpp.object_new = reinterpret_cast<Il2CppObject* (*)(Il2CppClass*)>(load_symbol(game_assembly, "il2cpp_object_new"));
-    g_il2cpp.value_box = reinterpret_cast<Il2CppObject* (*)(Il2CppClass*, void*)>(load_symbol(game_assembly, "il2cpp_value_box"));
-    g_il2cpp.class_get_property_from_name = reinterpret_cast<void* (*)(Il2CppClass*, const char*)>(load_symbol(game_assembly, "il2cpp_class_get_property_from_name"));
-    g_il2cpp.property_get_get_method = reinterpret_cast<Il2CppMethod* (*)(void*)>(load_symbol(game_assembly, "il2cpp_property_get_get_method"));
-    g_il2cpp.object_get_class = reinterpret_cast<Il2CppClass* (*)(Il2CppObject*)>(load_symbol(game_assembly, "il2cpp_object_get_class"));
-    g_il2cpp.class_get_name = reinterpret_cast<const char* (*)(Il2CppClass*)>(load_symbol(game_assembly, "il2cpp_class_get_name"));
-    g_il2cpp.class_is_valuetype = reinterpret_cast<bool (*)(const Il2CppClass*)>(load_symbol(game_assembly, "il2cpp_class_is_valuetype"));
-    g_il2cpp.object_unbox = reinterpret_cast<void* (*)(Il2CppObject*)>(load_symbol(game_assembly, "il2cpp_object_unbox"));
-    g_il2cpp.class_get_parent = reinterpret_cast<Il2CppClass* (*)(Il2CppClass*)>(load_symbol(game_assembly, "il2cpp_class_get_parent"));
-    // 阶段3: Nullable<Lobby>.get_HasValue 挂钩 + hasValue 字段诊断(可选)。
-    g_il2cpp.class_get_field_from_name = reinterpret_cast<void* (*)(Il2CppClass*, const char*)>(load_symbol(game_assembly, "il2cpp_class_get_field_from_name"));
-    g_il2cpp.field_get_offset = reinterpret_cast<size_t (*)(void*)>(load_symbol(game_assembly, "il2cpp_field_get_offset"));
-    g_il2cpp.field_get_value = reinterpret_cast<void (*)(void*, void*, void*)>(load_symbol(game_assembly, "il2cpp_field_get_value"));
-    g_il2cpp.field_get_value_object = reinterpret_cast<Il2CppObject* (*)(void*, Il2CppObject*)>(load_symbol(game_assembly, "il2cpp_field_get_value_object"));
-    // 方案B: Lobby 字段枚举 + Id 字段/属性判定 + get_Id 返回结构体尺寸核对(可选)。
-    g_il2cpp.class_get_fields = reinterpret_cast<void* (*)(Il2CppClass*, void**)>(load_symbol(game_assembly, "il2cpp_class_get_fields"));
-    g_il2cpp.field_get_name = reinterpret_cast<const char* (*)(void*)>(load_symbol(game_assembly, "il2cpp_field_get_name"));
-    g_il2cpp.class_value_size = reinterpret_cast<uint32_t (*)(Il2CppClass*, uint32_t*)>(load_symbol(game_assembly, "il2cpp_class_value_size"));
-    // 阶段5: LobbyQuery.RequestAsync 兜底(读空数组长度 + 显式 GC root), 可选。
-    g_il2cpp.array_length = reinterpret_cast<uint32_t (*)(Il2CppObject*)>(load_symbol(game_assembly, "il2cpp_array_length"));
-    g_il2cpp.gchandle_new = reinterpret_cast<uint32_t (*)(Il2CppObject*, bool)>(load_symbol(game_assembly, "il2cpp_gchandle_new"));
-    {
-        // 缺失只记日志(照现有风格): 记下"哪些大厅绕过所需的导出缺失", 便于下一轮定位。
-        struct { const char* n; const void* p; } extra[] = {
-            { "il2cpp_method_get_return_type", (const void*)g_il2cpp.method_get_return_type },
-            { "il2cpp_type_get_object",        (const void*)g_il2cpp.type_get_object },
-            { "il2cpp_class_from_system_type", (const void*)g_il2cpp.class_from_system_type },
-            { "il2cpp_object_new",             (const void*)g_il2cpp.object_new },
-            { "il2cpp_value_box",              (const void*)g_il2cpp.value_box },
-            { "il2cpp_class_get_property_from_name", (const void*)g_il2cpp.class_get_property_from_name },
-            { "il2cpp_property_get_get_method",(const void*)g_il2cpp.property_get_get_method },
-            { "il2cpp_object_get_class",       (const void*)g_il2cpp.object_get_class },
-            { "il2cpp_class_get_name",         (const void*)g_il2cpp.class_get_name },
-            { "il2cpp_class_is_valuetype",     (const void*)g_il2cpp.class_is_valuetype },
-            { "il2cpp_object_unbox",           (const void*)g_il2cpp.object_unbox },
-            { "il2cpp_class_get_parent",       (const void*)g_il2cpp.class_get_parent },
-            { "il2cpp_class_get_field_from_name", (const void*)g_il2cpp.class_get_field_from_name },
-            { "il2cpp_field_get_offset",       (const void*)g_il2cpp.field_get_offset },
-            { "il2cpp_field_get_value",        (const void*)g_il2cpp.field_get_value },
-            { "il2cpp_field_get_value_object", (const void*)g_il2cpp.field_get_value_object },
-            { "il2cpp_class_get_fields",       (const void*)g_il2cpp.class_get_fields },
-            { "il2cpp_field_get_name",         (const void*)g_il2cpp.field_get_name },
-            { "il2cpp_class_value_size",       (const void*)g_il2cpp.class_value_size },
-            { "il2cpp_array_length",           (const void*)g_il2cpp.array_length },
-            { "il2cpp_gchandle_new",           (const void*)g_il2cpp.gchandle_new },
-        };
-        std::string missing;
-        for (auto& e : extra) if (!e.p) { if (!missing.empty()) missing += ", "; missing += e.n; }
-        if (!missing.empty())
-            log_line("[loader] optional exports missing (startup unaffected; Steam lobby bypass degrades): " + missing);
-    }
-    // 关键导出缺失即视为失败
-    bool ok = g_il2cpp.domain_get && g_il2cpp.assembly_get_image && g_il2cpp.image_get_assembly &&
-              g_il2cpp.class_from_name && g_il2cpp.class_get_method_from_name && g_il2cpp.class_get_methods &&
-              g_il2cpp.method_get_name && g_il2cpp.method_get_param && g_il2cpp.method_get_param_count &&
-              g_il2cpp.runtime_invoke && g_il2cpp.thread_attach && g_il2cpp.domain_get_assemblies &&
-              g_il2cpp.image_get_name && g_il2cpp.get_corlib && g_il2cpp.type_get_name &&
-              g_il2cpp.array_class_get && g_il2cpp.array_new && g_il2cpp.array_object_header_size;
-    if (ok)
-    {
-        // 填充安全封装用的函数表(独立于 Il2Cpp 结构, 避免布局耦合)
-        g_safe_il2cpp.domain_get = reinterpret_cast<void* (*)()>(g_il2cpp.domain_get);
-        g_safe_il2cpp.assembly_get_image = reinterpret_cast<void* (*)(void*)>(g_il2cpp.assembly_get_image);
-        g_safe_il2cpp.image_get_assembly = reinterpret_cast<void* (*)(void*)>(g_il2cpp.image_get_assembly);
-        g_safe_il2cpp.class_from_name = reinterpret_cast<void* (*)(void*, const char*, const char*)>(g_il2cpp.class_from_name);
-        g_safe_il2cpp.class_get_method_from_name = reinterpret_cast<void* (*)(void*, const char*, int)>(g_il2cpp.class_get_method_from_name);
-        g_safe_il2cpp.class_get_methods = reinterpret_cast<void* (*)(void*, void**)>(g_il2cpp.class_get_methods);
-        g_safe_il2cpp.method_get_name = reinterpret_cast<const char* (*)(void*)>(g_il2cpp.method_get_name);
-        g_safe_il2cpp.method_get_param = reinterpret_cast<void* (*)(void*, uint32_t)>(g_il2cpp.method_get_param);
-        g_safe_il2cpp.method_get_param_count = reinterpret_cast<uint32_t (*)(void*)>(g_il2cpp.method_get_param_count);
-        g_safe_il2cpp.runtime_invoke = reinterpret_cast<void* (*)(void*, void*, void**, void**)>(g_il2cpp.runtime_invoke);
-        g_safe_il2cpp.thread_attach = reinterpret_cast<void* (*)(void*)>(g_il2cpp.thread_attach);
-        g_safe_il2cpp.domain_get_assemblies = reinterpret_cast<void** (*)(void*, size_t*)>(g_il2cpp.domain_get_assemblies);
-        g_safe_il2cpp.image_get_name = reinterpret_cast<const char* (*)(void*)>(g_il2cpp.image_get_name);
-        g_safe_il2cpp.get_corlib = reinterpret_cast<void* (*)()>(g_il2cpp.get_corlib);
-        g_safe_il2cpp.type_get_name = reinterpret_cast<const char* (*)(void*)>(g_il2cpp.type_get_name);
-        g_safe_il2cpp.array_class_get = reinterpret_cast<void* (*)(void*, uint32_t)>(g_il2cpp.array_class_get);
-        g_safe_il2cpp.array_new = reinterpret_cast<void* (*)(void*, size_t)>(g_il2cpp.array_new);
-        g_safe_il2cpp.array_object_header_size = reinterpret_cast<size_t (*)()>(g_il2cpp.array_object_header_size);
-        g_safe_il2cpp.exception_get_message = reinterpret_cast<void* (*)(void*)>(g_il2cpp.exception_get_message);
-        g_safe_il2cpp.string_chars = reinterpret_cast<const wchar_t* (*)(void*)>(g_il2cpp.string_chars);
-        // Steam 大厅绕过(第二阶段): 同样转成 void* 形态(结构体与 il2cpp_safe.h 解耦)
-        g_safe_il2cpp.method_get_return_type = reinterpret_cast<void* (*)(void*)>(g_il2cpp.method_get_return_type);
-        g_safe_il2cpp.type_get_object = reinterpret_cast<void* (*)(void*)>(g_il2cpp.type_get_object);
-        g_safe_il2cpp.class_from_system_type = reinterpret_cast<void* (*)(void*)>(g_il2cpp.class_from_system_type);
-        g_safe_il2cpp.object_new = reinterpret_cast<void* (*)(void*)>(g_il2cpp.object_new);
-        g_safe_il2cpp.value_box = reinterpret_cast<void* (*)(void*, void*)>(g_il2cpp.value_box);
-        g_safe_il2cpp.class_get_property_from_name = reinterpret_cast<void* (*)(void*, const char*)>(g_il2cpp.class_get_property_from_name);
-        g_safe_il2cpp.property_get_get_method = reinterpret_cast<void* (*)(void*)>(g_il2cpp.property_get_get_method);
-        g_safe_il2cpp.object_get_class = reinterpret_cast<void* (*)(void*)>(g_il2cpp.object_get_class);
-        g_safe_il2cpp.class_get_name = reinterpret_cast<const char* (*)(void*)>(g_il2cpp.class_get_name);
-        g_safe_il2cpp.class_is_valuetype = reinterpret_cast<bool (*)(void*)>(g_il2cpp.class_is_valuetype);
-        g_safe_il2cpp.object_unbox = reinterpret_cast<void* (*)(void*)>(g_il2cpp.object_unbox);
-        g_safe_il2cpp.class_get_parent = reinterpret_cast<void* (*)(void*)>(g_il2cpp.class_get_parent);
-        // 阶段3: Nullable<Lobby>.get_HasValue 挂钩 + hasValue 字段诊断。
-        g_safe_il2cpp.class_get_field_from_name = reinterpret_cast<void* (*)(void*, const char*)>(g_il2cpp.class_get_field_from_name);
-        g_safe_il2cpp.field_get_offset = reinterpret_cast<size_t (*)(void*)>(g_il2cpp.field_get_offset);
-        g_safe_il2cpp.field_get_value = reinterpret_cast<void (*)(void*, void*, void*)>(g_il2cpp.field_get_value);
-        g_safe_il2cpp.field_get_value_object = reinterpret_cast<void* (*)(void*, void*)>(g_il2cpp.field_get_value_object);
-        // 方案B: Lobby 字段枚举 + Id 字段/属性判定 + get_Id 返回结构体尺寸核对。
-        g_safe_il2cpp.class_get_fields = reinterpret_cast<void* (*)(void*, void**)>(g_il2cpp.class_get_fields);
-        g_safe_il2cpp.field_get_name = reinterpret_cast<const char* (*)(void*)>(g_il2cpp.field_get_name);
-        g_safe_il2cpp.class_value_size = reinterpret_cast<uint32_t (*)(void*, uint32_t*)>(g_il2cpp.class_value_size);
-        g_safe_il2cpp.array_length = reinterpret_cast<uint32_t (*)(void*)>(g_il2cpp.array_length);
-        g_safe_il2cpp.gchandle_new = reinterpret_cast<uint32_t (*)(void*, bool)>(g_il2cpp.gchandle_new);
-    }
-    return ok;
-}
-
-// ---------- 进程/模块查找 ----------
-
-static HMODULE find_module(const wchar_t* name)
-{
-    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, 0);
-    if (snap == INVALID_HANDLE_VALUE) return nullptr;
-    MODULEENTRY32W entry{};
-    entry.dwSize = sizeof(entry);
-    HMODULE result = nullptr;
-    if (Module32FirstW(snap, &entry))
-    {
-        do
-        {
-            if (_wcsicmp(entry.szModule, name) == 0)
-            {
-                result = reinterpret_cast<HMODULE>(entry.modBaseAddr);
-                break;
-            }
-        } while (Module32NextW(snap, &entry));
-    }
-    CloseHandle(snap);
-    return result;
-}
-
-static HMODULE wait_module(const wchar_t* name, DWORD timeout_secs)
-{
-    ULONGLONG end = GetTickCount64() + (ULONGLONG)timeout_secs * 1000;
-    for (;;)
-    {
-        HMODULE m = find_module(name);
-        if (m) return m;
-        if (GetTickCount64() >= end) return nullptr;
-        Sleep(200);
-    }
-}
-
-// ---------- HybridCLR 就绪检测 ----------
-
-/// 诊断: 把域内程序集清单落盘到 logs\aot-assemblies.txt。
-///
-/// 用途: 游戏的 BCL 是**被裁剪过的**(IL2CPP 托管裁剪), 热更代码(含第三方程序集)只能引用
-/// 这里存在的程序集与类型。一旦看到 "TypeLoadException: Could not load type 'X' from
-/// assembly 'Y'", 第一件事就是对照这份清单与 Y 的类型表 —— 而不是去猜。
-static void dump_aot_assemblies(const std::vector<std::string>& names)
-{
-    try
-    {
-        std::wstring dir = logs_dir();
-        if (dir.empty()) return;
-        fs::create_directories(dir);
-        std::ofstream out(fs::path(dir) / L"aot-assemblies.txt",
-                          std::ios::binary | std::ios::trunc);
-        if (!out) return;
-        out << "# AOT assemblies in the game domain (enumerated when HybridCLR is ready, total " << names.size() << ")\n";
-        out << "# Hot-update code and third-party assemblies may only reference assemblies/types listed here\n";
-        std::vector<std::string> sorted = names;
-        std::sort(sorted.begin(), sorted.end());
-        for (auto& n : sorted) out << n << "\n";
-    }
-    catch (...) { /* 诊断失败不影响加载 */ }
-}
-
-static bool hybridclr_ready(Il2CppDomain* domain)
-{
-    // 安全封装: 枚举域内程序集(空检查 + 错误缓冲)
-    auto names = cesium_safe::safe_list_assembly_names(g_safe_il2cpp);
-    for (auto& n : names)
-    {
-        if (n.find("AstralParty.Runtime") != std::string::npos)
-        {
-            // 只在第一次就绪时落盘一次
-            static bool dumped = false;
-            if (!dumped) { dumped = true; dump_aot_assemblies(names); }
-            return true;
-        }
-    }
-    return false;
-}
-
-static bool wait_hybridclr(Il2CppDomain* domain, DWORD timeout_secs)
-{
-    ULONGLONG end = GetTickCount64() + (ULONGLONG)timeout_secs * 1000;
-    ULONGLONG last_diag = 0;
-    for (;;)
-    {
-        if (hybridclr_ready(domain)) return true;
-        if (GetTickCount64() >= end) return false;
-        // 诊断: 若安全封装枚举报错, 每 5s 打印一次错误(正常枚举不刷屏)
-        if (!cesium_safe::g_last_error.empty() && GetTickCount64() - last_diag >= 5000)
-        {
-            last_diag = GetTickCount64();
-            log_line("[hybridclr] enumeration error: " + cesium_safe::g_last_error);
-        }
-        Sleep(300);
-    }
-}
-
-// ---------- Assembly.Load(byte[]) ----------
-
-// 在 System.Reflection.Assembly 上找 Load(byte[]) 重载(遍历方法,按参数类型筛选)。
-//
-// 每个程序集(1 个 SDK + N 个 mod)都会走一次这段扫描。旧实现每遇到一个候选重载就打
-// 两行日志, 十个程序集就是 30 行、占整份日志的四分之一 —— 而结论永远只有一句
-// ("有 3 个重载, 选 byte[]")。这里改成**整个进程只报一次结论**, 且合并成一行;
-// 只有找不到 byte[] 重载时才把候选清单打出来(那才是需要人看的失败现场)。
-static Il2CppMethod* find_load_bytearray(Il2CppClass* cls)
-{
-    std::vector<std::string> candidates;
-    Il2CppMethod* chosen = nullptr;
-
-    void* iter = nullptr;
-    for (;;)
-    {
-        Il2CppMethod* m = g_il2cpp.class_get_methods(cls, &iter);
-        if (!m) break;
-        const char* n = g_il2cpp.method_get_name(m);
-        if (!n || strcmp(n, "Load") != 0) continue;
-        if (g_il2cpp.method_get_param_count(m) != 1) continue;
-        void* param = g_il2cpp.method_get_param(m, 0);
-        if (!param) continue;
-        const char* tn = g_il2cpp.type_get_name(param);
-        if (!tn) continue;
-        candidates.emplace_back(tn);
-        if (!chosen && strcmp(tn, "System.Byte[]") == 0) chosen = m;
-    }
-
-    static bool reported = false;
-    if (!reported)
-    {
-        std::string list;
-        for (auto& c : candidates) list += (list.empty() ? "" : ", ") + c;
-        if (chosen)
-            log_line("[loader] Assembly.Load overloads: " + list + " -> using byte[]");
-        else
-            log_line("[loader] Assembly.Load(byte[]) not found, candidates: " + (list.empty() ? std::string("(none)") : list));
-        reported = true;
-    }
-    return chosen;
-}
-
-// 枚举域内所有程序集的 image 名称,用于对比 Load 前后新增的程序集。
-static std::vector<std::string> list_assembly_names(Il2CppDomain* domain)
-{
-    std::vector<std::string> names;
-    size_t count = 0;
-    Il2CppAssembly** p = g_il2cpp.domain_get_assemblies(domain, &count);
-    if (!p) return names;
-    for (size_t i = 0; i < count; i++)
-    {
-        Il2CppAssembly* asm_ = p[i];
-        if (!asm_) continue;
-        void* image = g_il2cpp.assembly_get_image(asm_);
-        if (!image) continue;
-        const char* n = g_il2cpp.image_get_name(image);
-        if (!n) continue;
-        names.emplace_back(n);
-    }
-    return names;
-}
-
-// 调用 System.Reflection.Assembly.Load(byte[]) 并返回加载后的程序集指针。
-// 返回 nullptr 表示失败(原因写入 err_msg)。
-static Il2CppAssembly* load_assembly_bytes(Il2CppDomain* domain, const std::vector<uint8_t>& bytes, std::string& err_msg)
-{
-    err_msg.clear();
-    void* corlib = g_il2cpp.get_corlib();
-    if (!corlib) { err_msg = "corlib null"; return nullptr; }
-    Il2CppClass* ac = g_il2cpp.class_from_name(corlib, "System.Reflection", "Assembly");
-    if (!ac) { err_msg = "Assembly class null"; return nullptr; }
-
-    Il2CppClass* bc = g_il2cpp.class_from_name(corlib, "System", "Byte");
-    if (!bc) { err_msg = "Byte class null"; return nullptr; }
-
-    Il2CppClass* bac = g_il2cpp.array_class_get(bc, 1);
-    Il2CppObject* arr = g_il2cpp.array_new(bac, bytes.size());
-    if (!arr) { err_msg = "byte[] null"; return nullptr; }
-
-    // x64 IL2CPP 数组布局:Il2CppObject(16) + bounds(8, SZARRAY 为 null) + max_length(8) = 数据起点 32。
-    // 若导出的 array_object_header_size 正好是数据起点则直接用,否则回退 32。
-    size_t reported = g_il2cpp.array_object_header_size();
-    size_t data_offset = (reported >= 32) ? reported : 32;
-    memcpy(reinterpret_cast<uint8_t*>(arr) + data_offset, bytes.data(), bytes.size());
-
-    Il2CppMethod* load = find_load_bytearray(ac);
-    if (!load) { err_msg = "Assembly.Load(byte[]) not found"; return nullptr; }
-
-    void* arg = arr;
-    std::vector<std::string> before = list_assembly_names(domain);
-
-    // 用 safe_invoke_static 而不是直接 runtime_invoke: 它会把**托管异常的类型与消息**转成
-    // UTF-8 写进 g_last_error。原实现只留下 "Assembly.Load threw exception", 异常内容被丢弃 ——
-    // 一旦第三方程序集加载失败(例如它引用了被 IL2CPP 裁剪掉的程序集), 就完全没有线索。
-    cesium_safe::g_last_error.clear();
-    Il2CppObject* asm_obj = reinterpret_cast<Il2CppObject*>(
-        cesium_safe::safe_invoke_static(g_safe_il2cpp, load, nullptr, &arg, "Assembly.Load"));
-    if (!asm_obj)
-    {
-        err_msg = cesium_safe::g_last_error.empty() ? "Assembly.Load returned null" : cesium_safe::g_last_error;
-        return nullptr;
-    }
-    std::vector<std::string> after = list_assembly_names(domain);
-
-    // 对比 Load 前后,找新增的程序集(不依赖反射对象布局)。
-    int new_idx = -1;
-    for (size_t i = 0; i < after.size(); i++)
-    {
-        bool existed = false;
-        for (auto& b : before) if (b == after[i]) { existed = true; break; }
-        if (!existed) { new_idx = (int)i; break; }
-    }
-    if (new_idx < 0) { err_msg = "no new assembly appeared after load"; return nullptr; }
-
-    size_t count = 0;
-    Il2CppAssembly** p = g_il2cpp.domain_get_assemblies(domain, &count);
-    if (!p) { err_msg = "domain assemblies null"; return nullptr; }
-    return p[new_idx];
-}
-
-// 调用入口 {entry_type}.{entry_method}。
-static bool run_entry(Il2CppAssembly* asm_, const char* entry_type, const char* entry_method, std::string& err_msg)
-{
-    err_msg.clear();
-    void* image = g_il2cpp.assembly_get_image(asm_);
-    if (!image) { err_msg = "mod image null"; return false; }
-
-    // 拆分命名空间与类名(最后一个 '.' 分隔)
-    std::string type(entry_type);
-    std::string ns, cn;
-    auto pos = type.find_last_of('.');
-    if (pos == std::string::npos) { ns = ""; cn = type; }
-    else { ns = type.substr(0, pos); cn = type.substr(pos + 1); }
-
-    Il2CppClass* cls = g_il2cpp.class_from_name(image, ns.c_str(), cn.c_str());
-    if (!cls) { err_msg = "entry class not found: " + type; return false; }
-    Il2CppMethod* method = g_il2cpp.class_get_method_from_name(cls, entry_method, 0);
-    if (!method) { err_msg = "entry method not found: " + std::string(entry_method); return false; }
-
-    // 安全封装: runtime_invoke 带空检查 + 异常转译(错误在 g_last_error)
-    cesium_safe::g_last_error.clear();
-    void* r = cesium_safe::safe_invoke_static(g_safe_il2cpp, method, nullptr, nullptr, "run_entry");
-    if (cesium_safe::g_last_error.empty())
-    {
-        return true;
-    }
-    err_msg = cesium_safe::g_last_error;
-    return false;
-}
-
-// ---------- 日志转发线程(activity-mod-<会话>.log -> 控制台) ----------
-
-// mod / bootstrap 无法直接 P/Invoke 到自定义导出(IL2CPP 限制), 改为写文件,
-// 本线程监控本次启动的 activity 日志, 把新增行写到控制台窗口。
-static DWORD WINAPI forward_activity_log(LPVOID param)
-{
-    std::wstring log_dir = *reinterpret_cast<std::wstring*>(param);
-    delete reinterpret_cast<std::wstring*>(param);
-
-    // 必须用当前这次启动的文件名(带会话标识), 不能写死 activity-mod.log —— 否则会去 tail
-    // 上一次启动留下的旧文件, 控制台什么都看不到。
-    const std::wstring path = cesium::log::activity_log_path(log_dir);
-    LARGE_INTEGER last_len{};
-    last_len.QuadPart = 0;
-    // 初始:跳过已有内容(只转发"从现在起"的新日志)
-    WIN32_FILE_ATTRIBUTE_DATA fad{};
-    if (GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &fad))
-    {
-        LARGE_INTEGER size;
-        size.HighPart = fad.nFileSizeHigh;
-        size.LowPart = fad.nFileSizeLow;
-        last_len = size;
-    }
-
-    for (;;)
-    {
-        Sleep(150);
-        if (!GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &fad)) continue;
-        LARGE_INTEGER cur;
-        cur.HighPart = fad.nFileSizeHigh;
-        cur.LowPart = fad.nFileSizeLow;
-
-        // 转发可以被 shell 的 set loader.forwardActivityLog 关掉。关闭期间仍要跟上文件位置,
-        // 否则重新打开时会把关闭期间积累的内容一次性倒到控制台上。
-        if (!cesium::runtime::forward_enabled())
-        {
-            if (cur.QuadPart > last_len.QuadPart) last_len = cur;
-            continue;
-        }
-
-        if (cur.QuadPart <= last_len.QuadPart) continue;
-
-        HANDLE f = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
-                               nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (f == INVALID_HANDLE_VALUE) continue;
-        LARGE_INTEGER offset = last_len;
-        SetFilePointerEx(f, offset, nullptr, FILE_BEGIN);
-        std::vector<char> buf((size_t)(cur.QuadPart - last_len.QuadPart));
-        DWORD read = 0;
-        if (ReadFile(f, buf.data(), (DWORD)buf.size(), &read, nullptr))
-        {
-            // 按行转发
-            std::string text(buf.data(), read);
-            size_t start = 0;
-            while (start < text.size())
-            {
-                size_t end = text.find('\n', start);
-                std::string line = (end == std::string::npos)
-                    ? text.substr(start) : text.substr(start, end - start);
-                // 去 \r
-                while (!line.empty() && (line.back() == '\r')) line.pop_back();
-                // 去首尾空白
-                size_t b = line.find_first_not_of(" \t\r\n");
-                if (b != std::string::npos)
-                {
-                    console_write(line.c_str() + b);
-                }
-                if (end == std::string::npos) break;
-                start = end + 1;
-            }
-        }
-        CloseHandle(f);
-        last_len = cur;
-    }
-    return 0;
-}
-
-// ---------- mod 元数据 (sidecar) 解析 + 依赖解析 ----------
-// 实现见 modmeta.h/cpp (纯标准库, 可单元测试)。
-// 原生层不读托管 attribute(需要反射), 依赖/版本信息全部来自 sidecar;
-// 无 sidecar 的 mod 视为"无声明", 按文件名排序加载(兼容旧 mod)。
 
 // ---------- 引导线程 ----------
 
@@ -674,7 +108,7 @@ static void log_environment(Il2CppDomain* domain)
     const size_t cut = unity.find(L" (");   // "2022.3.62f3 (96770f904ca7)" → 只留版本号
     if (cut != std::wstring::npos) unity = unity.substr(0, cut);
 
-    const std::string app_version = application_version(domain);
+    const std::string app_version = boot::application_version(domain);
 
     wchar_t exe[MAX_PATH] = {};
     GetModuleFileNameW(nullptr, exe, MAX_PATH);
@@ -777,29 +211,24 @@ static DWORD WINAPI boot_thread(LPVOID)
 
     // 3.7.3 活动日志转发线程: 常驻, 是否真正转发由 forwardActivityLog 开关控制,
     //       这样 shell 里可以随时开关(线程本身不重启)。
-    {
-        auto* log_dir_ptr = new std::wstring(logs_dir());
-        HANDLE h = CreateThread(nullptr, 0, forward_activity_log, log_dir_ptr, 0, nullptr);
-        if (h) CloseHandle(h);
-        else delete log_dir_ptr;
-    }
+    forward::start_activity_forward_thread();
 
     // 4. 等待 GameAssembly.dll
-    HMODULE ga = wait_module(L"GameAssembly.dll", cfg.gameAssemblyTimeoutSec);
+    HMODULE ga = boot::wait_game_assembly(cfg.gameAssemblyTimeoutSec);
     if (!ga) { log_line("[loader] GameAssembly.dll timed out"); return 0; }
     log_line("[loader] GameAssembly.dll loaded");
 
-    if (!get_il2cpp(ga)) { log_line("[loader] failed to resolve il2cpp exports"); return 0; }
+    if (!boot::resolve_il2cpp(ga)) { log_line("[loader] failed to resolve il2cpp exports"); return 0; }
 
     Il2CppDomain* domain = nullptr;
     for (;;)
     {
-        domain = g_il2cpp.domain_get();
+        domain = boot::domain_get();
         if (domain) break;
         if (GetTickCount64() - started > (ULONGLONG)cfg.domainTimeoutSec * 1000) { log_line("[loader] il2cpp domain timed out"); return 0; }
         Sleep(200);
     }
-    g_il2cpp.thread_attach(domain);
+    boot::thread_attach(domain);
     log_line("[loader] il2cpp runtime ready, waiting for HybridCLR hot update...");
 
     // 3.8 Steam 绕过(见 steamhack.h)。插入点很关键: 必须在 thread_attach 之后
@@ -825,7 +254,7 @@ static DWORD WINAPI boot_thread(LPVOID)
     //     **失败只记日志, 绝不阻止游戏启动** —— 绕过没装上时游戏行为与原版一致。
     if (cfg.steamBypassEnabled || cfg.steamBypassMatchmaking || cfg.steamBypassLobbyQuery)
     {
-        steamhack_install(g_safe_il2cpp, cfg.steamBypassEnabled,
+        steamhack_install(boot::safe_il2cpp(), cfg.steamBypassEnabled,
                           cfg.steamBypassRestartCheck, cfg.steamBypassMatchmaking,
                           cfg.steamBypassLobbyHasValue,
                           cfg.steamBypassTaskCtorMode, cfg.steamBypassLobbyMethods,
@@ -836,7 +265,7 @@ static DWORD WINAPI boot_thread(LPVOID)
         log_line("[steamhack] all bypass switches off, skipping Steam bypass (vanilla behavior)");
     }
 
-    if (!wait_hybridclr(domain, cfg.hybridclrTimeoutSec)) { log_line("[loader] AstralParty.Runtime timed out"); return 0; }
+    if (!boot::wait_hybridclr(domain, cfg.hybridclrTimeoutSec)) { log_line("[loader] AstralParty.Runtime timed out"); return 0; }
     log_line("[loader] HybridCLR hot update ready");
     log_environment(domain);
 
@@ -893,11 +322,11 @@ static DWORD WINAPI boot_thread(LPVOID)
         log_line("[loader] loading bootstrap: " + cfg.bootstrapAssembly + " (" + std::to_string(bytes.size()) + " bytes)");
 
         std::string err;
-        Il2CppAssembly* asm_ = load_assembly_bytes(domain, bytes, err);
+        Il2CppAssembly* asm_ = boot::load_assembly_bytes(domain, bytes, err);
         if (!asm_) { log_line("[loader] bootstrap Assembly.Load failed: " + err); return 0; }
         log_line("[loader] bootstrap Assembly.Load(byte[]) succeeded");
 
-        if (!run_entry(asm_, cfg.bootstrapType.c_str(), cfg.bootstrapMethod.c_str(), err))
+        if (!boot::run_entry(asm_, cfg.bootstrapType.c_str(), cfg.bootstrapMethod.c_str(), err))
         {
             log_line("[loader] bootstrap entry failed: " + err);
             return 0;
@@ -939,7 +368,7 @@ static DWORD WINAPI boot_thread(LPVOID)
                 if (!in) { log_line("[loader] SDK " + name + " read failed"); continue; }
                 std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
                 std::string err;
-                if (load_assembly_bytes(domain, bytes, err))
+                if (boot::load_assembly_bytes(domain, bytes, err))
                 {
                     log_line("[loader] SDK " + name + " loaded" + (round > 1 ? (" (round " + std::to_string(round) + ")") : ""));
                 }
@@ -1081,7 +510,7 @@ static DWORD WINAPI boot_thread(LPVOID)
         std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
 
         std::string err;
-        Il2CppAssembly* asm_ = load_assembly_bytes(domain, bytes, err);
+        Il2CppAssembly* asm_ = boot::load_assembly_bytes(domain, bytes, err);
         if (!asm_)
         {
             row(idx, name, ver, "load failed: " + err, LOG_RED);
@@ -1092,7 +521,7 @@ static DWORD WINAPI boot_thread(LPVOID)
         }
 
         std::string entry_type = name + ".ModEntry";
-        if (run_entry(asm_, entry_type.c_str(), "Main", err))
+        if (boot::run_entry(asm_, entry_type.c_str(), "Main", err))
         {
             row(idx, name, ver, "ok  " + fmt_ms(GetTickCount64() - t0), LOG_GREEN);
             statuses.push_back({ name, ver, "ok  " + fmt_ms(GetTickCount64() - t0), true, true });

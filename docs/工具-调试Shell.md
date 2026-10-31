@@ -10,13 +10,39 @@
 cesium>
 ```
 
-输入命令回车执行。`↑` / `↓` 翻历史命令，`Ctrl+V`（或 `Shift+Insert`）粘贴，`Ctrl+C` 取消当前输入（不会结束游戏），`Ctrl+L` 清屏，`Esc` 清空当前行。
+输入命令回车执行。行编辑按键与常见 shell 一致：
+
+| 按键 | 作用 |
+| --- | --- |
+| `←` / `→` | 左右移动光标（按字符，中文与 emoji 不会被拆开） |
+| `Ctrl+←` / `Ctrl+→` | 按词左右移动 |
+| `Home` / `End` | 跳到行首 / 行尾（`Ctrl+A` / `Ctrl+E` 同） |
+| `Backspace` / `Delete` | 删光标前 / 光标处的字符 |
+| `Ctrl+Backspace` / `Ctrl+Delete` | 删前一个词 / 后一个词 |
+| `↑` / `↓`（或 `Ctrl+P` / `Ctrl+N`） | 翻历史命令；翻历史前正在输入的内容会保留，翻回最新时恢复 |
+| `Tab` | 补全命令名或配置键，见下节 |
+| `Ctrl+W` / `Ctrl+K` / `Ctrl+U` | 删前一个词 / 删到行尾 / 删到行首 |
+| `Ctrl+Y` | 粘回最近一次被 `Ctrl+W`/`Ctrl+K`/`Ctrl+U` 删掉的内容 |
+| `Ctrl+V`（或 `Shift+Insert`） | 在光标处粘贴 |
+| `Ctrl+C` | 取消当前输入（不会结束游戏） |
+| `Ctrl+L` | 清屏 |
+| `Esc` | 清空当前行 |
 
 鼠标：
 
 - 滚轮上下滚动回看日志；一开始打字，视口自动回到最底部（与 cmd 一致）。
 - 按住左键拖选文本，右键或 `Enter` 复制；有选区时 `Ctrl+C` 也是复制，不会结束游戏。
 - 有选区时控制台输出会暂停（conhost 的 QuickEdit 固有行为，和 cmd 里选中文本一样），按 `Esc` 或复制完成即恢复。
+
+## 补全
+
+`Tab` 在光标所在的词上补全；不会改动这一行里其它的词。
+
+- 第一个词补命令名：`statu` + `Tab` → `status`。
+- `help` 后面补命令名。
+- `get` / `set` / `ls` 后面补配置键：`get loader.consoleT` + `Tab` → `get loader.consoleTopmost`，`ls Turn` + `Tab` 得到 `TurnFocusMod.`。
+- 唯一候选会同时补一个空格；有多个候选时先补公共前缀，补不动再按 `Tab` 会在下方列出全部候选。
+- 引号里的内容不补全。
 
 ## 命令
 

@@ -89,7 +89,7 @@ winget install Hiynet.AstralParty.Toys
 | `enabled` | 加载器总开关 |
 | `consoleEnabled` / `consoleTopmost` | 控制台显示与置顶 |
 | `debugShell` | CesiumLoader Debug Shell 的命令输入（默认开） |
-| `forwardActivityLog` | 将模组行为日志转发到控制台 |
+| `forwardActivityLog` | 将模组行为日志转发到控制台（按 `DBG`/`INF`/`WRN`/`ERR` 级别着色） |
 | `speedhackBaseSpeed` | 启动时的基础倍率，`1.0` 为正常速度 |
 | `speedControlEnabled` | 允许通过文件通道调整倍率 |
 | `windowControlEnabled` | 允许模组通过文件通道把游戏窗口切到前台并播放提示音(WAV) |
@@ -112,7 +112,7 @@ cesium> set loader.speedhackBaseSpeed 3
 cesium> exit
 ```
 
-配置键为 `loader.<字段>` 或 `<ModId>.<键>`，`ls` 列出全部可配置项，`get` / `set` 读写单个键，`help` 查看全部命令。修改会立即写盘并保留文件原有格式。完整说明见 [调试 shell](docs/工具-调试Shell.md)。
+配置键为 `loader.<字段>` 或 `<ModId>.<键>`，`ls` 列出全部可配置项，`get` / `set` 读写单个键，`help` 查看全部命令。行编辑与常见 shell 一致：方向键移动光标、`Home` / `End`、`Delete`、`Ctrl+W`/`Ctrl+K`/`Ctrl+U` 删词删行，`Tab` 补全命令名与配置键。修改会立即写盘并保留文件原有格式。完整说明见 [调试 shell](docs/工具-调试Shell.md)。
 
 日志按启动会话分别保存，文件名包含时间与进程 ID；排障时保留对应会话的日志及同次构建的 DLL/PDB。
 

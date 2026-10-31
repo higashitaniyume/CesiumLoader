@@ -80,7 +80,8 @@ public static class SdkLog
 [22:28:56.443] [INF] [ActivityLog] [用牌] 企鹅鹅大魔王 (我) 使用了 攻击(中)(10001) (剩3张)
 ```
 
-级别标签：`DBG` / `INF` / `WRN` / `ERR`。
+级别标签：`DBG` / `INF` / `WRN` / `ERR`。转发到控制台时按级别着色：`DBG` 暗灰、`INF` 默认灰白、
+`WRN` 黄色、`ERR`/`FTL` 红色，时间戳与级别保持暗灰；日志文件里始终是纯文本。
 
 ### 级别过滤
 

@@ -420,6 +420,11 @@ int text_width(const std::string& utf8)
     return width_of(widen(utf8.c_str()));
 }
 
+int text_width_w(const std::wstring& text)
+{
+    return width_of(text);
+}
+
 // ---------- 彩色分级日志 ----------
 
 void console_set_color(WORD attr)
@@ -542,6 +547,25 @@ void console_write_w(const wchar_t* msg, size_t len)
     std::wstring body;
     split_tag(std::wstring(msg, len), prefix, body);
     emit(prefix, body, LOG_DIM, g_color);
+
+    if (g_post_write) g_post_write();
+    LeaveCriticalSection(&g_write_cs);
+}
+
+// 前缀与正文各自取色: mod 日志转发用("[时间] [级别] " 暗灰, 正文按级别)。
+// 与 console_write 的区别只有两处: 前缀由调用方给出, 正文色不由全局 g_color 决定,
+// 所以不会和别的线程正在设置的当前色互相干扰。
+void console_write_styled(const char* utf8_prefix, const char* utf8_body,
+                          WORD prefix_color, WORD body_color)
+{
+    if (!console_ready() || utf8_body == nullptr) return;
+
+    ensure_write_lock();
+    EnterCriticalSection(&g_write_cs);
+    if (g_pre_write) g_pre_write();
+
+    emit(widen(utf8_prefix == nullptr ? "" : utf8_prefix), widen(utf8_body),
+         prefix_color, body_color);
 
     if (g_post_write) g_post_write();
     LeaveCriticalSection(&g_write_cs);
