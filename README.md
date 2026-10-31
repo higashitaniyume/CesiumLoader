@@ -66,7 +66,7 @@ winget install Hiynet.AstralParty.Toys
 | [CombatOddsMod](docs/mod-CombatOddsMod.md) | 战斗胜率分析、头顶攻防数字与悬停详情，可选显示角色卡与玩家头顶的移速加成，怪物名字/血量旁显示技能 CD，梅加斯技能按钮上方显示轨道轰炸理论伤害（回放可见），标记与摩西精密技巧闪避显示 |
 | [FreeCameraMod](docs/mod-FreeCameraMod.md) | 滚轮沿视线缩放，`←`/`→` 绕观察点旋转地图，默认 `F1` 恢复视角；锁定镜头默认关闭，需手动设置 `autoFollow=false` |
 | [SpeedHackMod](docs/mod-SpeedHackMod.md) | 游戏内调整倍率，切换正常速度与上次倍率 |
-| [TurnClockMod](docs/mod-TurnClockMod.md) | 变速时只把自己的操作倒计时按真实时间走，动画、战斗与其他玩家回合照常加速 |
+| [TurnClockMod](docs/mod-TurnClockMod.md) | 变速时把自己的操作倒计时、选人界面、结算界面、房间等待与剧情自动播放按真实时间走，动画、战斗与其他玩家回合照常加速 |
 | ActivityLogMod | 记录出牌、投骰、回合等行为并转发到控制台 |
 | [ForkDirectionMod](mods/ForkDirectionMod/README.md) | PVE 岔路三个相邻地块按顺序显示红 A、黄 B、蓝 C 与地块 ID |
 | [HideHudMod](docs/mod-HideHudMod.md) | 长按反引号键（Tab 上方）隐藏战斗 HUD，可改为按一下切换；手牌、怪物信息、头像与其他 HUD 可分别开关 |

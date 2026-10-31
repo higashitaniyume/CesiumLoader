@@ -58,7 +58,7 @@ namespace TurnClockMod
             if (_dictField == null)
             {
                 _resolveFailed = true;
-                Log.Warn("类型 " + type.FullName + " 上没有 timerDict 字段(游戏改版?), 本 mod 不生效");
+                Log.Warn("类型 " + type.FullName + " 上没有 timerDict 字段(游戏改版?), 操作计时器不补偿");
                 return false;
             }
 
@@ -69,6 +69,7 @@ namespace TurnClockMod
         private int CollectTimers(List<object> into)
         {
             into.Clear();
+            if (_dictField == null) return 0;
 
             try
             {
@@ -299,6 +300,7 @@ namespace TurnClockMod
         private void LoadConfig()
         {
             _config = Config;
+            LoadClockConfig();
             if (_config == null) return;
 
             _enabled = _config.GetBool("enabled", true);
@@ -337,12 +339,13 @@ namespace TurnClockMod
 
             // 首次运行: 把默认值整份写出来, 省得用户翻文档猜键名
             bool docsChanged = TurnClockConfigDocs.Apply(_config);
+            bool keysAdded = EnsureClockKeys();
             if (!_config.Has("enabled"))
             {
                 SaveDefaults();
                 Log.Info("已生成默认配置: " + (_config.Path ?? "(未知路径)"));
             }
-            else if (docsChanged)
+            else if (docsChanged || keysAdded)
             {
                 _config.SaveIfDirty();
             }
@@ -362,6 +365,11 @@ namespace TurnClockMod
                 _config.Set("startMember", _startMemberName);
                 _config.Set("clockMember", _clockMemberName);
                 _config.Set("durationMember", _durationMemberName);
+
+                ClockSource[] clocks = ClockSourceTable.Default;
+                for (int i = 0; i < clocks.Length; i++)
+                    _config.Set(clocks[i].Key, IsClockEnabled(clocks[i].Key));
+
                 _config.SaveIfDirty();
             }
             catch (Exception e) { Log.ReportCrash("SaveDefaults", e); }
@@ -373,7 +381,7 @@ namespace TurnClockMod
 
         private string Describe()
         {
-            return "变速时把我的操作倒计时按真实时间走" +
+            return "变速时把我的倒计时按真实时间走" +
                    (_otherTimers ? "(别人的倒计时也按真实时间显示)" : "(只处理我的操作窗口)") +
                    (_dryRun ? " · dryRun(只记录不写)" : "");
         }

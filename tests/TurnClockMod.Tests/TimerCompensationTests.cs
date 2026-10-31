@@ -310,6 +310,34 @@ namespace TurnClockMod.Tests
             Assert.Equal(0, compensator.Count);
         }
 
+        [Fact]
+        public void Prune_KeepsTimersFromBothLists()
+        {
+            // 操作计时器与界面倒计时是两组列表, 清理时两组都要算"在场"
+            var operationTimer = new FakeTimer { duration = 30f };
+            var screenTimer = new FakeTimer { duration = 20f };
+            TimerMember member = Elapsed(typeof(FakeTimer));
+            var compensator = new TimerCompensator();
+
+            compensator.TickElapsed(operationTimer, 0f, 30f, 2.0, member);
+            compensator.TickElapsed(screenTimer, 0f, 20f, 2.0, member);
+            Assert.Equal(2, compensator.Count);
+
+            var operation = new List<object> { operationTimer };
+            var screens = new List<object> { screenTimer };
+
+            Assert.Equal(0, compensator.Prune(operation, screens));
+            Assert.Equal(2, compensator.Count);
+
+            screens.Clear();
+            Assert.Equal(1, compensator.Prune(operation, screens));
+            Assert.Equal(1, compensator.Count);
+
+            // 省略第二组时行为与原来一致
+            Assert.Equal(1, compensator.Prune(new List<object>()));
+            Assert.Equal(0, compensator.Count);
+        }
+
         // ---------- start 模式: 与游戏实际用的 Unity Timer 一致(已用时长 = 时钟 - 起点) ----------
 
         /// <summary>成员名照抄真机日志里的 UnityTimer.Timer。</summary>

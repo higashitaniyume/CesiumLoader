@@ -21,7 +21,7 @@ namespace TurnClockMod
     }
 
     /// <summary>
-    /// 回合时钟: 变速时把"我自己的操作倒计时"按真实时间走。
+    /// 回合时钟: 变速时把"我自己的倒计时"按真实时间走。
     ///
     /// 变速 hook 的是系统时间, 引擎里只有一个时钟 —— 所以 30 秒的操作窗口在 2 倍速下 15 秒
     /// 墙钟就被客户端判超时(客户端会替你把动作发出去)。这个 mod 不碰全局时间, 只把计时器
@@ -30,6 +30,7 @@ namespace TurnClockMod
     /// <code>
     ///   2.0x: 动画/战斗/别人回合/怪物回合 = 2 倍速
     ///         我的操作倒计时               = 1 倍速(30 秒窗口就是 30 秒真实时间)
+    ///         选人/结算/房间等待/剧情自动播放 = 1 倍速(见 ModEntry.Clocks.cs)
     /// </code>
     ///
     /// 游戏用的 Unity Timer 把已用时长**算出来**而不是存字段(实测成员:
@@ -116,15 +117,16 @@ namespace TurnClockMod
         private int _errors;
 
         public override string Name { get { return "回合时钟"; } }
-        public override string Version { get { return "1.3.0"; } }
+        public override string Version { get { return "1.4.0"; } }
         public override string Author { get { return "CesiumLoader"; } }
 
         public override string Description
         {
             get
             {
-                return "变速时只把我的操作倒计时按真实时间走: 2 倍速下 30 秒的回合窗口仍是 30 秒真实时间, " +
-                       "动画、战斗、别人回合与怪物回合照常加速。";
+                return "变速时只把我的倒计时按真实时间走: 操作窗口、选人界面、结算界面、房间等待与" +
+                       "剧情自动播放, 2 倍速下 30 秒窗口仍是 30 秒真实时间; 动画、战斗、别人回合与" +
+                       "怪物回合照常加速。";
             }
         }
 
@@ -136,15 +138,25 @@ namespace TurnClockMod
         {
             LoadConfig();
 
-            if (!ResolveOperationTimer())
+            bool operationTimer = ResolveOperationTimer();
+            if (!operationTimer && !AnyClockEnabled())
             {
-                Log.Warn("回合时钟不生效: 没有可用的游戏计时器类型(见上一条日志)");
+                Log.Warn("回合时钟不生效: 既没有可用的操作计时器, 也没有开启界面倒计时");
                 return;
             }
 
-            Log.Info("已启用: " + Describe());
-            Log.Info("计时器来源: GameLogic.OperationTimer.timerDict" +
-                     (_showField != null ? " / ShowPlayerTimer" : "") + " 已就绪");
+            if (operationTimer)
+            {
+                Log.Info("已启用: " + Describe());
+                Log.Info("计时器来源: GameLogic.OperationTimer.timerDict" +
+                         (_showField != null ? " / ShowPlayerTimer" : "") + " 已就绪");
+            }
+            else
+            {
+                Log.Warn("没有可用的操作计时器(GameLogic.OperationTimer.timerDict), 只处理界面倒计时");
+            }
+
+            if (AnyClockEnabled()) Log.Info("界面倒计时: " + DescribeClocks());
 
             if (!SpeedHack.IsAvailable)
                 Log.Info("变速引擎当前不可用: 这个 mod 只在倍率 >1x 时才需要工作, 不装变速时可以关掉它");
@@ -153,6 +165,7 @@ namespace TurnClockMod
         public override void OnConfigChanged()
         {
             LoadConfig();
+            ResetExtraClocks();
             if (!_enabled)
             {
                 _compensator.Clear();
@@ -164,6 +177,7 @@ namespace TurnClockMod
         public override void OnUnload()
         {
             _compensator.Clear();
+            ResetExtraClocks();
             Log.Info("回合时钟已卸载");
         }
 
@@ -177,18 +191,19 @@ namespace TurnClockMod
 
             try
             {
-                if (_dictField == null && !ResolveOperationTimer()) return;
-
                 double now = NowSeconds();
                 double realDt = now - _lastFrameAt;
                 _lastFrameAt = now;
                 // 首帧 / 长卡顿(切场景): 不做"实测速率 vs 缓存倍率"的判断
                 if (!(realDt > 0.0) || realDt > 0.5) realDt = 0.0;
 
-                int count = CollectTimers(_buffer);
-                if (count == 0)
+                int operationCount = CollectTimers(_buffer);
+                int extraCount = CollectExtraClocks(_extraBuffer);
+
+                if (operationCount == 0 && extraCount == 0)
                 {
                     if (_windowOpen) CloseWindow(now);
+                    FinishTraces();
                     if (_compensator.Count > 0) _compensator.Clear();
                     if (_pickerGaveUp || _autoPicker.Samples > 0)
                     {
@@ -201,24 +216,35 @@ namespace TurnClockMod
                 // 只有真的在计时器窗口里才去读倍率(约 5 次/秒读状态文件), 主菜单/房间里零开销
                 double speed = CurrentSpeed();
 
-                EnsureMembers(_buffer[0]);
+                object probe = operationCount > 0 ? _buffer[0] : _extraBuffer[0];
+                EnsureMembers(probe);
                 if (!IsReady())
                 {
-                    TryAutoPickClock(_buffer[0]);
+                    TryAutoPickClock(probe);
                     if (!IsReady()) return;
                 }
 
-                if (!_windowOpen)
+                if (operationCount > 0)
                 {
-                    OpenWindow(now);
-                    // 窗口刚开: 强制重读一次真实倍率, 免得沿用上个窗口的缓存
-                    _nextSpeedReadAt = 0.0;
-                    speed = CurrentSpeed();
+                    if (!_windowOpen)
+                    {
+                        OpenWindow(now);
+                        // 窗口刚开: 强制重读一次真实倍率, 免得沿用上个窗口的缓存
+                        _nextSpeedReadAt = 0.0;
+                        speed = CurrentSpeed();
+                    }
+                }
+                else if (_windowOpen)
+                {
+                    CloseWindow(now);
                 }
 
-                for (int i = 0; i < count; i++) TickTimer(_buffer[i], speed, realDt);
+                for (int i = 0; i < operationCount; i++) TickTimer(_buffer[i], speed, realDt, true);
+                for (int i = 0; i < extraCount; i++) TickTimer(_extraBuffer[i], speed, realDt, false);
 
-                _compensator.Prune(_buffer);
+                FinishTraces();
+
+                _compensator.Prune(_buffer, _extraBuffer);
             }
             catch (Exception e)
             {
@@ -236,9 +262,15 @@ namespace TurnClockMod
             return false;
         }
 
-        /// <summary>处理一个计时器: 读当前进度 → 按真实时间回退/推后 → 记录窗口统计。</summary>
-        private void TickTimer(object timer, double speed, double realDt)
+        /// <summary>
+        /// 处理一个计时器: 读当前进度 → 按真实时间回退/推后 → 记录窗口统计。
+        /// <paramref name="windowStats"/> 只给操作计时器用: 界面倒计时不进"操作窗口"的统计。
+        /// </summary>
+        private void TickTimer(object timer, double speed, double realDt, bool windowStats)
         {
+            // 只补偿第一帧探测到的那个计时器类型(游戏里都是 UnityTimer.Timer)
+            if (_probedType != null && !ReferenceEquals(timer.GetType(), _probedType)) return;
+
             float elapsed;
             bool wrote;
 
@@ -267,10 +299,17 @@ namespace TurnClockMod
                     : _compensator.TickStart(timer, clock, start, speed, _start);
             }
 
-            if (elapsed > _windowMaxElapsed) _windowMaxElapsed = elapsed;
-            if (wrote) _windowWrites++;
+            if (windowStats)
+            {
+                if (elapsed > _windowMaxElapsed) _windowMaxElapsed = elapsed;
+                if (wrote) _windowWrites++;
 
-            if (realDt > 0.0) CheckMeasuredSpeed(realDt);
+                if (realDt > 0.0) CheckMeasuredSpeed(realDt);
+            }
+            else
+            {
+                TrackExtraClock(timer, elapsed, wrote);
+            }
 
             if (_mode == Mode.Start && _start.IsBroken)
             {

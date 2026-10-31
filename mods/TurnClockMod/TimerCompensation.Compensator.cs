@@ -142,19 +142,16 @@ namespace TurnClockMod
         }
 
         /// <summary>丢掉已经不在场上的计时器; 返回清掉的条数。</summary>
-        internal int Prune(IList<object> alive)
+        /// <param name="alive">本帧在场的计时器(操作计时器)。</param>
+        /// <param name="moreAlive">本帧在场的另一组计时器(界面倒计时); 可省略。</param>
+        internal int Prune(IList<object> alive, IList<object> moreAlive = null)
         {
             if (_entries.Count == 0) return 0;
 
             List<object> dead = null;
             foreach (object key in _entries.Keys)
             {
-                bool found = false;
-                if (alive != null)
-                {
-                    for (int i = 0; i < alive.Count; i++)
-                        if (ReferenceEquals(alive[i], key)) { found = true; break; }
-                }
+                bool found = Contains(alive, key) || Contains(moreAlive, key);
                 if (found) continue;
                 if (dead == null) dead = new List<object>();
                 dead.Add(key);
@@ -163,6 +160,14 @@ namespace TurnClockMod
             if (dead == null) return 0;
             for (int i = 0; i < dead.Count; i++) _entries.Remove(dead[i]);
             return dead.Count;
+        }
+
+        private static bool Contains(IList<object> list, object item)
+        {
+            if (list == null) return false;
+            for (int i = 0; i < list.Count; i++)
+                if (ReferenceEquals(list[i], item)) return true;
+            return false;
         }
 
         /// <summary>清空全部跟踪(战斗结束 / 关掉功能时)。</summary>
