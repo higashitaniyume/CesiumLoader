@@ -139,6 +139,31 @@ namespace CombatOddsMod
                 "怪物冷卻文字的垂直微調（像素，正數下移）。",
                 "Vertical offset of monster cooldown text in pixels (positive moves down).",
                 "モンスターのクールダウン表示の垂直微調整（ピクセル、正で下へ）。"));
+            changed |= config.Describe("ShowMoveBonus", D(
+                "显示移速加成：自己角色卡上（查看筹码按钮正上方）与棋盘上每名玩家头顶的攻防标签。默认关闭。",
+                "顯示移速加成：自己角色卡上（查看籌碼按鈕正上方）與棋盤上每名玩家頭頂的攻防標籤。預設關閉。",
+                "Show movement-speed bonuses on your own character card and on every player's board label. Off by default.",
+                "移動速度補正を、自分のキャラクターカード上と盤面上の各プレイヤーの頭上ラベルに表示します（既定オフ）。"));
+            changed |= config.Describe("MoveBonusFontSize", D(
+                "移速加成读数的字号，默认 28。",
+                "移速加成讀數的字級，預設 28。",
+                "Font size of the movement-speed readout (default 28).",
+                "移動速度表示の文字サイズ（既定 28）。"));
+            changed |= config.Describe("MoveBonusOffsetX", D(
+                "移速加成读数的水平微调（像素，正数右移）。",
+                "移速加成讀數的水平微調（像素，正數右移）。",
+                "Horizontal offset of the movement-speed readout in pixels (positive moves right).",
+                "移動速度表示の水平方向の微調整（ピクセル、正で右へ）。"));
+            changed |= config.Describe("MoveBonusOffsetY", D(
+                "移速加成读数的垂直微调（像素，正数下移）。",
+                "移速加成讀數的垂直微調（像素，正數下移）。",
+                "Vertical offset of the movement-speed readout in pixels (positive moves down).",
+                "移動速度表示の垂直方向の微調整（ピクセル、正で下へ）。"));
+            changed |= config.Describe("LogMoveBonusDetail", D(
+                "额外把移速加成所属的玩家、账号与观战状态写入日志；数值变化本身总会记一行。",
+                "額外把移速加成所屬的玩家、帳號與觀戰狀態寫入日誌；數值變化本身總會記一行。",
+                "Also log which player, account and watch state the movement bonus belongs to; value changes are always logged.",
+                "移動速度補正がどのプレイヤー／アカウント／観戦状態のものかを追加でログ出力します（値の変化自体は常に記録）。"));
             return changed;
         }
 

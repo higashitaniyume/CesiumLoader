@@ -551,7 +551,8 @@ namespace CombatOddsMod
 
         // ------------------------------------------------------------------ 定位
 
-        private static UI.UIBattleInfoPanel FindPanel()
+        /// <summary>在 GRoot 下找当前活跃的主 HUD 面板(移速加成覆盖层也复用这一处定位)。</summary>
+        internal static UI.UIBattleInfoPanel FindPanel()
         {
             try
             {

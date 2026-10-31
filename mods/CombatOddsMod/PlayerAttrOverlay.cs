@@ -35,6 +35,9 @@ namespace CombatOddsMod
             public bool AnchorWarningLogged;
             /// <summary>上次写入文本的内容 —— 值没变就跳过字符串比较/排版重算。</summary>
             public string LastText;
+            /// <summary>缓存的移速加成与刷新时间(预测要遍历 Buff, 不能每帧算)。</summary>
+            public int MoveBonus;
+            public float MoveBonusAt;
         }
 
         private readonly Dictionary<long, Entry> _entries = new Dictionary<long, Entry>();
@@ -46,6 +49,8 @@ namespace CombatOddsMod
         private bool _polling;
         /// <summary>配置开关(ShowBoardPlayerAttrs)的当前值 —— 每帧回调必须尊重它, 否则会把开关关掉的标签又摆回来。</summary>
         private bool _enabled = true;
+        /// <summary>是否在头顶标签上附带移速加成(ShowMoveBonus)。</summary>
+        private bool _showMove;
         private static PropertyInfo _mousePosition;
         private static bool _mouseProbeDone;
 
@@ -82,6 +87,17 @@ namespace CombatOddsMod
         {
             _enabled = enabled;
             if (!enabled) { HideEntries(); HideTip(); }
+        }
+
+        /// <summary>配置开关(ShowMoveBonus): 头顶标签是否附带各玩家的移速加成。</summary>
+        public void SetShowMove(bool enabled)
+        {
+            _showMove = enabled;
+            if (!enabled)
+            {
+                // 关掉后下一次刷新会把"速 +N"从文本里去掉。
+                foreach (var entry in _entries.Values) entry.MoveBonusAt = 0f;
+            }
         }
 
         public void Update(bool enabled = true)
@@ -154,6 +170,22 @@ namespace CombatOddsMod
                     int finalAtk = atk + RelicAtkBonus.Total(bonuses);
                     string text = "[color=#5AA9FF]攻 " + finalAtk + "[/color]   [color=#6DE0A2]防 " + def + "[/color]";
 
+                    // 移速加成(可选): 头顶标签也带上, 与角色卡上的读数同一套预测口径。
+                    // 预测要遍历身上的 Buff, 不能每帧算, 每个角色最多每 0.5 秒刷新一次。
+                    if (_showMove)
+                    {
+                        float now = Time.realtimeSinceStartup;
+                        if (now - entry.MoveBonusAt >= 0.5f || entry.MoveBonusAt <= 0f)
+                        {
+                            entry.MoveBonusAt = now;
+                            entry.MoveBonus = ModEntry.MoveBonusPredicted(id);
+                        }
+                        if (entry.MoveBonus != 0)
+                        {
+                            text += "   [color=#FFD24A]速 " + (entry.MoveBonus > 0 ? "+" : "") + entry.MoveBonus + "[/color]";
+                        }
+                    }
+
                     // 签名覆盖浮框会显示的全部字段(基础攻/最终攻/防/血), 任一变化就一起重建,
                     // 避免"只帮浮框重建却因为文字没变而跳过"导致的悬停信息过期。
                     string signature = text + "|" + atk + "|" + hp;
@@ -168,7 +200,8 @@ namespace CombatOddsMod
 
                         entry.Data = player;
                         // 悬停浮框内容直接存进 Box.data(ShowTip 就取它), 不再另存一份, 避免两处状态不一致。
-                        entry.Box.data = BuildTip(Players.SafeNick(player) ?? ("P" + id), atk, finalAtk, def, hp, bonuses);
+                        entry.Box.data = BuildTip(Players.SafeNick(player) ?? ("P" + id), atk, finalAtk, def, hp, bonuses,
+                            _showMove ? entry.MoveBonus : 0);
 
                     }
                     // 文字维持固定字号；只有与实际顶部之间的小间距使用 UI 单位。
@@ -221,7 +254,8 @@ namespace CombatOddsMod
             return true;
         }
 
-        private static string BuildTip(string name, int baseAtk, int finalAtk, int def, int hp, List<RelicAtkBonus.Bonus> bonuses)
+        private static string BuildTip(string name, int baseAtk, int finalAtk, int def, int hp,
+            List<RelicAtkBonus.Bonus> bonuses, int moveBonus)
         {
             var text = "[b]" + name + "[/b]\n[color=#5AA9FF]攻击 " + finalAtk + "[/color]";
             if (bonuses != null && bonuses.Count > 0)
@@ -235,6 +269,11 @@ namespace CombatOddsMod
                 }
             }
             text += "\n[color=#6DE0A2]防御 " + def + "[/color]   [color=#FFCF66]生命 " + hp + "[/color]";
+            if (moveBonus != 0)
+            {
+                string sign = moveBonus > 0 ? "+" : "";
+                text += "\n[color=#FFD24A]移速加成 " + sign + moveBonus + "[/color]";
+            }
             return text;
         }
 

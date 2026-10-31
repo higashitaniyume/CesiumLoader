@@ -37,6 +37,14 @@
     <Compile Include="..\..\mods\CombatOddsMod\HookChain.cs" Link="HookChain.cs" />
     <!-- 剩余手牌数的取值口径与图标地址解析(纯逻辑, 零游戏依赖)。 -->
     <Compile Include="..\..\mods\CombatOddsMod\HandCountRules.cs" Link="HandCountRules.cs" />
+    <!-- 移速加成读数(加速/减速 → HUD 文本, 纯逻辑, 零游戏依赖)。 -->
+    <Compile Include="..\..\mods\CombatOddsMod\MoveBonusText.cs" Link="MoveBonusText.cs" />
+    <!-- 筹码提供的常驻移速(纯逻辑, 零游戏依赖)。 -->
+    <Compile Include="..\..\mods\CombatOddsMod\RelicMoveBonus.cs" Link="RelicMoveBonus.cs" />
+    <!-- 会改变移速的 Buff 数值表与求和(纯逻辑, 零游戏依赖)。 -->
+    <Compile Include="..\..\mods\CombatOddsMod\MoveBuffTable.cs" Link="MoveBuffTable.cs" />
+    <!-- 看不见的常驻差额学习(纯逻辑, 零游戏依赖)。 -->
+    <Compile Include="..\..\mods\CombatOddsMod\MoveResidual.cs" Link="MoveResidual.cs" />
   </ItemGroup>
 
 </Project>

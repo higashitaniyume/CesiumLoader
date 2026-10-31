@@ -56,5 +56,15 @@ namespace CombatOddsMod
         public double MonsterCdOffsetX = 0;
         /// <summary>怪物冷却文本相对名字行的垂直微调(像素, 正=下移)。</summary>
         public double MonsterCdOffsetY = 0;
+        /// <summary>在自己角色卡上(查看筹码按钮正上方)与棋盘玩家头顶显示移速加成; 默认关闭。</summary>
+        public bool ShowMoveBonus = false;
+        /// <summary>移速加成读数的字号。</summary>
+        public double MoveBonusFontSize = 28;
+        /// <summary>移速加成读数的水平微调(像素, 正=右移)。</summary>
+        public double MoveBonusOffsetX = 0;
+        /// <summary>移速加成读数的垂直微调(像素, 正=下移)。</summary>
+        public double MoveBonusOffsetY = 0;
+        /// <summary>把移速加成的读数变化写进加载器日志, 便于确认数值与显示位置。</summary>
+        public bool LogMoveBonusDetail = false;
     }
 }

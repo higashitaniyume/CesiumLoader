@@ -77,6 +77,207 @@ namespace CombatOddsMod
             catch { return null; }
         }
 
+        // ============================== 主 HUD: 移速加成 ==============================
+
+        /// <summary>
+        /// 在自己角色卡上(「查看筹码」按钮正上方)显示当前的移速加成, 例如 <c>移速+3（+4/-1）</c>。
+        ///
+        /// 数值来源有两路, 因为服务器不会把"常驻移速"单独推给客户端:
+        ///   1. <c>BattleProperty.ExtraAddMovePoint</c> / <c>ExtraMinusMovePoint</c> —— 服务器主动推送的
+        ///      临时加减速(和游戏棋盘名牌 <c>txt_Move</c> 同源), 有推送时优先用它的分解。
+        ///   2. 投骰差值 <c>ThrowDiceS2C.MovePoint - ΣVals</c> —— 服务器实际加到移动上的全部加成
+        ///      (筹码常驻 + 临时 + 地图事件)。持有速度轮滑时客户端属性可能一直是 0, 只能靠这个看到。
+        ///      筹码常驻部分另由 <see cref="RelicMoveBonus"/> 补上, 这样刚买到鞋子、还没投骰时也能立刻显示。
+        ///
+        /// 只读, 不改游戏元素; 面板不在(选人/结算/主界面)时不显示。
+        /// </summary>
+        private static void RefreshHudMoveBonus()
+        {
+            if (_moveBonus == null) return;
+            try
+            {
+                if (_cfg == null || !_cfg.ShowMoveBonus)
+                {
+                    _moveBonus.Hide();
+                    return;
+                }
+
+                var pd = SelfPlayerData();
+                if (pd == null || pd.Property == null)
+                {
+                    // 不在战局/回放: 面板本来就不在, 清缓存等下次重新定位。
+                    _moveBonus.Reset();
+                    UnbindMove();
+                    ThrowDiceProbe.Reset();
+                    MoveBuffTracker.Reset();
+                    MoveResidual.Reset();
+                    return;
+                }
+
+                // 服务器推 AddMove 的时刻没有任何事件能保证我们在下一秒内看到, 直接挂到属性上,
+                // 买完速度轮滑/吃到定向加速后立刻刷新, 不必等每秒一次的 tick。
+                EnsureMoveBinding(pd);
+
+                int add = SafeInt(() => pd.Property.ExtraAddMovePoint.Value);
+                int minus = SafeInt(() => pd.Property.ExtraMinusMovePoint.Value);
+
+                int knownNow = 0;
+                try
+                {
+                    var relics = pd.GetRelicIds();
+                    if (relics != null) knownNow = RelicMoveBonus.Total(relics);
+                }
+                catch { }
+
+                long pid = SafeLong(() => pd.player.Id);
+
+                ThrowDiceProbe.RollInfo roll;
+                bool hasRoll = ThrowDiceProbe.TryGet(pid, out roll);
+                if (!hasRoll) roll = default(ThrowDiceProbe.RollInfo);
+
+                // 预测: 已学到数值的移速 Buff(来自服务器的 MovePointBuffS2C) + 筹码常驻 + 服务器刚推的加减速。
+                int trackedBuffs = MoveBuffTracker.Predict(pid);
+                int basePredicted = MoveBonusText.Predict(add, minus, knownNow, trackedBuffs);
+                // 再加上"连续两次投骰都一致的差额"(建筑、隐藏被动等客户端读不到但稳定存在的来源)。
+                int predicted = MoveResidual.Adjust(pid, basePredicted);
+
+                // 预测和最近一次投骰的实测值不一致时, 把两者都显示出来(客户端看不到的来源会体现在"实测"里)。
+                var view = MoveBonusText.BuildPrediction(predicted, add, minus);
+                if (!_moveBonus.Apply(view)) return;   // HUD 还没出现, 下次再试
+                LogMoveBonusChange(add, minus, view, pd, knownNow, trackedBuffs, predicted, hasRoll, roll);
+            }
+            catch
+            {
+                // 每秒调用一次, 失败保持静默, 绝不刷日志。
+            }
+        }
+
+        // 已挂监听的加速/减速属性(用于换绑/解绑)。
+        private static Tools.ReadOnlyReactiveProperty<int> _moveAddBound;
+        private static Tools.ReadOnlyReactiveProperty<int> _moveMinusBound;
+        private static Action<int> _moveAddListener;
+        private static Action<int> _moveMinusListener;
+
+        /// <summary>
+        /// 把刷新挂到 <c>ExtraAddMovePoint</c> / <c>ExtraMinusMovePoint</c> 上: 服务器一推新值就立刻重画。
+        /// </summary>
+        private static void EnsureMoveBinding(BattlePlayerData pd)
+        {
+            try
+            {
+                var add = pd.Property.ExtraAddMovePoint;
+                var minus = pd.Property.ExtraMinusMovePoint;
+                if (ReferenceEquals(add, _moveAddBound) && ReferenceEquals(minus, _moveMinusBound)) return;
+
+                UnbindMove();
+                if (_moveAddListener == null) _moveAddListener = OnSelfMoveChanged;
+                if (_moveMinusListener == null) _moveMinusListener = OnSelfMoveChanged;
+                add.AddListener(_moveAddListener, false);     // false = 不立即回调(tick 马上会排一次)
+                minus.AddListener(_moveMinusListener, false);
+                _moveAddBound = add;
+                _moveMinusBound = minus;
+            }
+            catch { }
+        }
+
+        private static void UnbindMove()
+        {
+            try { _moveAddBound?.RemoveListener(_moveAddListener); } catch { }
+            try { _moveMinusBound?.RemoveListener(_moveMinusListener); } catch { }
+            _moveAddBound = null;
+            _moveMinusBound = null;
+        }
+
+        private static void OnSelfMoveChanged(int value)
+        {
+            // 加速/减速变了 → 立刻重画(失败也无所谓, 下一秒 tick 会兜底)。
+            RefreshHudMoveBonus();
+        }
+
+        /// <summary>
+        /// 移速加成读数变化时打一行日志。移速变化一局只有几次, 默认就记, 方便确认"显示的到底是谁的值"。
+        /// 打开 <c>LogMoveBonusDetail</c> 时额外记录账号/观战对象等细节。
+        /// </summary>
+        private static void LogMoveBonusChange(int add, int minus, MoveBonusView view, BattlePlayerData pd,
+            int knownNow, int trackedBuffs, int predicted, bool hasRoll, ThrowDiceProbe.RollInfo roll)
+        {
+            try
+            {
+                string sign = add + "|" + minus + "|" + knownNow + "|" + trackedBuffs + "|" + predicted
+                    + "|" + (hasRoll ? roll.Delta.ToString() : "-") + "|" + SafeLong(() => pd.player.Id);
+                if (sign == _lastMoveBonusLog) return;
+                _lastMoveBonusLog = sign;
+
+                string who = "玩家=" + SafeLong(() => pd.player.Id);
+                if (_cfg != null && _cfg.LogMoveBonusDetail)
+                {
+                    long accountId = SafeLong(() => SimpleSingletonProvider<GameLogicManager>.inst.account.GetPlayerID());
+                    bool watching = false;
+                    long subscribeId = 0;
+                    try
+                    {
+                        var watch = SimpleSingletonProvider<GameLogicManager>.inst.watch;
+                        if (watch != null)
+                        {
+                            watching = watch.IsWatcher(accountId);
+                            subscribeId = watch.SubscribePlayerId.Value;
+                        }
+                    }
+                    catch { }
+                    who += " 账号=" + accountId + " 观战=" + (watching ? "是" : "否") + " 观战对象=" + subscribeId;
+                }
+
+                string rollText = hasRoll
+                    ? " 上次投骰=" + roll.DiceSum + "点→走" + roll.MovePoint + "格(加成" + roll.Delta + ")"
+                    : " 上次投骰=(无)";
+
+                SdkLog.Info("CombatOdds", "[hud] 移速加成 " + view.Text
+                    + "  | 预计=" + predicted + " 加速=" + add + " 减速=" + minus + " 筹码=" + knownNow
+                    + " 增益buff=" + trackedBuffs + rollText + "  " + who);
+            }
+            catch { }
+        }
+
+        private static long SafeLong(Func<long> f)
+        {
+            try { return f(); } catch { return 0; }
+        }
+
+        /// <summary>某名玩家的移速加成预测(客户端可见来源 + 学到的常驻差额), 供头顶标签使用。</summary>
+        internal static int MoveBonusPredicted(long playerId)
+        {
+            return MoveResidual.Adjust(playerId, PredictedBaseOf(playerId));
+        }
+
+        /// <summary>
+        /// 给 <see cref="ThrowDiceProbe"/> 用的预测值(不含"学到的常驻差额"): 投骰那一刻用客户端可见数据
+        /// 算出来的合计, 与 HUD 上显示的预测同口径。
+        /// </summary>
+        private static int PredictedBaseOf(long playerId)
+        {
+            try
+            {
+                var gm = SimpleSingletonProvider<GameLogicManager>.inst;
+                var pd = gm != null && gm.battle != null ? gm.battle.GetPlayerDataById(playerId) : null;
+                if (pd == null || pd.Property == null) return 0;
+
+                int add = SafeInt(() => pd.Property.ExtraAddMovePoint.Value);
+                int minus = SafeInt(() => pd.Property.ExtraMinusMovePoint.Value);
+
+                int known = 0;
+                try
+                {
+                    var relics = pd.GetRelicIds();
+                    if (relics != null) known = RelicMoveBonus.Total(relics);
+                }
+                catch { }
+
+                int tracked = MoveBuffTracker.Predict(playerId);
+                return MoveBonusText.Predict(add, minus, known, tracked);
+            }
+            catch { return 0; }
+        }
+
         /// <summary>读自己当前的筹码与各项实时数值, 交给纯逻辑算出各筹码的攻击力加成。</summary>
         internal static List<RelicAtkBonus.Bonus> CurrentAtkBonuses(BattlePlayerData pd, out RelicAtkBonus.Input input)
         {
