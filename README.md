@@ -184,5 +184,6 @@ Copyright © 2026 Yume Higashitani。
 - 加载器、Bootstrap、内置模组、MCP 与工具的原创代码采用 [GNU AGPL-3.0](LICENSE)。
 - `loader/CesiumLoader.SDK/` 中的 SDK 采用 [MIT License](loader/CesiumLoader.SDK/LICENSE)。第三方模组仅引用 SDK 时，可自行选择开源或闭源及分发协议；复制 AGPL 代码仍需遵守其条款。
 - SDK 工具包中的其他组件及随仓库分发的第三方库，各自遵循其许可证。
+- 加载器发布包内附 `CesiumLoader-NOTICE.txt`（版权、许可与免责声明）与 `CesiumLoader-LICENSE.txt`（AGPL-3.0 全文），游戏 exe 目录与 `AstralParty_ModLoader` 各一份。
 
 软件按许可证约定提供，不附带担保。
