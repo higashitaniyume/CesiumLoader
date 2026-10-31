@@ -19,6 +19,8 @@
   <ItemGroup>
     <!-- 直接编译 mod 里的纯计算核心(零游戏/SDK 依赖), 离线可测, 不引入任何游戏 DLL。 -->
     <Compile Include="..\..\mods\CombatOddsMod\CombatMath.cs" Link="CombatMath.cs" />
+    <!-- buff 表/语境/修正计算(同为纯逻辑, 拆在同名 partial 文件里)。 -->
+    <Compile Include="..\..\mods\CombatOddsMod\CombatMath.Effects.cs" Link="CombatMath.Effects.cs" />
     <!-- 覆盖层编排逻辑(纯 System, 用假反射器单测状态机)。 -->
     <Compile Include="..\..\mods\CombatOddsMod\FightOverlay.cs" Link="FightOverlay.cs" />
     <!-- 星币锤/手电筒/美工刀 的攻击力加成计算(纯逻辑, 零游戏依赖)。 -->

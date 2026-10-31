@@ -4,7 +4,11 @@
 
   <ItemGroup><PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" /><PackageReference Include="xunit" Version="2.9.2" /><PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" /></ItemGroup>
 
-  <!-- 补偿核心是纯 BCL(不引用 SDK/Unity), 直接编进测试工程离线跑 -->
-  <ItemGroup><Compile Include="..\..\mods\TurnClockMod\TimerCompensation.cs" Link="TimerCompensation.cs" /></ItemGroup>
+  <!-- 补偿核心是纯 BCL(不引用 SDK/Unity), 直接编进测试工程离线跑; 源文件按职责拆成多份, 全部编入 -->
+  <ItemGroup>
+    <Compile Include="..\..\mods\TurnClockMod\TimerCompensation.cs" Link="TimerCompensation.cs" />
+    <Compile Include="..\..\mods\TurnClockMod\TimerCompensation.Picker.cs" Link="TimerCompensation.Picker.cs" />
+    <Compile Include="..\..\mods\TurnClockMod\TimerCompensation.Compensator.cs" Link="TimerCompensation.Compensator.cs" />
+  </ItemGroup>
 
 </Project>

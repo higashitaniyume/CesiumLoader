@@ -1,0 +1,480 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
+using CardSkinMod;
+using CharacterProbeMod;
+using CesiumLoader.CharacterSkins;
+using CesiumLoader.SDK.Configuration;
+using CesiumLoader.SDK.Logging;
+using CesiumLoader.SDK.Manifests;
+using CesiumLoader.SDK.Mods;
+using Core;
+using Core.Unit;
+using FairyGUI;
+using GameLogic;
+using Tools;
+using UI;
+using UnityEngine;
+using UnityEngine.AddressableAssets;
+using UnityEngine.ResourceManagement.AsyncOperations;
+
+namespace CharacterSkinMod
+{
+    public sealed partial class ModEntry : ModBase
+    {
+        private void PrepareCustom(Target target, List<SkinStandingPaintingConfigureItem> originals)
+        {
+            var plan = target.Plan; var p = target.Package; var m = p.Manifest;
+            var packageSource = SkinLayoutAliases.PackageSource(originals, m.SkinItemId);
+            var hero = StaticConfigure.Character.InfoDict[plan.HeroId];
+            foreach (var image in m.Images)
+            {
+                string asset;
+                string path = CharacterSkinRules.SafePath(p.Root, image.Value);
+                if (image.Key.StartsWith("asset:", StringComparison.Ordinal)) asset = image.Key.Substring(6);
+                else if (image.Key == "CharacterMap") asset = hero.CharacterMap;
+                else
+                {
+                    asset = "CesiumCharacter_" + _scheme.Id + "_" + plan.HeroId + "_" + plan.Applied.ItemID + "_" + image.Key;
+                    _layoutAliases.Register(asset, image.Key, StaticConfigure.Skin, packageSource, plan.Source, plan.Original);
+                    if (image.Key.StartsWith("Bust", StringComparison.Ordinal) || image.Key.StartsWith("SfwBust", StringComparison.Ordinal))
+                    {
+                        var list = image.Key.StartsWith("Sfw", StringComparison.Ordinal) ? plan.Applied.SfwBust : plan.Applied.Bust;
+                        int index = image.Key.EndsWith("1", StringComparison.Ordinal) ? 1 : 0;
+                        while (list.Count <= index) list.Add("");
+                        list[index] = asset;
+                    }
+                    else
+                    {
+                        var property = typeof(SkinStandingPaintingConfigureItem).GetProperty(image.Key);
+                        if (property == null || !property.CanWrite) throw new Exception("不支持的皮肤图片槽: " + image.Key);
+                        property.SetValue(plan.Applied, asset, null);
+                    }
+                }
+                if (string.IsNullOrEmpty(asset)) throw new Exception("图片地址为空: " + image.Key);
+                _conflicts.Add("image:" + asset, path);
+                if (!_images.ContainsKey(asset))
+                {
+                    var texture = _textures.GetOrCreateTexture(path, asset);
+                    if (texture == null) throw new Exception("无法加载自定义图片: " + path);
+                    _images.Add(asset, texture); _ownedTextures.Add(texture);
+                }
+            }
+            foreach (var text in m.Texts)
+            {
+                int id = TextId(hero, plan.Applied, text.Key);
+                if (id == 0) throw new Exception("文案槽没有有效ID: " + text.Key);
+                _conflicts.Add((text.Key.StartsWith("Skin", StringComparison.Ordinal) ? "STRSkin:" : "STRCharacter:") + id, text.Value);
+            }
+            if (m.Media.Count > 0) Warn("媒体资源尚未接入，自定义语音/视频/特效保留原版: " + m.Name);
+        }
+        private static int TextId(CharacterInfoConfigure hero, SkinStandingPaintingConfigureItem skin, string slot)
+        {
+            switch (slot) { case "Name": return hero.NameID; case "Nick": return hero.NickID; case "Biography": return hero.BiographyID; case "Lines": return hero.LinesID; case "SkinLong": return skin.LongTextID; case "SkinShort": return skin.ShortTextID; default: return 0; }
+        }
+        private void PatchValue(object obj, string property, object value)
+        {
+            if (obj == null) throw new Exception("待覆盖配置不存在");
+            var info = obj.GetType().GetProperty(property);
+            if (info == null || !info.CanWrite) throw new Exception("配置字段不可写: " + property);
+            var patch = new Patch { Object = obj, Property = info, Original = info.GetValue(obj, null), Applied = value };
+            _patches.Add(patch); info.SetValue(obj, value, null);
+        }
+        private void PatchChecked(object obj, string property, object expected, object value)
+        {
+            foreach (var patch in _patches) if (ReferenceEquals(patch.Object, obj) && patch.Property.Name == property)
+            { if (!Equals(patch.Applied, value)) throw new Exception("多个角色共享配置字段冲突: " + property); return; }
+            var info = obj.GetType().GetProperty(property);
+            if (!Equals(info.GetValue(obj, null), expected)) throw new Exception("准备期间配置已被其他组件修改: " + property);
+            if (!Equals(expected, value)) PatchValue(obj, property, value);
+        }
+        private void PatchList(System.Collections.IList list, object[] expected, object[] value)
+        {
+            foreach (var patch in _skinPatches) if (ReferenceEquals(patch.List, list))
+            { if (!SkinPatch.Matches(list, value)) throw new Exception("多个角色共享皮肤列表冲突"); return; }
+            if (!SkinPatch.Matches(list, expected)) throw new Exception("准备期间皮肤列表已被其他组件修改");
+            if (SkinPatch.Matches(list, value)) return;
+            var item = new SkinPatch { List = list, Original = expected, Applied = value };
+            _skinPatches.Add(item); SkinPatch.Set(list, value);
+        }
+        private void Commit(Target target)
+        {
+            var plan = target.Plan; var hero = StaticConfigure.Character.InfoDict[plan.HeroId];
+            var group = StaticConfigure.Skin.StandingPaintingDict[hero.StandingPainting];
+            int index = -1;
+            for (int i = 0; i < group.SkinStandingPaintingConfigureItems.Count; i++) if (group.SkinStandingPaintingConfigureItems[i].ItemID == plan.Applied.ItemID) { index = i; break; }
+            if (index < 0) throw new Exception("提交时目标皮肤不存在");
+            // Protobuf list and map deserialize to separate objects. HeroCardLogic caches the list copy.
+            foreach (var skin in SchemeRuntimePlan.FindSkinCopies(StaticConfigure.Skin, hero.StandingPainting, plan.Applied.ItemID)) PatchSkin(skin, plan);
+            if (target.Package == null) return;
+            foreach (var text in target.Package.Manifest.Texts)
+            {
+                object table = text.Key.StartsWith("Skin", StringComparison.Ordinal) ? (object)StaticConfigure.STRSkin : StaticConfigure.STRCharacter;
+                var dict = ProbeReflection.Read(table, "LocalDict");
+                int id = TextId(hero, plan.Applied, text.Key);
+                var entry = dict.GetType().GetProperty("Item").GetValue(dict, new object[] { id });
+                foreach (string language in new[] { "Simplified", "Traditional", "English", "Japanese", "Korean" }) PatchValue(entry, language, text.Value);
+            }
+        }
+        private void PatchSkin(SkinStandingPaintingConfigureItem original, SchemeRuntimeTarget plan)
+        {
+            // Preserve identity for all existing HeroCardData and RoomPlayer references.
+            foreach (string property in SchemeRuntimePlan.VisualProperties)
+            {
+                var info = typeof(SkinStandingPaintingConfigureItem).GetProperty(property);
+                PatchChecked(original, property, info.GetValue(plan.Original, null), info.GetValue(plan.Applied, null));
+            }
+            foreach (string property in new[] { "Bust", "SfwBust", "SkinScale", "Actions" })
+            {
+                var info = typeof(SkinStandingPaintingConfigureItem).GetProperty(property);
+                var list = (System.Collections.IList)info.GetValue(original, null);
+                var expected = SkinPatch.Snapshot((System.Collections.IList)info.GetValue(plan.Original, null));
+                var applied = SkinPatch.Snapshot((System.Collections.IList)info.GetValue(plan.Applied, null));
+                PatchList(list, expected, applied);
+            }
+        }
+        private static bool MatchesLayout(HeroSkinOffset actual, SkinOffsetConfigure expected)
+        {
+            return actual != null && actual.skinOffset.x == expected.OffsetX && actual.skinOffset.y == expected.OffsetY
+                && actual.bustSkinOffset.x == expected.CharacterStateSkinOffsetX && actual.bustSkinOffset.y == expected.CharacterStateSkinOffsetY
+                && actual.bustSkinScale == expected.CharacterStateSkinScale && actual.reversalAxisX == expected.IsCharacterStateSkinFlipX;
+        }
+        private void SyncLayoutCache()
+        {
+            // Do not instantiate GameLogicManager or HeroCardLogic early during configuration loading.
+            if (!SimpleSingletonProvider<GameLogicManager>.hasInstance) return;
+            var heroCard = SimpleSingletonProvider<GameLogicManager>.inst.heroCard;
+            if (heroCard == null) return;
+            _layoutCaches.Sync(heroCard.heroSkinOffsetDict, _layoutAliases.Entries, value => new HeroSkinOffset(value), MatchesLayout);
+        }
+        private Dictionary<string, NTexture> ImageCache() => (Dictionary<string, NTexture>)typeof(TextureManager).GetField("_cachedTextureDict", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(SimpleSingletonProvider<TextureManager>.inst);
+        private void InjectImages()
+        {
+            var cache = ImageCache();
+            foreach (var pair in _images)
+            {
+                if (!_cacheOriginals.ContainsKey(pair.Key)) { cache.TryGetValue(pair.Key, out var old); _cacheOriginals.Add(pair.Key, old); cache[pair.Key] = pair.Value; }
+                else if (cache.TryGetValue(pair.Key, out var current) && current != pair.Value) Warn("图片缓存已被其他组件修改，保留其所有权: " + pair.Key);
+                else cache[pair.Key] = pair.Value;
+            }
+        }
+        private void Visit(GObject node, int depth)
+        {
+            if (node == null || node.isDisposed || !node.visible || depth > 24) return;
+            if (node is GLoader loader && loader.url != null && _images.TryGetValue(loader.url, out var image) && loader.texture != image)
+            {
+                if (!ImageCache().TryGetValue(loader.url, out var owned) || owned != image) return;
+                if (!_loaders.Contains(loader)) _loaders.Add(loader);
+                loader.ClearContent(); image.AddRef();
+                try { ExternalSuccess.Invoke(loader, new object[] { image }); }
+                catch { if (loader.texture != image) image.ReleaseRef(); throw; }
+                _imageApplications++;
+            }
+            if (node is GComponent component) for (int i = 0; i < component.numChildren; i++) Visit(component.GetChildAt(i), depth + 1);
+        }
+        private Target Match(int hero, int skin) { foreach (var target in _targets) if (target.Plan.HeroId == hero && target.Plan.Applied.ItemID == skin) return target; return null; }
+        private Target MatchUi(CharacterAnimator component)
+        {
+            Target match = null; int count = 0;
+            string atlas = component.GetComponent<SpriteRenderer>()?.sprite?.texture?.name;
+            var animator = ProbeReflection.Read(component, "animator");
+            var controller = animator == null ? null : ProbeReflection.Read(animator, "runtimeAnimatorController") as UnityEngine.Object;
+            foreach (var target in _targets)
+            {
+                string label = target.Plan.Original.GetCharacterLabel();
+                if (!string.IsNullOrEmpty(atlas) && (atlas == label || atlas.StartsWith(label + "_", StringComparison.Ordinal))) { match = target; count++; }
+            }
+            if (count == 0 && controller != null)
+                foreach (var target in _targets) if (controller == target.OriginalController) { match = target; count++; }
+            if (count > 1) { Warn("无owner界面角色匹配歧义，保留原控制器/精灵: " + (controller == null ? "null" : controller.name)); return null; }
+            return match;
+        }
+        private void Discover()
+        {
+            var old = new Dictionary<int, Actor>(); foreach (var a in _actors) if (a.Renderer != null) old[a.Renderer.GetInstanceID()] = a;
+            var discovered = new List<Actor>();
+            foreach (var component in UnityEngine.Object.FindObjectsOfType<CharacterAnimator>())
+            {
+                var mapRenderer = component.GetComponent<SpriteRenderer>();
+                Actor actor = null;
+                if (mapRenderer != null) old.TryGetValue(mapRenderer.GetInstanceID(), out actor);
+                var player = component.owner?.player;
+                if (component.owner != null && (player == null || player.Hero == null || player.standingPainting == null)) continue;
+                var currentAnimator = ProbeReflection.Read(component, "animator");
+                var currentController = currentAnimator == null ? null : ProbeReflection.Read(currentAnimator, "runtimeAnimatorController") as UnityEngine.Object;
+                Target target = player != null ? Match(player.Hero.HeroId, player.standingPainting.ItemID) : actor != null && actor.AppliedController != null && currentController == actor.AppliedController ? actor.Target : MatchUi(component);
+                var renderer = component.GetComponent<SpriteRenderer>();
+                if (target == null || renderer == null) { if (actor != null) { RestoreActor(actor); actor.Dropped++; } old.Remove(mapRenderer == null ? 0 : mapRenderer.GetInstanceID()); continue; }
+                if (actor == null) actor = new Actor { Component = component, Renderer = renderer };
+                if (actor.Target != target) { RestoreActor(actor); actor.Target = target; actor.Playback.Reset(); actor.Applied = null; }
+                if (!_actors.Contains(actor)) _actors.Add(actor);
+                discovered.Add(actor); old.Remove(mapRenderer == null ? 0 : mapRenderer.GetInstanceID());
+                var animator = ProbeReflection.Read(component, "animator");
+                if (target.SourceController != null && animator != null)
+                {
+                    var current = ProbeReflection.Read(animator, "runtimeAnimatorController") as UnityEngine.Object;
+                    if (actor.AppliedController != null && current != actor.AppliedController) { actor.OriginalController = null; actor.AppliedController = null; }
+                    if (actor.AppliedController == null)
+                    {
+                        actor.OriginalController = current == target.SourceController ? target.OriginalController : current;
+                        actor.OriginalStates = States(animator);
+                        actor.AppliedController = target.SourceController;
+                        SetController(animator, target.SourceController, actor.OriginalStates); _controllerApplications++;
+                    }
+                }
+            }
+            var renderers = new HashSet<int>();
+            foreach (var actor in discovered) renderers.Add(actor.Renderer.GetInstanceID());
+            foreach (var battle in UnityEngine.Object.FindObjectsOfType<BattleActor>())
+            {
+                var data = ProbeReflection.Read(battle, "playerData") as BattlePlayerData;
+                var player = data == null ? null : data.player;
+                if (player == null || player.Hero == null || player.standingPainting == null || battle.actorRenderer == null) continue;
+                var target = Match(player.Hero.HeroId, player.standingPainting.ItemID);
+                if (target == null || target.Package == null) continue;
+                var battleRenderer = battle.actorRenderer.GetComponent<SpriteRenderer>();
+                if (battleRenderer == null) continue;
+                foreach (var renderer in new[] { battleRenderer })
+                {
+                    if (!renderers.Add(renderer.GetInstanceID())) continue;
+                    Actor actor = null;
+                    foreach (var candidate in old.Values) if (candidate.Renderer == renderer) { actor = candidate; break; }
+                    if (actor == null) actor = new Actor { Component = battle, Renderer = renderer };
+                    else old.Remove(renderer.GetInstanceID());
+                    if (actor.Target != target) { RestoreActor(actor); actor.Target = target; actor.Playback.Reset(); actor.Applied = null; }
+                    discovered.Add(actor);
+                }
+            }
+            foreach (var actor in old.Values) { RestoreActor(actor); actor.Dropped++; }
+            _actors.Clear(); _actors.AddRange(discovered);
+        }
+        // AnimationModule is an AOT assembly absent from the extracted hot-update reference set.
+        // Reflection resolves the game's real Animator without shipping a conflicting stub assembly.
+        private static object[] States(object animator)
+        {
+            int count = (int)ProbeReflection.Read(animator, "layerCount");
+            var states = new object[count];
+            var method = animator.GetType().GetMethod("GetCurrentAnimatorStateInfo", new[] { typeof(int) });
+            for (int i = 0; i < count; i++) states[i] = method.Invoke(animator, new object[] { i });
+            return states;
+        }
+        private static void SetController(object animator, UnityEngine.Object controller, object[] states)
+        {
+            var savedParameters = new Dictionary<string, object>();
+            foreach (var parameter in (Array)ProbeReflection.Read(animator, "parameters"))
+            {
+                string kind = ProbeReflection.Read(parameter, "type").ToString();
+                string getter = kind == "Float" ? "GetFloat" : kind == "Int" ? "GetInteger" : kind == "Bool" ? "GetBool" : null;
+                if (getter == null) continue;
+                int hash = (int)ProbeReflection.Read(parameter, "nameHash");
+                savedParameters[kind + ":" + hash] = animator.GetType().GetMethod(getter, new[] { typeof(int) }).Invoke(animator, new object[] { hash });
+            }
+            animator.GetType().GetMethod("set_runtimeAnimatorController").Invoke(animator, new object[] { controller });
+            if (controller == null) return;
+            foreach (var parameter in (Array)ProbeReflection.Read(animator, "parameters"))
+            {
+                string kind = ProbeReflection.Read(parameter, "type").ToString();
+                int hash = (int)ProbeReflection.Read(parameter, "nameHash");
+                if (!savedParameters.TryGetValue(kind + ":" + hash, out var value)) continue;
+                string setter = kind == "Float" ? "SetFloat" : kind == "Int" ? "SetInteger" : "SetBool";
+                animator.GetType().GetMethod(setter, new[] { typeof(int), value.GetType() }).Invoke(animator, new object[] { hash, value });
+            }
+            if (states == null) return;
+            int count = (int)ProbeReflection.Read(animator, "layerCount");
+            var hasState = animator.GetType().GetMethod("HasState", new[] { typeof(int), typeof(int) });
+            var play = animator.GetType().GetMethod("Play", new[] { typeof(int), typeof(int), typeof(float) });
+            for (int i = 0; i < states.Length && i < count; i++)
+            {
+                int hash = (int)ProbeReflection.Read(states[i], "fullPathHash");
+                float time = (float)ProbeReflection.Read(states[i], "normalizedTime");
+                if ((bool)hasState.Invoke(animator, new object[] { i, hash })) play.Invoke(animator, new object[] { hash, i, time });
+            }
+        }
+        private void RestoreActor(Actor actor)
+        {
+            if (actor.Renderer != null && actor.Applied != null && actor.Renderer.sprite == actor.Applied) actor.Renderer.sprite = actor.Original;
+            var animator = actor.Component is CharacterAnimator ? ProbeReflection.Read(actor.Component, "animator") : null;
+            if (animator != null && actor.AppliedController != null && ProbeReflection.Read(animator, "runtimeAnimatorController") as UnityEngine.Object == actor.AppliedController)
+                SetController(animator, actor.OriginalController, States(animator));
+            actor.AppliedController = null; actor.OriginalController = null;
+        }
+        public override void OnLateUpdate()
+        {
+            if (!_ready) return;
+            try { Discover(); foreach (var a in _actors) if (a.Target.Package != null && a.Renderer != null && a.Component != null && a.Renderer.gameObject.activeInHierarchy) ApplyActor(a); }
+            catch (Exception ex) { Fail(ex); }
+        }
+        // 游戏当前的角色动画速率。地图人物读 Animator.speed：它已经包含房间速度
+        // （BattleConfig.RoleAnimatorSpeed）、回放倍速、走路速度倍率，时停/暂停时为
+        // 0。战斗人物由 PlayableDirector 驱动，取其根 playable 同源的战斗速率。
+        private static float GameAnimationRate(Actor a)
+        {
+            try
+            {
+                if (a.Component is CharacterAnimator)
+                {
+                    var animator = ProbeReflection.Read(a.Component, "animator");
+                    if (animator != null && ProbeReflection.Read(animator, "speed") is float speed) return speed < 0f ? 0f : speed;
+                }
+                if (SimpleSingletonProvider<Core.Scene.SceneManager>.hasInstance) return Math.Max(0f, BattleConfig.RoleAnimatorSpeed);
+            }
+            catch { }
+            return 1f;
+        }
+        private void ApplyActor(Actor a)
+        {
+            Sprite source = a.Renderer.sprite;
+            if (source == null || source == a.Applied) return;
+            a.Original = source;
+            var m = a.Target.Package.Manifest;
+            var decision = a.Playback.Step(m, source.name, Time.time, GameAnimationRate(a));
+            if (!string.IsNullOrEmpty(decision.MissingAction))
+                Warn("动作缺少自定义内容，沿用最近的自定义帧: " + decision.MissingAction + "（角色 " + a.Target.Plan.HeroId + "，包 " + m.Id + "）");
+            if (decision.Kind == PlaybackKind.HoldApplied)
+            {
+                if (a.Applied != null) a.Renderer.sprite = a.Applied;
+                SamplePosition(a);
+                return;
+            }
+            if (string.IsNullOrEmpty(decision.File)) { SamplePosition(a); return; }
+            ApplyFrame(a, decision.File, source, m, decision.OriginalLayout, decision.LayoutName);
+            SamplePosition(a);
+        }
+        // 读包内的原帧尺寸/锚点表（source-metadata.json，旧式包为 legacy-animation-source.json）。
+        // 只在第一次需要时读一次；读不到就退回运行时原帧的锚点。
+        private void EnsureFrameGeometry(Package package)
+        {
+            if (package == null || package.FrameGeometry != null) return;
+            package.FrameGeometry = new Dictionary<string, FrameGeometry>(StringComparer.Ordinal);
+            foreach (string file in new[] { "source-metadata.json", "legacy-animation-source.json" })
+            {
+                Guard("读取原帧锚点", () =>
+                {
+                    string path = Path.Combine(package.Root, file);
+                    if (!File.Exists(path)) return;
+                    var metadata = CesiumJson.Deserialize<FrameMetadata>(File.ReadAllText(path));
+                    if (metadata == null || metadata.Sprites == null) return;
+                    foreach (var entry in metadata.Sprites)
+                    {
+                        if (entry == null || string.IsNullOrEmpty(entry.Name) || entry.Pivot == null || entry.Pivot.Length < 2) continue;
+                        if (!(entry.PPU > 0f)) continue;
+                        if (package.FrameGeometry.ContainsKey(entry.Name)) continue;
+                        package.FrameGeometry.Add(entry.Name, new FrameGeometry { PivotX = entry.Pivot[0], PivotY = entry.Pivot[1], PixelsPerUnit = entry.PPU });
+                    }
+                });
+                if (package.FrameGeometry.Count > 0) return;
+            }
+        }
+        private bool TryFrameGeometry(Package package, string frameName, out FrameGeometry geometry)
+        {
+            geometry = default(FrameGeometry);
+            if (package == null || string.IsNullOrEmpty(frameName)) return false;
+            EnsureFrameGeometry(package);
+            return package.FrameGeometry.TryGetValue(frameName, out geometry);
+        }
+        private static readonly char[] FrameSeparators = { '/', '\\' };
+        // 从自定义帧路径还原它替换的原精灵名：模板导出与逐帧替换的文件名就是原精灵名
+        // （animations/Idle/Idle_00007.png）；用户导入的独立序列是 0000.png 之类的编号。
+        private static string FrameName(string file)
+        {
+            if (string.IsNullOrEmpty(file)) return "";
+            int slash = file.LastIndexOfAny(FrameSeparators);
+            string name = slash >= 0 ? file.Substring(slash + 1) : file;
+            int dot = name.LastIndexOf('.');
+            if (dot > 0) name = name.Substring(0, dot);
+            return AnimationPlayback.FrameIndex(name) >= 0 ? name : "";
+        }
+        // 一只精灵的锚点只能有一个来源，否则同一动作里会在两套锚点之间跳：
+        // 包内模板锚点（自定义图就是按这套画布导出的）优先，只有包内查不到时才用
+        // 运行时原帧的锚点（手工制作的包）。UseOriginalSpriteLayout=false 的包整体用 Layout。
+        private readonly HashSet<string> _anchorChecked = new HashSet<string>(StringComparer.Ordinal);
+        private void CheckAnchor(Actor a, CharacterSkinManifest m, string frameName, Sprite source, FrameGeometry geometry)
+        {
+            if (!_anchorChecked.Add(frameName)) return;
+            if (!string.Equals(frameName, source.name, StringComparison.Ordinal)) return;
+            float dx = Math.Abs(source.pivot.x / source.rect.width - geometry.PivotX);
+            float dy = Math.Abs(source.pivot.y / source.rect.height - geometry.PivotY);
+            if (dx * source.rect.width < 2f && dy * source.rect.height < 2f) return;
+            Warn("原帧锚点与包内模板不一致: " + frameName
+                + " 运行时=(" + (source.pivot.x / source.rect.width).ToString("F3") + "," + (source.pivot.y / source.rect.height).ToString("F3") + ")"
+                + " 包内=(" + geometry.PivotX.ToString("F3") + "," + geometry.PivotY.ToString("F3") + ")"
+                + "，已按包内锚点渲染（角色 " + a.Target.Plan.HeroId + "，包 " + m.Id + "）");
+        }
+        private void ApplyFrame(Actor a, string file, Sprite source, CharacterSkinManifest m, bool originalLayout, string layoutName)
+        {
+            string path = CharacterSkinRules.SafePath(a.Target.Package.Root, file);
+            Vector2 pivot; float ppu; string token;
+            bool template = m.UseOriginalSpriteLayout;
+            originalLayout = originalLayout && template;
+            string frameName = FrameName(file);
+            FrameGeometry geometry;
+            if (template && frameName.Length > 0 && TryFrameGeometry(a.Target.Package, frameName, out geometry))
+            {
+                // 包内模板帧：这张自定义图就是按该原帧的画布导出的，锚点以它为准。
+                CheckAnchor(a, m, frameName, source, geometry);
+                pivot = new Vector2(geometry.PivotX, geometry.PivotY); ppu = geometry.PixelsPerUnit; token = "meta:" + frameName;
+            }
+            else if (originalLayout && (frameName.Length == 0 || string.Equals(frameName, source.name, StringComparison.Ordinal)))
+            {
+                // 包内没有该帧锚点、且就在替换当前原帧：用运行时原帧的锚点。
+                pivot = new Vector2(source.pivot.x / source.rect.width, source.pivot.y / source.rect.height);
+                ppu = source.pixelsPerUnit; token = "src:" + source.GetInstanceID();
+            }
+            else if (originalLayout && !string.IsNullOrEmpty(layoutName) && TryFrameGeometry(a.Target.Package, layoutName, out geometry))
+            {
+                // 帧名不可识别（例如逐帧替换生成的 replacements/<guid>.png）：用它替换的
+                // 原精灵名（LayoutName）的包内锚点，保证与同一动作其它帧一致。
+                pivot = new Vector2(geometry.PivotX, geometry.PivotY); ppu = geometry.PixelsPerUnit; token = "meta:" + layoutName;
+            }
+            else if (originalLayout)
+            {
+                // 包内没有锚点记录：退回当前原帧的锚点。
+                pivot = new Vector2(source.pivot.x / source.rect.width, source.pivot.y / source.rect.height);
+                ppu = source.pixelsPerUnit; token = "src:" + source.GetInstanceID();
+            }
+            else
+            {
+                // 整段自定义序列（用户导入/编辑过的动作）继续使用包自己的 Layout。
+                pivot = new Vector2(m.Layout.PivotX, m.Layout.PivotY); ppu = m.Layout.PixelsPerUnit; token = "pkg";
+            }
+            string key = path + ":" + m.HeroId + ":" + a.Target.Plan.Applied.ItemID + ":" + token;
+            if (!_sprites.TryGetValue(key, out var sprite))
+            {
+                var owned = _textures.GetOrCreateTexture(path, "sprite:" + key);
+                if (owned == null) throw new Exception("无法加载自定义动画帧: " + path);
+                _ownedTextures.Add(owned);
+                var texture = owned.nativeTexture as Texture2D;
+                if (texture == null) throw new Exception("自定义动画纹理类型无效");
+                sprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), pivot, ppu / m.Layout.Scale, 0, SpriteMeshType.FullRect);
+                sprite.name = "Cesium_" + (frameName.Length > 0 ? frameName : source.name); _sprites[key] = sprite;
+            }
+            a.Applied = sprite; a.Renderer.sprite = sprite; if (a.Renderer.sprite == sprite) _spriteApplications++;
+        }
+        private void Rollback()
+        {
+            // A newly built hero-card cache may contain aliases even before the next scan.
+            Guard("记录布局缓存", SyncLayoutCache);
+            Guard("恢复人物布局缓存", () => _layoutCaches.Restore(MatchesLayout));
+            Guard("恢复人物布局配置", _layoutAliases.Restore);
+            foreach (var actor in _actors) Guard("恢复角色", () => RestoreActor(actor)); _actors.Clear();
+            for (int i = _patches.Count - 1; i >= 0; i--) Guard("恢复文案", _patches[i].Restore); _patches.Clear();
+            for (int i = _skinPatches.Count - 1; i >= 0; i--) Guard("恢复皮肤配置", _skinPatches[i].Restore); _skinPatches.Clear();
+            // Detach custom GLoader references before disposing any owned textures.
+            var reload = new Dictionary<GLoader, string>();
+            foreach (var loader in _loaders) Guard("解除界面图片引用", () => { if (loader != null && !loader.isDisposed && _textures.OwnsTexture(loader.texture)) { reload[loader] = loader.url; loader.ClearContent(); loader.url = ""; } }); _loaders.Clear();
+            Guard("恢复图片缓存", () => {
+                var cache = ImageCache();
+                foreach (var pair in _images) if (cache.TryGetValue(pair.Key, out var current) && current == pair.Value)
+                { if (_cacheOriginals.TryGetValue(pair.Key, out var old) && old != null && !old.disposed) cache[pair.Key] = old; else cache.Remove(pair.Key); }
+            });
+            _cacheOriginals.Clear(); _images.Clear();
+            foreach (var loader in reload) Guard("重新加载原界面图片", () => { if (!loader.Key.isDisposed) loader.Key.url = loader.Value; });
+            foreach (var sprite in _sprites.Values) if (sprite != null) UnityEngine.Object.Destroy(sprite); _sprites.Clear();
+            foreach (var texture in _ownedTextures) if (!texture.disposed) texture.destroyMethod = DestroyMethod.Destroy;
+            _textures.Dispose(); _ownedTextures.Clear();
+            foreach (var handle in _handles) Guard("释放官方动画", () => { if (handle.IsValid()) Addressables.Release(handle); }); _handles.Clear(); _assets.Clear();
+        }
+        public override void OnUnload() { _unloaded = true; _ready = false; Rollback(); _state = "Unloaded"; WriteStatus(); }
+    }
+}
