@@ -406,7 +406,12 @@ namespace CombatOddsMod
                         foreach (var key in expired) _recentDamageEvents.Remove(key);
                     }
                     var context = CombatMath.ContextFromDamageType(hp.DamageType);
-                    long contextCauseId = update.Cause.S == party.protocol.CauseOrigin.Types.source.Skill ? update.Cause.Id : 0;
+                    // Cause.Id 只在技能/召唤物语境里能对到配表 id(卡牌/事件/地图事件是另一套 id 空间)。
+                    // 召唤物伤害(DamageType=召唤)也要带上, 否则魔渊触须那一下没有来源可判。
+                    bool causeIsConfigId = update.Cause.S == party.protocol.CauseOrigin.Types.source.Skill
+                        || context == CombatMath.DamageContext.Summon;
+                    long contextCauseId = causeIsConfigId ? update.Cause.Id : 0;
+                    string seaxCause = CombatMath.IsSeaxDamageCause(contextCauseId) ? "（赛克斯/魔渊触须）" : string.Empty;
                     bool targetIsMonster = IsMonster(hp.PlayerId);
                     var buffs = BuffAdjOf(hp.PlayerId, context, contextCauseId, targetIsMonster);
 #if COMBATODDS_DEBUG_PROBES
@@ -415,7 +420,7 @@ namespace CombatOddsMod
                     string skillLabel = update.Cause.S == party.protocol.CauseOrigin.Types.source.Skill
                         ? CombatMath.KnownSkillLabel(update.Cause.Id) : null;
                     string line = "[实际伤害] 目标 " + hp.PlayerId + " 受到 " + (-hp.RealChangeHp) +
-                        " 点伤害；DamageType=" + context + "；Cause=" + source +
+                        " 点伤害；DamageType=" + context + "；Cause=" + source + seaxCause +
                         (skillLabel != null ? "（" + skillLabel + "）" : string.Empty) +
                         (buffs.Applied.Count > 0 ? "；已匹配修正=" + BuffTail(buffs.Applied) : string.Empty) +
                         (buffs.ContextOnly.Count > 0 ? "；其他语境提示=" + string.Join("、", buffs.ContextOnly) : string.Empty) +
@@ -473,7 +478,9 @@ namespace CombatOddsMod
 
                 // 目标(防守方/被击中者)身上的实时 buff → 受伤修正(易伤/减伤/免疫)。
                 // 攻、守两个视角命中的都是同一个"被击中者"= 防守方, 故只求一次。
-                var badj = BuffAdjOf(def.PlayerId, CombatMath.DamageContext.NormalBattle, 0, IsMonster(def.PlayerId));
+                // 攻方 HeroId 一并传进去: 渊蚀印记只对赛克斯(129)打出的伤害生效。
+                int attackerHeroId = HeroIdOf(atk);
+                var badj = BuffAdjOf(def.PlayerId, CombatMath.DamageContext.NormalBattle, 0, IsMonster(def.PlayerId), attackerHeroId);
 #if COMBATODDS_DEBUG_PROBES
                 LogAshDiagnostic(def.PlayerId, badj);
 #endif
@@ -695,8 +702,30 @@ namespace CombatOddsMod
             return false;
         }
 
-        /// <summary>读目标身上的实时 buff, 换算成普通投牌战斗的受伤修正(易伤/减伤/免疫)。</summary>
-        private static CombatMath.BuffAdjustment BuffAdjOf(long targetId, CombatMath.DamageContext context = CombatMath.DamageContext.NormalBattle, long causeId = 0, bool targetIsMonster = true)
+        /// <summary>
+        /// 战斗角色的角色 id。优先用服务器下发的 <c>BattleRole.HeroId</c>；
+        /// 取不到时回退到战斗玩家表里的 Hero 快照, 供【渊蚀印记】这类按来源判定的 buff 使用。
+        /// </summary>
+        private static int HeroIdOf(BattleRole role)
+        {
+            if (role == null) return 0;
+            int id = SafeInt(() => role.HeroId);
+            if (id > 0) return id;
+            try
+            {
+                var hero = Players.Get(role.PlayerId)?.player?.Hero;
+                if (hero != null) return hero.HeroId;
+            }
+            catch { }
+            return 0;
+        }
+
+        /// <summary>
+        /// 读目标身上的实时 buff, 换算成普通投牌战斗的受伤修正(易伤/减伤/免疫)。
+        /// <paramref name="sourceHeroId"/> 是这一击的施加者角色 id(战斗里的攻方 HeroId),
+        /// 供【渊蚀印记】这类只对特定来源生效的 buff 判断是否计入; 未知传 0。
+        /// </summary>
+        private static CombatMath.BuffAdjustment BuffAdjOf(long targetId, CombatMath.DamageContext context = CombatMath.DamageContext.NormalBattle, long causeId = 0, bool targetIsMonster = true, int sourceHeroId = 0)
         {
             // MapEvent damage (notably Garden Courtyard's Phoenix skill) is already
             // server-resolved and must not be treated as ordinary received damage.
@@ -715,7 +744,7 @@ namespace CombatOddsMod
             {
                 var tb = TargetBuffsOf(targetId);
                 if (tb.Count > 0)
-                    return CombatMath.EvaluateTargetBuffs(tb, _buffTable, context, causeId, targetIsMonster);
+                    return CombatMath.EvaluateTargetBuffs(tb, _buffTable, context, causeId, targetIsMonster, sourceHeroId);
             }
             catch { }
             return new CombatMath.BuffAdjustment

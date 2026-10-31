@@ -33,6 +33,12 @@ namespace CombatOddsMod
         /// <summary>【精密技巧】最高层数。</summary>
         public const int MaxPrecisionStacks = 3;
 
+        /// <summary>赛克斯(魔渊幼体)的角色 id，【渊蚀印记】的伤害来源之一。</summary>
+        public const int SeaxHeroId = 129;
+
+        /// <summary>【渊蚀印记】的 buff id。</summary>
+        public const int AbyssMarkBuffId = 1291202;
+
         // =====================================================================
         // 骰池分布
         // =====================================================================
@@ -400,8 +406,9 @@ namespace CombatOddsMod
         //   · 标记(10006)= 受到伤害+1（固定，不按层数叠加）；层数是剩余持续/消耗次数。
         //   · 卡牌【狂暴】(卡 20008 → buff 2000801)= 每层攻+3、受伤+1, 可叠多层。
         //   · 免疫类(护盾 1071101 下次-99、深度改造 10331101 受伤降为0)按"这一击伤害归零"处理。
-        //   · 语境限定类(精准打击只吃【轨道轰炸】、渊蚀印记只吃魔渊触须)【不进】普通投牌结算,
-        //     标 GeneralCombat=false, 只作展示提示, 不改数值。
+        //   · 语境限定类只对特定来源的伤害生效: 精准打击只吃【轨道轰炸】，渊蚀印记只吃
+        //     【魔渊触须/赛克斯】。它们的 GeneralCombat=false，命中来源时按层数计入，
+        //     未命中时只作展示提示、不改数值；两种结果都可据日志核对。
 
         public enum DamageContext
         {
@@ -440,13 +447,41 @@ namespace CombatOddsMod
         }
 
         /// <summary>语境限定 Buff 是否适用于当前伤害来源。</summary>
-        public static bool AppliesInContext(BuffDamageEffect effect, DamageContext context, long causeId = 0)
+        /// <param name="context">服务端 DamageType 对应的伤害语境。</param>
+        /// <param name="causeId">伤害来源 id(技能/召唤物/事件等，取决于服务端 Cause.S)。</param>
+        /// <param name="sourceHeroId">施加这一击的单位角色 id(普通投牌战斗里的攻方 HeroId)；未知传 0。</param>
+        public static bool AppliesInContext(BuffDamageEffect effect, DamageContext context, long causeId = 0, int sourceHeroId = 0)
         {
             if (effect == null || effect.GeneralCombat) return true;
             if (effect.BuffId == 1221202) return context == DamageContext.Skill && causeId == 12203;
-            if (effect.BuffId == 1291202)
-                return context == DamageContext.Summon && (causeId == 12911 || causeId == 12912);
+            if (effect.BuffId == AbyssMarkBuffId)
+                return IsSeaxDamageCause(sourceHeroId) || IsSeaxDamageCause(causeId);
             return false;
+        }
+
+        /// <summary>
+        /// 该 id 是否属于赛克斯的一套(赛克斯本人或她召唤的魔渊触须)。【渊蚀印记】只对这一套生效：
+        ///   · 129 —— 赛克斯本人(角色 id)；普通投牌战斗里攻方 <c>BattleRole.HeroId</c> 就是它；
+        ///   · 12901/12902 —— 赛克斯的主动技能(PVP/PVE，召唤魔渊触须并转化魔渊区域)；
+        ///   · 12903/12904 —— 魔渊触须激活时执行的 perform(Summon 12911/12912 的 CommonPerforms)；
+        ///   · 12911/12912 —— 魔渊触须召唤物本身(Summon.bin，PrefabName=Summon_129_Tentacle)。
+        /// 服务端把哪个 id 写进 <c>Cause.Id</c> 取决于这一击由技能还是召唤物触发，故整组都认。
+        /// </summary>
+        public static bool IsSeaxDamageCause(long id)
+        {
+            switch (id)
+            {
+                case SeaxHeroId:
+                case 12901:
+                case 12902:
+                case 12903:
+                case 12904:
+                case 12911:
+                case 12912:
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         /// <summary>梅加斯轨道轰炸：每丢弃两张牌触发一次。</summary>
@@ -498,9 +533,13 @@ namespace CombatOddsMod
             public string Name;
             /// <summary>受伤侧每单位的伤害增量(正=易伤, 负=减伤)。Immunity=true 时忽略。</summary>
             public int PerUnit;
-            /// <summary>true=按层数(Progress)累乘; false=一次性(与层数无关)。</summary>
+            /// <summary>true=按层数(Progress)累加; false=一次性(与层数无关)。</summary>
             public bool PerLayer;
-            /// <summary>true=作用于普通投牌战斗; false=语境限定(只对特定来源伤害), 仅展示不计入。</summary>
+            /// <summary>
+            /// true=作用于任意来源的伤害; false=语境限定(只对特定来源的伤害生效)。语境限定的
+            /// buff 命中来源时照常计入(可按 <see cref="PerLayer"/> 叠层)，未命中时只进
+            /// <c>ContextOnly</c> 作展示提示，不改数值。
+            /// </summary>
             public bool GeneralCombat;
             /// <summary>true=把这一击伤害直接归零(护盾/免疫)。</summary>
             public bool Immunity;
@@ -555,9 +594,11 @@ namespace CombatOddsMod
             // —— 单次受伤上限 ——
             Add(new BuffDamageEffect(10591101,"铁箍宝藏桶", 0, false, true, false, "每次最多受到1点伤害", damageCap: 1));
 
-            // —— 语境限定(不进普通投牌结算, 只展示) ——
+            // —— 语境限定(只对特定来源生效, 命中时按层数计入) ——
             Add(new BuffDamageEffect(1221202, "精准打击", +1, false, false, false, "只对【轨道轰炸】伤害+1"));
-            Add(new BuffDamageEffect(1291202, "渊蚀印记", +1, false, false, false, "只对魔渊触须/赛克斯伤害+1"));
+            // 赛克斯 PVE 被动(技能 12912)：自身造成伤害时给目标叠 1 层, 每层使目标受到
+            // 来自魔渊触须(召唤物 12911/12912)与赛克斯(角色 129)的伤害 +1, 持续 1 轮。
+            Add(new BuffDamageEffect(AbyssMarkBuffId, "渊蚀印记", +1, true, false, false, "魔渊触须/赛克斯的伤害"));
 
             return t;
         }
@@ -634,7 +675,11 @@ namespace CombatOddsMod
             return EvaluateTargetBuffs(targetBuffs, table, context, causeId, true);
         }
 
-        public static BuffAdjustment EvaluateTargetBuffs(IEnumerable<TargetBuff> targetBuffs, Dictionary<int, BuffDamageEffect> table, DamageContext context, long causeId, bool targetIsMonster)
+        /// <param name="sourceHeroId">
+        /// 造成这一击的单位角色 id(普通投牌战斗里的攻方 HeroId)，未知传 0。
+        /// 语境限定 buff(如渊蚀印记只吃赛克斯的伤害)靠它判断来源。
+        /// </param>
+        public static BuffAdjustment EvaluateTargetBuffs(IEnumerable<TargetBuff> targetBuffs, Dictionary<int, BuffDamageEffect> table, DamageContext context, long causeId, bool targetIsMonster, int sourceHeroId = 0)
         {
             var adj = new BuffAdjustment
             {
@@ -662,7 +707,7 @@ namespace CombatOddsMod
                     adj.ContextOnly.Add(eff.Name + "（仅怪物）");
                     continue;
                 }
-                if (!eff.GeneralCombat && !AppliesInContext(eff, context, causeId))
+                if (!eff.GeneralCombat && !AppliesInContext(eff, context, causeId, sourceHeroId))
                 {
                     adj.ContextOnly.Add(eff.Name + "（仅" + eff.Note + "）");
                     continue;

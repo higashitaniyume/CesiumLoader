@@ -703,6 +703,65 @@ namespace CombatOddsMod.Tests
         }
 
         [Fact]
+        public void AbyssMark_CountsPerLayerAgainstSeax()
+        {
+            // 渊蚀印记: 每层使自身受到来自赛克斯(129)的伤害 +1。
+            var t = CombatMath.DefaultBuffTable();
+            var buffs = new[] { new CombatMath.TargetBuff(CombatMath.AbyssMarkBuffId, 3) };
+            var seax = CombatMath.EvaluateTargetBuffs(buffs, t, CombatMath.DamageContext.NormalBattle, 0, true, CombatMath.SeaxHeroId);
+            Assert.Equal(3, seax.Delta);
+            Assert.Empty(seax.ContextOnly);
+            Assert.Single(seax.Applied);
+            Assert.True(CombatMath.IsSeaxDamageCause(CombatMath.SeaxHeroId));
+        }
+
+        [Fact]
+        public void AbyssMark_IgnoresOtherAttackers()
+        {
+            // 其他角色(含怪物)打出的伤害不吃渊蚀印记, 只保留语境提示。
+            var t = CombatMath.DefaultBuffTable();
+            var buffs = new[] { new CombatMath.TargetBuff(CombatMath.AbyssMarkBuffId, 3) };
+            var other = CombatMath.EvaluateTargetBuffs(buffs, t, CombatMath.DamageContext.NormalBattle, 0, true, 1003);
+            Assert.Equal(0, other.Delta);
+            Assert.Single(other.ContextOnly);
+            var unknown = CombatMath.EvaluateTargetBuffs(buffs, t, CombatMath.DamageContext.NormalBattle);
+            Assert.Equal(0, unknown.Delta);
+        }
+
+        [Fact]
+        public void AbyssMark_CountsPerLayerAgainstTentacleCauses()
+        {
+            // 魔渊触须: 召唤物 12911/12912, 以及它激活时执行的 perform 12903/12904。
+            var t = CombatMath.DefaultBuffTable();
+            var buffs = new[] { new CombatMath.TargetBuff(CombatMath.AbyssMarkBuffId, 2) };
+            foreach (long cause in new long[] { 12911, 12912, 12903, 12904 })
+            {
+                Assert.True(CombatMath.IsSeaxDamageCause(cause));
+                var adj = CombatMath.EvaluateTargetBuffs(buffs, t, CombatMath.DamageContext.Summon, cause);
+                Assert.Equal(2, adj.Delta);
+                Assert.Empty(adj.ContextOnly);
+            }
+
+            // 与赛克斯无关的来源 id 仍不生效。
+            Assert.False(CombatMath.IsSeaxDamageCause(100301));
+            Assert.False(CombatMath.IsSeaxDamageCause(1003));
+            var other = CombatMath.EvaluateTargetBuffs(buffs, t, CombatMath.DamageContext.Skill, 100301);
+            Assert.Equal(0, other.Delta);
+            Assert.Single(other.ContextOnly);
+        }
+
+        [Fact]
+        public void AbyssMark_ZeroLayersHasNoEffect()
+        {
+            // KeepRound=1 且 IsShowIconProgressZero: 层数归零后图标可能还在, 但效果已结束。
+            var t = CombatMath.DefaultBuffTable();
+            var buffs = new[] { new CombatMath.TargetBuff(CombatMath.AbyssMarkBuffId, 0) };
+            var adj = CombatMath.EvaluateTargetBuffs(buffs, t, CombatMath.DamageContext.NormalBattle, 0, true, CombatMath.SeaxHeroId);
+            Assert.Equal(0, adj.Delta);
+            Assert.Empty(adj.Applied);
+        }
+
+        [Fact]
         public void DamageTypeMapsToDamageContext()
         {
             Assert.Equal(CombatMath.DamageContext.Skill, CombatMath.ContextFromDamageType(1));
