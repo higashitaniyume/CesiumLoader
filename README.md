@@ -4,6 +4,8 @@
 
 ## 感谢您选择并使用 CesiumLoader！
 
+### 反馈问题与建议：企鹅群 **1078464597** ｜ [Discord](https://discord.gg/SZaYSwGX94)
+
 **此仓库是游戏 《Astral Party》的模组加载器与开发 SDK**
 
 原生引导 · 托管模组 · 事件 API · 开发工具
