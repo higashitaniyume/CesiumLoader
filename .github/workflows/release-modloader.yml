@@ -171,6 +171,11 @@ jobs:
         run: |
           New-Item -ItemType Directory -Path "staging/AstralParty_ModLoader/sdk", "staging/AstralParty_ModLoader/mods", "staging/AstralParty_ModLoader/logs", "staging/AstralParty_ModLoader/bootstrap" -Force | Out-Null
           Copy-Item "bin/Release/version.dll" "staging/version.dll" -Force
+          # 版权声明与 AGPL-3.0 全文: version.dll 同级(游戏 exe 目录)与 AstralParty_ModLoader 各一份。
+          Copy-Item "CesiumLoader-NOTICE.txt" "staging/CesiumLoader-NOTICE.txt" -Force
+          Copy-Item "LICENSE" "staging/CesiumLoader-LICENSE.txt" -Force
+          Copy-Item "CesiumLoader-NOTICE.txt" "staging/AstralParty_ModLoader/CesiumLoader-NOTICE.txt" -Force
+          Copy-Item "LICENSE" "staging/AstralParty_ModLoader/CesiumLoader-LICENSE.txt" -Force
           Copy-Item "dist/modloader/AstralParty_ModLoader/doorstop_config.json" "staging/AstralParty_ModLoader/doorstop_config.json" -Force
           Copy-Item "dist/modloader/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll" "staging/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll" -Force
           Copy-Item "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll" "staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll" -Force
@@ -238,6 +243,8 @@ jobs:
             "UnlockFrameRateMod 默认启用: 在游戏「设置→屏幕→帧率」列表追加 144/165/240/360/不限帧 选项，选中后由游戏自己应用。",
             "LanguageUnlockMod 默认启用: 国服在游戏「设置→屏幕→语言」里启用英文 / 日文 / 繁中；国际服原生支持，模组自动不介入。",
             "- AstralParty_ModLoader\logs\          → 日志目录",
+            "- CesiumLoader-NOTICE.txt / CesiumLoader-LICENSE.txt → 版权声明与 AGPL-3.0 全文",
+            "  (游戏 exe 目录与 AstralParty_ModLoader 各一份; 安装即表示同意该协议)",
             "解压到游戏 exe 目录即完成安装。",
             "默认皮肤单独提供: cesium-default-skins.zip，解压到同一游戏 exe 目录。",
             "加载器包包含 CardSkinMod，但不包含 skins；未安装皮肤时使用游戏原图。",
@@ -256,6 +263,10 @@ jobs:
           $files = @(
             "staging/version.dll",
             "staging/version.pdb",
+            "staging/CesiumLoader-NOTICE.txt",
+            "staging/CesiumLoader-LICENSE.txt",
+            "staging/AstralParty_ModLoader/CesiumLoader-NOTICE.txt",
+            "staging/AstralParty_ModLoader/CesiumLoader-LICENSE.txt",
             "staging/AstralParty_ModLoader/doorstop_config.json",
             "staging/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll",
             "staging/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.pdb",

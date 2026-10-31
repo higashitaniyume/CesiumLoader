@@ -179,6 +179,12 @@ Deploy-File -From (Join-Path $nativeOut 'version.dll') -To (Join-Path $gameDir '
 # 符号: 放在 dll 同目录, 调试器(或看崩溃转储)会自动找到它, 把加载器内部的地址还原成源码行。
 Deploy-File -From (Join-Path $nativeOut 'version.pdb') -To (Join-Path $gameDir 'version.pdb') -Optional
 
+# 版权声明与 AGPL-3.0 全文: 游戏目录(version.dll 同级)与加载器目录各一份。
+Deploy-File -From (Join-Path $repo 'CesiumLoader-NOTICE.txt') -To (Join-Path $gameDir 'CesiumLoader-NOTICE.txt')
+Deploy-File -From (Join-Path $repo 'LICENSE') -To (Join-Path $gameDir 'CesiumLoader-LICENSE.txt')
+Deploy-File -From (Join-Path $repo 'CesiumLoader-NOTICE.txt') -To (Join-Path $loaderDir 'CesiumLoader-NOTICE.txt')
+Deploy-File -From (Join-Path $repo 'LICENSE') -To (Join-Path $loaderDir 'CesiumLoader-LICENSE.txt')
+
 # 2) 加载器配置
 Deploy-File -From (Join-Path $repo 'dist\modloader\AstralParty_ModLoader\doorstop_config.json') `
             -To (Join-Path $loaderDir 'doorstop_config.json')

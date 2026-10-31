@@ -137,6 +137,14 @@ foreach ($sub in @('AstralParty_ModLoader\sdk', 'AstralParty_ModLoader\mods', 'A
     New-Item -ItemType Directory -Path "staging\$sub" -Force | Out-Null
 }
 Copy-Item 'dist\modloader\version.dll' 'staging\version.dll' -Force
+
+# 版权声明与 AGPL-3.0 全文: version.dll 同级(游戏 exe 目录)与 AstralParty_ModLoader 各一份。
+# 直接从仓库根取, 这样 -SkipBuild 复用旧 dist 时也能补上这两个文件。
+Copy-Item 'CesiumLoader-NOTICE.txt' 'staging\CesiumLoader-NOTICE.txt' -Force
+Copy-Item 'LICENSE' 'staging\CesiumLoader-LICENSE.txt' -Force
+Copy-Item 'CesiumLoader-NOTICE.txt' 'staging\AstralParty_ModLoader\CesiumLoader-NOTICE.txt' -Force
+Copy-Item 'LICENSE' 'staging\AstralParty_ModLoader\CesiumLoader-LICENSE.txt' -Force
+
 Copy-Item 'dist\modloader\AstralParty_ModLoader\doorstop_config.json' 'staging\AstralParty_ModLoader\doorstop_config.json' -Force
 Copy-Item 'dist\modloader\AstralParty_ModLoader\bootstrap\CesiumLoader.Bootstrap.dll' 'staging\AstralParty_ModLoader\bootstrap\CesiumLoader.Bootstrap.dll' -Force
 Copy-Item 'dist\modloader\AstralParty_ModLoader\sdk\CesiumLoader.SDK.dll' 'staging\AstralParty_ModLoader\sdk\CesiumLoader.SDK.dll' -Force
@@ -157,6 +165,10 @@ foreach ($pdb in @(
 $manifestFiles = @(
     'staging/version.dll',
     'staging/version.pdb',
+    'staging/CesiumLoader-NOTICE.txt',
+    'staging/CesiumLoader-LICENSE.txt',
+    'staging/AstralParty_ModLoader/CesiumLoader-NOTICE.txt',
+    'staging/AstralParty_ModLoader/CesiumLoader-LICENSE.txt',
     'staging/AstralParty_ModLoader/doorstop_config.json',
     'staging/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll',
     'staging/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.pdb',
@@ -211,6 +223,8 @@ $readme = @(
     "- *.pdb (version.pdb / bootstrap / sdk / mods\*) → 符号文件(与同名 dll 配对):",
     "  把 dll 的崩溃栈还原成文件行号用, 删掉不影响运行; 调试器会自动在 dll 同目录找它。",
     "- AstralParty_ModLoader\logs\          → 日志目录",
+    "- CesiumLoader-NOTICE.txt / CesiumLoader-LICENSE.txt → 版权声明与 AGPL-3.0 全文",
+    "  (游戏 exe 目录与 AstralParty_ModLoader 各一份; 安装即表示同意该协议)",
     "解压到游戏 exe 目录即完成安装。",
     "默认皮肤单独提供: cesium-default-skins.zip，解压到同一游戏 exe 目录。",
     "加载器包包含 CardSkinMod，但不包含 skins；未安装皮肤时使用游戏原图。",

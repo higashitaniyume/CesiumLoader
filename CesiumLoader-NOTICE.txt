@@ -1,0 +1,62 @@
+CesiumLoader
+Copyright (C) 2026 Yume Higashitani
+
+CesiumLoader is a mod loader for Astral Party. It consists of the native
+version.dll proxy, the managed bootstrap, the CesiumLoader SDK, the bundled
+mods, and the CesiumLoader Debug Shell.
+
+LICENSE
+-------
+CesiumLoader is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License as published by the Free
+Software Foundation, version 3 of the License.
+
+Installing or using CesiumLoader constitutes acceptance of this license.
+
+CesiumLoader is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
+
+The full license text is provided in the file CesiumLoader-LICENSE.txt next to
+this notice. The source code is available at:
+    https://github.com/higashitaniyume/CesiumLoader
+
+The CesiumLoader SDK (the CesiumLoader.SDK assembly and its sources) is licensed
+separately under the MIT License. Third-party mods that only link against the
+SDK may choose their own license; code copied from CesiumLoader itself remains
+under the AGPL-3.0.
+
+THIRD-PARTY COMPONENTS
+----------------------
+This package includes the following third-party software, each under its own
+license. The full license texts are included with the source code in the
+third_party directory of the repository above.
+
+  {fmt} 12.2.0            MIT License
+      Copyright (c) 2012 - present, Victor Zverovich and {fmt} contributors
+
+  spdlog 1.17.0           MIT License
+      Copyright (c) 2016 - present, Gabi Melman and spdlog contributors
+
+  nlohmann/json 3.12.0    MIT License
+      Copyright (c) 2013-2025 Niels Lohmann
+
+  MinHook                 BSD 2-Clause License
+      Copyright (C) 2009-2017 Tsuda Kageyu and contributors
+
+DISCLAIMER
+----------
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+CesiumLoader is an unofficial, fan-made project. It is not affiliated with,
+endorsed by, or sponsored by the developers or publishers of Astral Party.
+The loader is injected into the game process and changes its runtime behavior;
+modifying or extending the client may violate the game's terms of service.
+You install and use it entirely at your own risk. Do not use it to gain an
+unfair advantage in online play.
