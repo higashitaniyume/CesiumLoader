@@ -18,7 +18,8 @@ namespace CesiumLoader.SDK.Gameplay
     /// 内部挂钩循环), SDK 内部每 1 秒检查并重新包装回调 —— 游戏每场战斗会重置
     /// 回调, 检测到新回调就重新包装。mod 无需自己每秒轮询。
     ///
-    /// 安全: 只在确认战斗中才挂钩(避免启动早期强制创建 NetManager 单例崩溃);
+    /// 安全: 只在确认战斗中才挂钩, 且所有单例读取都先过 hasInstance(纯静态字段判空, 不会触发懒构造);
+    /// 因此从第一帧开始轮询也不会碰到"启动早期强行构造半成品单例"的崩溃窗口。
     /// 包装后的回调会转发给游戏原回调, 不干扰游戏逻辑。
     /// </summary>
     public static class GameEvents
@@ -30,7 +31,8 @@ namespace CesiumLoader.SDK.Gameplay
         /// <summary>
         /// 启动内部挂钩循环(每 1 秒检查战斗状态并重新包装 RPC 回调)。
         /// 幂等: 多次调用只启动一次。mod 不需要自己每秒轮询 —— 订阅事件后调一次即可。
-        /// 游戏启动早期(前 30 秒)不挂钩, 避免强制创建 NetManager 单例崩溃。
+        /// 不需要等待启动延迟: <see cref="EnsureHooked"/> 自身只在"已经进入战斗"时才挂钩,
+        /// 且不会在游戏建好单例之前强行创建。
         /// </summary>
         public static void StartAutoHook()
         {
@@ -45,8 +47,6 @@ namespace CesiumLoader.SDK.Gameplay
 
         private static async UniTaskVoid AutoHookLoopAsync()
         {
-            // 避开游戏启动早期崩溃窗口(与 ModBase 的 30 秒延迟一致)
-            try { await UniTask.Delay(30000); } catch { return; }
             while (true)
             {
                 try { EnsureHooked(); }
@@ -160,9 +160,12 @@ namespace CesiumLoader.SDK.Gameplay
         {
             try
             {
-                // 只在确认战斗中挂钩, 避免启动早期强制创建 NetManager 单例干扰游戏启动
+                // 只在确认战斗中挂钩。两步都先 hasInstance 判空(纯静态字段, 不触发懒构造):
+                // 取 .inst 会 new 一个游戏自己都不认识的半成品单例, 启动/非战斗时那样做会在原生段崩。
+                if (!SimpleSingletonProvider<GameLogicManager>.hasInstance) return;
                 var gm = SimpleSingletonProvider<GameLogicManager>.inst;
                 if (gm?.battle == null || gm.battle.PlayerDatas == null || gm.battle.PlayerDatas.Count == 0) return;
+                if (!MonoSingletonProvider<NetManager>.hasInstance) return;
                 var net = MonoSingletonProvider<NetManager>.inst?.RPC;
                 if (net == null) return;
 

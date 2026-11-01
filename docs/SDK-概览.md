@@ -9,7 +9,7 @@ SDK 类型全部位于 `CesiumLoader.SDK` 根命名空间之下的子命名空�
 
 | 命名空间 | 主要类型 |
 |---|---|
-| `CesiumLoader.SDK.Mods` | `ModBase`、`ModContext`、`IMod` |
+| `CesiumLoader.SDK.Mods` | `ModBase`、`ModHost`、`ModContext`、`IMod`、`StartupGate` |
 | `CesiumLoader.SDK.Manifests` | `ModManifestAttribute`、`ModPermission`、`SdkManifest`、`SdkVersion` |
 | `CesiumLoader.SDK.Configuration` | `ModConfig`、`SdkConfig`、`CesiumJson` |
 | `CesiumLoader.SDK.Logging` | `SdkLog`、`ModLogger` |
@@ -40,6 +40,7 @@ SDK 类型全部位于 `CesiumLoader.SDK` 根命名空间之下的子命名空�
 │   └── 原生加载 sdk\*.dll → mods\{ModId}\{ModId}.dll → 调用 {文件名}.ModEntry.Main()
 └── CesiumLoader.SDK.dll (netstandard2.0, 供 mod 编译期引用)
     ├── ModBase      mod 生命周期基座
+    ├── StartupGate  启动门 (游戏就绪即初始化, delayMs 只是上限)
     ├── GameEvents   17 个游戏事件 (RPC 回调 hook, 含带 sn 的 RawAction 原始动作流)
     ├── Players      玩家数据访问
     ├── Names        名字解析 (卡牌/遗物/技能/角色)
@@ -56,7 +57,7 @@ SDK 类型全部位于 `CesiumLoader.SDK` 根命名空间之下的子命名空�
 - **编译期绑定**：SDK 直接引用游戏热更程序集类型（`GameLogic`、`party.model`、`party.protocol`、`Core.Net`、`Cysharp.Threading.Tasks`），mod 在编译时引用 SDK + 游戏热更 DLL。
 - **XML 文档**：SDK 附带同名 `CesiumLoader.SDK.xml`，与 dll 放在同一目录，IDE 里悬停、补全和跳转都能看到类型与成员注释。
 - **HybridCLR 适配**：加载器等 HybridCLR 热更就绪后才加载 mod，避免"热更程序集被替换导致类型过期"。
-- **30 秒安全延迟**：游戏启动早期访问 `NetManager`/`UIManager` 等单例会触发崩溃，SDK 默认等 30 秒再初始化。
+- **启动门**：游戏启动早期访问 `NetManager`/`UIManager` 等单例会触发崩溃，SDK 因此设了启动上限（默认 30 秒）。实际初始化在**游戏就绪的那一刻**发生——已经进入可玩场景且有面板打开——而不是固定等满 30 秒；上限只在判定不到就绪时兜底。
 
 ## 快速上手
 
@@ -101,7 +102,7 @@ public static class ModEntry
 
     static void OnInit()
     {
-        // 订阅事件 / 读配置 (启动 30 秒后执行)
+        // 订阅事件 / 读配置 (游戏就绪后执行, 最晚 30 秒)
         GameEvents.CardUsed += (pid, cardId, remain) =>
             SdkLog.Info("MyMod", $"玩家 {pid} 出牌 {Names.Card(cardId)} 剩{remain}张");
     }

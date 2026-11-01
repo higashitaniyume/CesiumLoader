@@ -15,14 +15,20 @@ namespace CesiumLoader.SDK.Mods
     ///
     /// 线程约定:
     ///  - OnLoad/OnInitialize/OnUpdate/OnLateUpdate/OnSceneLoaded/OnUnload 全部在主线程执行。
-    ///  - 启动延迟用 UniTask.Delay(与既有 ModBase.Run 相同机制)从 boot 线程切回主线程。
+    ///  - 启动门用 UniTask.Delay(与既有 ModBase.Run 相同机制)从 boot 线程切回主线程。
+    ///
+    /// 启动门: <c>delayMs</c> 是<b>等待上限</b>, 不是固定等待 —— 游戏一旦就绪就立即初始化,
+    /// 最坏情况才等满 <c>delayMs</c>(见 <see cref="StartupGate"/>)。
     /// </summary>
     public static class ModHost
     {
-        /// <summary>默认启动延迟(与旧 API 一致)。</summary>
+        /// <summary>默认启动上限: 游戏未就绪时最多等这么久(与旧 API 的固定延迟一致)。</summary>
         public const int DefaultDelayMs = 30000;
 
         /// <summary>启动一个 mod(不阻塞调用者)。</summary>
+        /// <param name="mod">mod 实例。</param>
+        /// <param name="delayMs">启动上限(毫秒): 游戏就绪即初始化, 最多等到这么久; &lt;= 0 表示不等待。</param>
+        /// <param name="tag">日志标签, 默认用 mod 名。</param>
         public static void Start(IMod mod, int delayMs = DefaultDelayMs, string tag = null)
         {
             if (mod == null) return;
@@ -41,7 +47,7 @@ namespace CesiumLoader.SDK.Mods
             }
 
             SdkLog.Info(label, "生命周期开始: " + (mod.Name ?? type.Name) +
-                              " v" + mod.Version + " (启动延迟 " + delayMs + "ms)");
+                              " v" + mod.Version + " (启动上限 " + delayMs + "ms)");
 
             RunLifecycleAsync(mod, ctx, delayMs, label).Forget();
         }
@@ -72,15 +78,15 @@ namespace CesiumLoader.SDK.Mods
 
         private static async UniTaskVoid RunLifecycleAsync(IMod mod, ModContext ctx, int delayMs, string label)
         {
-            // ---- OnLoad: 主线程, 立即执行(不等待启动延迟) ----
+            // ---- OnLoad: 主线程, 立即执行(不等待启动门) ----
             ctx.State = ModLifecycleState.Loaded;
             SafeOnMain(label, "OnLoad", mod.OnLoad);
 
-            // ---- 启动延迟: 避开游戏启动早期的崩溃窗口 ----
+            // ---- 启动门: 游戏就绪即初始化; 最坏等到 delayMs(旧实现是固定等满 delayMs) ----
             if (delayMs > 0)
             {
-                try { await UniTask.Delay(delayMs); }
-                catch (Exception e) { SdkLog.Warn(label, "启动延迟异常(继续初始化): " + e.Message); }
+                try { await StartupGate.WaitAndSettleAsync(delayMs, label); }
+                catch (Exception e) { SdkLog.Warn(label, "启动门异常(继续初始化): " + e.Message); }
             }
 
             // ---- OnInitialize: 主线程 ----

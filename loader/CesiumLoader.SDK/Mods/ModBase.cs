@@ -29,8 +29,9 @@ namespace CesiumLoader.SDK.Mods
     ///    </code>
     ///    新式会自动: 注册 ModContext / 主线程回调 / 场景事件, 并在卸载时自动退订全部订阅。
     ///
-    /// 关键: 启动后先等 delayMs(默认 30 秒)再碰游戏单例(游戏启动早期访问
-    /// NetManager/UIManager 等会触发 0x80000003 崩溃)。
+    /// 关键: <c>delayMs</c> 是<b>启动上限</b>而不是固定等待 —— 游戏一就绪就初始化,
+    /// 最坏情况才等满这个时长(游戏启动早期访问 NetManager/UIManager 等会触发 0x80000003
+    /// 崩溃, 所以必须有上限兜底, 见 <see cref="StartupGate"/>)。
     /// </summary>
     public abstract class ModBase : IMod
     {
@@ -39,12 +40,12 @@ namespace CesiumLoader.SDK.Mods
         // =====================================================================
 
         /// <summary>
-        /// 启动 mod: 等 delayMs 后执行 init。若传了 tick, 之后每秒执行一次;
+        /// 启动 mod: 等游戏就绪(最多 delayMs)后执行 init。若传了 tick, 之后每秒执行一次;
         /// 否则 init 完成后结束(事件驱动模式, 无轮询开销)。
         /// </summary>
         /// <param name="init">初始化(订阅事件/读配置)。可为 null。</param>
         /// <param name="tick">可选每秒轮询。null = 纯事件驱动, 无轮询。</param>
-        /// <param name="delayMs">启动延迟, 默认 30 秒(避开游戏启动崩溃窗口)。</param>
+        /// <param name="delayMs">启动上限, 默认 30 秒: 游戏就绪即初始化, 最坏才等满(兜底防启动早期崩溃)。</param>
         /// <param name="tag">日志来源标签。</param>
         public static void Run(Action init, Action tick = null, int delayMs = 30000, string tag = "MOD")
         {
@@ -61,9 +62,13 @@ namespace CesiumLoader.SDK.Mods
             SdkLog.Write(tag, "=== Main 被调用 ===");
             try
             {
-                // 关键: 等待游戏完全启动再碰单例, 避免启动早期崩溃
-                await UniTask.Delay(delayMs);
-                SdkLog.Write(tag, "启动延迟结束, 开始初始化");
+                // 启动门: 游戏就绪即初始化, 最坏等满 delayMs —— 保证不会在启动早期碰单例
+                if (delayMs > 0)
+                {
+                    try { await StartupGate.WaitAndSettleAsync(delayMs, tag); }
+                    catch (Exception e) { SdkLog.Write(tag, "启动门异常(继续初始化): " + e.Message); }
+                }
+                SdkLog.Write(tag, "启动门结束, 开始初始化");
 
                 // 新式路径依赖 ModContext; 旧式路径也顺带登记上下文, 让 Logger/Config 可用
                 // 异步恢复后的调用者属于 SDK/UniTask，不能用 GetCallingAssembly 找 mod。
@@ -103,7 +108,7 @@ namespace CesiumLoader.SDK.Mods
         /// 返回同一实例便于链式使用。
         /// </summary>
         /// <param name="mod">mod 实例。</param>
-        /// <param name="delayMs">启动延迟, 默认 30 秒。</param>
+        /// <param name="delayMs">启动上限, 默认 30 秒(游戏就绪即提前初始化)。</param>
         /// <param name="tag">日志标签, 默认用 mod 名。</param>
         public static T Run<T>(T mod, int delayMs = 30000, string tag = null) where T : ModBase
         {
@@ -151,10 +156,10 @@ namespace CesiumLoader.SDK.Mods
         /// <summary>描述。</summary>
         public virtual string Description { get { return ""; } }
 
-        /// <summary>程序集加载后、启动延迟前(主线程)。此阶段不要访问游戏单例。</summary>
+        /// <summary>程序集加载后、启动门前(主线程)。此阶段不要访问游戏单例。</summary>
         public virtual void OnLoad() { }
 
-        /// <summary>初始化(默认在启动延迟之后, 主线程执行)。</summary>
+        /// <summary>初始化(游戏就绪后, 主线程执行; 最晚在启动上限到点时执行)。</summary>
         public virtual void OnInitialize() { }
 
         /// <summary>场景加载完成(主线程)。</summary>

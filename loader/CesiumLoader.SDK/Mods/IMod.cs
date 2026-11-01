@@ -29,7 +29,7 @@ namespace CesiumLoader.SDK.Mods
         /// <summary>程序集加载后、初始化前(此阶段不要碰游戏单例)。</summary>
         void OnLoad();
 
-        /// <summary>初始化(默认在启动延迟之后, 主线程上执行)。</summary>
+        /// <summary>初始化(游戏就绪后, 主线程上执行; 最晚在启动上限到点时执行)。</summary>
         void OnInitialize();
 
         /// <summary>场景加载完成。</summary>

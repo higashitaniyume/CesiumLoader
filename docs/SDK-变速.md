@@ -164,9 +164,13 @@ public sealed class MySpeedMod : ModBase
 }
 ```
 
-> `ModBase.Run(mod, delayMs)` 的延迟可以取比默认 30 秒更小的值：30 秒是为了避开"启动早期
-> 访问游戏单例"的崩溃窗口；只碰加载器控制文件 / `InputService` 的 mod 不需要等那么久
-> （内置 `SpeedHackMod` 用 10 秒），碰游戏单例的 mod 请保持默认。
+> `ModBase.Run(mod, delayMs)` 的 `delayMs` 是**启动上限**而不是固定等待：默认 30 秒只是
+> "游戏迟迟没就绪时"的兜底，游戏一就绪就初始化。只碰加载器控制文件 / `InputService` 的 mod
+> 可以给一个更小的上限（内置 `SpeedHackMod` 用 10 秒），这样连兜底都更早；碰游戏单例的 mod
+> 保持默认即可，不必为了提前初始化去猜秒数。
+>
+> 注意 `delayMs` 与 `UniTask.Delay` 同口径：它走**游戏时间**，基础倍率 2x 时 30 秒上限约等于
+> 15 秒墙钟。
 
 ### mod 配置示例 (mods\MySpeedMod\config.json)
 

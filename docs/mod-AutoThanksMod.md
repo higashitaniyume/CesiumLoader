@@ -4,7 +4,7 @@ AutoThanksMod 1.1.0：队友治疗你、给你牌或转星币给你时，默认�
 
 ## 安装与配置
 
-把 `AutoThanksMod.dll`、同次构建的 `AutoThanksMod.pdb` 与 `AutoThanksMod.json` 放到游戏目录的 `AstralParty_ModLoader/mods/AutoThanksMod/`，启动游戏。需要已安装的 CesiumLoader SDK 2.3.0 或更高版本。生命周期沿用 SDK 默认的 30 秒启动延迟。
+把 `AutoThanksMod.dll`、同次构建的 `AutoThanksMod.pdb` 与 `AutoThanksMod.json` 放到游戏目录的 `AstralParty_ModLoader/mods/AutoThanksMod/`，启动游戏。需要已安装的 CesiumLoader SDK 2.3.0 或更高版本。生命周期沿用 SDK 默认的启动上限（游戏就绪即初始化，最晚 30 秒）。
 
 首次初始化会创建同目录的 `config.json`；已有配置只补充缺失字段，保留原有设置：
 

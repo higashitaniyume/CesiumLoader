@@ -393,7 +393,7 @@ namespace CesiumLoader.SDK.Tests
             string dir = TestEnv.NewTempDir("config_watch_preinit");
             var ctx = ModRegistry.Register("ConfigWatchPreInitMod", "1.0.0", "", "", typeof(ConfigWatchMod).Assembly);
             var mod = new ConfigWatchMod();
-            ctx.Mod = mod;      // State 默认 Loaded: 启动延迟/初始化尚未完成
+            ctx.Mod = mod;      // State 默认 Loaded: 启动门/初始化尚未完成
 
             var cfg = ModConfig.ForModId("ConfigWatchPreInitMod", dir);
             cfg.Set("val", 1);
