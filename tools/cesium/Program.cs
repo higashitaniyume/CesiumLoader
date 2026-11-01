@@ -52,10 +52,18 @@ namespace CesiumCli
                 //   2) 向上遍历目录树, 找仓库 loader\CesiumLoader.SDK\bin\{Release|Debug}\ 构建产物(源码形态)
                 string sdkDll = FindSdkDll();
                 string refsDir = Path.Combine(dir, "refs");
+                bool sdkDocs = false;
                 if (sdkDll != null)
                 {
                     Directory.CreateDirectory(refsDir);
                     File.Copy(sdkDll, Path.Combine(refsDir, "CesiumLoader.SDK.dll"), true);
+                    // XML 文档与 dll 同名同目录, IDE 引用该 dll 时才会显示注释。
+                    string sdkXml = Path.ChangeExtension(sdkDll, ".xml");
+                    if (File.Exists(sdkXml))
+                    {
+                        File.Copy(sdkXml, Path.Combine(refsDir, "CesiumLoader.SDK.xml"), true);
+                        sdkDocs = true;
+                    }
                 }
 
                 // 1. csproj (SDK 一律引用项目内 refs\; 游戏热更程序集可选, 存在才引用)
@@ -146,9 +154,16 @@ namespace CesiumCli
 
                 Console.WriteLine($"已生成 mod 项目: {dir}");
                 if (sdkDll != null)
+                {
                     Console.WriteLine("  SDK 已附带在 refs\\CesiumLoader.SDK.dll (项目自包含)");
+                    Console.WriteLine(sdkDocs
+                        ? "  SDK XML 文档已附带在 refs\\CesiumLoader.SDK.xml (IDE 里可见注释)"
+                        : "  ⚠ 未找到 CesiumLoader.SDK.xml, IDE 里看不到 SDK 注释(不影响构建)");
+                }
                 else
+                {
                     Console.WriteLine("  ⚠ 未找到 CesiumLoader.SDK.dll, 请手动放入项目 refs\\ 目录");
+                }
                 Console.WriteLine("  下一步: cesium build " + dir);
                 return 0;
             });

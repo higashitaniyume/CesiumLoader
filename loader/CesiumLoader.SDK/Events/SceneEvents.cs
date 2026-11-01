@@ -8,7 +8,7 @@ namespace CesiumLoader.SDK.Events
     /// <summary>
     /// 场景事件(门面形式)。
     ///
-    /// 与 <see cref="CesiumLoader.SDK.SceneService"/> 的分工: SceneService 是
+    /// 与 <see cref="CesiumLoader.SDK.Scenes.SceneService"/> 的分工: SceneService 是
     /// 订阅 API(带 mod 归属/自动退订/超时), 本类提供 event 语法。
     /// 两者都会被触发, 且都在主线程。
     /// 场景事件由 SDK 转发自 UnityEngine.SceneManagement.SceneManager, 另带一个

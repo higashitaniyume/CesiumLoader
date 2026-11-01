@@ -41,6 +41,7 @@ foreach ($name in @("cesium-loader-$Version.zip", 'cesium-loader.zip')) {
 foreach ($name in @("cesium-sdk-tools-$Version.zip", 'cesium-sdk-tools.zip')) {
     $entries = @(Get-ZipFiles (Join-Path $output $name))
     if ($entries -notcontains 'cesium.exe' -or $entries -notcontains 'CesiumLoader.SDK.dll') { throw "SDK 工具包内容不完整: $name" }
+    if ($entries -notcontains 'CesiumLoader.SDK.xml') { throw "SDK 工具包缺少 XML 文档: $name" }
 }
 
 # 独立暂存目录不会污染加载器 staging；只复制 default，不包含其他皮肤方案。

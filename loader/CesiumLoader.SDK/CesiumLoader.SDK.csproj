@@ -15,8 +15,10 @@
     <FileVersion>2.9.1.0</FileVersion>
     <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <!-- 不生成 XML 文档, 减少构建噪音 -->
-    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- 生成 XML 文档: 与 DLL 一起随发布包分发, 第三方 mod 开发时 IDE 才能看到注释。
+         尚未补注释的公开成员不刷 CS1591 警告, 但已有注释都会进 XML。 -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

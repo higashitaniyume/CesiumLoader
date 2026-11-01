@@ -3,8 +3,9 @@
     把本机构建产物刷新到 dist\modloader\ 分发目录（加载器 + Bootstrap + SDK + 内置 mod）。
 
 .DESCRIPTION
-    仓库里不再存放任何预编译程序集：所有 dll/pdb 都由源码构建产出（refs/game 提供编译期
-    需要的游戏程序集），再用本脚本组装成 dist\modloader\ 的分发布局。
+    仓库里不再存放任何预编译程序集：所有 dll/pdb/xml 都由源码构建产出（refs/game 提供编译期
+    需要的游戏程序集），再用本脚本组装成 dist\modloader\ 的分发布局。SDK 的 XML 文档与
+    dll 同名同目录，mod 作者引用该 dll 时 IDE 才能显示注释。
 
     CI（.github\workflows\release-modloader.yml）与本地 tools\package-modloader.ps1 都调用
     这一份脚本，保证"本地打出来的东西"和"CI 发布的东西"是同一套布局。
@@ -40,7 +41,7 @@ $builtInMods = @(
 )
 if ($builtInMods.Count -eq 0) { throw 'tools\builtin-mods.json 里没有内置 mod' }
 
-function Copy-WithSymbols([string] $fromBinary, [string] $toBinary, [switch] $Optional)
+function Copy-WithSymbols([string] $fromBinary, [string] $toBinary, [switch] $Optional, [switch] $WithDocs)
 {
     if (-not (Test-Path -LiteralPath $fromBinary))
     {
@@ -59,6 +60,19 @@ function Copy-WithSymbols([string] $fromBinary, [string] $toBinary, [switch] $Op
     {
         Write-Warning "缺少符号文件(本次不含): $pdb"
     }
+    # XML 文档同样必须与 dll 同名同目录, IDE 引用该 dll 时才会显示注释。
+    if ($WithDocs)
+    {
+        $xml = [System.IO.Path]::ChangeExtension($fromBinary, '.xml')
+        if (Test-Path -LiteralPath $xml)
+        {
+            Copy-Item -LiteralPath $xml -Destination ([System.IO.Path]::ChangeExtension($toBinary, '.xml')) -Force
+        }
+        else
+        {
+            Write-Warning "缺少 XML 文档(本次不含): $xml"
+        }
+    }
     return $true
 }
 
@@ -67,7 +81,7 @@ Copy-WithSymbols (Resolve-Path -LiteralPath $NativeDll).Path "$dist\version.dll"
 Copy-WithSymbols "loader\CesiumLoader.Bootstrap\bin\$Configuration\netstandard2.0\CesiumLoader.Bootstrap.dll" `
     "$layout\bootstrap\CesiumLoader.Bootstrap.dll" | Out-Null
 Copy-WithSymbols "loader\CesiumLoader.SDK\bin\$Configuration\netstandard2.0\CesiumLoader.SDK.dll" `
-    "$layout\sdk\CesiumLoader.SDK.dll" | Out-Null
+    "$layout\sdk\CesiumLoader.SDK.dll" -WithDocs | Out-Null
 
 $staged = @("version.dll", 'AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll', 'AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll')
 foreach ($mod in $builtInMods)

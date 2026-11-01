@@ -8,6 +8,7 @@ using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
 using System.Text.Json;
+using System.Xml.Linq;
 using Xunit;
 
 namespace CesiumLoader.SDK.Tests
@@ -173,6 +174,24 @@ namespace CesiumLoader.SDK.Tests
                 var id = provider.GetMetadataReader().DebugMetadataHeader.Id;
                 Assert.Equal(guid, new Guid(id.Take(16).ToArray()));
             }
+        }
+
+        // SDK 的 XML 文档必须与 dll 同名同目录随发布包分发, 否则第三方 mod 作者在 IDE 里
+        // 引用 SDK 时看不到任何注释。这里同时确认文档里确实有成员, 而不是一个空壳。
+        [Fact]
+        public void ShippedSdkIncludesXmlDocumentation()
+        {
+            var dll = ResolveShipped("sdk/CesiumLoader.SDK.dll");
+            var xmlPath = Path.ChangeExtension(dll, ".xml");
+            Assert.True(File.Exists(xmlPath), $"SDK 缺少 XML 文档: {xmlPath} (需与 dll 同名同目录)");
+
+            var members = XDocument.Load(xmlPath).Root?.Element("members")?.Elements("member").ToList()
+                          ?? new List<XElement>();
+            Assert.True(members.Count >= 100, $"SDK XML 文档成员过少: {members.Count}");
+
+            var names = members.Select(m => (string)m.Attribute("name")).Where(n => n != null).ToList();
+            Assert.Contains(names, n => n.StartsWith("T:CesiumLoader.SDK."));
+            Assert.Contains(names, n => n.StartsWith("M:CesiumLoader.SDK."));
         }
 
         private static IEnumerable<(OpCode Op, int Operand, int? Constant)> Decode(byte[] bytes)

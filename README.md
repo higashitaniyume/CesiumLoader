@@ -118,7 +118,7 @@ cesium> exit
 
 ## 开发模组
 
-下载 [SDK 工具包](https://github.com/higashitaniyume/CesiumLoader/releases/latest/download/cesium-sdk-tools.zip)，内含自包含 `cesium.exe`、SDK 程序集与符号、文档和示例。编译模组仍需本机安装 .NET SDK。
+下载 [SDK 工具包](https://github.com/higashitaniyume/CesiumLoader/releases/latest/download/cesium-sdk-tools.zip)，内含自包含 `cesium.exe`、SDK 程序集、XML 文档与符号、文档和示例。编译模组仍需本机安装 .NET SDK。
 
 ```powershell
 cesium new MyMod --author YourName --desc "My first mod"

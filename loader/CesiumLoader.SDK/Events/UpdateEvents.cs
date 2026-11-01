@@ -7,7 +7,7 @@ namespace CesiumLoader.SDK.Events
     /// <summary>
     /// 每帧事件(Update / LateUpdate)。
     ///
-    /// 与 <see cref="CesiumLoader.SDK.UpdateService"/> 的分工:
+    /// 与 <see cref="CesiumLoader.SDK.Scheduling.UpdateService"/> 的分工:
     /// UpdateService 是"订阅 API"(带 mod 归属与自动清理), 本类是"事件形式的门面",
     /// 供喜欢 event 语法的 mod 使用。两者在同一个主线程帧内被触发。
     ///

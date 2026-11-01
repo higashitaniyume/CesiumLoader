@@ -52,6 +52,9 @@ $sdkDll = Join-Path $repo 'loader\CesiumLoader.SDK\bin\Release\netstandard2.0\Ce
 $sdkDestDir = Join-Path $loaderDir 'sdk'
 if ((Test-Path $sdkDll) -and (Test-Path $sdkDestDir)) {
     Copy-Item $sdkDll (Join-Path $sdkDestDir 'CesiumLoader.SDK.dll') -Force
+    # XML 文档与 dll 同名同目录, 引用该 dll 的 IDE 才会显示注释。
+    $sdkXml = [IO.Path]::ChangeExtension($sdkDll, '.xml')
+    if (Test-Path $sdkXml) { Copy-Item $sdkXml (Join-Path $sdkDestDir 'CesiumLoader.SDK.xml') -Force }
     # 原生加载器按配置的 sdkVersion 做准入检查，并不读取 SDK DLL 的版本。
     # 只更新 SDK DLL 会让要求新版本的 mod 被跳过；只替换版本字段，保留玩家设置。
     $versionSource = Get-Content (Join-Path $repo 'loader\CesiumLoader.SDK\Manifests\SdkVersion.cs') -Raw

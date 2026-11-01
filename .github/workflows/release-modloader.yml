@@ -148,13 +148,23 @@ jobs:
           $required = @(
             "dist/modloader/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll",
             "dist/modloader/AstralParty_ModLoader/doorstop_config.json",
-            "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll"
+            "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll",
+            # XML 文档与 dll 同名同目录, 是第三方 mod 作者在 IDE 里看到注释的前提, 缺了直接拦发布。
+            "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.xml"
           )
           foreach ($mod in $builtInMods) {
             $required += "dist/modloader/AstralParty_ModLoader/mods/$mod/$mod.dll"
             $required += "dist/modloader/AstralParty_ModLoader/mods/$mod/$mod.json"
           }
           foreach ($f in $required) { if (-not (Test-Path $f)) { throw "缺少构建产物: $f" } }
+          # XML 文档不只要在, 还要真的带注释成员 —— 空文档对 IDE 没有任何帮助。
+          [xml] $sdkDocs = Get-Content "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.xml" -Raw
+          $sdkMembers = @($sdkDocs.doc.members.member)
+          if ($sdkMembers.Count -lt 100) { throw "SDK XML 文档成员过少: $($sdkMembers.Count)" }
+          if (-not ($sdkMembers | Where-Object { $_.name -like 'T:CesiumLoader.SDK.*' })) {
+            throw "SDK XML 文档缺少 CesiumLoader.SDK 类型注释"
+          }
+          Write-Host "SDK XML 文档: $($sdkMembers.Count) 个成员"
           Write-Host "dist 构建产物齐全: $($builtInMods -join ', ')"
           # 符号也要在(与 dll 成对, 见 .gitignore): 缺了只警告 —— 符号不全不该拦住一次发布。
           $symbols = @("dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.pdb")
@@ -179,6 +189,8 @@ jobs:
           Copy-Item "dist/modloader/AstralParty_ModLoader/doorstop_config.json" "staging/AstralParty_ModLoader/doorstop_config.json" -Force
           Copy-Item "dist/modloader/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll" "staging/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll" -Force
           Copy-Item "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll" "staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll" -Force
+          # XML 文档与 dll 同名同目录, 引用该 dll 的 IDE 才会显示注释。
+          Copy-Item "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.xml" "staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.xml" -Force
           # 符号(.pdb): 有就带上, 缺了不拦发布(但要在日志里显眼)。
           # 用途: 用户端崩溃只有一个栈帧地址时, 没有 pdb 只能看偏移, 有 pdb 才能还原到文件行。
           foreach ($p in @(
@@ -234,6 +246,7 @@ jobs:
             "- AstralParty_ModLoader\mods\          → 用户 mod (每 mod 一个文件夹: mods\{ModId}\{ModId}.dll)",
             "- AstralParty_ModLoader\mods\{ModId}\{ModId}.json → mod sidecar (id/版本/权限/enabled 开关/依赖)",
             "- *.pdb (version / bootstrap / sdk / mods\*) → 符号文件(与同名 dll 配对): 把崩溃栈还原成文件行号用, 删掉不影响运行",
+            "- AstralParty_ModLoader\sdk\CesiumLoader.SDK.xml → SDK 的 XML 文档(与 dll 同名): 写 mod 时 IDE 里可见类型/成员注释, 删掉不影响运行",
             "  随包内置: " + ($modList -join " / "),
             "TurnFocusMod 默认不播放提示音; 在 mods\TurnFocusMod\config.json 的 soundFile 填 WAV 路径后启用(随包示例 sounds\your-turn.wav)。",
              "AutoThanksMod 默认启用: 队友治疗、给牌或转星币给你时自动发送原版感谢短语，默认 2 秒真实时间冷却。",
@@ -271,7 +284,8 @@ jobs:
             "staging/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll",
             "staging/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.pdb",
             "staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll",
-            "staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.pdb"
+            "staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.pdb",
+            "staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.xml"
           )
           # 内置 mod 清单同样来自 tools/builtin-mods.json —— 保证 manifest 与实际打包内容一致
           $builtInMods = @(Get-Content "tools/builtin-mods.json" -Raw | ConvertFrom-Json)
@@ -320,6 +334,8 @@ jobs:
           Copy-Item "sdk-tools/cesium.exe" "sdk-staging/cesium.exe" -Force
           Copy-Item "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll" "sdk-staging/CesiumLoader.SDK.dll" -Force
           Copy-Item "loader/CesiumLoader.SDK/LICENSE" "sdk-staging/LICENSE" -Force
+          # XML 文档: 与 dll 同名同目录, 引用该 dll 的项目才能看到注释(cesium new 也会一起复制)。
+          Copy-Item "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.xml" "sdk-staging/CesiumLoader.SDK.xml" -Force
           # SDK 的符号一起给: 模组作者单步进 SDK 内部(比如追 SdkLog/事件派发)才有行号。
           if (Test-Path "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.pdb") {
             Copy-Item "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.pdb" "sdk-staging/CesiumLoader.SDK.pdb" -Force
@@ -338,6 +354,7 @@ jobs:
             "包含:",
             "- cesium.exe            → mod 脚手架与包分发 CLI (win-x64 自包含, 无需本机 .NET)",
             "- CesiumLoader.SDK.dll  → mod 开发引用 (编译期绑定; cesium new 会自动附带进项目)",
+            "- CesiumLoader.SDK.xml  → SDK 的 XML 文档 (与 dll 同名: IDE 里悬停/补全可见注释)",
             "- CesiumLoader.SDK.pdb  → SDK 符号 (调试时能单步进 SDK 内部并看到行号)",
             "- docs\                 → SDK 文档 (概览/事件/玩家/操作/变速/生命周期/配置/能力声明)",
             "- examples\ActivityLogMod\ → 示例 mod 源码 (行为日志, 最简单)",

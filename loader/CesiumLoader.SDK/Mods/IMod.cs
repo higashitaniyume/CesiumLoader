@@ -5,7 +5,7 @@ namespace CesiumLoader.SDK.Mods
 {
     /// <summary>
     /// 面向对象式 mod 生命周期接口(SDK 内部使用; mod 一般直接继承
-    /// <see cref="CesiumLoader.SDK.ModBase"/>, 不必自己实现本接口)。
+    /// <see cref="CesiumLoader.SDK.Mods.ModBase"/>, 不必自己实现本接口)。
     ///
     /// 所有方法都有默认实现(空), mod 只覆写自己关心的阶段。
     /// </summary>

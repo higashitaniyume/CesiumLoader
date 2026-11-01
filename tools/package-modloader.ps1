@@ -21,6 +21,9 @@
     并且都进清单做哈希校验。理由: 用户端崩溃只有一个栈帧地址时, 没有 pdb 就只能看到偏移;
     有了 pdb 才能把 mod 的异常栈还原到具体文件行。缺符号只警告不阻塞发布(见 tools\stage-modloader-dist.ps1)。
 
+    XML 文档: SDK 同时随包附带 CesiumLoader.SDK.xml, 与 dll 同名同目录, 这样第三方 mod 作者
+    在 IDE 里引用 SDK 时能看到类型/成员的注释。加载器包与 SDK 工具包都包含它。
+
     版本号单一来源: loader\CesiumLoader.SDK\Manifests\SdkVersion.cs 里的 SdkVersion.Current。
     加载器版本与之一致(加载器横幅同时打印两者, 见 config.h 的 loaderVersion)。
 
@@ -148,6 +151,8 @@ Copy-Item 'LICENSE' 'staging\AstralParty_ModLoader\CesiumLoader-LICENSE.txt' -Fo
 Copy-Item 'dist\modloader\AstralParty_ModLoader\doorstop_config.json' 'staging\AstralParty_ModLoader\doorstop_config.json' -Force
 Copy-Item 'dist\modloader\AstralParty_ModLoader\bootstrap\CesiumLoader.Bootstrap.dll' 'staging\AstralParty_ModLoader\bootstrap\CesiumLoader.Bootstrap.dll' -Force
 Copy-Item 'dist\modloader\AstralParty_ModLoader\sdk\CesiumLoader.SDK.dll' 'staging\AstralParty_ModLoader\sdk\CesiumLoader.SDK.dll' -Force
+# XML 文档与 dll 同名同目录, 引用该 dll 的 IDE 才会显示注释。
+Copy-Item 'dist\modloader\AstralParty_ModLoader\sdk\CesiumLoader.SDK.xml' 'staging\AstralParty_ModLoader\sdk\CesiumLoader.SDK.xml' -Force
 
 # 符号: dist 里已经和 dll 配好对了(见第 3 步), 这里原样搬进 staging。
 # 缺哪个就在下面的清单过滤里统一警告 —— 符号不全不该拦住发布。
@@ -173,7 +178,8 @@ $manifestFiles = @(
     'staging/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll',
     'staging/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.pdb',
     'staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll',
-    'staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.pdb'
+    'staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.pdb',
+    'staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.xml'
 )
 foreach ($mod in $BuiltInMods)
 {
@@ -222,6 +228,8 @@ $readme = @(
     "- AstralParty_ModLoader\mods\{ModId}\{ModId}.json → mod sidecar (id/版本/权限/enabled 开关/依赖)",
     "- *.pdb (version.pdb / bootstrap / sdk / mods\*) → 符号文件(与同名 dll 配对):",
     "  把 dll 的崩溃栈还原成文件行号用, 删掉不影响运行; 调试器会自动在 dll 同目录找它。",
+    "- AstralParty_ModLoader\sdk\CesiumLoader.SDK.xml → SDK 的 XML 文档(与 dll 同名):",
+    "  写 mod 时在 IDE 里悬停/补全即可看到类型与成员注释; 删掉不影响加载器运行。",
     "- AstralParty_ModLoader\logs\          → 日志目录",
     "- CesiumLoader-NOTICE.txt / CesiumLoader-LICENSE.txt → 版权声明与 AGPL-3.0 全文",
     "  (游戏 exe 目录与 AstralParty_ModLoader 各一份; 安装即表示同意该协议)",
@@ -266,6 +274,8 @@ New-Item -ItemType Directory -Path 'sdk-staging\docs', 'sdk-staging\examples\Act
 Copy-Item 'sdk-tools\cesium.exe' 'sdk-staging\cesium.exe' -Force
 Copy-Item 'dist\modloader\AstralParty_ModLoader\sdk\CesiumLoader.SDK.dll' 'sdk-staging\CesiumLoader.SDK.dll' -Force
 Copy-Item 'loader\CesiumLoader.SDK\LICENSE' 'sdk-staging\LICENSE' -Force
+# XML 文档: 与 dll 同名同目录, 引用该 dll 的项目才能看到注释(cesium new 也会一起复制)。
+Copy-Item 'dist\modloader\AstralParty_ModLoader\sdk\CesiumLoader.SDK.xml' 'sdk-staging\CesiumLoader.SDK.xml' -Force
 # SDK 的符号一起给: 模组作者单步进 SDK 内部时(比如追 SdkLog/事件派发)才有行号。
 if (Test-Path -LiteralPath 'dist\modloader\AstralParty_ModLoader\sdk\CesiumLoader.SDK.pdb')
 {
@@ -282,6 +292,7 @@ $sdkReadme = @(
     "包含:",
     "- cesium.exe            → mod 脚手架与包分发 CLI (win-x64 自包含, 无需本机 .NET)",
     "- CesiumLoader.SDK.dll  → mod 开发引用 (编译期绑定; cesium new 会自动附带进项目)",
+    "- CesiumLoader.SDK.xml  → SDK 的 XML 文档 (与 dll 同名: IDE 里悬停/补全可见注释)",
     "- CesiumLoader.SDK.pdb  → SDK 符号 (调试时能单步进 SDK 内部并看到行号)",
     "- docs\                 → SDK 文档",
     "- examples\ActivityLogMod\ → 示例 mod 源码 (行为日志, 最简单)",

@@ -19,7 +19,7 @@ cesium new <Name> [-o <dir>] [--author <名>] [--desc <描述>]
 ```
 
 生成:
-- `{Name}.csproj` — netstandard2.0, 引用 SDK (HintPath 指向仓库 SDK 产物)
+- `{Name}.csproj` — netstandard2.0, 引用项目内 `refs\CesiumLoader.SDK.dll` (同目录附带 `CesiumLoader.SDK.xml`, IDE 里可见 SDK 注释)
 - `AssemblyInfo.cs` — 程序集级 `[ModManifest]` (权威位置, 含能力声明)
 - `ModEntry.cs` — 事件驱动入口 (订阅 GameEvents + StartAutoHook, 无轮询)
 - `{Name}.json` — sidecar (加载前就存在, 依赖解析用)

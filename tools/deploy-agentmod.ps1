@@ -82,6 +82,9 @@ $sdkDll = Join-Path $repo 'loader\CesiumLoader.SDK\bin\Release\netstandard2.0\Ce
 $sdkDestDir = Join-Path $loaderDir 'sdk'
 if ((Test-Path $sdkDll) -and (Test-Path $sdkDestDir)) {
     Copy-Item $sdkDll (Join-Path $sdkDestDir 'CesiumLoader.SDK.dll') -Force
+    # XML 文档与 dll 同名同目录, 引用该 dll 的 IDE 才会显示注释。
+    $sdkXml = [IO.Path]::ChangeExtension($sdkDll, '.xml')
+    if (Test-Path $sdkXml) { Copy-Item $sdkXml (Join-Path $sdkDestDir 'CesiumLoader.SDK.xml') -Force }
     Write-Host "== 已同步 SDK: $sdkDestDir\CesiumLoader.SDK.dll =="
 } else {
     Write-Warning "未同步 SDK(找不到 $sdkDll 或目标 $sdkDestDir); 桥接依赖 GameEvents.RawAction, 旧 SDK 会报 MissingMethodException。"

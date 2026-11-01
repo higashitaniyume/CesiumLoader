@@ -11,7 +11,7 @@ namespace CesiumLoader.SDK.UserInterface
     /// 因此渲染交给可插拔后端:
     ///  - 不安装后端时 UI 服务仍然完整可用(登记/通知/层级/输入屏蔽/诊断),
     ///    通知同时写入日志, 便于无渲染环境下观察。
-    ///  - 可用 <see cref="CesiumLoader.SDK.UiService.TryInstallBackend"/> 安装自定义后端
+    ///  - 可用 <see cref="CesiumLoader.SDK.UserInterface.UiService.TryInstallBackend"/> 安装自定义后端
     ///    (例如对接游戏自身的 FairyGUI)。
     /// </summary>
     public interface IUiBackend

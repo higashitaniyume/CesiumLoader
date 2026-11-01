@@ -145,7 +145,7 @@ namespace CesiumLoader.SDK.Cameras
         /// 把某个相机记为 SDK 的活动相机并启用它。
         ///
         /// 注意: Unity 的 <c>Camera.current</c> 是只读的, 无法真正"设置"。
-        /// 若相机由 Cinemachine 驱动, 还需要调 <see cref="CinemachineService.SetActiveVirtualCameraPriority"/>
+        /// 若相机由 Cinemachine 驱动, 还需要调 <see cref="CinemachineService.SetPriority"/>
         /// 才能真正接管画面 —— 本方法只做 SDK 侧登记 + 启用。
         /// </summary>
         public static bool SetActiveCamera(Camera camera)

@@ -194,6 +194,9 @@ Deploy-File -From (Join-Path $loaderSrc "CesiumLoader.SDK\$netstd\CesiumLoader.S
             -To (Join-Path $loaderDir 'sdk\CesiumLoader.SDK.dll')
 Deploy-File -From (Join-Path $loaderSrc "CesiumLoader.SDK\$netstd\CesiumLoader.SDK.pdb") `
             -To (Join-Path $loaderDir 'sdk\CesiumLoader.SDK.pdb') -Optional
+# XML 文档与 dll 同名同目录, 引用该 dll 的 IDE 才会显示注释。
+Deploy-File -From (Join-Path $loaderSrc "CesiumLoader.SDK\$netstd\CesiumLoader.SDK.xml") `
+            -To (Join-Path $loaderDir 'sdk\CesiumLoader.SDK.xml') -Optional
 
 # 4) 托管 Bootstrap (默认不启用, 但按布局就位)
 Deploy-File -From (Join-Path $loaderSrc "CesiumLoader.Bootstrap\$netstd\CesiumLoader.Bootstrap.dll") `

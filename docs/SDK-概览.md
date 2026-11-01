@@ -54,6 +54,7 @@ SDK 类型全部位于 `CesiumLoader.SDK` 根命名空间之下的子命名空�
 
 关键点：
 - **编译期绑定**：SDK 直接引用游戏热更程序集类型（`GameLogic`、`party.model`、`party.protocol`、`Core.Net`、`Cysharp.Threading.Tasks`），mod 在编译时引用 SDK + 游戏热更 DLL。
+- **XML 文档**：SDK 附带同名 `CesiumLoader.SDK.xml`，与 dll 放在同一目录，IDE 里悬停、补全和跳转都能看到类型与成员注释。
 - **HybridCLR 适配**：加载器等 HybridCLR 热更就绪后才加载 mod，避免"热更程序集被替换导致类型过期"。
 - **30 秒安全延迟**：游戏启动早期访问 `NetManager`/`UIManager` 等单例会触发崩溃，SDK 默认等 30 秒再初始化。
 
