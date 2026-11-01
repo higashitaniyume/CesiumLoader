@@ -1,0 +1,11 @@
+{
+  "enabled": false,
+  "toggleKey": "O",
+  "fontSize": 22,
+  "heightOffset": 1.6,
+  "labelLift": 36,
+  "showSchedulePanel": true,
+  "showOnlyNextWave": true,
+  "showRandomLandHints": true,
+  "maxWaves": 8
+}
