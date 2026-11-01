@@ -4,6 +4,7 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>disable</Nullable>
+    <AssemblyName>cesium</AssemblyName>
     <RootNamespace>CesiumCli</RootNamespace>
 
     <!-- 打包为 .NET Global Tool -->
@@ -12,7 +13,7 @@
 
     <!-- NuGet 包元数据 -->
     <PackageId>apcsm</PackageId>
-    <Version>2.9.2</Version>
+    <Version>3.0.0</Version>
     <Authors>higashitaniyume, ClassicByte</Authors>
     <Company>AstralParty Modding</Company>
     <Description>CesiumLoader CLI tool (apcsm) for Astral Party mod development and packaging.</Description>
