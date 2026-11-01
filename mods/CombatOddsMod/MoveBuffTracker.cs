@@ -29,6 +29,7 @@ namespace CombatOddsMod
 
         private static MovePointBuffS2CRPC.OnMovePointBuffS2CServerDelegate _wrapped;
         private static MovePointBuffS2CRPC.OnMovePointBuffS2CServerDelegate _original;
+        private static int _hookGeneration;
 
         internal static void EnsureHooked()
         {
@@ -42,9 +43,10 @@ namespace CombatOddsMod
                 if (current == null || ReferenceEquals(current, _wrapped)) return;
 
                 var original = current;
+                int generation = ++_hookGeneration;
                 MovePointBuffS2CRPC.OnMovePointBuffS2CServerDelegate wrapped = (model, errId, isDispatch) =>
                 {
-                    Record(model);
+                    if (generation == _hookGeneration) Record(model);
                     if (original != null) return original(model, errId, isDispatch);
                     return UniTask.CompletedTask;
                 };
@@ -58,6 +60,7 @@ namespace CombatOddsMod
 
         internal static void Unhook()
         {
+            ++_hookGeneration;
             try
             {
                 var net = MonoSingletonProvider<NetManager>.inst;

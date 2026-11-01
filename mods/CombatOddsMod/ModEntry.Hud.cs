@@ -29,10 +29,11 @@ namespace CombatOddsMod
             {
                 if (_cfg == null || !_cfg.ShowRelicAtkBonus)
                 {
-                    // 开关关掉: 只是把我们自己那个元素藏起来, 游戏 HUD 原样不动。
-                    _hudBonus.Apply(null, UnityEngine.Color.white, null);
+                    _hudBonus.Dispose();
+                    UnbindAtk();
                     return;
                 }
+                _hudBonus.StartHoverPolling();
 
                 var pd = SelfPlayerData();
                 if (pd == null || pd.Property == null)
@@ -279,9 +280,9 @@ namespace CombatOddsMod
         }
 
         /// <summary>读自己当前的筹码与各项实时数值, 交给纯逻辑算出各筹码的攻击力加成。</summary>
-        internal static List<RelicAtkBonus.Bonus> CurrentAtkBonuses(BattlePlayerData pd, out RelicAtkBonus.Input input)
+        internal static RelicAtkBonus.Input ReadAtkInput(BattlePlayerData pd)
         {
-            input = new RelicAtkBonus.Input();
+            var input = new RelicAtkBonus.Input();
             try
             {
                 var ids = pd.GetRelicIds();
@@ -313,12 +314,25 @@ namespace CombatOddsMod
                     if (!salaryOk) input.SalaryLayers = hero.SalaryNum;
                 }
 
-                input.Gold = SafeInt(() => pd.Property.gold.Value);
-                input.Hp = SafeInt(() => pd.Property.HP.Value);
-                input.MaxHp = SafeInt(() => pd.Property.maxHP);
+                input.Gold = ReadAtkProperty(pd, static p => p.Property.gold.Value);
+                input.Hp = ReadAtkProperty(pd, static p => p.Property.HP.Value);
+                input.MaxHp = ReadAtkProperty(pd, static p => p.Property.maxHP);
             }
             catch { }
+            return input;
+        }
+
+        internal static List<RelicAtkBonus.Bonus> CurrentAtkBonuses(BattlePlayerData pd, out RelicAtkBonus.Input input)
+        {
+            input = ReadAtkInput(pd);
             return RelicAtkBonus.Evaluate(input);
+        }
+
+        private static int ReadAtkProperty(BattlePlayerData player, Func<BattlePlayerData, int> read)
+        {
+            // Keep the getter behind an invocation boundary for version faults;
+            // static lambdas reuse their delegates instead of capturing per frame.
+            try { return read(player); } catch { return 0; }
         }
 
         /// <summary>把加成拼成 "+32 +7 +7" 这样的纯文本(只用于日志; HUD 上是每个筹码一个独立元素)。</summary>

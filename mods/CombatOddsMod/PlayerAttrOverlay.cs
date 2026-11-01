@@ -35,12 +35,24 @@ namespace CombatOddsMod
             public bool AnchorWarningLogged;
             /// <summary>上次写入文本的内容 —— 值没变就跳过字符串比较/排版重算。</summary>
             public string LastText;
+            public RelicAtkBonus.Input Input;
+            public bool HasInput;
+            public List<RelicAtkBonus.Bonus> Bonuses;
+            public int LastAtk;
+            public int LastDef;
+            public int LastHp;
+            public int LastShownMove;
+            public string LastNick;
+            public string FallbackNick;
             /// <summary>缓存的移速加成与刷新时间(预测要遍历 Buff, 不能每帧算)。</summary>
             public int MoveBonus;
             public float MoveBonusAt;
         }
 
         private readonly Dictionary<long, Entry> _entries = new Dictionary<long, Entry>();
+        private readonly HashSet<long> _active = new HashSet<long>();
+        private readonly List<long> _stale = new List<long>();
+        private readonly List<GComponent> _orderedBoxes = new List<GComponent>();
         private UI.UIBattleInfoPanel _panel;
         private GComponent _tip;
         private GGraph _tipBg;
@@ -52,6 +64,7 @@ namespace CombatOddsMod
         /// <summary>是否在头顶标签上附带移速加成(ShowMoveBonus)。</summary>
         private bool _showMove;
         private static PropertyInfo _mousePosition;
+        private static Func<Vector3> _readMousePosition;
         private static bool _mouseProbeDone;
 
         public void Start()
@@ -63,20 +76,25 @@ namespace CombatOddsMod
                 // 然后才触发此事件。标签用本帧最终机位，顺序不依赖 mod 初始化先后。
                 UpdateEvents.LateUpdate += Poll;
                 _polling = true;
-                ModContext.Current?.RegisterCleanup(Stop);
             }
             catch (Exception e) { SdkLog.Warn("CombatOdds", "玩家攻防悬浮轮询启动失败: " + e.Message); }
         }
 
-        private void Stop()
+        public void Dispose()
         {
             UpdateEvents.LateUpdate -= Poll;
             _polling = false;
             foreach (var entry in _entries.Values) RemoveEntry(entry);
             _entries.Clear();
+            _active.Clear();
+            _stale.Clear();
+            _orderedBoxes.Clear();
             HideTip();
             try { _tip?.Dispose(); } catch { }
             _tip = null;
+            _tipBg = null;
+            _tipText = null;
+            _panel = null;
         }
 
         /// <summary>
@@ -119,7 +137,8 @@ namespace CombatOddsMod
                     return;
                 }
 
-                var active = new HashSet<long>();
+                _active.Clear();
+                _orderedBoxes.Clear();
                 var players = Players.All();
                 var camera = Core.Scene.BattleSceneController.inst?.mainCamera;
                 if (camera == null) return;
@@ -128,14 +147,17 @@ namespace CombatOddsMod
                 float rootH = GRoot.inst.height;
                 var container = _panel.com_PlayerAttrInfos;
 
-                foreach (var player in players)
+                // Players.All returns IReadOnlyList; enumeration would box its
+                // List<T>.Enumerator, while indexed access keeps the same order.
+                for (int index = 0; index < players.Count; index++)
                 {
+                    var player = players[index];
                     if (player?.player == null || player.characterType == CharacterType.Monster || player.Property == null || player.CharacterInst == null ||
                         player.CharacterInst.characterObject == null || player.CharacterInst.characterAnimator == null ||
                         player.CharacterInst.characterAnimator.IsHide()) continue;
 
                     long id = player.player.Id;
-                    active.Add(id);
+                    _active.Add(id);
                     var entry = EnsureEntry(id);
                     if (entry == null) continue;
                     Vector3 pos;
@@ -152,11 +174,9 @@ namespace CombatOddsMod
                     var rootPoint = GRoot.inst.GlobalToLocal(screenPoint);
                     entry.Box.visible = rootPoint.x >= 0 && rootPoint.y >= 0 && rootPoint.x <= rootW && rootPoint.y <= rootH;
 
-                    // 压在最上层: com_PlayerAttrInfos 是与游戏自己那份头顶名牌(UICom_PlayerAttrInfo)
-                    // 共用的容器, 游戏后加的名牌会盖住我们的字。只在真的不在最上层时才重排
-                    // (原来是每帧无条件 SetChildIndex, 那是每帧一次子节点重排, 没必要)。
-                    if (container.numChildren > 0 && container.GetChildAt(container.numChildren - 1) != entry.Box)
-                        container.SetChildIndex(entry.Box, container.numChildren - 1);
+                    // Preserve the existing parent and order. Reordering every
+                    // label individually makes them displace each other each frame.
+                    _orderedBoxes.Add(entry.Box);
 
                     // 数值: 只有影响显示的东西真的变了才重排文本
                     // (字符串拼接 + textWidth 排版 + 子节点尺寸重算都不便宜, 没变就别做)。
@@ -165,10 +185,16 @@ namespace CombatOddsMod
                     int def = player.Property.DEF != null ? player.Property.DEF.Value : 0;
                     int hp = player.Property.HP != null ? player.Property.HP.Value : 0;
 
-                    RelicAtkBonus.Input input;
-                    var bonuses = ModEntry.CurrentAtkBonuses(player, out input);
+                    var input = ModEntry.ReadAtkInput(player);
+                    bool inputChanged = !entry.HasInput || !RelicAtkBonus.SameInput(entry.Input, input);
+                    if (inputChanged)
+                    {
+                        entry.Bonuses = RelicAtkBonus.Evaluate(input);
+                        entry.Input = input;
+                        entry.HasInput = true;
+                    }
+                    var bonuses = entry.Bonuses;
                     int finalAtk = atk + RelicAtkBonus.Total(bonuses);
-                    string text = "[color=#5AA9FF]攻 " + finalAtk + "[/color]   [color=#6DE0A2]防 " + def + "[/color]";
 
                     // 移速加成(可选): 头顶标签也带上, 与角色卡上的读数同一套预测口径。
                     // 预测要遍历身上的 Buff, 不能每帧算, 每个角色最多每 0.5 秒刷新一次。
@@ -180,18 +206,29 @@ namespace CombatOddsMod
                             entry.MoveBonusAt = now;
                             entry.MoveBonus = ModEntry.MoveBonusPredicted(id);
                         }
-                        if (entry.MoveBonus != 0)
-                        {
-                            text += "   [color=#FFD24A]速 " + (entry.MoveBonus > 0 ? "+" : "") + entry.MoveBonus + "[/color]";
-                        }
                     }
 
-                    // 签名覆盖浮框会显示的全部字段(基础攻/最终攻/防/血), 任一变化就一起重建,
-                    // 避免"只帮浮框重建却因为文字没变而跳过"导致的悬停信息过期。
-                    string signature = text + "|" + atk + "|" + hp;
-                    if (entry.LastText != signature)
+                    int shownMove = _showMove ? entry.MoveBonus : 0;
+                    string nick = Players.SafeNick(player);
+                    if (nick == null)
                     {
-                        entry.LastText = signature;
+                        if (entry.FallbackNick == null) entry.FallbackNick = "P" + id;
+                        nick = entry.FallbackNick;
+                    }
+                    // Compare every tooltip input, including changes that keep
+                    // the final attack total unchanged, before allocating text.
+                    if (entry.LastText == null || inputChanged || entry.LastAtk != atk ||
+                        entry.LastDef != def || entry.LastHp != hp || entry.LastShownMove != shownMove || entry.LastNick != nick)
+                    {
+                        string text = "[color=#5AA9FF]攻 " + finalAtk + "[/color]   [color=#6DE0A2]防 " + def + "[/color]";
+                        if (shownMove != 0)
+                            text += "   [color=#FFD24A]速 " + (shownMove > 0 ? "+" : "") + shownMove + "[/color]";
+                        entry.LastText = text;
+                        entry.LastAtk = atk;
+                        entry.LastDef = def;
+                        entry.LastHp = hp;
+                        entry.LastShownMove = shownMove;
+                        entry.LastNick = nick;
                         entry.Text.text = text;
                         // 尺寸给 Box(普通 GComponent, 会老实采纳)。不能改成给 GTextField.SetSize:
                         // 本字段 autoSize=Both, GTextField.HandleSizeChanged 在 Both 下直接 return,
@@ -200,19 +237,30 @@ namespace CombatOddsMod
 
                         entry.Data = player;
                         // 悬停浮框内容直接存进 Box.data(ShowTip 就取它), 不再另存一份, 避免两处状态不一致。
-                        entry.Box.data = BuildTip(Players.SafeNick(player) ?? ("P" + id), atk, finalAtk, def, hp, bonuses,
-                            _showMove ? entry.MoveBonus : 0);
+                        entry.Box.data = BuildTip(nick, atk, finalAtk, def, hp, bonuses, shownMove);
 
                     }
                     // 文字维持固定字号；只有与实际顶部之间的小间距使用 UI 单位。
                     entry.Box.SetXY(local.x - entry.Box.width * 0.5f, local.y - HeadGap - entry.Box.height);
                 }
 
-                var stale = new List<long>();
-                foreach (var pair in _entries) if (!active.Contains(pair.Key)) stale.Add(pair.Key);
-                foreach (long id in stale) Hide(id);
+                _stale.Clear();
+                foreach (var pair in _entries) if (!_active.Contains(pair.Key)) _stale.Add(pair.Key);
+                foreach (long id in _stale) Hide(id);
+                RaiseEntries(container);
             }
             catch (Exception e) { SdkLog.Warn("CombatOdds", "更新棋盘玩家攻防显示失败: " + e.Message); }
+        }
+
+        private void RaiseEntries(GComponent container)
+        {
+            int first = container.numChildren - _orderedBoxes.Count;
+            bool inOrder = first >= 0;
+            for (int i = 0; inOrder && i < _orderedBoxes.Count; i++)
+                inOrder = ReferenceEquals(container.GetChildAt(first + i), _orderedBoxes[i]);
+            if (inOrder) return;
+            foreach (var box in _orderedBoxes)
+                container.SetChildIndex(box, container.numChildren - 1);
         }
 
         private static bool TryProjectSpriteTop(Entry entry, Component animator, Camera camera, out Vector3 screen)
@@ -332,7 +380,24 @@ namespace CombatOddsMod
                     _mouseProbeDone = true;
                     var type = RuntimeAssemblyService.FindType("UnityEngine.Input") ?? RuntimeAssemblyService.FindTypeBySimpleName("Input");
                     _mousePosition = type?.GetProperty("mousePosition", BindingFlags.Public | BindingFlags.Static);
+                    try
+                    {
+                        var getter = _mousePosition?.GetGetMethod();
+                        if (getter != null) _readMousePosition = (Func<Vector3>)getter.CreateDelegate(typeof(Func<Vector3>));
+                    }
+                    catch { }
                 }
+                if (_readMousePosition != null)
+                {
+                    try
+                    {
+                        var point = _readMousePosition();
+                        return new Vector2(point.x, Screen.height - point.y);
+                    }
+                    catch { }
+                }
+                // Retain reflection and Stage fallbacks when delegate binding
+                // or invocation is unavailable on a particular game runtime.
                 var raw = _mousePosition?.GetValue(null);
                 if (raw is Vector3 p)
                 {

@@ -94,6 +94,22 @@ namespace CombatOddsMod
             }
         }
 
+        /// <summary>Release the polling timer and owned controls; may be restarted.</summary>
+        public void Dispose()
+        {
+            if (_polling)
+            {
+                try { Timers.inst.Remove(OnHoverPoll); } catch { }
+                _polling = false;
+            }
+            Reset();
+            try { _tipBox?.Dispose(); } catch { }
+            _tipBox = null;
+            _tipBg = null;
+            _tipText = null;
+            _tipOwner = null;
+        }
+
         /// <summary>
         /// 在攻击力右边显示<b>一个</b>数字(最终攻击总值 = 基础 + 各筹码加成);
         /// 鼠标悬浮时弹出说明浮框, 讲清这个数是怎么加出来的(带颜色的 +N 明细)。

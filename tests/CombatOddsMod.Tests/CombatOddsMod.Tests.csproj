@@ -45,6 +45,9 @@
     <Compile Include="..\..\mods\CombatOddsMod\MoveBuffTable.cs" Link="MoveBuffTable.cs" />
     <!-- 看不见的常驻差额学习(纯逻辑, 零游戏依赖)。 -->
     <Compile Include="..\..\mods\CombatOddsMod\MoveResidual.cs" Link="MoveResidual.cs" />
+    <!-- Compile the real cleanup coordinator against isolated SDK/UI test owners. -->
+    <Compile Include="..\..\mods\CombatOddsMod\CombatOddsConfig.cs" Link="CombatOddsConfig.cs" />
+    <Compile Include="..\..\mods\CombatOddsMod\ModEntry.Lifecycle.cs" Link="ModEntry.Lifecycle.cs" />
   </ItemGroup>
 
 </Project>

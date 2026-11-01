@@ -91,56 +91,75 @@ namespace CombatOddsMod
         {
             if (distribution == null || distribution.Count == 0) return 0;
 
-            var values = new List<int>(distribution.Count);
-            var probs = new List<double>(distribution.Count);
-            foreach (var pair in distribution)
-            {
-                if (pair.Value <= 0.0) continue;
-                values.Add(pair.Key);
-                probs.Add(pair.Value);
-            }
-            if (values.Count == 0) return 0;
-
-            // 1) 唯一众数: 概率严格最高的那个伤害值。
+            // Find the mode before allocating a median work buffer. The normal
+            // callers use Dictionary, whose concrete enumerator does not box.
+            int count = 0;
             double best = -1.0;
-            int bestIndex = -1;
+            int bestValue = 0;
+            bool hasBest = false;
             bool tied = false;
-            for (int i = 0; i < probs.Count; i++)
+            var concrete = distribution as Dictionary<int, double>;
+            if (concrete != null)
             {
-                double p = probs[i];
-                if (p > best + 1e-12)
-                {
-                    best = p;
-                    bestIndex = i;
-                    tied = false;
-                }
-                else if (Math.Abs(p - best) <= 1e-12)
-                {
-                    tied = true;
-                }
+                foreach (var pair in concrete)
+                    ObserveDamageMode(pair, ref count, ref best, ref bestValue, ref hasBest, ref tied);
             }
-            if (!tied && bestIndex >= 0) return values[bestIndex];
+            else
+            {
+                foreach (var pair in distribution)
+                    ObserveDamageMode(pair, ref count, ref best, ref bestValue, ref hasBest, ref tied);
+            }
+            if (count == 0) return 0;
+            if (!tied && hasBest) return bestValue;
 
-            // 2) 没有唯一众数 → 中位数。按伤害值排序后累计概率;
-            //    累计恰好到 50% 时, 中位数落在当前值与下一个值中间, 取中点再四舍五入。
-            var order = new int[values.Count];
-            for (int i = 0; i < order.Length; i++) order[i] = i;
-            Array.Sort(order, delegate (int a, int b) { return values[a].CompareTo(values[b]); });
+            // Only the median needs sorted keys. The input is read-only during
+            // this synchronous calculation; retain all original epsilon rules.
+            var values = new int[count];
+            int index = 0;
+            if (concrete != null)
+            {
+                foreach (var pair in concrete)
+                    if (!(pair.Value <= 0.0)) values[index++] = pair.Key;
+            }
+            else
+            {
+                foreach (var pair in distribution)
+                    if (!(pair.Value <= 0.0)) values[index++] = pair.Key;
+            }
+            Array.Sort(values);
 
             double cumulative = 0.0;
-            for (int k = 0; k < order.Length; k++)
+            for (int k = 0; k < values.Length; k++)
             {
-                int i = order[k];
-                cumulative += probs[i];
-                if (cumulative > 0.5 + 1e-9) return values[i];
+                cumulative += distribution[values[k]];
+                if (cumulative > 0.5 + 1e-9) return values[k];
                 if (Math.Abs(cumulative - 0.5) <= 1e-9)
                 {
-                    if (k + 1 < order.Length)
-                        return (int)Math.Round((values[i] + values[order[k + 1]]) / 2.0, MidpointRounding.AwayFromZero);
-                    return values[i];
+                    if (k + 1 < values.Length)
+                        return (int)Math.Round((values[k] + values[k + 1]) / 2.0, MidpointRounding.AwayFromZero);
+                    return values[k];
                 }
             }
-            return values[order[order.Length - 1]];
+            return values[values.Length - 1];
+        }
+
+        private static void ObserveDamageMode(KeyValuePair<int, double> pair, ref int count,
+            ref double best, ref int bestValue, ref bool hasBest, ref bool tied)
+        {
+            double p = pair.Value;
+            if (p <= 0.0) return;
+            count++;
+            if (p > best + 1e-12)
+            {
+                best = p;
+                bestValue = pair.Key;
+                hasBest = true;
+                tied = false;
+            }
+            else if (Math.Abs(p - best) <= 1e-12)
+            {
+                tied = true;
+            }
         }
 
         // =====================================================================
@@ -263,17 +282,22 @@ namespace CombatOddsMod
             if (immune) dmgFail = 0;                     // 护盾/免疫
             bool knockOnFail = defenderHp > 0 && dmgFail >= defenderHp;
 
-            var damageDist = new Dictionary<int, double>();
-            if (success > 0.0) damageDist[0] = success;
-            if (fail > 0.0)
-                damageDist[dmgFail] = (damageDist.TryGetValue(dmgFail, out double acc) ? acc : 0.0) + fail;
+            // This distribution has only zero and dmgFail. Preserve the
+            // generic mode/median result without constructing a histogram.
+            int typical;
+            if (dmgFail == 0 || fail <= 0.0) typical = 0;
+            else if (success <= 0.0) typical = dmgFail;
+            else if (fail > success + 1e-12) typical = dmgFail;
+            else if (Math.Abs(fail - success) <= 1e-12)
+                typical = (int)Math.Round(dmgFail / 2.0, MidpointRounding.AwayFromZero);
+            else typical = 0;
 
             return new DodgeResult
             {
                 SuccessProb = success,
                 KnockdownProb = knockOnFail ? fail : 0.0,
                 ExpectedDamage = fail * dmgFail,
-                TypicalDamage = TypicalDamageOf(damageDist)
+                TypicalDamage = typical
             };
         }
 
