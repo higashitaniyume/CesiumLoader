@@ -14,7 +14,7 @@ namespace CesiumCli
 
         private static int Main(string[] args)
         {
-            var root = new RootCommand("CesiumLoader 模组脚手架与包分发 CLI");
+            var root = new RootCommand("CesiumLoader 模组脚手架与包分发 CLI (apcsm)");
 
             // ------------------------------ new ------------------------------
             var newCmd = new Command("new", "生成 mod 项目模板(csproj + ModEntry.cs + AssemblyInfo.cs + sidecar json)");
@@ -76,7 +76,7 @@ namespace CesiumCli
                         <LangVersion>9.0</LangVersion>
                       </PropertyGroup>
                       <ItemGroup>
-                        <!-- CesiumLoader.SDK: cesium new 已附带在 refs\ -->
+                        <!-- CesiumLoader.SDK: apcsm new 已附带在 refs\ -->
                         <Reference Include="CesiumLoader.SDK">
                           <HintPath>refs\CesiumLoader.SDK.dll</HintPath>
                         </Reference>
@@ -101,7 +101,7 @@ namespace CesiumCli
                     namespace {{name}}
                     {
                         /// <summary>
-                        /// {{name}} —— 由 cesium CLI 生成的 mod 模板。
+                        /// {{name}} —— 由 apcsm CLI 生成的 mod 模板。
                         ///
                         /// 元数据在 AssemblyInfo.cs(程序集级声明, 权威位置)。
                         /// Permissions 只是声明会用到的能力(读对局/操作游戏/写文件),
@@ -150,7 +150,7 @@ namespace CesiumCli
 
                 // 4. README 说明
                 File.WriteAllText(Path.Combine(dir, "README.md"),
-                    $"# {name}\n\n{desc}\n\n由 cesium CLI 生成。`cesium build {name}` 构建, `cesium package {name}` 打包。\n");
+                    $"# {name}\n\n{desc}\n\n由 apcsm CLI 生成。`apcsm build {name}` 构建, `apcsm package {name}` 打包。\n");
 
                 Console.WriteLine($"已生成 mod 项目: {dir}");
                 if (sdkDll != null)
@@ -164,7 +164,7 @@ namespace CesiumCli
                 {
                     Console.WriteLine("  ⚠ 未找到 CesiumLoader.SDK.dll, 请手动放入项目 refs\\ 目录");
                 }
-                Console.WriteLine("  下一步: cesium build " + dir);
+                Console.WriteLine("  下一步: apcsm build " + dir);
                 return 0;
             });
 
@@ -214,7 +214,7 @@ namespace CesiumCli
                 string dll = Path.Combine(dir, "bin", "Release", "netstandard2.0", name + ".dll");
                 if (!File.Exists(dll))
                 {
-                    Console.Error.WriteLine($"未找到构建产物: {dll} (先运行 cesium build)");
+                    Console.Error.WriteLine($"未找到构建产物: {dll} (先运行 apcsm build)");
                     return 1;
                 }
                 if (outZip == null) outZip = Path.Combine(dir, name + "-1.0.0.zip");

@@ -1,12 +1,11 @@
 name: Release ModLoader
 
-# 每次打 modloader-* tag 时: 从源码构建全部产物 → 跑测试 → 打包「解压即部署」的 zip 作为 GitHub release 资产。
-# AstralParty.Toys 的 Mod 管理功能从这里下载安装:
-#   https://github.com/higashitaniyume/CesiumLoader/releases/latest/download/cesium-loader.zip
-#
-# 构建是完全自包含的: 编译期需要的游戏程序集(AstralParty.Runtime 等)随仓库放在 refs/game/,
-# 所以 CI 与任何 clone 出来的机器走同一条构建路径 —— 仓库里没有"只在某台机器上构建好"的
-# 预编译程序集, dist/ 里的 dll/pdb 也全部由本次运行现场产出。
+# 每次打 modloader-* tag 或手动触发时:
+# 分为三个独立流程并行执行:
+#   1) 测试 (Test): 编译原生与托管项目，验证 ABI 并运行全部单元测试
+#   2) 构建加载器和mods (Build Loader & Mods): 构建原生 version.dll 与全部内置 mod、打包分发 zip 与默认皮肤包
+#   3) 构建cesiumcli (Build Cesium CLI): 构建 SDK、cesium.exe 单文件与 apcsm dotnet tool 包
+# 全部通过后由 release 作业原子汇总发布 GitHub Release 并通过 OIDC Trusted Publishing 推送 NuGet。
 
 on:
   push:
@@ -16,18 +15,104 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 env:
   SOLUTION: CesiumLoader.sln
   APP_NAME: cesium-loader
-  # AI agent 接管(AstralParty.AgentMod + AstralParty.Mcp.exe)是**实验性、真机没验完**的可选能力,
+  # AI agent 接管(AstralParty.AgentMod + AstralParty.Mcp.exe)是实验性、真机没验完的可选能力,
   # 默认不产出 cesium-agent-mcp*.zip；Release 必需资产为加载器、默认皮肤与 SDK 工具包。
-  # 想重新发这个包: 把这里改成 'true'(代码与打包步骤都还在, 不需要改别的地方)。
+  # 想重新发这个包: 把这里改成 'true'。
   PUBLISH_AGENT_PACKAGE: 'false'
 
 jobs:
-  build:
-    name: Build and package
+  # =========================================================================
+  # 流程一: 测试 (Test)
+  # =========================================================================
+  test:
+    name: Test
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Verify game reference assemblies
+        shell: pwsh
+        run: |
+          # refs/game 是编译期唯一的游戏程序集来源, 校验它在检出里完整且与清单记录的哈希一致
+          $manifest = Get-Content "refs/game/sources.json" -Raw | ConvertFrom-Json
+          $assemblies = @($manifest.assemblies.PSObject.Properties)
+          if ($assemblies.Count -eq 0) { throw "refs/game/sources.json 没有列出程序集" }
+          foreach ($assembly in $assemblies) {
+            $path = "refs/game/$($assembly.Name)"
+            if (-not (Test-Path -LiteralPath $path)) { throw "缺少游戏引用程序集: $path" }
+            $actual = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actual -ne $assembly.Value) { throw "refs/game/$($assembly.Name) 与 sources.json 记录的哈希不一致" }
+          }
+          Write-Host "refs/game 完整: $($assemblies.Count) 个程序集 ($($manifest.baseline))"
+
+      - name: Build all projects for test
+        shell: pwsh
+        run: |
+          # 1) 原生加载器
+          & msbuild loader\CesiumLoader\CesiumLoader.vcxproj /p:Configuration=Release /p:Platform=x64 /m /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $vdbin = "loader/CesiumLoader/bin/Release/version.dll"
+          if (-not (Test-Path $vdbin)) { throw "version.dll 未生成" }
+          New-Item -ItemType Directory -Path "bin/Release" -Force | Out-Null
+          Copy-Item $vdbin "bin/Release/version.dll" -Force
+
+          # 2) 托管侧: 构建所有 csproj
+          $projects = @(Get-ChildItem -Recurse -File -Filter *.csproj |
+            Where-Object { $_.FullName -notmatch '\\(obj|bin|artifacts|staging|sdk-staging|agent-staging)\\' } |
+            Sort-Object FullName)
+          if ($projects.Count -lt 20) { throw "只找到 $($projects.Count) 个 csproj, 检出内容不完整?" }
+          $failed = @()
+          foreach ($project in $projects) {
+            $rel = $project.FullName.Substring((Get-Location).Path.Length + 1)
+            Write-Host "== $rel"
+            dotnet build $rel -c Release --nologo -v:minimal
+            if ($LASTEXITCODE -ne 0) { $failed += $rel }
+          }
+          if ($failed.Count -gt 0) { throw "构建失败: $($failed -join ', ')" }
+          Write-Host "已构建 $($projects.Count) 个托管项目"
+
+      - name: Stage distribution layout for ABI tests
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File tools/stage-modloader-dist.ps1 -NativeDll bin/Release/version.dll -Configuration Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run all tests
+        shell: pwsh
+        run: |
+          # dist 布局已就绪, DistributionAbiTests 会按打包结果严格校验随包程序集; 所有测试项目都必须通过
+          $testProjects = @(Get-ChildItem tests -Directory | ForEach-Object {
+              Get-ChildItem $_.FullName -Filter *.csproj -File | Select-Object -First 1
+            } | Where-Object { $_ -and (Select-String -Path $_.FullName -Pattern 'xunit' -Quiet) } | Sort-Object Name)
+          if ($testProjects.Count -lt 5) { throw "只找到 $($testProjects.Count) 个测试项目, 检出内容不完整?" }
+          $failed = @()
+          foreach ($project in $testProjects) {
+            Write-Host "== $($project.BaseName)"
+            dotnet test $project.FullName -c Release --nologo
+            if ($LASTEXITCODE -ne 0) { $failed += $project.BaseName }
+          }
+          if ($failed.Count -gt 0) { throw "测试失败: $($failed -join ', ')" }
+
+  # =========================================================================
+  # 流程二: 构建加载器和mods (Build Loader & Mods)
+  # =========================================================================
+  build-loader:
+    name: Build Loader & Mods
     runs-on: windows-latest
 
     steps:
@@ -56,8 +141,6 @@ jobs:
       - name: Verify game reference assemblies
         shell: pwsh
         run: |
-          # refs/game 是编译期唯一的游戏程序集来源, 校验它在检出里完整且与清单记录的哈希一致 ——
-          # 少了或对不上就让构建在这里停下, 而不是等到某个 csproj 报"找不到类型"。
           $manifest = Get-Content "refs/game/sources.json" -Raw | ConvertFrom-Json
           $assemblies = @($manifest.assemblies.PSObject.Properties)
           if ($assemblies.Count -eq 0) { throw "refs/game/sources.json 没有列出程序集" }
@@ -69,17 +152,16 @@ jobs:
           }
           Write-Host "refs/game 完整: $($assemblies.Count) 个程序集 ($($manifest.baseline))"
 
-      - name: Build all projects
+      - name: Build loader and mod projects
         shell: pwsh
         run: |
-          # 1) 原生加载器: .vcxproj 只能用 MSBuild(dotnet 不支持 C++ 项目)
+          # 1) 原生加载器
           & msbuild loader\CesiumLoader\CesiumLoader.vcxproj /p:Configuration=Release /p:Platform=x64 /m /nologo /v:minimal
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $vdbin = "loader/CesiumLoader/bin/Release/version.dll"
           if (-not (Test-Path $vdbin)) { throw "version.dll 未生成" }
           New-Item -ItemType Directory -Path "bin/Release" -Force | Out-Null
-          Copy-Item $vdbin "bin/Release/version.dll" -Force   # 统一到仓库根, 供后续步骤引用
-          # 符号: 与 dll 同一次链接产出, 必须一起带走 —— 分开构建的 pdb 会因 GUID 不匹配被调试器拒绝。
+          Copy-Item $vdbin "bin/Release/version.dll" -Force
           $vdpdb = "loader/CesiumLoader/bin/Release/version.pdb"
           if (Test-Path $vdpdb) {
             Copy-Item $vdpdb "bin/Release/version.pdb" -Force
@@ -88,8 +170,7 @@ jobs:
             Write-Warning "version.pdb 未生成: 本次发布包不含加载器符号"
           }
 
-          # 2) 托管侧: 仓库里每个 csproj 都构建一遍(含 SDK / Bootstrap / 全部 mod / MCP / 测试)——
-          #    任何一个项目编译不过都不发布。
+          # 2) 托管侧: 构建所有 csproj
           $projects = @(Get-ChildItem -Recurse -File -Filter *.csproj |
             Where-Object { $_.FullName -notmatch '\\(obj|bin|artifacts|staging|sdk-staging|agent-staging)\\' } |
             Sort-Object FullName)
@@ -107,49 +188,18 @@ jobs:
       - name: Stage distribution layout
         shell: pwsh
         run: |
-          # 与本地 tools\package-modloader.ps1 共用同一份脚本: dist 布局只有一处定义。
           pwsh -NoProfile -File tools/stage-modloader-dist.ps1 -NativeDll bin/Release/version.dll -Configuration Release
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Run tests
-        shell: pwsh
-        run: |
-          # dist 布局已就绪, DistributionAbiTests 会按打包结果严格校验随包程序集; 所有测试项目都必须通过。
-          $testProjects = @(Get-ChildItem tests -Directory | ForEach-Object {
-              Get-ChildItem $_.FullName -Filter *.csproj -File | Select-Object -First 1
-            } | Where-Object { $_ -and (Select-String -Path $_.FullName -Pattern 'xunit' -Quiet) } | Sort-Object Name)
-          if ($testProjects.Count -lt 5) { throw "只找到 $($testProjects.Count) 个测试项目, 检出内容不完整?" }
-          $failed = @()
-          foreach ($project in $testProjects) {
-            Write-Host "== $($project.BaseName)"
-            dotnet test $project.FullName -c Release --nologo
-            if ($LASTEXITCODE -ne 0) { $failed += $project.BaseName }
-          }
-          if ($failed.Count -gt 0) { throw "测试失败: $($failed -join ', ')" }
-
-      - name: Build SDK tools (cesium CLI)
-        shell: pwsh
-        run: |
-          # cesium CLI: win-x64 自包含单文件(含 .NET 运行时, 开箱即用, 无需本机 dotnet)
-          dotnet publish tools\cesium\CesiumCli.csproj -c Release -r win-x64 `
-            --self-contained true -p:PublishSingleFile=true `
-            -p:IncludeNativeLibrariesForSelfExtract=true -o sdk-tools --nologo
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if (-not (Test-Path "sdk-tools/cesium.exe")) { throw "cesium.exe 未生成" }
-          Write-Host "cesium.exe 已构建: $((Get-Item 'sdk-tools/cesium.exe').Length) bytes"
 
       - name: Verify dist prerequisites
         shell: pwsh
         run: |
-          # 上一步刚由源码构建出全部产物; 这里再按清单核对一遍, 避免打包步骤引用到不存在的文件。
-          # 内置 mod 清单来自 tools/builtin-mods.json(与 tools/package-modloader.ps1 共用同一来源)。
           $builtInMods = @(Get-Content "tools/builtin-mods.json" -Raw | ConvertFrom-Json)
           if ($builtInMods.Count -eq 0) { throw "tools/builtin-mods.json 里没有内置 mod" }
           $required = @(
             "dist/modloader/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll",
             "dist/modloader/AstralParty_ModLoader/doorstop_config.json",
             "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll",
-            # XML 文档与 dll 同名同目录, 是第三方 mod 作者在 IDE 里看到注释的前提, 缺了直接拦发布。
             "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.xml"
           )
           foreach ($mod in $builtInMods) {
@@ -157,7 +207,7 @@ jobs:
             $required += "dist/modloader/AstralParty_ModLoader/mods/$mod/$mod.json"
           }
           foreach ($f in $required) { if (-not (Test-Path $f)) { throw "缺少构建产物: $f" } }
-          # XML 文档不只要在, 还要真的带注释成员 —— 空文档对 IDE 没有任何帮助。
+
           [xml] $sdkDocs = Get-Content "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.xml" -Raw
           $sdkMembers = @($sdkDocs.doc.members.member)
           if ($sdkMembers.Count -lt 100) { throw "SDK XML 文档成员过少: $($sdkMembers.Count)" }
@@ -166,7 +216,7 @@ jobs:
           }
           Write-Host "SDK XML 文档: $($sdkMembers.Count) 个成员"
           Write-Host "dist 构建产物齐全: $($builtInMods -join ', ')"
-          # 符号也要在(与 dll 成对, 见 .gitignore): 缺了只警告 —— 符号不全不该拦住一次发布。
+
           $symbols = @("dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.pdb")
           foreach ($mod in $builtInMods) { $symbols += "dist/modloader/AstralParty_ModLoader/mods/$mod/$mod.pdb" }
           $missingSymbols = @($symbols | Where-Object { -not (Test-Path $_) })
@@ -181,7 +231,6 @@ jobs:
         run: |
           New-Item -ItemType Directory -Path "staging/AstralParty_ModLoader/sdk", "staging/AstralParty_ModLoader/mods", "staging/AstralParty_ModLoader/logs", "staging/AstralParty_ModLoader/bootstrap" -Force | Out-Null
           Copy-Item "bin/Release/version.dll" "staging/version.dll" -Force
-          # 版权声明与 AGPL-3.0 全文: version.dll 同级(游戏 exe 目录)与 AstralParty_ModLoader 各一份。
           Copy-Item "CesiumLoader-NOTICE.txt" "staging/CesiumLoader-NOTICE.txt" -Force
           Copy-Item "LICENSE" "staging/CesiumLoader-LICENSE.txt" -Force
           Copy-Item "CesiumLoader-NOTICE.txt" "staging/AstralParty_ModLoader/CesiumLoader-NOTICE.txt" -Force
@@ -189,10 +238,8 @@ jobs:
           Copy-Item "dist/modloader/AstralParty_ModLoader/doorstop_config.json" "staging/AstralParty_ModLoader/doorstop_config.json" -Force
           Copy-Item "dist/modloader/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll" "staging/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll" -Force
           Copy-Item "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll" "staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll" -Force
-          # XML 文档与 dll 同名同目录, 引用该 dll 的 IDE 才会显示注释。
           Copy-Item "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.xml" "staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.xml" -Force
-          # 符号(.pdb): 有就带上, 缺了不拦发布(但要在日志里显眼)。
-          # 用途: 用户端崩溃只有一个栈帧地址时, 没有 pdb 只能看偏移, 有 pdb 才能还原到文件行。
+
           foreach ($p in @(
               @{ From = "bin/Release/version.pdb";                                                              To = "staging/version.pdb" },
               @{ From = "dist/modloader/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.pdb";           To = "staging/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.pdb" },
@@ -200,8 +247,7 @@ jobs:
             )) {
             if (Test-Path $p.From) { Copy-Item $p.From $p.To -Force } else { Write-Warning "符号缺失, 本次发布不含: $($p.From)" }
           }
-          # 内置 mod: 每 mod 一个文件夹(mods\{ModId}\{ModId}.dll + .json + .pdb)
-          # 清单来源: tools/builtin-mods.json(单一来源, 与打包脚本共用)
+
           $builtInMods = @(Get-Content "tools/builtin-mods.json" -Raw | ConvertFrom-Json)
           $modNames = @{
             "ActivityLogMod" = "行为日志"
@@ -225,18 +271,16 @@ jobs:
             } else {
               Write-Warning "符号缺失, 本次发布不含: mods/$mod/$mod.pdb"
             }
-            # 随 mod 分发的素材(提示音等): 整目录镜像, 与 tools/stage-modloader-dist.ps1 一致
             if (Test-Path "dist/modloader/AstralParty_ModLoader/mods/$mod/sounds") {
               Copy-Item "dist/modloader/AstralParty_ModLoader/mods/$mod/sounds" "staging/AstralParty_ModLoader/mods/$mod/sounds" -Recurse -Force
             }
-            # 随 mod 分发的数据包(多语言数据等): 同样整目录镜像
             if (Test-Path "dist/modloader/AstralParty_ModLoader/mods/$mod/data") {
               Copy-Item "dist/modloader/AstralParty_ModLoader/mods/$mod/data" "staging/AstralParty_ModLoader/mods/$mod/data" -Recurse -Force
             }
             $label = if ($modNames.ContainsKey($mod)) { $modNames[$mod] } else { $mod }
             $modList += "mods\$mod ($label)"
           }
-          # 部署说明(可选, apt 端可忽略)
+
           $readme = @(
             "cesium-loader-${{ steps.version.outputs.version }}",
             "- version.dll                          → 复制到游戏 exe 目录 (Doorstop 式代理加载器)",
@@ -249,7 +293,7 @@ jobs:
             "- AstralParty_ModLoader\sdk\CesiumLoader.SDK.xml → SDK 的 XML 文档(与 dll 同名): 写 mod 时 IDE 里可见类型/成员注释, 删掉不影响运行",
             "  随包内置: " + ($modList -join " / "),
             "TurnFocusMod 默认不播放提示音; 在 mods\TurnFocusMod\config.json 的 soundFile 填 WAV 路径后启用(随包示例 sounds\your-turn.wav)。",
-             "AutoThanksMod 默认启用: 队友治疗、给牌或转星币给你时自动发送原版感谢短语，默认 2 秒真实时间冷却。",
+            "AutoThanksMod 默认启用: 队友治疗、给牌或转星币给你时自动发送原版感谢短语，默认 2 秒真实时间冷却。",
             "HideHudMod 默认启用: 长按反引号键（Tab 上方）隐藏战斗 HUD，松开恢复；可在 config.json 改成按一下切换，并分别开关手牌、怪物信息、头像与其他 HUD。",
             "ChatDurationMod 默认启用: 战斗中的快捷消息与表情按真实时间停留 15 秒(可在 config.json 调整)，变速不会缩短停留时间。",
             "HomeBottomBarMod 默认启用: 主页底栏隐藏公告，设置左移一位，最右侧增加退出按钮（沿用游戏原生退出确认）。",
@@ -287,25 +331,20 @@ jobs:
             "staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.pdb",
             "staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.xml"
           )
-          # 内置 mod 清单同样来自 tools/builtin-mods.json —— 保证 manifest 与实际打包内容一致
           $builtInMods = @(Get-Content "tools/builtin-mods.json" -Raw | ConvertFrom-Json)
           foreach ($mod in $builtInMods) {
             $files += "staging/AstralParty_ModLoader/mods/$mod/$mod.dll"
             $files += "staging/AstralParty_ModLoader/mods/$mod/$mod.json"
             $files += "staging/AstralParty_ModLoader/mods/$mod/$mod.pdb"
-            # 随 mod 分发的素材(提示音等)
             if (Test-Path "staging/AstralParty_ModLoader/mods/$mod/sounds") {
               $files += Get-ChildItem "staging/AstralParty_ModLoader/mods/$mod/sounds" -File |
                 ForEach-Object { "staging/AstralParty_ModLoader/mods/$mod/sounds/$($_.Name)" }
             }
-            # 随 mod 分发的数据包(多语言数据等)
             if (Test-Path "staging/AstralParty_ModLoader/mods/$mod/data") {
               $files += Get-ChildItem "staging/AstralParty_ModLoader/mods/$mod/data" -File |
                 ForEach-Object { "staging/AstralParty_ModLoader/mods/$mod/data/$($_.Name)" }
             }
           }
-          # 只收真正落盘的文件: 上一步可能已经警告过某个符号缺失, 而清单必须与 zip 内容严格一致
-          # —— Toys 安装时会按清单逐个校验 mods/** 的 SHA256, 多一个不存在的条目就会安装失败。
           $files = @($files | Where-Object { Test-Path $_ })
           $fileMap = @{}
           foreach ($f in $files) {
@@ -318,7 +357,7 @@ jobs:
             version   = "${{ steps.version.outputs.version }}"
             tag       = "${{ github.ref_name }}"
             repo      = "higashitaniyume/CesiumLoader"
-            layout    = "game-dir"   # 解压到游戏 exe 目录即部署
+            layout    = "game-dir"
             built_at  = (Get-Date).ToUniversalTime().ToString("o")
             files     = $fileMap
           }
@@ -327,67 +366,18 @@ jobs:
           Write-Host "manifest: $($fileMap.Count) 个文件, 其中符号 $symbols 个"
           Get-Content "staging/cesium-loader.json"
 
-      - name: Stage SDK tools package
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Path "sdk-staging/docs", "sdk-staging/examples/ActivityLogMod" -Force | Out-Null
-          Copy-Item "sdk-tools/cesium.exe" "sdk-staging/cesium.exe" -Force
-          Copy-Item "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll" "sdk-staging/CesiumLoader.SDK.dll" -Force
-          Copy-Item "loader/CesiumLoader.SDK/LICENSE" "sdk-staging/LICENSE" -Force
-          # XML 文档: 与 dll 同名同目录, 引用该 dll 的项目才能看到注释(cesium new 也会一起复制)。
-          Copy-Item "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.xml" "sdk-staging/CesiumLoader.SDK.xml" -Force
-          # SDK 的符号一起给: 模组作者单步进 SDK 内部(比如追 SdkLog/事件派发)才有行号。
-          if (Test-Path "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.pdb") {
-            Copy-Item "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.pdb" "sdk-staging/CesiumLoader.SDK.pdb" -Force
-          } else {
-            Write-Warning "符号缺失, SDK 工具包不含 CesiumLoader.SDK.pdb"
-          }
-          git -c core.quotepath=false ls-files -- 'docs/*.md' | ForEach-Object { Copy-Item -LiteralPath $_ -Destination 'sdk-staging/docs/' -Force }
-          if ($LASTEXITCODE -ne 0) { throw '无法枚举 SDK 文档' }
-          Copy-Item "mods/ActivityLogMod/ModEntry.cs", "mods/ActivityLogMod/AssemblyInfo.cs", "mods/ActivityLogMod/ActivityLogMod.csproj" "sdk-staging/examples/ActivityLogMod/" -Force
-          # SDK 工具包说明
-          $readme = @(
-            "cesium SDK 工具包 ${{ steps.version.outputs.version }}",
-            "SDK 许可: LICENSE (MIT, 仅适用于 CesiumLoader.SDK 源码与程序集)",
-            "其他工具、文档和示例按各自适用的许可使用；本工具包并非整体以 MIT 授权。",
-            "",
-            "包含:",
-            "- cesium.exe            → mod 脚手架与包分发 CLI (win-x64 自包含, 无需本机 .NET)",
-            "- CesiumLoader.SDK.dll  → mod 开发引用 (编译期绑定; cesium new 会自动附带进项目)",
-            "- CesiumLoader.SDK.xml  → SDK 的 XML 文档 (与 dll 同名: IDE 里悬停/补全可见注释)",
-            "- CesiumLoader.SDK.pdb  → SDK 符号 (调试时能单步进 SDK 内部并看到行号)",
-            "- docs\                 → SDK 文档 (概览/事件/玩家/操作/变速/生命周期/配置/能力声明)",
-            "- examples\ActivityLogMod\ → 示例 mod 源码 (行为日志, 最简单)",
-            "",
-            "快速开始:",
-            "  cesium new MyMod --author 你 --desc ""第一个mod""   # 生成项目模板(SDK 自动附带)",
-            "  cesium build MyMod                                  # 构建 (需本机 dotnet SDK)",
-            "  cesium package MyMod -o MyMod-1.0.0.zip             # 打包分发",
-            "  cesium verify <mods_dir>                            # 离线预检依赖/版本兼容",
-            "  cesium --help                                       # 全部命令与帮助",
-            "",
-            "提示: cesium new 生成的项目自带 refs\CesiumLoader.SDK.dll, 开箱即构建;",
-            "  mod 若直接用游戏类型(如 RoomInfo/Battle), 把游戏热更 DLL 放进 refs\ 即可自动引用。"
-          ) -join [Environment]::NewLine
-          Set-Content -Path "sdk-staging/README.txt" -Value $readme -Encoding UTF8
-
       - name: Stage AI agent bridge package (optional add-on)
         shell: pwsh
         run: |
-          # 默认不产出(见 workflow 顶部 env.PUBLISH_AGENT_PACKAGE 的说明):
-          # 这个功能是实验性的、真机只验过只读链路, 所以不随 Release 发出去。
           if ($env:PUBLISH_AGENT_PACKAGE -ne 'true') {
             Write-Host "跳过 AI 接管包(实验性/未完成, 默认不发)。需要时把 workflow 顶部 env.PUBLISH_AGENT_PACKAGE 改成 'true'。"
             exit 0
           }
-          # 这一包**不进** cesium-loader.zip: AI 接管是可选能力, 不默认塞给所有用户。
-          # 游戏内 mod(AstralParty.AgentMod)同样由上面的全量构建产出; MCP server 在这里发布成自包含单文件。
           $modSrc = "mcp/AstralParty.AgentMod"
           $modBin = "$modSrc/bin/Release/netstandard2.0"
           if (-not (Test-Path "$modBin/AstralParty.AgentMod.dll")) { throw "缺少构建产物: $modBin/AstralParty.AgentMod.dll" }
           if (-not (Test-Path "$modSrc/AstralParty.AgentMod.json")) { throw "缺少 sidecar: $modSrc/AstralParty.AgentMod.json" }
 
-          # 自包含单文件(与 cesium.exe 同样的理由: 目标机不一定装了 .NET 8)
           dotnet publish mcp\AstralParty.Mcp\AstralParty.Mcp.csproj -c Release -r win-x64 `
             --self-contained true -p:PublishSingleFile=true `
             -p:IncludeNativeLibrariesForSelfExtract=true -o agent-tools --nologo
@@ -398,13 +388,11 @@ jobs:
           Copy-Item "agent-tools/AstralParty.Mcp.exe" "agent-staging/AstralParty.Mcp.exe" -Force
           Copy-Item "$modBin/AstralParty.AgentMod.dll"  "agent-staging/mods/AstralParty.AgentMod/AstralParty.AgentMod.dll"  -Force
           Copy-Item "$modSrc/AstralParty.AgentMod.json" "agent-staging/mods/AstralParty.AgentMod/AstralParty.AgentMod.json" -Force
-          # 符号同样带上(与 dll 成对, 见 .gitignore): 桥接是实验性代码, 出问题要看栈的行号。
           if (Test-Path "$modBin/AstralParty.AgentMod.pdb") {
             Copy-Item "$modBin/AstralParty.AgentMod.pdb" "agent-staging/mods/AstralParty.AgentMod/AstralParty.AgentMod.pdb" -Force
           } else {
             Write-Warning "符号缺失, 本包不含 AstralParty.AgentMod.pdb"
           }
-          # 用通配符而不是中文字面量路径, 免掉 YAML/控制台编码的坑
           Copy-Item "docs/MCP-*.md" "agent-staging/docs/" -Force
           Copy-Item "mcp/README.md" "agent-staging/docs/MCP-README.md" -Force
 
@@ -436,13 +424,7 @@ jobs:
         run: |
           $zipName = "cesium-loader-${{ steps.version.outputs.version }}.zip"
           Compress-Archive -Path "staging/*" -DestinationPath $zipName -CompressionLevel Optimal
-          # 同时生成固定名(latest/download 用), 内容一致
           Copy-Item $zipName "cesium-loader.zip" -Force
-          # SDK 工具包
-          $sdkZip = "cesium-sdk-tools-${{ steps.version.outputs.version }}.zip"
-          Compress-Archive -Path "sdk-staging/*" -DestinationPath $sdkZip -CompressionLevel Optimal
-          Copy-Item $sdkZip "cesium-sdk-tools.zip" -Force
-          # AI 接管桥接(可选组件, 与加载器包分开)。默认不发, 见 workflow 顶部 env.PUBLISH_AGENT_PACKAGE。
           if ($env:PUBLISH_AGENT_PACKAGE -eq 'true') {
             $agentZip = "cesium-agent-mcp-${{ steps.version.outputs.version }}.zip"
             Compress-Archive -Path "agent-staging/*" -DestinationPath $agentZip -CompressionLevel Optimal
@@ -458,30 +440,160 @@ jobs:
           & ./tools/package-default-skins.ps1 -Version "${{ steps.version.outputs.version }}" -OutputDir "."
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Upload build artifact
+      - name: Upload loader and skins artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: cesium-loader-package
-          # 用通配而不是逐个列名: 上面按开关产出的 zip 都会被带上, 也不会因为某个名字
-          # 这一轮不存在而踩到 `if-no-files-found: error`。
-          path: cesium-*.zip
+          name: loader-artifacts
+          path: |
+            cesium-loader*.zip
+            cesium-default-skins*.zip
+            cesium-agent-mcp*.zip
           if-no-files-found: error
           retention-days: 1
 
-  release:
-    name: Create release
-    if: github.ref_type == 'tag'   # 手动 dispatch 只构建打包, 不创建 release
-    needs: build
-    runs-on: ubuntu-latest
+  # =========================================================================
+  # 流程三: 构建cesiumcli (Build Cesium CLI & apcsm Tool)
+  # =========================================================================
+  build-cli:
+    name: Build Cesium CLI
+    runs-on: windows-latest
 
     steps:
-      - name: Download package
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          $version = if ("${{ github.ref_type }}" -eq "tag") {
+            "${{ github.ref_name }}" -replace '^modloader-', ''
+          } else {
+            "manual-${{ github.run_number }}"
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Build SDK library & doc
+        shell: pwsh
+        run: |
+          dotnet build loader/CesiumLoader.SDK/CesiumLoader.SDK.csproj -c Release --nologo
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $sdkBin = "loader/CesiumLoader.SDK/bin/Release/netstandard2.0"
+          if (-not (Test-Path "$sdkBin/CesiumLoader.SDK.dll")) { throw "CesiumLoader.SDK.dll 未生成" }
+          if (-not (Test-Path "$sdkBin/CesiumLoader.SDK.xml")) { throw "CesiumLoader.SDK.xml 未生成" }
+          Write-Host "CesiumLoader.SDK 构建成功"
+
+      - name: Build SDK tools (cesium CLI)
+        shell: pwsh
+        run: |
+          # cesium CLI: win-x64 自包含单文件(含 .NET 运行时, 开箱即用, 无需本机 dotnet)
+          dotnet publish tools\cesium\CesiumCli.csproj -c Release -r win-x64 `
+            --self-contained true -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true -o sdk-tools --nologo
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path "sdk-tools/cesium.exe")) { throw "cesium.exe 未生成" }
+          Write-Host "cesium.exe 已构建: $((Get-Item 'sdk-tools/cesium.exe').Length) bytes"
+
+      - name: Stage SDK tools package
+        shell: pwsh
+        run: |
+          $sdkBin = "loader/CesiumLoader.SDK/bin/Release/netstandard2.0"
+          New-Item -ItemType Directory -Path "sdk-staging/docs", "sdk-staging/examples/ActivityLogMod" -Force | Out-Null
+          Copy-Item "sdk-tools/cesium.exe" "sdk-staging/cesium.exe" -Force
+          Copy-Item "$sdkBin/CesiumLoader.SDK.dll" "sdk-staging/CesiumLoader.SDK.dll" -Force
+          Copy-Item "loader/CesiumLoader.SDK/LICENSE" "sdk-staging/LICENSE" -Force
+          Copy-Item "$sdkBin/CesiumLoader.SDK.xml" "sdk-staging/CesiumLoader.SDK.xml" -Force
+          if (Test-Path "$sdkBin/CesiumLoader.SDK.pdb") {
+            Copy-Item "$sdkBin/CesiumLoader.SDK.pdb" "sdk-staging/CesiumLoader.SDK.pdb" -Force
+          } else {
+            Write-Warning "符号缺失, SDK 工具包不含 CesiumLoader.SDK.pdb"
+          }
+          git -c core.quotepath=false ls-files -- 'docs/*.md' | ForEach-Object { Copy-Item -LiteralPath $_ -Destination 'sdk-staging/docs/' -Force }
+          if ($LASTEXITCODE -ne 0) { throw '无法枚举 SDK 文档' }
+          Copy-Item "mods/ActivityLogMod/ModEntry.cs", "mods/ActivityLogMod/AssemblyInfo.cs", "mods/ActivityLogMod/ActivityLogMod.csproj" "sdk-staging/examples/ActivityLogMod/" -Force
+
+          $readme = @(
+            "cesium SDK 工具包 ${{ steps.version.outputs.version }}",
+            "SDK 许可: LICENSE (MIT, 仅适用于 CesiumLoader.SDK 源码与程序集)",
+            "其他工具、文档和示例按各自适用的许可使用；本工具包并非整体以 MIT 授权。",
+            "",
+            "包含:",
+            "- cesium.exe            → mod 脚手架与包分发 CLI (win-x64 自包含, 无需本机 .NET)",
+            "- CesiumLoader.SDK.dll  → mod 开发引用 (编译期绑定; apcsm new 会自动附带进项目)",
+            "- CesiumLoader.SDK.xml  → SDK 的 XML 文档 (与 dll 同名: IDE 里悬停/补全可见注释)",
+            "- CesiumLoader.SDK.pdb  → SDK 符号 (调试时能单步进 SDK 内部并看到行号)",
+            "- docs\                 → SDK 文档 (概览/事件/玩家/操作/变速/生命周期/配置/能力声明)",
+            "- examples\ActivityLogMod\ → 示例 mod 源码 (行为日志, 最简单)",
+            "",
+            "快速开始:",
+            "  apcsm new MyMod --author 你 --desc ""第一个mod""     # 生成项目模板(SDK 自动附带)",
+            "  apcsm build MyMod                                    # 构建 (需本机 dotnet SDK)",
+            "  apcsm package MyMod -o MyMod-1.0.0.zip               # 打包分发",
+            "  apcsm verify <mods_dir>                              # 离线预检依赖/版本兼容",
+            "  apcsm --help                                         # 全部命令与帮助",
+            "",
+            "提示: apcsm new 生成的项目自带 refs\CesiumLoader.SDK.dll, 开箱即构建;",
+            "  mod 若直接用游戏类型(如 RoomInfo/Battle), 把游戏热更 DLL 放进 refs\ 即可自动引用。"
+          ) -join [Environment]::NewLine
+          Set-Content -Path "sdk-staging/README.txt" -Value $readme -Encoding UTF8
+
+      - name: Package SDK tools zip
+        shell: pwsh
+        run: |
+          $sdkZip = "cesium-sdk-tools-${{ steps.version.outputs.version }}.zip"
+          Compress-Archive -Path "sdk-staging/*" -DestinationPath $sdkZip -CompressionLevel Optimal
+          Copy-Item $sdkZip "cesium-sdk-tools.zip" -Force
+          Get-ChildItem *.zip | Select-Object Name, Length
+
+      - name: Pack apcsm dotnet tool
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "nuget-pkg" -Force | Out-Null
+          dotnet pack tools\cesium\CesiumCli.csproj -c Release -p:Version=${{ steps.version.outputs.version }} -o nuget-pkg --nologo
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-ChildItem nuget-pkg/*.nupkg | Select-Object Name, Length
+
+      - name: Upload cli artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-artifacts
+          path: |
+            cesium-sdk-tools*.zip
+            nuget-pkg/*.nupkg
+          if-no-files-found: error
+          retention-days: 1
+
+  # =========================================================================
+  # 流程四: 汇总发布 GitHub Release & NuGet (Release & Publish)
+  # =========================================================================
+  release:
+    name: Create release & publish NuGet
+    if: github.ref_type == 'tag'   # 手动 dispatch 只构建打包, 不创建 release
+    needs: [test, build-loader, build-cli]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - name: Download loader and skins artifacts
         uses: actions/download-artifact@v4
         with:
-          name: cesium-loader-package
+          name: loader-artifacts
           path: artifacts
 
-      - name: List artifacts
+      - name: Download cli artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: cli-artifacts
+          path: artifacts
+
+      - name: List and verify artifacts
         shell: bash
         run: |
           set -euo pipefail
@@ -491,6 +603,8 @@ jobs:
             test -s "artifacts/$package.zip"
             test -s "artifacts/$package-$version.zip"
           done
+          test -s "artifacts/apcsm.$version.nupkg"
+          echo "全部资产校验通过!"
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
@@ -499,3 +613,17 @@ jobs:
           files: artifacts/*
           generate_release_notes: false
           fail_on_unmatched_files: true
+
+      - name: NuGet login (OIDC Trusted Publishing)
+        uses: NuGet/login@v1
+        id: nuget-login
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Publish apcsm to NuGet.org
+        shell: bash
+        run: |
+          dotnet nuget push artifacts/apcsm.*.nupkg \
+            --source https://api.nuget.org/v3/index.json \
+            --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" \
+            --skip-duplicate

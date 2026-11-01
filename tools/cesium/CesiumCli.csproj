@@ -4,11 +4,36 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>disable</Nullable>
-    <AssemblyName>cesium</AssemblyName>
     <RootNamespace>CesiumCli</RootNamespace>
-    <Version>2.4.0</Version>
+
+    <!-- 打包为 .NET Global Tool -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>apcsm</ToolCommandName>
+
+    <!-- NuGet 包元数据 -->
+    <PackageId>apcsm</PackageId>
+    <Version>2.9.2</Version>
+    <Authors>higashitaniyume, ClassicByte</Authors>
+    <Company>AstralParty Modding</Company>
+    <Description>CesiumLoader CLI tool (apcsm) for Astral Party mod development and packaging.</Description>
+    <PackageLicenseExpression>AGPL-3.0-only</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/higashitaniyume/CesiumLoader</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/higashitaniyume/CesiumLoader.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>astralparty;modding;cesium;dotnet-tool</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="System.CommandLine" Version="2.0.12" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 依赖 SDK 项目，其程序集与 XML 注释会自动作为 tool 附属依赖打包进包内 -->
+    <ProjectReference Include="..\..\loader\CesiumLoader.SDK\CesiumLoader.SDK.csproj" ReferenceOutputAssembly="true" />
   </ItemGroup>
 </Project>
