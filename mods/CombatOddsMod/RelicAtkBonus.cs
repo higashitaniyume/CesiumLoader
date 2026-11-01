@@ -87,6 +87,15 @@ namespace CombatOddsMod
             public int MaxHp;
         }
 
+        /// <summary>All fields used by Evaluate, without boxing Input.</summary>
+        public static bool SameInput(Input a, Input b)
+        {
+            return a.HasCoinHammer == b.HasCoinHammer && a.HasFlashlight == b.HasFlashlight &&
+                a.HasKnifeBasic == b.HasKnifeBasic && a.HasKnifeSharp == b.HasKnifeSharp &&
+                a.Gold == b.Gold && a.CureLayers == b.CureLayers && a.SalaryLayers == b.SalaryLayers &&
+                a.Hp == b.Hp && a.MaxHp == b.MaxHp;
+        }
+
         /// <summary>
         /// 生命值为满。MaxHp 未知(&lt;=0)时按"不满足"处理 —— 宁可少显示, 也不要错报美工刀的加成。
         /// </summary>

@@ -42,6 +42,7 @@ namespace CombatOddsMod
         private static readonly Dictionary<long, RollInfo> _last = new Dictionary<long, RollInfo>();
         private static ThrowDiceS2CRPC.OnThrowDiceS2CServerDelegate _wrapped;
         private static ThrowDiceS2CRPC.OnThrowDiceS2CServerDelegate _original;
+        private static int _hookGeneration;
 
         /// <summary>把记录器挂到 <c>ThrowDiceS2C</c> 上(幂等)。</summary>
         internal static void EnsureHooked()
@@ -57,9 +58,10 @@ namespace CombatOddsMod
 
                 // 创建时捕获原始委托(闭包), 不在回调里读静态字段 —— 避免把自己包进自己。
                 var original = current;
+                int generation = ++_hookGeneration;
                 ThrowDiceS2CRPC.OnThrowDiceS2CServerDelegate wrapped = (model, errId, isDispatch) =>
                 {
-                    Record(model);
+                    if (generation == _hookGeneration) Record(model);
                     if (original != null) return original(model, errId, isDispatch);
                     return UniTask.CompletedTask;
                 };
@@ -74,6 +76,7 @@ namespace CombatOddsMod
         /// <summary>取消挂钩(仅在当前回调仍是我们包的那层时恢复原委托)。</summary>
         internal static void Unhook()
         {
+            ++_hookGeneration;
             try
             {
                 var net = MonoSingletonProvider<NetManager>.inst;

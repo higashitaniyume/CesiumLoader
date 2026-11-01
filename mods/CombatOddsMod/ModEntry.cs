@@ -199,6 +199,9 @@ namespace CombatOddsMod
         private static void OnConfigChanged()
         {
             LoadConfig(isInitial: false);
+            if (!_cfg.Enabled) { StopFeatures(); return; }
+            if (!_featuresStarted) StartFeatures();
+            if (!_cfg.InGameOverlay) _overlay?.Hide();
             if (_skillCooldown != null)
             {
                 _skillCooldown.SetEnabled(_cfg.ShowSkillCooldown);
@@ -234,19 +237,30 @@ namespace CombatOddsMod
                 _moveBonus.SetLayout(_cfg.MoveBonusFontSize, _cfg.MoveBonusOffsetX, _cfg.MoveBonusOffsetY);
                 RefreshHudMoveBonus();
             }
+            UpdateMoveTracking();
             SdkLog.Info("CombatOdds", "配置已热重载");
         }
 
         private static void OnInit()
         {
             _ctx = ModRegistry.GetOrRegister(typeof(ModEntry).Assembly);
-            if (_ctx?.Config != null) _ctx.Config.Changed += _ => OnConfigChanged();
+            _disposed = false;
+            _configApplyPending = false;
+            if (_ctx?.Config != null) _ctx.Config.Changed += OnConfigurationChanged;
+            _ctx?.RegisterCleanup(Cleanup);
             LoadConfig(isInitial: true);
             if (!_cfg.Enabled)
             {
                 SdkLog.Warn("CombatOdds", "配置 Enabled=false, mod 已停用");
                 return;
             }
+            StartFeatures();
+        }
+
+        private static void StartFeatures()
+        {
+            if (_featuresStarted || _disposed || _cfg == null || !_cfg.Enabled) return;
+            _featuresStarted = true;
             GameEvents.BattleUpdate += OnBattleUpdate;
             GameEvents.BattlePhaseChanged += OnBattlePhaseChanged;
             GameEvents.CardUsed += OnCombatCardUsed;
@@ -266,7 +280,6 @@ namespace CombatOddsMod
                 _skillCooldown.SetEnabled(_cfg.ShowSkillCooldown);
                 _skillCooldown.SetLogDetail(_cfg.LogCdDetail);
                 _skillCooldown.Start();
-                _ctx?.RegisterCleanup(_skillCooldown.Dispose);
             }
             catch (Exception e) { SdkLog.Warn("CombatOdds", "技能 CD 覆盖层初始化失败: " + e.Message); }
 
@@ -279,7 +292,6 @@ namespace CombatOddsMod
                 _monsterCooldown.SetOffset(_cfg.MonsterCdOffsetX, _cfg.MonsterCdOffsetY);
                 _monsterCooldown.SetLogDetail(_cfg.LogCdDetail);
                 _monsterCooldown.Start();
-                _ctx?.RegisterCleanup(_monsterCooldown.Dispose);
             }
             catch (Exception e) { SdkLog.Warn("CombatOdds", "怪物 CD 覆盖层初始化失败: " + e.Message); }
 
@@ -290,7 +302,6 @@ namespace CombatOddsMod
                 _handCount.SetEnabled(_cfg.ShowHandCount);
                 _handCount.SetLogDetail(_cfg.LogHandDetail);
                 _handCount.Start();
-                _ctx?.RegisterCleanup(_handCount.Dispose);
             }
             catch (Exception e) { SdkLog.Warn("CombatOdds", "手牌计数覆盖层初始化失败: " + e.Message); }
 
@@ -298,7 +309,7 @@ namespace CombatOddsMod
             try
             {
                 _hudBonus = new HudAtkBonusOverlay();
-                _hudBonus.StartHoverPolling();   // 轮询兜底: 不依赖 FairyGUI 的命中测试
+                if (_cfg.ShowRelicAtkBonus) _hudBonus.StartHoverPolling();
             }
             catch (Exception e) { SdkLog.Warn("CombatOdds", "HUD 攻击力加成初始化失败(仅不显示加成): " + e.Message); }
 
@@ -307,14 +318,8 @@ namespace CombatOddsMod
             {
                 _moveBonus = new MoveBonusOverlay();
                 _moveBonus.SetLayout(_cfg.MoveBonusFontSize, _cfg.MoveBonusOffsetX, _cfg.MoveBonusOffsetY);
-                _ctx?.RegisterCleanup(_moveBonus.Reset);
                 // 投骰差值(服务器实际加的移速) = 唯一包含筹码常驻加成的来源; 游戏每场会重置 RPC, 由 tick 重挂。
-                ThrowDiceProbe.BasePredictor = PredictedBaseOf;
-                ThrowDiceProbe.EnsureHooked();
-                _ctx?.RegisterCleanup(ThrowDiceProbe.Unhook);
-                // 学习"哪些 Buff 会加/减移速", 用于投骰前预测。
-                MoveBuffTracker.EnsureHooked();
-                _ctx?.RegisterCleanup(MoveBuffTracker.Unhook);
+                UpdateMoveTracking();
             }
             catch (Exception e) { SdkLog.Warn("CombatOdds", "移速加成覆盖层初始化失败(仅不显示移速): " + e.Message); }
 
@@ -324,7 +329,6 @@ namespace CombatOddsMod
                 _megasDamage = new MegasBombardmentOverlay();
                 _megasDamage.SetEnabled(_cfg.ShowMegasDamage);
                 _megasDamage.Start();
-                _ctx?.RegisterCleanup(_megasDamage.Dispose);
             }
             catch (Exception e) { SdkLog.Warn("CombatOdds", "梅加斯理论伤害覆盖层初始化失败: " + e.Message); }
 
@@ -336,10 +340,11 @@ namespace CombatOddsMod
             catch (Exception e) { SdkLog.Warn("CombatOdds", "棋盘玩家攻防覆盖层初始化失败: " + e.Message); }
 
             // 登记覆盖层 + OnGUI 回调(有渲染后端时会被画出; 无后端时仅登记, 不影响控制台输出)。
-            try
+            if (!_uiRegistered) try
             {
                 UiService.RegisterOverlay("combat-odds-hud", visible: true, owner: _ctx);
                 UiService.RegisterGuiCallback(DrawHud, _ctx, "combat-odds");
+                _uiRegistered = true;
             }
             catch (Exception e) { SdkLog.Warn("CombatOdds", "UI 登记失败(不影响控制台输出): " + e.Message); }
 
@@ -348,14 +353,20 @@ namespace CombatOddsMod
 
         private static void OnTick()
         {
+            if (_disposed) return;
+            if (_configApplyPending)
+            {
+                _configApplyPending = false;
+                OnConfigChanged();
+            }
+            if (_cfg == null || !_cfg.Enabled) return;
             // 事件挂钩由 SDK 内部维持; 本 mod 无需轮询逻辑。
             GameEvents.EnsureHooked();
             // HUD 攻击力加成: 星币/血量/层数变化不触发 ATK 事件, 靠这每秒一次兜底刷新。
             RefreshHudAtkBonus();
             // 移速加成: 加速/减速随 Buff、筹码与地图事件变化, 每秒读一次即可。
             // 两个 RPC 记录器也要每秒重挂一次(游戏每场战斗会重置 RPC 回调)。
-            ThrowDiceProbe.EnsureHooked();
-            MoveBuffTracker.EnsureHooked();
+            UpdateMoveTracking();
             RefreshHudMoveBonus();
             // 棋盘头顶攻防: 位置/数值的实时刷新已由 PlayerAttrOverlay 自己的每帧(LateUpdate)回调负责,
             // 这里每秒一次只用于把配置开关同步过去(不承担跟随刷新, 否则又会变成低刷新率)。
