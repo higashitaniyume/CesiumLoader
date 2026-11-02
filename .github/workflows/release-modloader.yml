@@ -470,10 +470,9 @@ jobs:
       - name: Pack apcsm dotnet tool
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Path "nuget-pkg" -Force | Out-Null
-          dotnet pack tools\cesium\CesiumCli.csproj -c Release -p:Version=${{ steps.version.outputs.version }} -o nuget-pkg --nologo
+          dotnet pack tools\cesium\CesiumCli.csproj -c Release -p:Version=${{ steps.version.outputs.version }} -o . --nologo
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Get-ChildItem nuget-pkg/*.nupkg | Select-Object Name, Length
+          Get-ChildItem *.nupkg | Select-Object Name, Length
 
       - name: Upload cli artifacts
         uses: actions/upload-artifact@v4
@@ -481,7 +480,7 @@ jobs:
           name: cli-artifacts
           path: |
             cesium-sdk-tools*.zip
-            nuget-pkg/*.nupkg
+            apcsm*.nupkg
           if-no-files-found: error
           retention-days: 1
 
