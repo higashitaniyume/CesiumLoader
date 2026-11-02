@@ -1,4 +1,4 @@
-// loader.cpp - 引导线程 (Doorstop 式薄引导)
+﻿// loader.cpp - 引导线程 (Doorstop 式薄引导)
 //
 // 原生层只负责:
 //   1. 读取 doorstop_config.json(enabled 开关 / 超时 / 控制台)
@@ -21,6 +21,7 @@
 #include "speed/speedhack.h"
 #include "speed/speedctl.h"
 #include "window/windowctl.h"
+#include "audio/audioctl.h"
 #include "mods/modmeta.h"
 #include "logging/logging.h"
 #include "runtime/loader_internal.h"
@@ -188,6 +189,7 @@ static DWORD WINAPI boot_thread(LPVOID)
         windowctl_start(windowctl_dir());
     else
         log_line("[loader] windowControlEnabled=false, skipping foreground control file channel");
+    audioctl_start(audioctl_dir());
 
     // 3.7.2 CesiumLoader Debug Shell: 控制台就绪后启动(配置 debugShell 默认关闭),
     //       之后游戏加载 mod 的几秒里就能查状态/改配置。没有控制台时 shell_start 返回 false。
@@ -282,6 +284,7 @@ static DWORD WINAPI boot_thread(LPVOID)
     set_env_w(L"CESIUM_BOOTSTRAP_DIR", boot);
     set_env_w(L"CESIUM_SPEED_DIR", speed);
     set_env_w(L"CESIUM_WINDOW_DIR", window);
+    set_env_w(L"CESIUM_AUDIO_DIR", audioctl_dir());
 
     // 本次启动的日志文件(**每次启动一套, 不共用**)。
     // 托管侧(SDK 的 SdkLog / SdkDiagnostics / Bootstrap)也要往"这一次"的文件里写, 而它只知道

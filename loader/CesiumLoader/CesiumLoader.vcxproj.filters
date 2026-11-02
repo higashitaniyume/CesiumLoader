@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <Filter Include="config">
@@ -27,6 +27,9 @@
     </Filter>
     <Filter Include="steam">
       <UniqueIdentifier>{E6EA7D24-1CF8-4E7D-A927-3CAB875AD2D9}</UniqueIdentifier>
+    </Filter>
+      <Filter Include="audio">
+      <UniqueIdentifier>{63EA9A3C-392A-4942-A4B8-DBBCA230F4BA}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -104,6 +107,9 @@
     <ClCompile Include="..\..\third_party\minhook\src\trampoline.c" />
     <ClCompile Include="..\..\third_party\minhook\src\hde\hde32.c" />
     <ClCompile Include="..\..\third_party\minhook\src\hde\hde64.c" />
+      <ClCompile Include="audio\audioctl.cpp">
+      <Filter>audio</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="config\config.h">
@@ -210,5 +216,8 @@
     <None Include="steam\steamhack_entry_part.cpp">
       <Filter>steam</Filter>
     </None>
+      <ClInclude Include="audio\audioctl.h">
+      <Filter>audio</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

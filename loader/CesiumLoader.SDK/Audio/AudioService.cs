@@ -33,7 +33,16 @@ namespace CesiumLoader.SDK.Audio
             {
                 if (_backend == null)
                 {
-                    _backend = new UnityAudioBackend();
+                    var unityBackend = new UnityAudioBackend();
+                    if (unityBackend.IsAvailable)
+                    {
+                        _backend = unityBackend;
+                    }
+                    else
+                    {
+                        var nativeBackend = new NativeAudioBackend();
+                        _backend = nativeBackend.IsAvailable ? (IAudioBackend)nativeBackend : unityBackend;
+                    }
                 }
                 return _backend;
             }
@@ -260,7 +269,9 @@ namespace CesiumLoader.SDK.Audio
             }
 
             string clipName = Path.GetFileNameWithoutExtension(filePath);
-            return Backend?.CreateAudioClip(clipName, samples, channels, sampleRate);
+            object rawClip = Backend?.CreateAudioClip(clipName, samples, channels, sampleRate);
+            float duration = (channels > 0 && sampleRate > 0) ? (float)samples.Length / (channels * sampleRate) : 0f;
+            return new AudioClipHandle(rawClip, clipName, duration, channels, sampleRate, samples.Length, filePath);
         }
 
         /// <summary>
@@ -276,7 +287,9 @@ namespace CesiumLoader.SDK.Audio
                 return null;
             }
 
-            return Backend?.CreateAudioClip(clipName, samples, channels, sampleRate);
+            object rawClip = Backend?.CreateAudioClip(clipName, samples, channels, sampleRate);
+            float duration = (channels > 0 && sampleRate > 0) ? (float)samples.Length / (channels * sampleRate) : 0f;
+            return new AudioClipHandle(rawClip, clipName, duration, channels, sampleRate, samples.Length, null);
         }
 
         /// <summary>

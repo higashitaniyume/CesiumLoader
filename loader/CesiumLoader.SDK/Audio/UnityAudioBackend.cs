@@ -326,8 +326,16 @@ namespace CesiumLoader.SDK.Audio
             _sourcePlayMethod.Invoke(source, args);
         }
 
+        private static object UnwrapClip(object clip)
+        {
+            if (clip == null) return null;
+            if (clip is AudioClipHandle handle) return handle.RawClip;
+            return clip;
+        }
+
         public void PlayOneShot(object clip, float volume, AudioChannel channel)
         {
+            clip = UnwrapClip(clip);
             if (clip == null) return;
             EnsureHost();
             if (_sourcePlayMethod == null && _sourcePlayOneShotMethod == null) return;
@@ -366,6 +374,7 @@ namespace CesiumLoader.SDK.Audio
 
         public void PlayBgm(object clip, bool loop, float volume, float fadeTime)
         {
+            clip = UnwrapClip(clip);
             if (clip == null) return;
             EnsureHost();
             if (_bgmSource == null || _sourcePlayMethod == null) return;
@@ -444,6 +453,7 @@ namespace CesiumLoader.SDK.Audio
 
         public void PlayVoice(object clip, float volume)
         {
+            clip = UnwrapClip(clip);
             if (clip == null) return;
             EnsureHost();
             if (_voiceSource == null || _sourcePlayMethod == null) return;
@@ -486,6 +496,7 @@ namespace CesiumLoader.SDK.Audio
 
         public void PlayClipAtPoint(object clip, Vector3 position, float volume)
         {
+            clip = UnwrapClip(clip);
             if (clip == null) return;
             EnsureInitialized();
             if (!_available || _playClipAtPointMethod == null) return;
