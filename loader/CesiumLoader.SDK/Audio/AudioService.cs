@@ -181,6 +181,23 @@ namespace CesiumLoader.SDK.Audio
             Backend?.SetVolume(channel, volume);
         }
 
+        /// <summary>设置指定通道的基础音量（SetVolume 别名）。</summary>
+        public static void SetChannelVolume(AudioChannel channel, float volume)
+        {
+            SetVolume(channel, volume);
+        }
+
+        /// <summary>从游戏设置中同步音量。</summary>
+        public static void SyncVolumeFromGameSettings()
+        {
+            // 自动触碰一次以触发缓存或初始化
+            try
+            {
+                _ = GameAudioBridge.GetGameMasterVolume();
+            }
+            catch { }
+        }
+
         /// <summary>获取指定通道的基础音量。</summary>
         public static float GetVolume(AudioChannel channel)
         {
@@ -314,6 +331,14 @@ namespace CesiumLoader.SDK.Audio
         // =====================================================================
         // 音频替换规则管理 (声明式 API)
         // =====================================================================
+
+        /// <summary>
+        /// 注册音频替换规则对象。
+        /// </summary>
+        public static void RegisterReplacement(AudioReplacementRule rule)
+        {
+            AddRule(rule);
+        }
 
         /// <summary>
         /// 注册按游戏事件配置 ID 替换声音的规则。

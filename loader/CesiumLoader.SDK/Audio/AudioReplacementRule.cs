@@ -36,6 +36,8 @@ namespace CesiumLoader.SDK.Audio
 
         public float Volume { get; set; } = 1.0f;
         public AudioChannel Channel { get; set; } = AudioChannel.Sfx;
+        public int RedirectConfigId { get; set; }
+        public bool IsMute { get; set; }
 
         public AudioReplacementRule(int configId, object clip, float volume = 1.0f, AudioChannel channel = AudioChannel.Sfx)
         {
@@ -80,6 +82,31 @@ namespace CesiumLoader.SDK.Audio
             Resolver = resolver;
             Volume = volume;
             Channel = channel;
+        }
+
+        public static AudioReplacementRule ForConfigId(int configId, object clip, float volume = 1.0f, AudioChannel channel = AudioChannel.Sfx)
+        {
+            return new AudioReplacementRule(configId, clip, volume, channel);
+        }
+
+        public static AudioReplacementRule ForEventName(string eventName, object clip, float volume = 1.0f, AudioChannel channel = AudioChannel.Sfx)
+        {
+            return new AudioReplacementRule(eventName, clip, false, volume, channel);
+        }
+
+        public static AudioReplacementRule Mute(int configId)
+        {
+            return new AudioReplacementRule(configId, (object)null) { IsMute = true };
+        }
+
+        public static AudioReplacementRule MuteByName(string eventName)
+        {
+            return new AudioReplacementRule(eventName, (object)null) { IsMute = true };
+        }
+
+        public static AudioReplacementRule Redirect(int configId, int targetConfigId)
+        {
+            return new AudioReplacementRule(configId, (object)null) { RedirectConfigId = targetConfigId };
         }
 
         /// <summary>

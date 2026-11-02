@@ -1,0 +1,8 @@
+{
+  "enabled": true,
+  "activeScheme": "default",
+  "sfxVolume": 1.0,
+  "bgmVolume": 1.0,
+  "voiceVolume": 1.0,
+  "logEvents": false
+}

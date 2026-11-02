@@ -130,10 +130,17 @@ namespace CesiumLoader.SDK.Audio
             var rule = AudioService.FindMatchingRule(args);
             if (rule != null)
             {
-                args.Cancel = true;
-                args.CustomClip = rule.ResolveClip(args);
-                args.CustomVolume = rule.Volume;
-                args.Channel = rule.Channel;
+                if (rule.RedirectConfigId > 0)
+                {
+                    args.RedirectConfigId = rule.RedirectConfigId;
+                }
+                else
+                {
+                    args.Cancel = true;
+                    args.CustomClip = rule.ResolveClip(args);
+                    args.CustomVolume = rule.Volume;
+                    args.Channel = rule.Channel;
+                }
             }
 
             // 2. 派发前置事件

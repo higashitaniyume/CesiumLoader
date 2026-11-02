@@ -277,6 +277,21 @@ namespace CesiumLoader.SDK.Configuration
             var map = node as IDictionary<string, object>;
             if (map == null) return DefaultOf(type);
 
+            bool TryFindValue(IDictionary<string, object> dict, string name, out object val)
+            {
+                if (dict.TryGetValue(name, out val)) return true;
+                foreach (var pair in dict)
+                {
+                    if (string.Equals(pair.Key, name, StringComparison.OrdinalIgnoreCase))
+                    {
+                        val = pair.Value;
+                        return true;
+                    }
+                }
+                val = null;
+                return false;
+            }
+
             object instance;
             try { instance = Activator.CreateInstance(type); }
             catch { return DefaultOf(type); }
@@ -284,7 +299,7 @@ namespace CesiumLoader.SDK.Configuration
             foreach (var field in type.GetFields(BindingFlags.Public | BindingFlags.Instance))
             {
                 object raw;
-                if (!map.TryGetValue(field.Name, out raw)) continue;
+                if (!TryFindValue(map, field.Name, out raw)) continue;
                 if (field.IsDefined(typeof(CesiumJsonIgnoreAttribute), true)) continue;
                 try { field.SetValue(instance, ToObject(raw, field.FieldType)); } catch { }
             }
@@ -295,7 +310,7 @@ namespace CesiumLoader.SDK.Configuration
                 if (prop.GetIndexParameters().Length != 0) continue;
                 if (prop.IsDefined(typeof(CesiumJsonIgnoreAttribute), true)) continue;
                 object raw;
-                if (!map.TryGetValue(prop.Name, out raw)) continue;
+                if (!TryFindValue(map, prop.Name, out raw)) continue;
                 try { prop.SetValue(instance, ToObject(raw, prop.PropertyType), null); } catch { }
             }
 
