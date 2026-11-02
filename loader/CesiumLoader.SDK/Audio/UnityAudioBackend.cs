@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine;
 using CesiumLoader.SDK.Logging;
@@ -41,6 +42,7 @@ namespace CesiumLoader.SDK.Audio
         private Component _bgmSource;
         private Component _sfxSource;
         private Component _voiceSource;
+        private readonly List<Component> _sfxPool = new List<Component>();
 
         private float _masterVolume = 1.0f;
         private float _bgmVolume = 1.0f;
@@ -102,10 +104,39 @@ namespace CesiumLoader.SDK.Audio
 
                     // AudioClip 反射
                     _clipCreateMethod = _audioClipType.GetMethod("Create", new Type[] { typeof(string), typeof(int), typeof(int), typeof(int), typeof(bool) });
+                    if (_clipCreateMethod == null)
+                    {
+                        foreach (var m in _audioClipType.GetMethods(BindingFlags.Public | BindingFlags.Static))
+                        {
+                            if (m.Name == "Create")
+                            {
+                                int len = m.GetParameters().Length;
+                                if (len == 5 || len == 7)
+                                {
+                                    _clipCreateMethod = m;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
                     _clipSetDataMethod = _audioClipType.GetMethod("SetData", new Type[] { typeof(float[]), typeof(int) });
+                    if (_clipSetDataMethod == null)
+                    {
+                        foreach (var m in _audioClipType.GetMethods(BindingFlags.Public | BindingFlags.Instance))
+                        {
+                            if (m.Name == "SetData" && m.GetParameters().Length == 2)
+                            {
+                                _clipSetDataMethod = m;
+                                break;
+                            }
+                        }
+                    }
 
                     // AudioSource 反射
-                    _sourcePlayOneShotMethod = _audioSourceType.GetMethod("PlayOneShot", new Type[] { _audioClipType, typeof(float) });
+                    _sourcePlayOneShotMethod = _audioClipType != null
+                        ? _audioSourceType.GetMethod("PlayOneShot", new Type[] { _audioClipType, typeof(float) })
+                        : null;
                     _sourcePlayMethod = _audioSourceType.GetMethod("Play", Type.EmptyTypes);
                     _sourceStopMethod = _audioSourceType.GetMethod("Stop", Type.EmptyTypes);
                     _sourcePauseMethod = _audioSourceType.GetMethod("Pause", Type.EmptyTypes);
@@ -118,11 +149,8 @@ namespace CesiumLoader.SDK.Audio
                     _sourceSpatialBlendProp = _audioSourceType.GetProperty("spatialBlend");
                     _sourceIsPlayingProp = _audioSourceType.GetProperty("isPlaying");
 
-                    _available = (_clipCreateMethod != null && _clipSetDataMethod != null && _sourcePlayOneShotMethod != null);
-                    if (_available)
-                    {
-                        SdkLog.Info("AUDIO", "Unity 原生音频接口已成功绑定。");
-                    }
+                    _available = (_clipCreateMethod != null && _clipSetDataMethod != null && _sourcePlayMethod != null);
+                    SdkLog.Info("AUDIO", $"Unity 音频接口绑定: available={_available}, create={_clipCreateMethod != null}({_clipCreateMethod?.GetParameters().Length}p), setData={_clipSetDataMethod != null}, playOneShot={_sourcePlayOneShotMethod != null}, play={_sourcePlayMethod != null}");
                 }
                 catch (Exception e)
                 {
@@ -187,7 +215,14 @@ namespace CesiumLoader.SDK.Audio
             {
                 try
                 {
-                    clip = _clipCreateMethod.Invoke(null, new object[] { name ?? "CesiumClip", sampleCount, channels, sampleRate, false });
+                    int pCount = _clipCreateMethod.GetParameters().Length;
+                    object[] args = pCount switch
+                    {
+                        5 => new object[] { name ?? "CesiumClip", sampleCount, channels, sampleRate, false },
+                        7 => new object[] { name ?? "CesiumClip", sampleCount, channels, sampleRate, false, null, null },
+                        _ => new object[] { name ?? "CesiumClip", sampleCount, channels, sampleRate, false }
+                    };
+                    clip = _clipCreateMethod.Invoke(null, args);
                     if (clip != null)
                     {
                         _clipSetDataMethod.Invoke(clip, new object[] { samples, 0 });
@@ -211,11 +246,42 @@ namespace CesiumLoader.SDK.Audio
             return clip;
         }
 
+        private Component GetOrSpawnSfxSource()
+        {
+            if (_hostObject == null || _audioSourceType == null) return null;
+
+            for (int i = 0; i < _sfxPool.Count; i++)
+            {
+                var s = _sfxPool[i];
+                if (s == null) continue;
+                bool isPlaying = false;
+                try { isPlaying = (bool)(_sourceIsPlayingProp?.GetValue(s, null) ?? false); } catch { }
+                if (!isPlaying) return s;
+            }
+
+            if (_sfxPool.Count < 8)
+            {
+                try
+                {
+                    var comp = _hostObject.AddComponent(_audioSourceType);
+                    if (comp != null)
+                    {
+                        _sourceSpatialBlendProp?.SetValue(comp, 0f, null);
+                        _sfxPool.Add(comp);
+                        return comp;
+                    }
+                }
+                catch { }
+            }
+
+            return _sfxSource ?? (_sfxPool.Count > 0 ? _sfxPool[0] : null);
+        }
+
         public void PlayOneShot(object clip, float volume, AudioChannel channel)
         {
             if (clip == null) return;
             EnsureHost();
-            if (_sfxSource == null || _sourcePlayOneShotMethod == null) return;
+            if (_sourcePlayMethod == null && _sourcePlayOneShotMethod == null) return;
 
             float channelVol = GetVolume(channel);
             float effectiveVolume = Mathf.Clamp01(volume * channelVol * _masterVolume);
@@ -224,7 +290,20 @@ namespace CesiumLoader.SDK.Audio
             {
                 try
                 {
-                    _sourcePlayOneShotMethod.Invoke(_sfxSource, new object[] { clip, effectiveVolume });
+                    if (_sourcePlayOneShotMethod != null && _sfxSource != null)
+                    {
+                        _sourcePlayOneShotMethod.Invoke(_sfxSource, new object[] { clip, effectiveVolume });
+                    }
+                    else
+                    {
+                        var source = GetOrSpawnSfxSource();
+                        if (source != null)
+                        {
+                            _sourceClipProp?.SetValue(source, clip, null);
+                            _sourceVolumeProp?.SetValue(source, effectiveVolume, null);
+                            _sourcePlayMethod?.Invoke(source, null);
+                        }
+                    }
                 }
                 catch (Exception e)
                 {
@@ -232,7 +311,7 @@ namespace CesiumLoader.SDK.Audio
                 }
             }
 
-            if (MainThread.IsMainThread) Execute();
+            if (MainThread.IsMainThread || !MainThread.HasMainThread) Execute();
             else MainThread.Post(Execute);
         }
 
