@@ -195,6 +195,7 @@ namespace AudioSkinMod
 
         public static string ResolveSchemesRoot()
         {
+            // 优先从加载器环境变量推导: <游戏目录>/AstralParty_ModLoader/audio-schemes
             string modsDir = Environment.GetEnvironmentVariable("CESIUM_MODS_DIR");
             if (!string.IsNullOrEmpty(modsDir))
             {
@@ -205,8 +206,30 @@ namespace AudioSkinMod
                 }
             }
 
-            string baseDir = AppDomain.CurrentDomain.BaseDirectory ?? ".";
-            return Path.Combine(baseDir, "AstralParty_ModLoader", "audio-schemes");
+            // 其次尝试从当前 Mod 目录推导
+            string modDir = ModContext.Current?.Directory;
+            if (!string.IsNullOrEmpty(modDir))
+            {
+                try
+                {
+                    string modsRoot = Path.GetDirectoryName(modDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                    string loaderRoot = string.IsNullOrEmpty(modsRoot) ? null : Path.GetDirectoryName(modsRoot);
+                    if (!string.IsNullOrEmpty(loaderRoot))
+                    {
+                        return Path.Combine(loaderRoot, "audio-schemes");
+                    }
+                }
+                catch { }
+            }
+
+            // 本地测试离线运行兜底 (HybridCLR 中避开 AppDomain.BaseDirectory)
+            string localApp = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            if (!string.IsNullOrEmpty(localApp))
+            {
+                return Path.Combine(localApp, "AstralParty_ModLoader", "audio-schemes");
+            }
+
+            throw new InvalidOperationException("无法定位音效方案目录：CESIUM_MODS_DIR 环境变量不可用。");
         }
 
         public static string ResolveSchemeDirectory(string schemeId)
