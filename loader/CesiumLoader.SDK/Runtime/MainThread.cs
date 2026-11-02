@@ -58,6 +58,19 @@ namespace CesiumLoader.SDK.Runtime
             Volatile.Write(ref _mainThreadId, id);
         }
 
+        /// <summary>显式确认当前线程为主线程（如 ModHost 启动或主线程生命周期开始时）。</summary>
+        public static void ConfirmMainThread()
+        {
+            if (Volatile.Read(ref _mainThreadId) == 0)
+            {
+                int id = Thread.CurrentThread.ManagedThreadId;
+                if (Interlocked.CompareExchange(ref _mainThreadId, id, 0) == 0)
+                {
+                    SdkLog.Info("MAINTHREAD", "主线程 id 已确认: " + id);
+                }
+            }
+        }
+
         /// <summary>当前线程是否 Unity 主线程。主线程尚未确认时保守返回 false。</summary>
         public static bool IsMainThread
         {

@@ -32,6 +32,7 @@ namespace CesiumLoader.SDK.Mods
         public static void Start(IMod mod, int delayMs = DefaultDelayMs, string tag = null)
         {
             if (mod == null) return;
+            MainThread.ConfirmMainThread();
 
             Type type = mod.GetType();
             string label = string.IsNullOrEmpty(tag) ? (mod.Name ?? type.Name) : tag;

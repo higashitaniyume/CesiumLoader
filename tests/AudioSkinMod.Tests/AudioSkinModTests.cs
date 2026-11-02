@@ -89,11 +89,32 @@ namespace AudioSkinMod.Tests
         }
 
         [Fact]
-        public void ConfigDocs_Apply_DoesNotThrow()
+        public void SchemeManifest_Deserialization_ExactJsonFromGame()
         {
-            var config = ModConfig.ForModId("TestAudioSkinDocs");
-            var ex = Record.Exception(() => AudioSkinConfigDocs.Apply(config));
-            Assert.Null(ex);
+            string json = @"{
+  ""Id"": ""test"",
+  ""Name"": ""test"",
+  ""Author"": ""test"",
+  ""Description"": ""test"",
+  ""Rules"": [
+    {
+      ""ConfigId"": 1,
+      ""EventName"": ""UI_Common_Click01"",
+      ""Action"": ""replace"",
+      ""File"": ""1_[P1]man.wav"",
+      ""Volume"": 1,
+      ""RedirectId"": 0
+    }
+  ]
+}";
+
+            var manifest = CesiumJson.Deserialize<AudioSchemeManifest>(json);
+            Assert.NotNull(manifest);
+            Assert.Equal("test", manifest.Id);
+            Assert.NotNull(manifest.Rules);
+            Assert.Single(manifest.Rules);
+            Assert.Equal(1, manifest.Rules[0].ConfigId);
+            Assert.Equal("1_[P1]man.wav", manifest.Rules[0].File);
         }
     }
 }

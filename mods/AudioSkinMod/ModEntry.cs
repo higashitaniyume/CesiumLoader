@@ -171,9 +171,13 @@ namespace AudioSkinMod
                                     float vol = rule.Volume > 0 ? rule.Volume : 1.0f;
                                     if (rule.ConfigId > 0)
                                         AudioService.RegisterReplacement(AudioReplacementRule.ForConfigId(rule.ConfigId, clip, vol));
-                                    else if (!string.IsNullOrEmpty(rule.EventName))
+                                    if (!string.IsNullOrEmpty(rule.EventName))
                                         AudioService.RegisterReplacement(AudioReplacementRule.ForEventName(rule.EventName, clip, vol));
                                     replacedCount++;
+                                }
+                                else
+                                {
+                                    SdkLog.Warn("AudioSkin", $"未能解码或创建 AudioClip: {soundFile}");
                                 }
                             }
                             else

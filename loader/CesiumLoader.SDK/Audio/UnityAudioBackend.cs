@@ -164,7 +164,7 @@ namespace CesiumLoader.SDK.Audio
                 }
             }
 
-            if (MainThread.IsMainThread)
+            if (MainThread.IsMainThread || !MainThread.HasMainThread)
             {
                 Setup();
             }
@@ -199,7 +199,7 @@ namespace CesiumLoader.SDK.Audio
                 }
             }
 
-            if (MainThread.IsMainThread)
+            if (MainThread.IsMainThread || !MainThread.HasMainThread)
             {
                 DoCreate();
             }
