@@ -1,9 +1,24 @@
-# cesium CLI — 模组脚手架与包分发
+# cesium / apcsm CLI — 模组脚手架与包分发
 
 模组开发者的 DX 工具 (对标 `dotnet new` + `nuget pack` 的心智模型)。
 解决"模组开发第一痛点": 从零搭项目、构建、打包分发、预检兼容性。
 
-## 构建
+## 安装
+
+### 方式一：通过 NuGet 全局安装（推荐）
+
+作为 .NET 全局工具直接安装或更新（命令名为 `apcsm`）：
+
+```shell
+dotnet tool install -g apcsm
+dotnet tool update -g apcsm
+```
+
+### 方式二：自包含工具（免安装）
+
+从 Release 下载 [SDK 工具包](https://github.com/higashitaniyume/CesiumLoader/releases/latest/download/cesium-sdk-tools.zip)，解压即可直接运行其中的 `cesium.exe`。
+
+## 本地从源码构建
 
 ```
 dotnet build tools\cesium\CesiumCli.csproj -c Release

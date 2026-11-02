@@ -12,6 +12,7 @@
 
 [![Release](https://img.shields.io/github/v/release/higashitaniyume/CesiumLoader?style=flat-square&label=release)](https://github.com/higashitaniyume/CesiumLoader/releases)
 [![Release CI](https://img.shields.io/github/actions/workflow/status/higashitaniyume/CesiumLoader/release-modloader.yml?style=flat-square&label=Release%20CI)](https://github.com/higashitaniyume/CesiumLoader/actions/workflows/release-modloader.yml)
+[![NuGet](https://img.shields.io/nuget/v/apcsm?style=flat-square&logo=nuget&label=apcsm)](https://www.nuget.org/packages/apcsm)
 [![Loader License](https://img.shields.io/badge/loader-AGPL--3.0-555?style=flat-square)](LICENSE)
 [![SDK License](https://img.shields.io/badge/SDK-MIT-555?style=flat-square)](loader/CesiumLoader.SDK/LICENSE)
 
@@ -21,15 +22,15 @@
 ![HybridCLR](https://img.shields.io/badge/HybridCLR-555?style=flat-square)
 ![MSVC v145](https://img.shields.io/badge/VS%202026-MSVC%20v145-555?style=flat-square)
 
-[下载加载器](https://github.com/higashitaniyume/CesiumLoader/releases/latest) · [SDK 工具包](https://github.com/higashitaniyume/CesiumLoader/releases/latest/download/cesium-sdk-tools.zip) · [SDK 文档](docs/SDK-概览.md) · [AstralParty.Toys](https://github.com/higashitaniyume/AstralParty.Toys)
+[下载加载器](https://github.com/higashitaniyume/CesiumLoader/releases/latest) · [SDK 工具包](https://github.com/higashitaniyume/CesiumLoader/releases/latest/download/cesium-sdk-tools.zip) · [NuGet CLI](https://www.nuget.org/packages/apcsm) · [SDK 文档](docs/SDK-概览.md) · [AstralParty.Toys](https://github.com/higashitaniyume/AstralParty.Toys)
 
 </div>
 
 ---
 
-为 Astral Party 的 **Unity IL2CPP + HybridCLR** 运行环境提供模组加载、依赖解析、日志与变速能力。原生 `version.dll` 代理在游戏启动时引导，待热更程序集就绪后加载 SDK 与托管模组。
+为 Astral Party 的 **Unity IL2CPP + HybridCLR** 运行环境提供模组加载、依赖解析、日志与变速能力。原生 `version.dll` 代理在游戏启动时引导，进入主界面或可玩场景且就绪后自动完成 SDK 与托管模组初始化（支持启动门快速就绪与兜底等待）。
 
-目标环境：Windows x64，Astral Party（Steam App ID `2622000`，Unity `2021.3.45f2`）。版本变更见 [Release 记录](https://github.com/higashitaniyume/CesiumLoader/releases)。
+目标环境：Windows x64，Astral Party（Steam App ID `2622000`，Unity 2022 / 3.3.0+）。版本变更见 [Release 记录](https://github.com/higashitaniyume/CesiumLoader/releases)。
 
 ## 安装
 
@@ -63,7 +64,7 @@ winget install Hiynet.AstralParty.Toys
 | [AutoThanksMod](docs/mod-AutoThanksMod.md) | 队友治疗、给牌、转星币后自动感谢，结算逐人点赞 |
 | [CardSkinMod](mods/CardSkinMod/README.md) | 自定义卡面、多方案与 PNG 序列帧动态卡面 |
 | [CharacterSkinMod](docs/mod-CharacterSkinMod.md) | 角色外观、多人物皮肤方案与精灵动画 |
-| [CombatOddsMod](docs/mod-CombatOddsMod.md) | 战斗胜率分析、头顶攻防数字与悬停详情，可选显示角色卡与玩家头顶的移速加成，怪物名字/血量旁显示技能 CD，梅加斯技能按钮上方显示轨道轰炸理论伤害（回放可见），标记与摩西精密技巧闪避显示 |
+| [CombatOddsMod](docs/mod-CombatOddsMod.md) | 战斗胜率分析、头顶攻防数字与悬停详情，可选显示角色卡与玩家头顶的移速加成，怪物名字/血量旁显示技能 CD，梅加斯技能按钮上方显示轨道轰炸理论伤害（回放可见），标记与摩西精密技巧闪避显示，对局结束与场景切换时自动释放状态缓存 |
 | [FreeCameraMod](docs/mod-FreeCameraMod.md) | 滚轮沿视线缩放，`←`/`→` 绕观察点旋转地图，默认 `F1` 恢复视角；锁定镜头默认关闭，需手动设置 `autoFollow=false` |
 | [SpeedHackMod](docs/mod-SpeedHackMod.md) | 游戏内调整倍率，切换正常速度与上次倍率 |
 | [TurnClockMod](docs/mod-TurnClockMod.md) | 变速时把自己的操作倒计时、选人界面、结算界面、房间等待与剧情自动播放按真实时间走，动画、战斗与其他玩家回合照常加速 |
@@ -96,6 +97,8 @@ winget install Hiynet.AstralParty.Toys
 | `windowControlEnabled` | 允许模组通过文件通道把游戏窗口切到前台并播放提示音(WAV) |
 | `useManagedBootstrap` | 实验性托管编排；默认使用原生编排 |
 
+模组加载采用**启动门就绪判定**：进入主界面或可玩场景且稳定 1 秒后立刻完成初始化，告别旧版固定等待 30 秒；若特殊场景未触发判定，到达 30 秒上限后仍会兜底触发。如需恢复固定等待，可设置环境变量 `CESIUM_MOD_BOOT_GATE=0`。
+
 **变速范围为 1–100 倍，建议不超过 3 倍。** 变速影响动画、演出、回合与网络超时；切换倍率时保持虚拟时间连续。默认 `Delete` 切换正常速度与上次倍率，`Alt` + `=` / `Alt` + `-` 调整倍率，热键可在 Toys 中修改。
 
 Steam 绕过涉及多个独立开关，推荐通过 Toys 选择启动方式。原理、配置与回退方法见 [Steam 绕过说明](docs/steam-bypass.md)。
@@ -119,13 +122,24 @@ cesium> exit
 
 ## 开发模组
 
-下载 [SDK 工具包](https://github.com/higashitaniyume/CesiumLoader/releases/latest/download/cesium-sdk-tools.zip)，内含自包含 `cesium.exe`、SDK 程序集、XML 文档与符号、文档和示例。编译模组仍需本机安装 .NET SDK。
+模组开发工具支持通过 NuGet 全局安装（推荐），亦可直接使用随 [SDK 工具包](https://github.com/higashitaniyume/CesiumLoader/releases/latest/download/cesium-sdk-tools.zip) 分发的自包含 `cesium.exe`。SDK 工具包内含 SDK 程序集、XML 文档与符号、文档和示例。编译模组需本机安装 .NET SDK。
+
+### 安装 CLI 工具（apcsm）
 
 ```powershell
-cesium new MyMod --author YourName --desc "My first mod"
-cesium build MyMod
-cesium package MyMod -o MyMod-1.0.0.zip
-cesium verify <mods_dir>
+# 通过 NuGet 全局安装或更新
+dotnet tool install -g apcsm
+dotnet tool update -g apcsm
+```
+
+### 脚手架与常用命令
+
+```powershell
+# 使用全局工具 apcsm（或自包含 cesium.exe）
+apcsm new MyMod --author YourName --desc "My first mod"
+apcsm build MyMod
+apcsm package MyMod -o MyMod-1.0.0.zip
+apcsm verify <mods_dir>
 ```
 
 模组使用 `netstandard2.0`，以 `{ModId}.ModEntry.Main()` 为入口。脚手架自动生成 SDK 引用、程序集元数据与分发布局；直接使用游戏类型时，将所需热更程序集放入项目 `refs/`。
@@ -144,7 +158,7 @@ SDK 提供生命周期、游戏事件、玩家数据、相机、输入、UI、�
 | [窗口焦点](docs/SDK-窗口焦点.md) | 把游戏窗口切到前台并播放提示音的文件通道 |
 | [操作](docs/SDK-操作.md) · [诊断](docs/SDK-诊断.md) | 游戏指令与排障 |
 | [Unity 调用与 ECall 隔离](docs/SDK-Unity调用与ECall隔离.md) · [平台约束](docs/平台约束-第三方库与AOT裁剪.md) | 运行时兼容要求 |
-| [cesium CLI](docs/工具-cesium-CLI.md) | 脚手架、打包与离线预检 |
+| [apcsm / cesium CLI](docs/工具-cesium-CLI.md) | 脚手架、打包与离线预检（支持 NuGet 安装与自包含运行） |
 | [调试 shell](docs/工具-调试Shell.md) | 控制台命令：查环境、改配置、看日志 |
 | [MCP 桥接](mcp/README.md) · [桥接设计](docs/MCP-Agent桥接.md) | 可选 AI 接管组件，默认发布包不包含 |
 
