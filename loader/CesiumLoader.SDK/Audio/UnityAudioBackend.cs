@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using UnityEngine;
 using CesiumLoader.SDK.Logging;
@@ -18,6 +19,8 @@ namespace CesiumLoader.SDK.Audio
         private readonly object _lock = new object();
         private bool _initialized;
         private bool _available;
+        private bool _canCreateClip;
+        private bool _canPlay;
 
         private Type _audioSourceType;
         private Type _audioClipType;
@@ -137,9 +140,34 @@ namespace CesiumLoader.SDK.Audio
                     _sourcePlayOneShotMethod = _audioClipType != null
                         ? _audioSourceType.GetMethod("PlayOneShot", new Type[] { _audioClipType, typeof(float) })
                         : null;
-                    _sourcePlayMethod = _audioSourceType.GetMethod("Play", Type.EmptyTypes);
+
+                    foreach (var m in _audioSourceType.GetMethods(BindingFlags.Public | BindingFlags.Instance))
+                    {
+                        if (m.Name == "Play")
+                        {
+                            _sourcePlayMethod = m;
+                            if (m.GetParameters().Length == 0) break;
+                        }
+                    }
+
                     _sourceStopMethod = _audioSourceType.GetMethod("Stop", Type.EmptyTypes);
+                    if (_sourceStopMethod == null)
+                    {
+                        foreach (var m in _audioSourceType.GetMethods(BindingFlags.Public | BindingFlags.Instance))
+                        {
+                            if (m.Name == "Stop") { _sourceStopMethod = m; break; }
+                        }
+                    }
+
                     _sourcePauseMethod = _audioSourceType.GetMethod("Pause", Type.EmptyTypes);
+                    if (_sourcePauseMethod == null)
+                    {
+                        foreach (var m in _audioSourceType.GetMethods(BindingFlags.Public | BindingFlags.Instance))
+                        {
+                            if (m.Name == "Pause") { _sourcePauseMethod = m; break; }
+                        }
+                    }
+
                     _sourceUnPauseMethod = _audioSourceType.GetMethod("UnPause", Type.EmptyTypes);
                     _playClipAtPointMethod = _audioSourceType.GetMethod("PlayClipAtPoint", new Type[] { _audioClipType, typeof(Vector3), typeof(float) });
 
@@ -149,8 +177,12 @@ namespace CesiumLoader.SDK.Audio
                     _sourceSpatialBlendProp = _audioSourceType.GetProperty("spatialBlend");
                     _sourceIsPlayingProp = _audioSourceType.GetProperty("isPlaying");
 
-                    _available = (_clipCreateMethod != null && _clipSetDataMethod != null && _sourcePlayMethod != null);
-                    SdkLog.Info("AUDIO", $"Unity 音频接口绑定: available={_available}, create={_clipCreateMethod != null}({_clipCreateMethod?.GetParameters().Length}p), setData={_clipSetDataMethod != null}, playOneShot={_sourcePlayOneShotMethod != null}, play={_sourcePlayMethod != null}");
+                    _canCreateClip = (_clipCreateMethod != null && _clipSetDataMethod != null);
+                    _canPlay = (_sourcePlayMethod != null || _sourcePlayOneShotMethod != null);
+                    _available = _canCreateClip && _canPlay;
+
+                    var methodNames = string.Join(", ", _audioSourceType.GetMethods(BindingFlags.Public | BindingFlags.Instance).Select(m => $"{m.Name}({string.Join(",", m.GetParameters().Select(p => p.ParameterType.Name))})"));
+                    SdkLog.Info("AUDIO", $"Unity 音频接口绑定: available={_available}, canCreate={_canCreateClip}, canPlay={_canPlay}, play={_sourcePlayMethod != null}({_sourcePlayMethod?.GetParameters().Length}p). All AudioSource methods: [{methodNames}]");
                 }
                 catch (Exception e)
                 {
@@ -164,7 +196,7 @@ namespace CesiumLoader.SDK.Audio
         {
             if (_hostObject != null) return;
             EnsureInitialized();
-            if (!_available) return;
+            if (!_canPlay) return;
 
             void Setup()
             {
@@ -205,7 +237,7 @@ namespace CesiumLoader.SDK.Audio
         public object CreateAudioClip(string name, float[] samples, int channels, int sampleRate)
         {
             EnsureInitialized();
-            if (!_available || samples == null || samples.Length == 0 || channels <= 0 || sampleRate <= 0)
+            if (!_canCreateClip || samples == null || samples.Length == 0 || channels <= 0 || sampleRate <= 0)
                 return null;
 
             int sampleCount = samples.Length / channels;
@@ -277,6 +309,23 @@ namespace CesiumLoader.SDK.Audio
             return _sfxSource ?? (_sfxPool.Count > 0 ? _sfxPool[0] : null);
         }
 
+        private void InvokePlay(Component source)
+        {
+            if (_sourcePlayMethod == null || source == null) return;
+            var pars = _sourcePlayMethod.GetParameters();
+            object[] args = null;
+            if (pars.Length > 0)
+            {
+                args = new object[pars.Length];
+                for (int i = 0; i < pars.Length; i++)
+                {
+                    var p = pars[i];
+                    args[i] = p.DefaultValue != DBNull.Value ? p.DefaultValue : (p.ParameterType.IsValueType ? Activator.CreateInstance(p.ParameterType) : null);
+                }
+            }
+            _sourcePlayMethod.Invoke(source, args);
+        }
+
         public void PlayOneShot(object clip, float volume, AudioChannel channel)
         {
             if (clip == null) return;
@@ -301,7 +350,7 @@ namespace CesiumLoader.SDK.Audio
                         {
                             _sourceClipProp?.SetValue(source, clip, null);
                             _sourceVolumeProp?.SetValue(source, effectiveVolume, null);
-                            _sourcePlayMethod?.Invoke(source, null);
+                            InvokePlay(source);
                         }
                     }
                 }
@@ -330,7 +379,7 @@ namespace CesiumLoader.SDK.Audio
                     _sourceClipProp?.SetValue(_bgmSource, clip, null);
                     _sourceLoopProp?.SetValue(_bgmSource, loop, null);
                     _sourceVolumeProp?.SetValue(_bgmSource, effectiveVolume, null);
-                    _sourcePlayMethod.Invoke(_bgmSource, null);
+                    InvokePlay(_bgmSource);
                 }
                 catch (Exception e)
                 {
