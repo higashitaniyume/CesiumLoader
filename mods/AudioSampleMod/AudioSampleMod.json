@@ -1,0 +1,1 @@
+{"id":"AudioSampleMod","name":"音频示例","version":"1.0.0","author":"CesiumLoader","description":"演示使用 CesiumLoader SDK 播放自定义音效与拦截替换原版声音。按 F8 播放提示音，可在控制台观察游戏触发的声音事件。","permissions":0,"sdkVersion":"3.0.0","dependencies":[]}

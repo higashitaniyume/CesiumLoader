@@ -25,6 +25,7 @@ SDK 类型全部位于 `CesiumLoader.SDK` 根命名空间之下的子命名空�
 | `CesiumLoader.SDK.Diagnostics` | diagnostic snapshots and collectors |
 | `CesiumLoader.SDK.Engine` | Unity object, transform, time and frame-rate helpers |
 | `CesiumLoader.SDK.Runtime` | main-thread and runtime assembly services |
+| `CesiumLoader.SDK.Audio` | `AudioService`、`AudioEvents`、`AudioReplacementRule`、`WavUtility` |
 | `CesiumLoader.SDK.Internals` | loader-only implementation details |
 
 > 不再提供根命名空间中的兼容类型；引用 SDK 类型时需导入对应的子命名空间。
