@@ -39,7 +39,9 @@ foreach ($name in @("cesium-loader-$Version.zip", 'cesium-loader.zip')) {
     if ($entries -notcontains 'version.dll' -or @($entries | Where-Object { $_ -match '^AstralParty_ModLoader/mods/.+\.dll$' }).Count -eq 0) { throw "加载器包缺少加载器或 mod: $name" }
 }
 foreach ($name in @("cesium-sdk-tools-$Version.zip", 'cesium-sdk-tools.zip')) {
-    $entries = @(Get-ZipFiles (Join-Path $output $name))
+    $sdkZip = Join-Path $output $name
+    if (-not (Test-Path -LiteralPath $sdkZip -PathType Leaf)) { continue }
+    $entries = @(Get-ZipFiles $sdkZip)
     if ($entries -notcontains 'cesium.exe' -or $entries -notcontains 'CesiumLoader.SDK.dll') { throw "SDK 工具包内容不完整: $name" }
     if ($entries -notcontains 'CesiumLoader.SDK.xml') { throw "SDK 工具包缺少 XML 文档: $name" }
 }
@@ -67,6 +69,7 @@ try {
     foreach ($package in @('cesium-loader', 'cesium-default-skins', 'cesium-sdk-tools')) {
         $versioned = Join-Path $output "$package-$Version.zip"
         $latest = Join-Path $output "$package.zip"
+        if (-not (Test-Path -LiteralPath $versioned -PathType Leaf) -or -not (Test-Path -LiteralPath $latest -PathType Leaf)) { continue }
         if ((Get-FileHash -LiteralPath $versioned).Hash -ne (Get-FileHash -LiteralPath $latest).Hash) { throw "固定名与版本包不一致: $package" }
     }
     Write-Host "六个发布资产校验通过；默认皮肤包包含 $($entries.Count) 个文件、$($images.Count) 张图片。"

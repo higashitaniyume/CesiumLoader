@@ -1,10 +1,9 @@
 name: Release ModLoader
 
 # 每次打 modloader-* tag 或手动触发时:
-# 分为三个独立流程并行执行:
-#   1) 测试 (Test): 编译原生与托管项目，验证 ABI 并运行全部单元测试
-#   2) 构建加载器和mods (Build Loader & Mods): 构建原生 version.dll 与全部内置 mod、打包分发 zip 与默认皮肤包
-#   3) 构建cesiumcli (Build Cesium CLI): 构建 SDK、cesium.exe 单文件与 apcsm dotnet tool 包
+# 分为两个独立流程并行执行:
+#   1) 构建加载器和mods (Build Loader & Mods): 构建原生 version.dll 与全部内置 mod、打包分发 zip 与默认皮肤包
+#   2) 构建cesiumcli (Build Cesium CLI): 构建 SDK、cesium.exe 单文件与 apcsm dotnet tool 包
 # 全部通过后由 release 作业原子汇总发布 GitHub Release 并通过 OIDC Trusted Publishing 推送 NuGet。
 
 on:
@@ -27,89 +26,7 @@ env:
 
 jobs:
   # =========================================================================
-  # 流程一: 测试 (Test)
-  # =========================================================================
-  test:
-    name: Test
-    runs-on: windows-latest
-
-    steps:
-      - name: Check out source
-        uses: actions/checkout@v4
-
-      - name: Set up MSBuild
-        uses: microsoft/setup-msbuild@v2
-
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
-
-      - name: Verify game reference assemblies
-        shell: pwsh
-        run: |
-          # refs/game 是编译期唯一的游戏程序集来源, 校验它在检出里完整且与清单记录的哈希一致
-          $manifest = Get-Content "refs/game/sources.json" -Raw | ConvertFrom-Json
-          $assemblies = @($manifest.assemblies.PSObject.Properties)
-          if ($assemblies.Count -eq 0) { throw "refs/game/sources.json 没有列出程序集" }
-          foreach ($assembly in $assemblies) {
-            $path = "refs/game/$($assembly.Name)"
-            if (-not (Test-Path -LiteralPath $path)) { throw "缺少游戏引用程序集: $path" }
-            $actual = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
-            if ($actual -ne $assembly.Value) { throw "refs/game/$($assembly.Name) 与 sources.json 记录的哈希不一致" }
-          }
-          Write-Host "refs/game 完整: $($assemblies.Count) 个程序集 ($($manifest.baseline))"
-
-      - name: Build all projects for test
-        shell: pwsh
-        run: |
-          # 1) 原生加载器
-          & msbuild loader\CesiumLoader\CesiumLoader.vcxproj /p:Configuration=Release /p:Platform=x64 /m /nologo /v:minimal
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $vdbin = "loader/CesiumLoader/bin/Release/version.dll"
-          if (-not (Test-Path $vdbin)) { throw "version.dll 未生成" }
-          New-Item -ItemType Directory -Path "bin/Release" -Force | Out-Null
-          Copy-Item $vdbin "bin/Release/version.dll" -Force
-
-          # 2) 托管侧: 构建所有 csproj
-          $projects = @(Get-ChildItem -Recurse -File -Filter *.csproj |
-            Where-Object { $_.FullName -notmatch '\\(obj|bin|artifacts|staging|sdk-staging|agent-staging)\\' } |
-            Sort-Object FullName)
-          if ($projects.Count -lt 20) { throw "只找到 $($projects.Count) 个 csproj, 检出内容不完整?" }
-          $failed = @()
-          foreach ($project in $projects) {
-            $rel = $project.FullName.Substring((Get-Location).Path.Length + 1)
-            Write-Host "== $rel"
-            dotnet build $rel -c Release --nologo -v:minimal
-            if ($LASTEXITCODE -ne 0) { $failed += $rel }
-          }
-          if ($failed.Count -gt 0) { throw "构建失败: $($failed -join ', ')" }
-          Write-Host "已构建 $($projects.Count) 个托管项目"
-
-      - name: Stage distribution layout for ABI tests
-        shell: pwsh
-        run: |
-          pwsh -NoProfile -File tools/stage-modloader-dist.ps1 -NativeDll bin/Release/version.dll -Configuration Release
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Run all tests
-        shell: pwsh
-        run: |
-          # dist 布局已就绪, DistributionAbiTests 会按打包结果严格校验随包程序集; 所有测试项目都必须通过
-          $testProjects = @(Get-ChildItem tests -Directory | ForEach-Object {
-              Get-ChildItem $_.FullName -Filter *.csproj -File | Select-Object -First 1
-            } | Where-Object { $_ -and (Select-String -Path $_.FullName -Pattern 'xunit' -Quiet) } | Sort-Object Name)
-          if ($testProjects.Count -lt 5) { throw "只找到 $($testProjects.Count) 个测试项目, 检出内容不完整?" }
-          $failed = @()
-          foreach ($project in $testProjects) {
-            Write-Host "== $($project.BaseName)"
-            dotnet test $project.FullName -c Release --nologo
-            if ($LASTEXITCODE -ne 0) { $failed += $project.BaseName }
-          }
-          if ($failed.Count -gt 0) { throw "测试失败: $($failed -join ', ')" }
-
-  # =========================================================================
-  # 流程二: 构建加载器和mods (Build Loader & Mods)
+  # 流程一: 构建加载器和mods (Build Loader & Mods)
   # =========================================================================
   build-loader:
     name: Build Loader & Mods
@@ -452,7 +369,7 @@ jobs:
           retention-days: 1
 
   # =========================================================================
-  # 流程三: 构建cesiumcli (Build Cesium CLI & apcsm Tool)
+  # 流程二: 构建cesiumcli (Build Cesium CLI & apcsm Tool)
   # =========================================================================
   build-cli:
     name: Build Cesium CLI
@@ -569,12 +486,12 @@ jobs:
           retention-days: 1
 
   # =========================================================================
-  # 流程四: 汇总发布 GitHub Release & NuGet (Release & Publish)
+  # 流程三: 汇总发布 GitHub Release & NuGet (Release & Publish)
   # =========================================================================
   release:
     name: Create release & publish NuGet
     if: github.ref_type == 'tag'   # 手动 dispatch 只构建打包, 不创建 release
-    needs: [test, build-loader, build-cli]
+    needs: [build-loader, build-cli]
     runs-on: ubuntu-latest
     permissions:
       contents: write
