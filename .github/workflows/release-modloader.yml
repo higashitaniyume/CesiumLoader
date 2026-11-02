@@ -413,15 +413,25 @@ jobs:
             --self-contained true -p:PublishSingleFile=true `
             -p:IncludeNativeLibrariesForSelfExtract=true -o sdk-tools --nologo
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if (-not (Test-Path "sdk-tools/cesium.exe")) { throw "cesium.exe 未生成" }
-          Write-Host "cesium.exe 已构建: $((Get-Item 'sdk-tools/cesium.exe').Length) bytes"
+          if (-not (Test-Path "sdk-tools/apcsm.exe") -and -not (Test-Path "sdk-tools/cesium.exe")) { throw "apcsm.exe / cesium.exe 未生成" }
+          if (Test-Path "sdk-tools/apcsm.exe") {
+            Write-Host "apcsm.exe 已构建: $((Get-Item 'sdk-tools/apcsm.exe').Length) bytes"
+          } else {
+            Write-Host "cesium.exe 已构建: $((Get-Item 'sdk-tools/cesium.exe').Length) bytes"
+          }
 
       - name: Stage SDK tools package
         shell: pwsh
         run: |
           $sdkBin = "loader/CesiumLoader.SDK/bin/Release/netstandard2.0"
           New-Item -ItemType Directory -Path "sdk-staging/docs", "sdk-staging/examples/ActivityLogMod" -Force | Out-Null
-          Copy-Item "sdk-tools/cesium.exe" "sdk-staging/cesium.exe" -Force
+          if (Test-Path "sdk-tools/apcsm.exe") {
+            Copy-Item "sdk-tools/apcsm.exe" "sdk-staging/apcsm.exe" -Force
+            Copy-Item "sdk-tools/apcsm.exe" "sdk-staging/cesium.exe" -Force
+          } else {
+            Copy-Item "sdk-tools/cesium.exe" "sdk-staging/apcsm.exe" -Force
+            Copy-Item "sdk-tools/cesium.exe" "sdk-staging/cesium.exe" -Force
+          }
           Copy-Item "$sdkBin/CesiumLoader.SDK.dll" "sdk-staging/CesiumLoader.SDK.dll" -Force
           Copy-Item "loader/CesiumLoader.SDK/LICENSE" "sdk-staging/LICENSE" -Force
           Copy-Item "$sdkBin/CesiumLoader.SDK.xml" "sdk-staging/CesiumLoader.SDK.xml" -Force
@@ -440,7 +450,7 @@ jobs:
             "其他工具、文档和示例按各自适用的许可使用；本工具包并非整体以 MIT 授权。",
             "",
             "包含:",
-            "- cesium.exe            → mod 脚手架与包分发 CLI (win-x64 自包含, 无需本机 .NET)",
+            "- apcsm.exe / cesium.exe → mod 脚手架与包分发 CLI (win-x64 自包含, 无需本机 .NET)",
             "- CesiumLoader.SDK.dll  → mod 开发引用 (编译期绑定; apcsm new 会自动附带进项目)",
             "- CesiumLoader.SDK.xml  → SDK 的 XML 文档 (与 dll 同名: IDE 里悬停/补全可见注释)",
             "- CesiumLoader.SDK.pdb  → SDK 符号 (调试时能单步进 SDK 内部并看到行号)",

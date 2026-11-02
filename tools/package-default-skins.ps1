@@ -42,7 +42,7 @@ foreach ($name in @("cesium-sdk-tools-$Version.zip", 'cesium-sdk-tools.zip')) {
     $sdkZip = Join-Path $output $name
     if (-not (Test-Path -LiteralPath $sdkZip -PathType Leaf)) { continue }
     $entries = @(Get-ZipFiles $sdkZip)
-    if ($entries -notcontains 'cesium.exe' -or $entries -notcontains 'CesiumLoader.SDK.dll') { throw "SDK 工具包内容不完整: $name" }
+    if (($entries -notcontains 'cesium.exe' -and $entries -notcontains 'apcsm.exe') -or $entries -notcontains 'CesiumLoader.SDK.dll') { throw "SDK 工具包内容不完整: $name" }
     if ($entries -notcontains 'CesiumLoader.SDK.xml') { throw "SDK 工具包缺少 XML 文档: $name" }
 }
 

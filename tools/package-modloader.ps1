@@ -267,11 +267,17 @@ Write-Step '6. 组装 SDK 工具包 (sdk-staging)'
 if (Test-Path 'sdk-tools') { Remove-Item 'sdk-tools' -Recurse -Force }
 dotnet publish 'tools\cesium\CesiumCli.csproj' -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o sdk-tools --nologo
 if ($LASTEXITCODE -ne 0) { throw 'cesium CLI 发布失败' }
-if (-not (Test-Path 'sdk-tools\cesium.exe')) { throw 'cesium.exe 未生成' }
+if (-not (Test-Path 'sdk-tools\apcsm.exe') -and -not (Test-Path 'sdk-tools\cesium.exe')) { throw 'apcsm.exe / cesium.exe 未生成' }
 
 if (Test-Path 'sdk-staging') { Remove-Item 'sdk-staging' -Recurse -Force }
 New-Item -ItemType Directory -Path 'sdk-staging\docs', 'sdk-staging\examples\ActivityLogMod' -Force | Out-Null
-Copy-Item 'sdk-tools\cesium.exe' 'sdk-staging\cesium.exe' -Force
+if (Test-Path 'sdk-tools\apcsm.exe') {
+    Copy-Item 'sdk-tools\apcsm.exe' 'sdk-staging\apcsm.exe' -Force
+    Copy-Item 'sdk-tools\apcsm.exe' 'sdk-staging\cesium.exe' -Force
+} else {
+    Copy-Item 'sdk-tools\cesium.exe' 'sdk-staging\apcsm.exe' -Force
+    Copy-Item 'sdk-tools\cesium.exe' 'sdk-staging\cesium.exe' -Force
+}
 Copy-Item 'dist\modloader\AstralParty_ModLoader\sdk\CesiumLoader.SDK.dll' 'sdk-staging\CesiumLoader.SDK.dll' -Force
 Copy-Item 'loader\CesiumLoader.SDK\LICENSE' 'sdk-staging\LICENSE' -Force
 # XML 文档: 与 dll 同名同目录, 引用该 dll 的项目才能看到注释(cesium new 也会一起复制)。
@@ -290,19 +296,19 @@ $sdkReadme = @(
     "其他工具、文档和示例按各自适用的许可使用；本工具包并非整体以 MIT 授权。",
     "",
     "包含:",
-    "- cesium.exe            → mod 脚手架与包分发 CLI (win-x64 自包含, 无需本机 .NET)",
-    "- CesiumLoader.SDK.dll  → mod 开发引用 (编译期绑定; cesium new 会自动附带进项目)",
+    "- apcsm.exe / cesium.exe → mod 脚手架与包分发 CLI (win-x64 自包含, 无需本机 .NET)",
+    "- CesiumLoader.SDK.dll  → mod 开发引用 (编译期绑定; apcsm new 会自动附带进项目)",
     "- CesiumLoader.SDK.xml  → SDK 的 XML 文档 (与 dll 同名: IDE 里悬停/补全可见注释)",
     "- CesiumLoader.SDK.pdb  → SDK 符号 (调试时能单步进 SDK 内部并看到行号)",
     "- docs\                 → SDK 文档",
     "- examples\ActivityLogMod\ → 示例 mod 源码 (行为日志, 最简单)",
     "",
     "快速开始:",
-    "  cesium new MyMod --author 你 --desc ""第一个mod""   # 生成项目模板(SDK 自动附带)",
-    "  cesium build MyMod                                  # 构建 (需本机 dotnet SDK)",
-    "  cesium package MyMod -o MyMod-1.0.0.zip             # 打包分发",
-    "  cesium verify <mods_dir>                            # 离线预检依赖/版本兼容",
-    "  cesium --help                                       # 全部命令与帮助"
+    "  apcsm new MyMod --author 你 --desc ""第一个mod""   # 生成项目模板(SDK 自动附带)",
+    "  apcsm build MyMod                                  # 构建 (需本机 dotnet SDK)",
+    "  apcsm package MyMod -o MyMod-1.0.0.zip             # 打包分发",
+    "  apcsm verify <mods_dir>                            # 离线预检依赖/版本兼容",
+    "  apcsm --help                                       # 全部命令与帮助"
 ) -join [Environment]::NewLine
 Set-Content -Path 'sdk-staging\README.txt' -Value $sdkReadme -Encoding UTF8
 

@@ -1,11 +1,11 @@
-// cesium - CesiumLoader 模组脚手架与包分发 CLI
+// apcsm - CesiumLoader 模组脚手架与包分发 CLI
 // 命令解析由 System.CommandLine 驱动(自动生成帮助/版本/错误提示)。
 
 using System.CommandLine;
 using System.CommandLine.Parsing;
 using System.IO.Compression;
 
-namespace CesiumCli
+namespace Apcsm
 {
     internal static class Program
     {
@@ -14,6 +14,7 @@ namespace CesiumCli
 
         private static int Main(string[] args)
         {
+            string cmdName = GetCommandName();
             var root = new RootCommand("CesiumLoader 模组脚手架与包分发 CLI (apcsm)");
 
             // ------------------------------ new ------------------------------
@@ -48,7 +49,7 @@ namespace CesiumCli
                 Directory.CreateDirectory(dir);
 
                 // 定位 SDK DLL, 复制到项目 refs\(使项目自包含, 脱离仓库可构建):
-                //   1) cesium.exe 同目录(工具包形态)
+                //   1) apcsm / cesium.exe 同目录(工具包形态)
                 //   2) 向上遍历目录树, 找仓库 loader\CesiumLoader.SDK\bin\{Release|Debug}\ 构建产物(源码形态)
                 string sdkDll = FindSdkDll();
                 string refsDir = Path.Combine(dir, "refs");
@@ -76,7 +77,7 @@ namespace CesiumCli
                         <LangVersion>9.0</LangVersion>
                       </PropertyGroup>
                       <ItemGroup>
-                        <!-- CesiumLoader.SDK: apcsm new 已附带在 refs\ -->
+                        <!-- CesiumLoader.SDK: {{cmdName}} new 已附带在 refs\ -->
                         <Reference Include="CesiumLoader.SDK">
                           <HintPath>refs\CesiumLoader.SDK.dll</HintPath>
                         </Reference>
@@ -101,7 +102,7 @@ namespace CesiumCli
                     namespace {{name}}
                     {
                         /// <summary>
-                        /// {{name}} —— 由 apcsm CLI 生成的 mod 模板。
+                        /// {{name}} —— 由 {{cmdName}} CLI 生成的 mod 模板。
                         ///
                         /// 元数据在 AssemblyInfo.cs(程序集级声明, 权威位置)。
                         /// Permissions 只是声明会用到的能力(读对局/操作游戏/写文件),
@@ -150,7 +151,7 @@ namespace CesiumCli
 
                 // 4. README 说明
                 File.WriteAllText(Path.Combine(dir, "README.md"),
-                    $"# {name}\n\n{desc}\n\n由 apcsm CLI 生成。`apcsm build {name}` 构建, `apcsm package {name}` 打包。\n");
+                    $"# {name}\n\n{desc}\n\n由 {cmdName} CLI 生成。`{cmdName} build {name}` 构建, `{cmdName} package {name}` 打包。\n");
 
                 Console.WriteLine($"已生成 mod 项目: {dir}");
                 if (sdkDll != null)
@@ -164,7 +165,7 @@ namespace CesiumCli
                 {
                     Console.WriteLine("  ⚠ 未找到 CesiumLoader.SDK.dll, 请手动放入项目 refs\\ 目录");
                 }
-                Console.WriteLine("  下一步: apcsm build " + dir);
+                Console.WriteLine($"  下一步: {cmdName} build " + dir);
                 return 0;
             });
 
@@ -178,9 +179,9 @@ namespace CesiumCli
             {
                 string dir = parseResult.GetValue(buildDir) ?? ".";
                 string config = parseResult.GetValue(buildCfg) ?? "Release";
-                string csproj = Directory.Exists(dir)
+                string csproj = File.Exists(dir) && dir.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase) ? dir : (Directory.Exists(dir)
                     ? Directory.GetFiles(dir, "*.csproj").FirstOrDefault()
-                    : null;
+                    : null);
                 if (csproj == null)
                 {
                     Console.Error.WriteLine($"未找到 csproj: {dir}");
@@ -193,7 +194,7 @@ namespace CesiumCli
                     Console.Error.WriteLine("构建失败");
                     return code;
                 }
-                string dll = Path.Combine(Path.GetDirectoryName(csproj), "bin", config, "netstandard2.0",
+                string dll = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(csproj)), "bin", config, "netstandard2.0",
                     Path.GetFileNameWithoutExtension(csproj) + ".dll");
                 Console.WriteLine($"构建成功: {dll}");
                 return 0;
@@ -202,7 +203,7 @@ namespace CesiumCli
             // ------------------------------ package ------------------------------
             var packageCmd = new Command("package", "打包 mod 为分发 zip(DLL + sidecar + 符号)");
             var packageDir = new Argument<string>("dir") { Description = "mod 项目目录(默认当前目录)", Arity = ArgumentArity.ZeroOrOne };
-            var packageOut = new Option<string>("--output", "-o") { Description = "输出 zip 路径(默认 <dir>/<name>-1.0.0.zip)", HelpName = "out.zip" };
+            var packageOut = new Option<string>("--output", "-o") { Description = "输出 zip 路径或目录(默认 <dir>/<name>-1.0.0.zip)", HelpName = "out.zip" };
             packageCmd.Add(packageDir);
             packageCmd.Add(packageOut);
             packageCmd.SetAction((parseResult) =>
@@ -210,16 +211,47 @@ namespace CesiumCli
                 string dir = parseResult.GetValue(packageDir) ?? ".";
                 string outZip = parseResult.GetValue(packageOut);
                 // 用 DirectoryInfo.Name 取目录名(对尾部分隔符路径安全, GetFileName 会返回空)
-                string name = new DirectoryInfo(dir).Name;
+                string csproj = Directory.Exists(dir)
+                    ? Directory.GetFiles(dir, "*.csproj").FirstOrDefault()
+                    : null;
+                string name = csproj != null
+                    ? Path.GetFileNameWithoutExtension(csproj)
+                    : new DirectoryInfo(Path.GetFullPath(dir)).Name;
                 string dll = Path.Combine(dir, "bin", "Release", "netstandard2.0", name + ".dll");
                 if (!File.Exists(dll))
                 {
-                    Console.Error.WriteLine($"未找到构建产物: {dll} (先运行 apcsm build)");
+                    Console.Error.WriteLine($"未找到构建产物: {dll} (先运行 {cmdName} build)");
                     return 1;
                 }
-                if (outZip == null) outZip = Path.Combine(dir, name + "-1.0.0.zip");
+                if (outZip != null)
+                {
+                    if (Directory.Exists(outZip) || outZip.EndsWith(Path.DirectorySeparatorChar) || outZip.EndsWith(Path.AltDirectorySeparatorChar))
+                    {
+                        outZip = Path.Combine(outZip, name + "-1.0.0.zip");
+                    }
+                    else if (!outZip.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                    {
+                        outZip += ".zip";
+                    }
+                }
+                else
+                {
+                    outZip = Path.Combine(dir, name + "-1.0.0.zip");
+                }
 
-                using var zip = ZipFile.Open(outZip, ZipArchiveMode.Create);
+                string fullOutZip = Path.GetFullPath(outZip);
+                string outParent = Path.GetDirectoryName(fullOutZip);
+                if (!string.IsNullOrEmpty(outParent))
+                {
+                    Directory.CreateDirectory(outParent);
+                }
+
+                if (File.Exists(fullOutZip))
+                {
+                    File.Delete(fullOutZip);
+                }
+
+                using var zip = ZipFile.Open(fullOutZip, ZipArchiveMode.Create);
                 // 包布局(新): 每 mod 一个文件夹 {Name}\{Name}.dll + {Name}.json(sidecar)
                 // 解压到 mods\ 即 mods\{Name}\{Name}.dll —— 与加载器新扫描布局一致
                 zip.CreateEntryFromFile(dll, name + "/" + name + ".dll");
@@ -227,13 +259,13 @@ namespace CesiumCli
                 if (File.Exists(sidecar)) zip.CreateEntryFromFile(sidecar, name + "/" + name + ".json");
                 // 符号(.pdb)一起打进去: 别人拿到你的 mod 报崩溃时, 有这个才能把栈还原到你的源码行。
                 // 加载器按 {ModId}.dll 精确名加载, 同目录多一个 .pdb 不影响加载; 没有就跳过。
-                string pdb = Path.Combine(dir, "bin", "Release", "netstandard2.0", name + ".pdb");
+                string pdb = Path.ChangeExtension(dll, ".pdb");
                 if (File.Exists(pdb)) zip.CreateEntryFromFile(pdb, name + "/" + name + ".pdb");
 
-                Console.WriteLine($"已打包: {outZip}");
+                Console.WriteLine($"已打包: {fullOutZip}");
                 Console.WriteLine($"  解压到游戏目录 AstralParty_ModLoader\\mods\\ 即安装完成 (将生成 mods\\{name}\\ 文件夹)");
                 if (!File.Exists(pdb))
-                    Console.WriteLine("  提示: 没找到 " + name + ".pdb, 包里不含符号(崩溃栈只有偏移, 看不到行号)");
+                    Console.WriteLine("  提示: 没找到 " + Path.GetFileName(pdb) + ", 包里不含符号(崩溃栈只有偏移, 看不到行号)");
                 return 0;
             });
 
@@ -362,7 +394,7 @@ namespace CesiumCli
         }
 
         // 定位 CesiumLoader.SDK.dll:
-        //   1) cesium.exe 同目录(工具包形态: cesium.exe 与 SDK DLL 打包在一起)
+        //   1) apcsm / cesium.exe 同目录(工具包形态: 与 SDK DLL 打包在一起)
         //   2) 从 exe/base 目录向上遍历目录树, 找仓库 loader\CesiumLoader.SDK\bin\{Release|Debug}\netstandard2.0\ 构建产物
         private static string FindSdkDll()
         {
@@ -542,6 +574,24 @@ namespace CesiumCli
                 if (int.TryParse(parts[i], out n)) r[i] = n;
             }
             return r;
+        }
+
+        private static string GetCommandName()
+        {
+            try
+            {
+                string path = Environment.ProcessPath;
+                if (!string.IsNullOrEmpty(path))
+                {
+                    string name = Path.GetFileNameWithoutExtension(path);
+                    if (!string.IsNullOrEmpty(name) && !name.Equals("dotnet", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return name;
+                    }
+                }
+            }
+            catch { }
+            return "apcsm";
         }
     }
 }

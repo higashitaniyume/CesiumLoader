@@ -4,8 +4,8 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>disable</Nullable>
-    <AssemblyName>cesium</AssemblyName>
-    <RootNamespace>CesiumCli</RootNamespace>
+    <AssemblyName>apcsm</AssemblyName>
+    <RootNamespace>Apcsm</RootNamespace>
 
     <!-- 打包为 .NET Global Tool -->
     <PackAsTool>true</PackAsTool>
