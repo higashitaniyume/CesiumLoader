@@ -1,4 +1,4 @@
-﻿// loader.cpp - 引导线程 (Doorstop 式薄引导)
+// loader.cpp - 引导线程 (Doorstop 式薄引导)
 //
 // 原生层只负责:
 //   1. 读取 doorstop_config.json(enabled 开关 / 超时 / 控制台)
@@ -285,6 +285,8 @@ static DWORD WINAPI boot_thread(LPVOID)
     set_env_w(L"CESIUM_SPEED_DIR", speed);
     set_env_w(L"CESIUM_WINDOW_DIR", window);
     set_env_w(L"CESIUM_AUDIO_DIR", audioctl_dir());
+    set_env_w(L"CESIUM_LOADER_DIR", loader_root());
+    set_env_w(L"CESIUM_GAME_DIR", parent_dir(loader_root()));
 
     // 本次启动的日志文件(**每次启动一套, 不共用**)。
     // 托管侧(SDK 的 SdkLog / SdkDiagnostics / Bootstrap)也要往"这一次"的文件里写, 而它只知道
