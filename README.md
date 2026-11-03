@@ -78,6 +78,8 @@ winget install Hiynet.AstralParty.Toys
 | [HomeBottomBarMod](mods/HomeBottomBarMod/README.md) | 主页底栏隐藏公告，设置左移一位，最右侧增加退出按钮 |
 | [UnlockFrameRateMod](mods/UnlockFrameRateMod/README.md) | 在游戏帧率列表追加 144/165/240/360/不限帧 选项，选中后由游戏自己应用 |
 | [LanguageUnlockMod](mods/LanguageUnlockMod/README.md) | 国服启用设置里已有的英文 / 日文 / 繁中语言选项，切换后重登生效 |
+| [AudioSkinMod](docs/SDK-音频服务.md) | 游戏内置音效/语音替换与音量控制 |
+| [StarCoinShopMod](mods/StarCoinShopMod/README.md) | 主界面商城星币商店一键顺序购买全部商品，带可配置的冷却间隔与槽位开关 |
 
 内置模组的 `config.json` 带简中、繁中、英文、日文配置说明，Toys 会按界面语言显示；第三方模组可按 [配置与元数据](docs/SDK-配置与元数据.md) 用 `ConfigDoc` 提供说明。
 
