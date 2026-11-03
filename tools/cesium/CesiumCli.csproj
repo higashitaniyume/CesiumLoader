@@ -13,9 +13,9 @@
 
     <!-- NuGet 包元数据 -->
     <PackageId>apcsm</PackageId>
-    <Version>3.1.0</Version>
+    <Version>3.1.1</Version>
     <Authors>higashitaniyume, ClassicByte</Authors>
-    <Company>AstralParty Modding</Company>
+    <Company>Hiynet.com</Company>
     <Description>CesiumLoader CLI tool (apcsm) for Astral Party mod development and packaging.</Description>
     <PackageLicenseExpression>AGPL-3.0-only</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/higashitaniyume/CesiumLoader</PackageProjectUrl>
