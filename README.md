@@ -81,6 +81,7 @@ winget install Hiynet.AstralParty.Toys
 | [AudioSkinMod](docs/SDK-音频服务.md) | 游戏内置音效/语音替换与音量控制 |
 | [StarCoinShopMod](mods/StarCoinShopMod/README.md) | 主界面商城星币商店一键顺序购买全部商品，带可配置的冷却间隔与槽位开关 |
 | [CharacterTransparencyMod](mods/CharacterTransparencyMod/README.md) | 按 H 使游戏中角色半透明化（默认 36% 不透明度），支持长按与点击切换 |
+| [ShopRelicPeekMod](mods/ShopRelicPeekMod/README.md) | 在游戏右上角展示玩家进店卡牌与选筹码候选历史，按一至四楼红绿蓝黄排列 |
 
 内置模组的 `config.json` 带简中、繁中、英文、日文配置说明，Toys 会按界面语言显示；第三方模组可按 [配置与元数据](docs/SDK-配置与元数据.md) 用 `ConfigDoc` 提供说明。
 

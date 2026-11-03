@@ -1,0 +1,129 @@
+{
+  // 总开关：是否在右上角显示商店与筹码看板
+  "enabled": true,
+  // 文本字号，范围 12–36，默认 18
+  "fontSize": 18,
+  // 一键清空看板内容的快捷键，默认 T
+  "clearKey": "T",
+  // 玩家名字前是否显示楼层标签（如【一楼】）
+  "showFloorTag": true,
+
+  // ---- 商店独立看板 ----
+  // 是否显示有人走到商店时遇到的货架卡牌
+  "showShopCards": true,
+  // 商店看板宽度（像素），默认 340
+  "shopPanelWidth": 340.0,
+  // 商店看板距离屏幕右边缘的偏移（像素），默认 20
+  "shopOffsetX": 20.0,
+  // 商店看板距离屏幕上边缘的偏移（像素），默认 70
+  "shopOffsetY": 70.0,
+  // 离开商店后卡牌保持显示的秒数，默认 20 秒
+  "shopDisplayDurationSeconds": 20,
+
+  // ---- 筹码独立看板 ----
+  // 是否显示选筹码时的候选筹码、刷新历史及最终选定
+  "showRelicCandidates": true,
+  // 筹码看板宽度（像素），默认 340
+  "relicPanelWidth": 340.0,
+  // 筹码看板距离屏幕右边缘的偏移（像素），默认 20
+  "relicOffsetX": 20.0,
+  // 筹码看板距离屏幕上边缘的偏移（像素），默认 320（位于商店看板下方，且自动避让商店不遮挡）
+  "relicOffsetY": 320.0,
+  // 选定筹码后结果保持显示的秒数，默认 20 秒（防止瞬间消失）
+  "relicDisplayDurationSeconds": 20,
+  // 筹码名称是否按品质着色（普通蓝/稀有紫/传说橙）
+  "colorRelicByQuality": true,
+
+  "_comments": {
+    "enabled": {
+      "zh-Hans": "总开关：在游戏屏幕右上侧展示进店卡牌与选筹码候选历史看板。",
+      "zh-Hant": "總開關：在遊戲螢幕右上側展示進店卡牌與選籌碼候選歷史看板。",
+      "en": "Master switch: display visited shop cards and relic selection candidates overlay.",
+      "ja": "全体スイッチ：ゲーム右上にショップのカードとチップの候補履歴看板を表示します。"
+    },
+    "fontSize": {
+      "zh-Hans": "看板文本字号，范围 12–36，默认 18。",
+      "zh-Hant": "看板文字字級，範圍 12–36，預設 18。",
+      "en": "Overlay font size (12–36, default 18).",
+      "ja": "文字サイズ（12～36、既定 18）。"
+    },
+    "clearKey": {
+      "zh-Hans": "一键清空看板内容的快捷键，默认 T。",
+      "zh-Hant": "一鍵清空看板內容的快捷鍵，預設 T。",
+      "en": "Hotkey to instantly clear overlay content (default T).",
+      "ja": "看板の内容を一括クリアするショートカットキー（既定 T）。"
+    },
+    "showFloorTag": {
+      "zh-Hans": "玩家昵称前是否显示一楼至四楼的座位标签（如【一楼】）。",
+      "zh-Hant": "玩家暱稱前是否顯示一樓至四樓的座位標籤（如【一樓】）。",
+      "en": "Whether to prefix player names with seat floor tags (e.g. 1st Floor).",
+      "ja": "プレイヤー名の前に座席階層タグ（1階～4階）を表示するかどうか。"
+    },
+    "showShopCards": {
+      "zh-Hans": "是否开启商店独立看板（展示玩家进入商店遇到的卡牌）。",
+      "zh-Hant": "是否開啟商店獨立看板（展示玩家進入商店遇到的卡牌）。",
+      "en": "Whether to enable the independent shop overlay.",
+      "ja": "ショップ独立看板を有効にするかどうか（遭遇したカードを表示）。"
+    },
+    "shopPanelWidth": {
+      "zh-Hans": "商店看板面板宽度（像素），范围 200–600，默认 340。",
+      "zh-Hant": "商店看板面板寬度（像素），範圍 200–600，預設 340。",
+      "en": "Shop panel width in pixels (200–600, default 340).",
+      "ja": "ショップ看板の幅（ピクセル、200～600、既定 340）。"
+    },
+    "shopOffsetX": {
+      "zh-Hans": "商店看板距离屏幕右边缘的水平偏移量（像素），默认 20。",
+      "zh-Hant": "商店看板距離螢幕右邊緣的水平偏移量（像素），預設 20。",
+      "en": "Shop panel distance from the right screen edge in pixels (default 20).",
+      "ja": "ショップ看板の画面右端からの水平オフセット（ピクセル、既定 20）。"
+    },
+    "shopOffsetY": {
+      "zh-Hans": "商店看板距离屏幕顶部的垂直偏移量（像素），默认 70。",
+      "zh-Hant": "商店看板距離螢幕頂部的垂直偏移量（像素），預設 70。",
+      "en": "Shop panel distance from the top screen edge in pixels (default 70).",
+      "ja": "ショップ看板の画面上端からの垂直オフセット（ピクセル、既定 70）。"
+    },
+    "shopDisplayDurationSeconds": {
+      "zh-Hans": "离开商店后货架卡牌保持显示的秒数，默认 20 秒。",
+      "zh-Hant": "離開商店後貨架卡牌保持顯示的秒數，預設 20 秒。",
+      "en": "Duration in seconds to keep showing shop cards after leaving the shop (default 20).",
+      "ja": "ショップ退出後もカードを表示し続ける秒数（既定 20 秒）。"
+    },
+    "showRelicCandidates": {
+      "zh-Hans": "是否开启筹码独立看板（展示候选筹码、刷新历史及最终选定）。",
+      "zh-Hant": "是否開啟籌碼獨立看板（展示候選籌碼、刷新歷史及最終選定）。",
+      "en": "Whether to enable the independent relic selection overlay.",
+      "ja": "チップ独立看板を有効にするかどうか（候補、リロール履歴、選択結果を表示）。"
+    },
+    "relicPanelWidth": {
+      "zh-Hans": "筹码看板面板宽度（像素），范围 200–600，默认 340。",
+      "zh-Hant": "籌碼看板面板寬度（像素），範圍 200–600，預設 340。",
+      "en": "Relic panel width in pixels (200–600, default 340).",
+      "ja": "チップ看板の幅（ピクセル、200～600、既定 340）。"
+    },
+    "relicOffsetX": {
+      "zh-Hans": "筹码看板距离屏幕右边缘的水平偏移量（像素），默认 20。",
+      "zh-Hant": "籌碼看板距離螢幕右邊緣的水平偏移量（像素），預設 20。",
+      "en": "Relic panel distance from the right screen edge in pixels (default 20).",
+      "ja": "チップ看板の画面右端からの水平オフセット（ピクセル、既定 20）。"
+    },
+    "relicOffsetY": {
+      "zh-Hans": "筹码看板距离屏幕顶部的垂直偏移量（像素），默认 320（位于商店下方，且自动避让商店不遮挡）。",
+      "zh-Hant": "籌碼看板距離螢幕頂部的垂直偏移量（像素），預設 320（位於商店下方，且自動避讓商店不遮擋）。",
+      "en": "Relic panel distance from the top screen edge in pixels (default 320, auto-avoids shop).",
+      "ja": "チップ看板の画面上端からの垂直オフセット（ピクセル、既定 320、ショップを自動回避）。"
+    },
+    "relicDisplayDurationSeconds": {
+      "zh-Hans": "选定筹码后候选历史与选定结果保持显示的秒数，默认 20 秒（防止瞬间消失）。",
+      "zh-Hant": "選定籌碼後候選歷史與選定結果保持顯示的秒數，預設 20 秒（防止瞬間消失）。",
+      "en": "Duration in seconds to keep showing relic history and chosen result after selection (default 20).",
+      "ja": "チップ決定後も履歴と結果を表示し続ける秒数（既定 20 秒、即時消失を防止）。"
+    },
+    "colorRelicByQuality": {
+      "zh-Hans": "候选筹码名称是否按品质着色（普通蓝、稀有紫、传说橙）。",
+      "zh-Hant": "候選籌碼名稱是否按品質著色（普通藍、稀有紫、傳說橙）。",
+      "en": "Whether to color relic names by quality (common blue, rare purple, legendary orange).",
+      "ja": "チップの名前を品質別（ノーマル青、レア紫、レジェンド橙）に着色するかどうか。"
+    }
+  }
+}
