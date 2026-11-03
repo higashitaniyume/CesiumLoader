@@ -92,6 +92,9 @@ foreach ($mod in $builtInMods)
     $sidecarSrc = "mods\$mod\$mod.json"
     if (Test-Path -LiteralPath $sidecarSrc) { Copy-Item -LiteralPath $sidecarSrc -Destination "$modDir\$mod.json" -Force }
     if (-not (Test-Path -LiteralPath "$modDir\$mod.json")) { throw "缺少 mod sidecar: $modDir\$mod.json" }
+    # 默认配置: 若源码目录下带有 config.json 则同步带入分发布局。
+    $cfgSrc = "mods\$mod\config.json"
+    if (Test-Path -LiteralPath $cfgSrc) { Copy-Item -LiteralPath $cfgSrc -Destination "$modDir\config.json" -Force }
     # 随 mod 分发的素材(提示音等): 整目录镜像。先删后拷, 否则 Copy-Item 会套成 sounds\sounds。
     if (Test-Path -LiteralPath "mods\$mod\sounds")
     {

@@ -67,7 +67,7 @@ if ($Mods.Count -eq 0)
     {
         Write-Warning "缺少 $manifest, 只部署开发用示例 mod"
     }
-    $Mods = @($builtIn + @('CameraProbeMod', 'DiagnosticsMod') | Select-Object -Unique)
+    $Mods = @($builtIn | Select-Object -Unique)
 }
 
 # ---------------------------------------------------------------- 定位游戏目录
@@ -204,6 +204,17 @@ Deploy-File -From (Join-Path $loaderSrc "CesiumLoader.Bootstrap\$netstd\CesiumLo
 Deploy-File -From (Join-Path $loaderSrc "CesiumLoader.Bootstrap\$netstd\CesiumLoader.Bootstrap.pdb") `
             -To (Join-Path $loaderDir 'bootstrap\CesiumLoader.Bootstrap.pdb') -Optional
 
+# 移除开发调试探针 mod (如 CameraProbeMod、DiagnosticsMod)
+foreach ($unwanted in @('CameraProbeMod', 'DiagnosticsMod'))
+{
+    $unwantedPath = Join-Path $loaderDir "mods\$unwanted"
+    if (Test-Path -LiteralPath $unwantedPath)
+    {
+        Remove-Item -LiteralPath $unwantedPath -Recurse -Force
+        Write-Host "已从游戏目录移除停用 mod: $unwanted" -ForegroundColor Yellow
+    }
+}
+
 # 5) mods: 每个 mod 一个文件夹 (DLL + 同名 sidecar + 符号)
 foreach ($mod in $Mods)
 {
@@ -216,6 +227,13 @@ foreach ($mod in $Mods)
     $json = Join-Path $from "$mod.json"
     if (-not (Test-Path -LiteralPath $json)) { $json = Join-Path $repo "dist\modloader\AstralParty_ModLoader\mods\$mod\$mod.json" }
     Deploy-File -From $json -To (Join-Path $loaderDir "mods\$mod\$mod.json") -Optional
+
+    $cfg = Join-Path $repo "mods\$mod\config.json"
+    $destCfg = Join-Path $loaderDir "mods\$mod\config.json"
+    if ((Test-Path -LiteralPath $cfg) -and (-not (Test-Path -LiteralPath $destCfg)))
+    {
+        Deploy-File -From $cfg -To $destCfg -Optional
+    }
 
     Deploy-File -From (Join-Path $from "$mod.pdb") -To (Join-Path $loaderDir "mods\$mod\$mod.pdb") -Optional
 

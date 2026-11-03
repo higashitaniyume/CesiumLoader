@@ -1,0 +1,10 @@
+{
+  "enabled": true,
+  "cooldownSeconds": 1,
+  "focusOnMatchSuccess": true,
+  "focusOnRoomChat": true,
+  "focusOnRoomInvite": true,
+  "soundEnabled": true,
+  "soundFile": "",
+  "alwaysPlaySound": false
+}

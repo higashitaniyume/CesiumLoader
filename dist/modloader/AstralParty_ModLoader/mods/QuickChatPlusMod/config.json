@@ -1,0 +1,7 @@
+{
+  "enabled": true,
+  "includeRoomChats": true,
+  "includeResultChats": true,
+  "includePvpModes": false,
+  "maxVisibleItems": 16
+}
