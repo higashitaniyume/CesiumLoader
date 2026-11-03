@@ -85,6 +85,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LanguageUnlockMod.Tests", "
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StarCoinShopMod.Tests", "tests\StarCoinShopMod.Tests\StarCoinShopMod.Tests.csproj", "{160E006E-6846-4B4E-978D-3A4D606F635F}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CharacterTransparencyMod.Tests", "tests\CharacterTransparencyMod.Tests\CharacterTransparencyMod.Tests.csproj", "{6BB48ABC-CF29-4E75-8150-D644B4D398DB}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -527,6 +529,18 @@ Global
 		{160E006E-6846-4B4E-978D-3A4D606F635F}.Release|x64.Build.0 = Release|Any CPU
 		{160E006E-6846-4B4E-978D-3A4D606F635F}.Release|x86.ActiveCfg = Release|Any CPU
 		{160E006E-6846-4B4E-978D-3A4D606F635F}.Release|x86.Build.0 = Release|Any CPU
+		{6BB48ABC-CF29-4E75-8150-D644B4D398DB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6BB48ABC-CF29-4E75-8150-D644B4D398DB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6BB48ABC-CF29-4E75-8150-D644B4D398DB}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{6BB48ABC-CF29-4E75-8150-D644B4D398DB}.Debug|x64.Build.0 = Debug|Any CPU
+		{6BB48ABC-CF29-4E75-8150-D644B4D398DB}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{6BB48ABC-CF29-4E75-8150-D644B4D398DB}.Debug|x86.Build.0 = Debug|Any CPU
+		{6BB48ABC-CF29-4E75-8150-D644B4D398DB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6BB48ABC-CF29-4E75-8150-D644B4D398DB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6BB48ABC-CF29-4E75-8150-D644B4D398DB}.Release|x64.ActiveCfg = Release|Any CPU
+		{6BB48ABC-CF29-4E75-8150-D644B4D398DB}.Release|x64.Build.0 = Release|Any CPU
+		{6BB48ABC-CF29-4E75-8150-D644B4D398DB}.Release|x86.ActiveCfg = Release|Any CPU
+		{6BB48ABC-CF29-4E75-8150-D644B4D398DB}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -568,6 +582,7 @@ Global
 		{D8BF88B9-03FE-4CF2-A1B6-DEE399F2FA17} = {1A2B3C4D-0002-4E5F-8A9B-000000000002}
 		{4A488795-D391-4610-B26C-07292F3E3C3B} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{160E006E-6846-4B4E-978D-3A4D606F635F} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{6BB48ABC-CF29-4E75-8150-D644B4D398DB} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {9688F0BC-2A2B-4E95-979C-7BB5322523E6}
