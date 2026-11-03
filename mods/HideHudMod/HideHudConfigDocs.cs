@@ -54,6 +54,11 @@ namespace HideHudMod
                 "隱藏其他 HUD 元素。",
                 "Hide other HUD elements.",
                 "その他の HUD 要素を隠します。"));
+            changed |= config.Describe("hideTeammateIdsOnly", D(
+                "隐藏队友头像的昵称。",
+                "隱藏隊友頭像的暱稱。",
+                "Hide teammate avatar nicknames.",
+                "チームメイトのアイコンの名前を隠します。"));
             changed |= config.Describe("notify", D(
                 "显示隐藏/恢复 HUD 的屏幕提示，默认关闭。",
                 "顯示隱藏/恢復 HUD 的螢幕提示，預設關閉。",

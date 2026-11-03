@@ -32,14 +32,14 @@ namespace HideHudMod
         private string _lastError;
 
         public override string Name { get { return "隐藏HUD"; } }
-        public override string Version { get { return "1.1.0"; } }
+        public override string Version { get { return "1.2.0"; } }
         public override string Author { get { return "CesiumLoader"; } }
         public override string Description
         {
             get
             {
                 return "长按反引号键（Tab 上方）隐藏战斗 HUD，松开恢复；可改为按一下切换。"
-                    + "手牌、怪物信息、头像与其他 HUD 可分别开关。";
+                    + "手牌、怪物信息、头像（或仅队友ID）与其他 HUD 可分别开关。";
             }
         }
 
@@ -157,7 +157,7 @@ namespace HideHudMod
             if (_settings.HideAllHud) return "全部 HUD";
             return "手牌=" + OnOff(_settings.HideHandCards)
                 + ", 怪物信息=" + OnOff(_settings.HideMonsterDisplay)
-                + ", 头像=" + OnOff(_settings.HideAvatars)
+                + ", 头像=" + (_settings.HideTeammateIdsOnly ? "仅队友ID" : OnOff(_settings.HideAvatars))
                 + ", 其他=" + OnOff(_settings.HideOther);
         }
 

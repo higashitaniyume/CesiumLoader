@@ -24,6 +24,9 @@ namespace HideHudMod
         public bool HideAvatars = true;
         public bool HideOther = true;
 
+        /// <summary>隐藏队友头像的昵称。</summary>
+        public bool HideTeammateIdsOnly;
+
         /// <summary>屏幕提示（默认关闭，避免隐藏 HUD 时还弹一条提示）。</summary>
         public bool Notify;
 
@@ -42,6 +45,7 @@ namespace HideHudMod
             value.HideMonsterDisplay = config.GetBool("hideMonsterDisplay", true);
             value.HideAvatars = config.GetBool("hideAvatars", true);
             value.HideOther = config.GetBool("hideOther", true);
+            value.HideTeammateIdsOnly = config.GetBool("hideTeammateIdsOnly", false);
             value.Notify = config.GetBool("notify", false);
             return value;
         }
@@ -61,6 +65,7 @@ namespace HideHudMod
             Add(config, "hideMonsterDisplay", true, ref added);
             Add(config, "hideAvatars", true, ref added);
             Add(config, "hideOther", true, ref added);
+            Add(config, "hideTeammateIdsOnly", false, ref added);
             Add(config, "notify", false, ref added);
             if (added) config.SaveIfDirty();
         }

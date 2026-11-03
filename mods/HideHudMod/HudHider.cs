@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using FairyGUI;
+using GameLogic;
+using Tools;
 using UI;
 
 namespace HideHudMod
@@ -53,7 +55,20 @@ namespace HideHudMod
 
             if (_panel != null)
             {
-                SetHidden(_panel.com_BattlePlayer, all || settings.HideAvatars);
+                bool hideAvatars = all || settings.HideAvatars;
+                bool hideTeammatesOnly = !all && settings.HideTeammateIdsOnly;
+
+                if (hideTeammatesOnly)
+                {
+                    SetHidden(_panel.com_BattlePlayer, false);
+                    ApplyTeammateIds(true);
+                }
+                else
+                {
+                    ApplyTeammateIds(false);
+                    SetHidden(_panel.com_BattlePlayer, hideAvatars);
+                }
+
                 SetHidden(_panel.com_AttrInfos, all || settings.HideMonsterDisplay);
 
                 bool other = all || settings.HideOther;
@@ -149,6 +164,58 @@ namespace HideHudMod
         }
 
         private static readonly GObject[] EmptyTargets = new GObject[0];
+
+        private void ApplyTeammateIds(bool hide)
+        {
+            if (_panel == null || _panel.com_BattlePlayer == null) return;
+            var container = _panel.com_BattlePlayer.com_Container;
+            if (container == null) return;
+
+            var slots = new[]
+            {
+                container.com_Player_1,
+                container.com_Player_2,
+                container.com_Player_3,
+                container.com_Player_4
+            };
+
+            for (int i = 0; i < slots.Length; i++)
+            {
+                var slot = slots[i];
+                if (slot == null || slot.PlayerData == null || slot.PlayerData.player == null) continue;
+
+                var info = slot.com_player as UICom_PlayerInfo;
+                if (info == null || info.txt_PlayerName == null) continue;
+
+                bool isSelf = IsSelfPlayer(slot.PlayerData);
+                if (isSelf)
+                {
+                    SetHidden(info.txt_PlayerName, false);
+                }
+                else
+                {
+                    SetHidden(info.txt_PlayerName, hide);
+                }
+            }
+        }
+
+        private static bool IsSelfPlayer(BattlePlayerData data)
+        {
+            if (data == null || data.player == null) return false;
+            long id = data.player.Id;
+            try
+            {
+                var gm = SimpleSingletonProvider<GameLogicManager>.inst;
+                if (gm != null)
+                {
+                    if (gm.account != null && gm.account.IsSelf(id)) return true;
+                    var self = gm.battle != null ? gm.battle.GetSelfPlayerData() : null;
+                    if (self != null && self.player != null && self.player.Id == id) return true;
+                }
+            }
+            catch { }
+            return false;
+        }
 
         private void SetHidden(GObject target, bool hide)
         {

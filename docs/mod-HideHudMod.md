@@ -23,6 +23,7 @@
 | `hideMonsterDisplay` | `true` | 怪物头顶的名字、编号、血量、攻防、移动力和 Buff 信息条 |
 | `hideAvatars` | `true` | 左侧玩家头像列表（头像、昵称、等级、血量、星币、名次等） |
 | `hideOther` | `true` | 其余战斗 HUD：小地图、回合/胜利条件、攻击/防御、Buff 列表、角色立绘、PVE 进度、玩家状态图标、操作倒计时、战斗提示等 |
+| `hideTeammateIdsOnly` | `false` | 隐藏队友头像的昵称 |
 
 默认四项分类全部开启，所以按键就是隐藏整套战斗 HUD。想只隐藏其中一部分时，把不需要隐藏的分类改成 `false`。
 
@@ -45,6 +46,7 @@
   "hideMonsterDisplay": true,
   "hideAvatars": true,
   "hideOther": true,
+  "hideTeammateIdsOnly": false,
   "notify": false
 }
 ```
@@ -55,11 +57,12 @@
 | `toggleKey` | 热键，默认 `BackQuote`。使用 Unity `KeyCode` 名称，如 `F8`、`Tab`、`Insert`；也接受 `` ` ``、`~`、`Esc` |
 | `pressMode` | `Hold` = 长按隐藏、松开恢复；`Toggle` = 按一下切换 |
 | `holdSeconds` | 长按触发时间，默认 `0.35` 秒，限制在 0.1–2 秒 |
-| `hideAllHud` | 强制隐藏全部 HUD，忽略下面四项 |
+| `hideAllHud` | 强制隐藏全部 HUD，忽略下面各项 |
 | `hideHandCards` | 隐藏手牌区 |
 | `hideMonsterDisplay` | 隐藏怪物信息条 |
 | `hideAvatars` | 隐藏左侧玩家头像列表 |
 | `hideOther` | 隐藏其余战斗 HUD |
+| `hideTeammateIdsOnly` | 隐藏队友头像的昵称 |
 | `notify` | 隐藏/恢复时弹一条屏幕提示；默认关闭，避免清屏时还出现提示 |
 
 `toggleKey` 和 `pressMode` 也可以在 Toys 的「模组 → 隐藏HUD → 配置」中修改。

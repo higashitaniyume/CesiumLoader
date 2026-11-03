@@ -1,12 +1,92 @@
 {
+  // 总开关：关闭后不响应隐藏 HUD 的热键
   "enabled": true,
+  // 隐藏 HUD 的按键，默认 BackQuote（Tab 上方）
   "toggleKey": "BackQuote",
+  // 按键方式：Hold 长按隐藏、松开恢复；Toggle 按一下切换
   "pressMode": "Hold",
+  // Hold 模式需要按住的秒数，默认 0.35
   "holdSeconds": 0.35,
+  // 一次隐藏全部 HUD，忽略下面的分项开关
   "hideAllHud": false,
+  // 隐藏手牌区域
   "hideHandCards": true,
+  // 隐藏怪物信息条
   "hideMonsterDisplay": true,
+  // 隐藏玩家头像
   "hideAvatars": true,
+  // 隐藏其他 HUD 元素
   "hideOther": true,
-  "notify": false
+  // 隐藏队友头像的昵称
+  "hideTeammateIdsOnly": false,
+  // 显示隐藏/恢复 HUD 的屏幕提示，默认关闭
+  "notify": false,
+  "_comments": {
+    "enabled": {
+      "zh-Hans": "总开关：关闭后不响应隐藏 HUD 的热键。",
+      "zh-Hant": "總開關：關閉後不回應隱藏 HUD 的熱鍵。",
+      "en": "Master switch: disables the hide-HUD hotkey when off.",
+      "ja": "全体スイッチ：オフにすると HUD 非表示のホットキーに反応しません。"
+    },
+    "toggleKey": {
+      "zh-Hans": "隐藏 HUD 的按键，默认 BackQuote（Tab 上方）。",
+      "zh-Hant": "隱藏 HUD 的按鍵，預設 BackQuote（Tab 上方）。",
+      "en": "Key that hides the HUD (default: BackQuote, above Tab).",
+      "ja": "HUD を隠すキー（既定: BackQuote、Tab の上）。"
+    },
+    "pressMode": {
+      "zh-Hans": "按键方式：Hold 长按隐藏、松开恢复；Toggle 按一下切换。",
+      "zh-Hant": "按鍵方式：Hold 長按隱藏、放開恢復；Toggle 按一下切換。",
+      "en": "Key mode: Hold hides while held; Toggle switches on each press.",
+      "ja": "キー動作：Hold は押している間だけ非表示、Toggle は押すたびに切り替え。"
+    },
+    "holdSeconds": {
+      "zh-Hans": "Hold 模式需要按住的秒数，默认 0.35。",
+      "zh-Hant": "Hold 模式需要按住的秒數，預設 0.35。",
+      "en": "Seconds the key must be held in Hold mode (default 0.35).",
+      "ja": "Hold モードで押し続ける秒数（既定 0.35）。"
+    },
+    "hideAllHud": {
+      "zh-Hans": "一次隐藏全部 HUD，忽略下面的分项开关。",
+      "zh-Hant": "一次隱藏全部 HUD，忽略下方的分項開關。",
+      "en": "Hide the entire HUD at once, ignoring the individual toggles below.",
+      "ja": "HUD をまとめて非表示にします（下の個別スイッチは無視）。"
+    },
+    "hideHandCards": {
+      "zh-Hans": "隐藏手牌区域。",
+      "zh-Hant": "隱藏手牌區域。",
+      "en": "Hide the hand area.",
+      "ja": "手札エリアを隠します。"
+    },
+    "hideMonsterDisplay": {
+      "zh-Hans": "隐藏怪物信息条。",
+      "zh-Hant": "隱藏怪物資訊條。",
+      "en": "Hide the monster info bar.",
+      "ja": "モンスター情報バーを隠します。"
+    },
+    "hideAvatars": {
+      "zh-Hans": "隐藏玩家头像。",
+      "zh-Hant": "隱藏玩家頭像。",
+      "en": "Hide player avatars.",
+      "ja": "プレイヤーのアイコンを隠します。"
+    },
+    "hideOther": {
+      "zh-Hans": "隐藏其他 HUD 元素。",
+      "zh-Hant": "隱藏其他 HUD 元素。",
+      "en": "Hide other HUD elements.",
+      "ja": "その他の HUD 要素を隠します。"
+    },
+    "hideTeammateIdsOnly": {
+      "zh-Hans": "隐藏队友头像的昵称。",
+      "zh-Hant": "隱藏隊友頭像的暱稱。",
+      "en": "Hide teammate avatar nicknames.",
+      "ja": "チームメイトのアイコンの名前を隠します。"
+    },
+    "notify": {
+      "zh-Hans": "显示隐藏/恢复 HUD 的屏幕提示，默认关闭。",
+      "zh-Hant": "顯示隱藏/恢復 HUD 的螢幕提示，預設關閉。",
+      "en": "Show an on-screen notice when hiding or restoring the HUD (off by default).",
+      "ja": "HUD の非表示/復帰時に画面へ通知を表示します（既定オフ）。"
+    }
+  }
 }
