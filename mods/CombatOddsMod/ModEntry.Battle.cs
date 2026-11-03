@@ -42,8 +42,10 @@ namespace CombatOddsMod
                 // 别人打怪/防御时也要有显示: 攻、守两个视角都放出来(观战)。
                 //   · 我在场: 只显示我这一侧(攻或防)。
                 //   · 别人的战斗(观战): 攻击方击杀率 + 防守方该防/该闪, 两块都给。
-                bool showDefender = iAmDefender || (_cfg.ShowForOthers && !iAmAttacker);
-                bool showAttacker = iAmAttacker || (_cfg.ShowForOthers && !iAmDefender);
+                // 怪物作为防守方时不具备防/闪决策机制(无法闪避), 排除怪物的防守方提示。
+                bool showDefender = CombatOddsPerspective.ShouldShowDefender(iAmDefender, iAmAttacker, _cfg.ShowForOthers, IsMonster(def.PlayerId));
+                bool showAttacker = CombatOddsPerspective.ShouldShowAttacker(iAmDefender, iAmAttacker, _cfg.ShowForOthers);
+                if (!showDefender && !showAttacker) { _lastBattle = null; Clear(); return; }
 
                 var sb = new StringBuilder();
                 string atkName = SafeName(atk);
