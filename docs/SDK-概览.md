@@ -26,9 +26,10 @@ SDK 类型全部位于 `CesiumLoader.SDK` 根命名空间之下的子命名空�
 | `CesiumLoader.SDK.Engine` | Unity object, transform, time and frame-rate helpers |
 | `CesiumLoader.SDK.Runtime` | main-thread and runtime assembly services |
 | `CesiumLoader.SDK.Audio` | `AudioService`、`AudioEvents`、`AudioReplacementRule`、`WavUtility` |
+| `CesiumLoader.SDK.IO` | `Path`、`Paths`（各级路径发现、模组与数据子路径拼接、安全文件操作） |
 | `CesiumLoader.SDK.Internals` | loader-only implementation details |
 
-> 不再提供根命名空间中的兼容类型；引用 SDK 类型时需导入对应的子命名空间。
+> 根命名空间额外提供 `SdkPath` 门面类，方便在已有 `using System.IO;` 的代码中直接调用路径 API 而无类名冲突。其余 SDK 类型请按模块导入对应子命名空间。
 
 ## 架构
 
@@ -133,4 +134,5 @@ public static class ModEntry
 | [SDK-窗口焦点.md](SDK-窗口焦点.md) | WindowFocus 把游戏窗口切到前台 (加载器文件通道) |
 | [SDK-能力声明与元数据.md](SDK-能力声明与元数据.md) | 能力声明(仅警告) / sidecar 元数据 / 依赖解析 / 版本协商 |
 | [SDK-配置与元数据.md](SDK-配置与元数据.md) | SdkConfig JSON 配置 / ModManifest 元数据 / SdkManifest sidecar |
+| [SDK-Paths.md](SDK-Paths.md) | SdkPath / Path 路径服务 (各级目录发现、子路径定位与安全文件操作) |
 | [工具-cesium-CLI.md](工具-cesium-CLI.md) | 脚手架与包分发 CLI (new/build/package/list/verify) |
