@@ -48,6 +48,9 @@ namespace CesiumLoader.SDK.Mods
         /// <summary>默认就绪后稳定期(毫秒, 游戏时间): 让场景/面板切换先落定再初始化。</summary>
         public const int DefaultSettleMs = 1000;
 
+        /// <summary>错峰初始化间隔(毫秒): 各 mod 错开执行 OnInitialize，避免同一帧尖峰。</summary>
+        public const int DefaultStaggerIntervalMs = 35;
+
         /// <summary>启动门开关对应的环境变量名。</summary>
         public const string EnabledEnvName = "CESIUM_MOD_BOOT_GATE";
 
@@ -57,8 +60,13 @@ namespace CesiumLoader.SDK.Mods
         private static int _readyAtMs = -1;
         private static int _pollIntervalMs = DefaultPollIntervalMs;
         private static int _settleMs = DefaultSettleMs;
+        private static int _staggerIntervalMs = DefaultStaggerIntervalMs;
+        private static int _staggerSlot;
         private static int _timeoutLogged;
         private static int _noPumpLogged;
+        private static int _probeStarted;
+        private static int _sharedDone;
+        private static int _sharedElapsedMs;
 
         /// <summary>
         /// 启动门是否启用(默认启用)。设为 false 恢复"固定等待 delayMs"的旧行为。
@@ -97,6 +105,16 @@ namespace CesiumLoader.SDK.Mods
         {
             get { int v = Volatile.Read(ref _settleMs); return v >= 0 ? v : 0; }
             set { Volatile.Write(ref _settleMs, value); }
+        }
+
+        /// <summary>
+        /// 错峰初始化间隔(毫秒), 默认 <see cref="DefaultStaggerIntervalMs"/>。
+        /// 0 = 不错峰。
+        /// </summary>
+        public static int StaggerIntervalMs
+        {
+            get { int v = Volatile.Read(ref _staggerIntervalMs); return v >= 0 ? v : 0; }
+            set { Volatile.Write(ref _staggerIntervalMs, value); }
         }
 
         /// <summary>本次进程内是否已确认"游戏就绪"(一旦确认即锁存)。</summary>
@@ -154,11 +172,48 @@ namespace CesiumLoader.SDK.Mods
                 return capMs;
             }
 
+            // 单例探测轮询：所有 mod 共享同一个探测任务，避免 N 个 mod 产生 N*10 次/秒轮询回调
+            if (Interlocked.CompareExchange(ref _probeStarted, 1, 0) == 0)
+            {
+                RunSharedGateProbeAsync(start, capMs, label).Forget();
+            }
+
+            // 等共享探测结束，但**绝不越过本 mod 自己的上限**：
+            //  - 旧实现每个 mod 各自有界(固定等待 delayMs)，这里保持同样的保证，
+            //    避免"首个 mod 的上限较大, 后来上限较小的 mod 被拖长";
+            //  - 共享探测协程若异常退出(Forget 吞掉异常)也不会让 mod 永久停在启动门。
+            int waited = 0;
+            while (Volatile.Read(ref _sharedDone) == 0 && waited < capMs)
+            {
+                if (!await DelaySafe(PollIntervalMs)) break;
+                waited += PollIntervalMs;
+            }
+
+            int elapsed = Volatile.Read(ref _sharedElapsedMs);
+            if (elapsed < 0) elapsed = 0;
+
+            // 错峰初始化：各 mod 间隔 30-50ms，避免全部 mod 在同一帧集中调用 OnInitialize 造成主界面卡顿
+            int slot = Interlocked.Increment(ref _staggerSlot) - 1;
+            int staggerMs = StaggerIntervalMs;
+            if (slot > 0 && staggerMs > 0)
+            {
+                await DelaySafe(slot * staggerMs);
+            }
+
+            return elapsed;
+        }
+
+        private static async UniTaskVoid RunSharedGateProbeAsync(float start, int capMs, string label)
+        {
             int elapsed = 0;
             while (true)
             {
                 // 先等一轮再判定: 让续体回到主线程, 之后才可以读 Unity / 游戏单例。
-                if (!await DelaySafe(PollIntervalMs)) return elapsed;
+                if (!await DelaySafe(PollIntervalMs))
+                {
+                    CompleteProbe(elapsed);
+                    return;
+                }
 
                 bool ready;
                 try { ready = GameBootProbe.IsBooted(); }
@@ -178,14 +233,19 @@ namespace CesiumLoader.SDK.Mods
                     int settle = SettleMs;
                     if (settle > 0 && elapsed + settle <= capMs)
                     {
-                        if (!await DelaySafe(settle)) return elapsed;
+                        if (!await DelaySafe(settle))
+                        {
+                            CompleteProbe(elapsed);
+                            return;
+                        }
                         elapsed += settle;
                     }
 
                     MarkReady(elapsed);
                     SdkLog.Info("STARTUP",
-                        "游戏已就绪: 启动门等待 " + elapsed + "ms(上限 " + capMs + "ms), 各 mod 开始初始化");
-                    return elapsed;
+                        "游戏已就绪: 启动门等待 " + elapsed + "ms(上限 " + capMs + "ms), 各 mod 错峰开始初始化");
+                    CompleteProbe(elapsed);
+                    return;
                 }
 
                 if (outcome == StartupOutcome.Timeout)
@@ -200,9 +260,19 @@ namespace CesiumLoader.SDK.Mods
                     {
                         SdkLog.Debug(label, "就绪探测超时, 已等 " + elapsed + "ms");
                     }
-                    return elapsed;
+                    MarkReady(elapsed);
+                    CompleteProbe(elapsed);
+                    return;
                 }
             }
+        }
+
+        /// <summary>标记共享探测结束(幂等): 等待中的 mod 轮询到该标记后立即初始化。</summary>
+        private static void CompleteProbe(int elapsedMs)
+        {
+            if (elapsedMs < 0) elapsedMs = 0;
+            Volatile.Write(ref _sharedElapsedMs, elapsedMs);
+            Volatile.Write(ref _sharedDone, 1);
         }
 
         private static void LogNoPumpOnce(string label, int capMs)
@@ -238,8 +308,13 @@ namespace CesiumLoader.SDK.Mods
             Volatile.Write(ref _enabled, 1);
             Volatile.Write(ref _pollIntervalMs, DefaultPollIntervalMs);
             Volatile.Write(ref _settleMs, DefaultSettleMs);
+            Volatile.Write(ref _staggerIntervalMs, DefaultStaggerIntervalMs);
+            Volatile.Write(ref _staggerSlot, 0);
             Volatile.Write(ref _timeoutLogged, 0);
             Volatile.Write(ref _noPumpLogged, 0);
+            Volatile.Write(ref _probeStarted, 0);
+            Volatile.Write(ref _sharedDone, 0);
+            Volatile.Write(ref _sharedElapsedMs, 0);
             Clock = DefaultClock;
         }
 
