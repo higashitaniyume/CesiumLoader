@@ -39,6 +39,20 @@ int g_bound_port = 0;
 std::atomic<int> g_sfx_counter{ 0 };
 const int kSfxSlotCount = 8;
 
+struct SfxSlot
+{
+    std::wstring path;
+    int last_vol = -1;
+};
+
+SfxSlot g_sfx_slots[kSfxSlotCount];
+std::wstring g_voice_path;
+int g_voice_vol = -1;
+
+HANDLE g_stop_event = NULL;
+WSAEVENT g_socket_event = WSA_INVALID_EVENT;
+HANDLE g_dir_events[kMaxDirs] = { NULL, NULL };
+
 std::wstring local_appdata_mirror()
 {
     wchar_t buf[MAX_PATH];
@@ -165,10 +179,38 @@ void write_state_and_port(int port)
 
 void execute_sfx(const std::wstring& wide_path, int vol)
 {
-    int slot = (g_sfx_counter.fetch_add(1) & 0x7FFFFFFF) % kSfxSlotCount;
+    // 1. 查找是否已有槽位加载了该文件，若已加载则直接复用槽位 play from 0，避免重复 open 导致卡顿
+    int slot = -1;
+    for (int i = 0; i < kSfxSlotCount; i++)
+    {
+        if (!g_sfx_slots[i].path.empty() && g_sfx_slots[i].path == wide_path)
+        {
+            slot = i;
+            break;
+        }
+    }
+
+    if (slot >= 0)
+    {
+        std::wstring alias = L"CesiumSfx" + std::to_wstring(slot);
+        if (vol >= 0 && vol <= 1000 && vol != g_sfx_slots[slot].last_vol)
+        {
+            std::wstring vol_cmd = L"setaudio " + alias + L" volume to " + std::to_wstring(vol);
+            mciSendStringW(vol_cmd.c_str(), NULL, 0, NULL);
+            g_sfx_slots[slot].last_vol = vol;
+        }
+        std::wstring play_cmd = L"play " + alias + L" from 0";
+        mciSendStringW(play_cmd.c_str(), NULL, 0, NULL);
+        return;
+    }
+
+    // 2. 未加载过: 轮转分配新槽位并 open
+    slot = (g_sfx_counter.fetch_add(1) & 0x7FFFFFFF) % kSfxSlotCount;
     std::wstring alias = L"CesiumSfx" + std::to_wstring(slot);
 
     mciSendStringW((L"close " + alias).c_str(), NULL, 0, NULL);
+    g_sfx_slots[slot].path.clear();
+    g_sfx_slots[slot].last_vol = -1;
 
     std::wstring open_cmd = L"open \"" + wide_path + L"\" type waveaudio alias " + alias;
     MCIERROR err = mciSendStringW(open_cmd.c_str(), NULL, 0, NULL);
@@ -186,10 +228,13 @@ void execute_sfx(const std::wstring& wide_path, int vol)
         return;
     }
 
+    g_sfx_slots[slot].path = wide_path;
+
     if (vol >= 0 && vol <= 1000)
     {
         std::wstring vol_cmd = L"setaudio " + alias + L" volume to " + std::to_wstring(vol);
         mciSendStringW(vol_cmd.c_str(), NULL, 0, NULL);
+        g_sfx_slots[slot].last_vol = vol;
     }
 
     std::wstring play_cmd = L"play " + alias + L" from 0";
@@ -199,7 +244,22 @@ void execute_sfx(const std::wstring& wide_path, int vol)
 void execute_voice(const std::wstring& wide_path, int vol)
 {
     std::wstring alias = L"CesiumVoice";
+    if (g_voice_path == wide_path && !g_voice_path.empty())
+    {
+        if (vol >= 0 && vol <= 1000 && vol != g_voice_vol)
+        {
+            std::wstring vol_cmd = L"setaudio " + alias + L" volume to " + std::to_wstring(vol);
+            mciSendStringW(vol_cmd.c_str(), NULL, 0, NULL);
+            g_voice_vol = vol;
+        }
+        std::wstring play_cmd = L"play " + alias + L" from 0";
+        mciSendStringW(play_cmd.c_str(), NULL, 0, NULL);
+        return;
+    }
+
     mciSendStringW((L"close " + alias).c_str(), NULL, 0, NULL);
+    g_voice_path.clear();
+    g_voice_vol = -1;
 
     std::wstring open_cmd = L"open \"" + wide_path + L"\" type waveaudio alias " + alias;
     MCIERROR err = mciSendStringW(open_cmd.c_str(), NULL, 0, NULL);
@@ -215,10 +275,13 @@ void execute_voice(const std::wstring& wide_path, int vol)
         return;
     }
 
+    g_voice_path = wide_path;
+
     if (vol >= 0 && vol <= 1000)
     {
         std::wstring vol_cmd = L"setaudio " + alias + L" volume to " + std::to_wstring(vol);
         mciSendStringW(vol_cmd.c_str(), NULL, 0, NULL);
+        g_voice_vol = vol;
     }
 
     std::wstring play_cmd = L"play " + alias + L" from 0";
@@ -281,6 +344,8 @@ void execute_stop(const std::string& channel)
     {
         mciSendStringW(L"stop CesiumVoice", NULL, 0, NULL);
         mciSendStringW(L"close CesiumVoice", NULL, 0, NULL);
+        g_voice_path.clear();
+        g_voice_vol = -1;
     }
     else if (channel == "sfx")
     {
@@ -289,6 +354,8 @@ void execute_stop(const std::string& channel)
             std::wstring alias = L"CesiumSfx" + std::to_wstring(i);
             mciSendStringW((L"stop " + alias).c_str(), NULL, 0, NULL);
             mciSendStringW((L"close " + alias).c_str(), NULL, 0, NULL);
+            g_sfx_slots[i].path.clear();
+            g_sfx_slots[i].last_vol = -1;
         }
     }
     else if (channel == "bgm")
@@ -376,44 +443,109 @@ DWORD WINAPI audioctl_worker(LPVOID)
     }
 
     char recv_buf[4096];
+    int timeout_ticks = 0;
+    const int kWatchdogTicks = 10;   // 10 × 500ms 超时 = 约 5 秒兜底重读一次
 
     while (g_running.load())
     {
-        // 1. 尝试从 UDP 套接字非阻塞/超时接收数据
-        if (g_socket != INVALID_SOCKET)
+        HANDLE wait_handles[1 + 1 + kMaxDirs];
+        int handle_count = 0;
+
+        wait_handles[handle_count++] = g_stop_event;
+
+        if (g_socket_event != WSA_INVALID_EVENT && g_socket_event != NULL)
         {
-            sockaddr_in client_addr{};
-            int client_len = sizeof(client_addr);
-            int n = recvfrom(g_socket, recv_buf, sizeof(recv_buf) - 1, 0,
-                             (sockaddr*)&client_addr, &client_len);
-            if (n > 0)
+            wait_handles[handle_count++] = g_socket_event;
+        }
+
+        // 目录句柄 -> wait_handles 下标的映射。不能用 "dir_start_idx + i" 推算:
+        // 某个目录的通知句柄创建失败(NULL/INVALID)时数组是压缩的, 推算会整体错一位,
+        // 结果是"信号被算到别的目录头上"、真正有变更的目录永远读不到。
+        int dir_wait_idx[kMaxDirs];
+        for (int i = 0; i < kMaxDirs; i++) dir_wait_idx[i] = -1;
+        for (int i = 0; i < g_dir_count; i++)
+        {
+            if (g_dir_events[i] != NULL && g_dir_events[i] != INVALID_HANDLE_VALUE)
             {
-                recv_buf[n] = '\0';
-                handle_command(std::string(recv_buf, n));
+                dir_wait_idx[i] = handle_count;
+                wait_handles[handle_count++] = g_dir_events[i];
             }
         }
 
-        // 2. 检查文件通道 request.txt 作为后备
+        DWORD wait_res = WaitForMultipleObjects(handle_count, wait_handles, FALSE, 500);
+
+        if (!g_running.load()) break;
+
+        // 1. 尝试从 UDP 套接字非阻塞/超时接收数据
+        if (g_socket != INVALID_SOCKET)
+        {
+            for (;;)
+            {
+                sockaddr_in client_addr{};
+                int client_len = sizeof(client_addr);
+                int n = recvfrom(g_socket, recv_buf, sizeof(recv_buf) - 1, 0,
+                                 (sockaddr*)&client_addr, &client_len);
+                if (n > 0)
+                {
+                    recv_buf[n] = '\0';
+                    handle_command(std::string(recv_buf, n));
+                }
+                else
+                {
+                    break;
+                }
+            }
+            if (g_socket_event != WSA_INVALID_EVENT && g_socket_event != NULL)
+            {
+                WSAResetEvent(g_socket_event);
+            }
+        }
+
+        // 2. 检查目录变更通知（仅当目录发生变更时才读取文件，避免空闲轮询大量打开文件）
+        //    看门狗: 每 10 次超时(=约 5 秒)兜底重读一次, 防止通知事件丢失(目录句柄失效/通知被吞)
+        //    导致文件通道永久静默; 频率远低于改造前的每轮都读。
+        bool force_read_all = false;
+        if (wait_res == WAIT_TIMEOUT)
+        {
+            if (++timeout_ticks >= kWatchdogTicks)
+            {
+                timeout_ticks = 0;
+                force_read_all = true;
+            }
+        }
+        else
+        {
+            timeout_ticks = 0;
+        }
+
         for (int i = 0; i < g_dir_count; i++)
         {
-            std::string content;
-            if (read_text(path_of(g_dirs[i], kRequestName), content))
+            bool has_event = (dir_wait_idx[i] >= 0);
+            bool dir_signaled = force_read_all || !has_event;   // 没有通知句柄时退回"每轮都读", 保证该目录通道仍然可用
+            if (has_event && wait_res == (DWORD)(WAIT_OBJECT_0 + dir_wait_idx[i]))
             {
-                if (content != last_request[i])
+                dir_signaled = true;
+                FindNextChangeNotification(g_dir_events[i]);
+            }
+
+            if (dir_signaled)
+            {
+                std::string content;
+                if (read_text(path_of(g_dirs[i], kRequestName), content))
                 {
-                    last_request[i] = content;
-                    std::stringstream ss(content);
-                    std::string line;
-                    while (std::getline(ss, line))
+                    if (content != last_request[i])
                     {
-                        handle_command(line);
+                        last_request[i] = content;
+                        std::stringstream ss(content);
+                        std::string line;
+                        while (std::getline(ss, line))
+                        {
+                            handle_command(line);
+                        }
                     }
                 }
             }
         }
-
-        // 简短休眠以降低 CPU 占用（在 socket 超时为 20ms 时几乎不占 CPU）
-        Sleep(10);
     }
 
     return 0;
@@ -442,6 +574,17 @@ void audioctl_start(const std::wstring& dir)
         if (ensure_dir(mirror)) g_dirs[g_dir_count++] = mirror;
     }
 
+    // 目录变更通知句柄
+    for (int i = 0; i < g_dir_count; i++)
+    {
+        g_dir_events[i] = FindFirstChangeNotificationW(
+            g_dirs[i].c_str(),
+            FALSE,
+            FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_SIZE);
+    }
+
+    g_stop_event = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+
     // 初始化 Winsock
     WSADATA wsaData{};
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) == 0)
@@ -464,9 +607,11 @@ void audioctl_start(const std::wstring& dir)
                 }
             }
 
-            // 设置 20ms 接收超时
-            DWORD timeout_ms = 20;
-            setsockopt(g_socket, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout_ms, sizeof(timeout_ms));
+            g_socket_event = WSACreateEvent();
+            if (g_socket_event != WSA_INVALID_EVENT)
+            {
+                WSAEventSelect(g_socket, g_socket_event, FD_READ | FD_CLOSE);
+            }
         }
     }
 
@@ -491,6 +636,11 @@ void audioctl_stop()
 {
     if (!g_running.exchange(false)) return;
 
+    if (g_stop_event != NULL)
+    {
+        SetEvent(g_stop_event);
+    }
+
     if (g_socket != INVALID_SOCKET)
     {
         closesocket(g_socket);
@@ -504,13 +654,39 @@ void audioctl_stop()
         g_worker_thread = NULL;
     }
 
+    if (g_socket_event != WSA_INVALID_EVENT && g_socket_event != NULL)
+    {
+        WSACloseEvent(g_socket_event);
+        g_socket_event = WSA_INVALID_EVENT;
+    }
+
+    for (int i = 0; i < g_dir_count; i++)
+    {
+        if (g_dir_events[i] != NULL && g_dir_events[i] != INVALID_HANDLE_VALUE)
+        {
+            FindCloseChangeNotification(g_dir_events[i]);
+            g_dir_events[i] = NULL;
+        }
+    }
+
+    if (g_stop_event != NULL)
+    {
+        CloseHandle(g_stop_event);
+        g_stop_event = NULL;
+    }
+
     // 关闭所有 MCI 槽位
     for (int i = 0; i < kSfxSlotCount; i++)
     {
         std::wstring alias = L"CesiumSfx" + std::to_wstring(i);
         mciSendStringW((L"close " + alias).c_str(), NULL, 0, NULL);
+        g_sfx_slots[i].path.clear();
+        g_sfx_slots[i].last_vol = -1;
     }
     mciSendStringW(L"close CesiumVoice", NULL, 0, NULL);
+    g_voice_path.clear();
+    g_voice_vol = -1;
+
     mciSendStringW(L"close CesiumBgm", NULL, 0, NULL);
 
     WSACleanup();

@@ -19,11 +19,21 @@ namespace CesiumLoader.SDK.Audio
         private static int _replacedCount;
         private static int _mutedCount;
 
+        private static EventHandler<SoundPlayEventArgs> _beforeSoundPlay;
         /// <summary>声音播放前触发（允许取消、重定向或指定替换音频）。</summary>
-        public static event EventHandler<SoundPlayEventArgs> BeforeSoundPlay;
+        public static event EventHandler<SoundPlayEventArgs> BeforeSoundPlay
+        {
+            add { _beforeSoundPlay += value; StartAutoHook(); }
+            remove { _beforeSoundPlay -= value; }
+        }
 
+        private static Action<int, string> _afterSoundPlay;
         /// <summary>声音播放后触发（已拦截/取消的声音不会触发）。</summary>
-        public static event Action<int, string> AfterSoundPlay;
+        public static event Action<int, string> AfterSoundPlay
+        {
+            add { _afterSoundPlay += value; StartAutoHook(); }
+            remove { _afterSoundPlay -= value; }
+        }
 
         /// <summary>累计拦截的声音次数。</summary>
         public static int InterceptedCount => _interceptedCount;
@@ -123,6 +133,12 @@ namespace CesiumLoader.SDK.Audio
         {
             _interceptedCount++;
 
+            // 快速路径：若未注册任何规则且无任何事件订阅者，直接放行，避免反射与对象分配
+            if (!AudioService.HasRules && _beforeSoundPlay == null && _afterSoundPlay == null)
+            {
+                return false;
+            }
+
             string eventName = ResolveEventName(eventConfigId, out uint wwiseEventId);
             var args = new SoundPlayEventArgs(eventConfigId, eventName, wwiseEventId);
 
@@ -146,7 +162,7 @@ namespace CesiumLoader.SDK.Audio
             // 2. 派发前置事件
             try
             {
-                BeforeSoundPlay?.Invoke(null, args);
+                _beforeSoundPlay?.Invoke(null, args);
             }
             catch (Exception ex)
             {
@@ -186,7 +202,7 @@ namespace CesiumLoader.SDK.Audio
             try
             {
                 if (name == null) name = ResolveEventName(configId, out _);
-                AfterSoundPlay?.Invoke(configId, name);
+                _afterSoundPlay?.Invoke(configId, name);
             }
             catch { }
         }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using UnityEngine;
 using CesiumLoader.SDK.Logging;
 using CesiumLoader.SDK.Runtime;
@@ -17,6 +18,7 @@ namespace CesiumLoader.SDK.Audio
     {
         private static readonly object _ruleLock = new object();
         private static readonly List<AudioReplacementRule> _rules = new List<AudioReplacementRule>();
+        private static int _ruleCount;
         private static readonly Dictionary<string, object> _clipCache = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
 
         private static IAudioBackend _backend;
@@ -73,8 +75,13 @@ namespace CesiumLoader.SDK.Audio
 
         static AudioService()
         {
-            // 自动开启事件钩子维护
-            AudioEvents.StartAutoHook();
+            // 自动开启事件钩子维护改为按需（首次注册替换规则或订阅事件时启动）
+        }
+
+        /// <summary>当前是否注册了任何音频替换规则(无锁读取: 音效播放热路径每次都会查)。</summary>
+        public static bool HasRules
+        {
+            get { return Volatile.Read(ref _ruleCount) > 0; }
         }
 
         // =====================================================================
@@ -399,7 +406,9 @@ namespace CesiumLoader.SDK.Audio
             lock (_ruleLock)
             {
                 _rules.Add(rule);
+                Volatile.Write(ref _ruleCount, _rules.Count);
             }
+            AudioEvents.StartAutoHook();
             AudioEvents.EnsureHooked();
         }
 
@@ -411,6 +420,7 @@ namespace CesiumLoader.SDK.Audio
             lock (_ruleLock)
             {
                 _rules.RemoveAll(r => r.MatchMode == AudioMatchMode.ConfigId && r.TargetConfigId == eventConfigId);
+                Volatile.Write(ref _ruleCount, _rules.Count);
             }
         }
 
@@ -423,6 +433,7 @@ namespace CesiumLoader.SDK.Audio
             {
                 _rules.RemoveAll(r => (r.MatchMode == AudioMatchMode.EventNameExact || r.MatchMode == AudioMatchMode.EventNamePrefix) &&
                                       string.Equals(r.TargetEventName, eventName, StringComparison.OrdinalIgnoreCase));
+                Volatile.Write(ref _ruleCount, _rules.Count);
             }
         }
 
@@ -434,6 +445,7 @@ namespace CesiumLoader.SDK.Audio
             lock (_ruleLock)
             {
                 _rules.Clear();
+                Volatile.Write(ref _ruleCount, 0);
             }
         }
 

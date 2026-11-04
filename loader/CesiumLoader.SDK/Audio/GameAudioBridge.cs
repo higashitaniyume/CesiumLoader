@@ -92,8 +92,18 @@ namespace CesiumLoader.SDK.Audio
             catch { return false; }
         }
 
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, Tuple<string, uint>> _eventInfoCache =
+            new System.Collections.Concurrent.ConcurrentDictionary<int, Tuple<string, uint>>();
+
         public static bool TryGetAudioEventInfo(int configId, out string eventName, out uint wwiseEventId)
         {
+            if (_eventInfoCache.TryGetValue(configId, out var cached))
+            {
+                eventName = cached.Item1;
+                wwiseEventId = cached.Item2;
+                return true;
+            }
+
             eventName = string.Empty;
             wwiseEventId = 0;
             EnsureInit();
@@ -116,6 +126,7 @@ namespace CesiumLoader.SDK.Audio
                         var idProp = eventObj.GetType().GetProperty("EventID");
                         eventName = nameProp?.GetValue(eventObj, null) as string ?? string.Empty;
                         wwiseEventId = (uint)(idProp?.GetValue(eventObj, null) ?? 0u);
+                        _eventInfoCache[configId] = Tuple.Create(eventName, wwiseEventId);
                         return true;
                     }
                 }
