@@ -362,6 +362,7 @@ namespace CombatOddsMod
             if (_cfg == null || !_cfg.Enabled) return;
             // 事件挂钩由 SDK 内部维持; 本 mod 无需轮询逻辑。
             GameEvents.EnsureHooked();
+            RefreshSyncedCardOdds();
             // HUD 攻击力加成: 星币/血量/层数变化不触发 ATK 事件, 靠这每秒一次兜底刷新。
             RefreshHudAtkBonus();
             // 移速加成: 加速/减速随 Buff、筹码与地图事件变化, 每秒读一次即可。
@@ -378,6 +379,31 @@ namespace CombatOddsMod
         }
 
         // ============================== 核心: 战斗更新 ==============================
+
+        private static string _lastSyncedCardOdds;
+        private static void RefreshSyncedCardOdds()
+        {
+            var fight = SimpleSingletonProvider<GameLogicManager>.inst?.fight;
+            var live = fight?.battleFightData;
+            var last = _lastBattle;
+            if (!_cfg.Enabled || fight == null || !fight.fightStatus || live == null || live.isEnd ||
+                last == null || last.BattleId != live.battleId || live.attackerInfo == null || live.defenderInfo == null)
+            {
+                _lastSyncedCardOdds = null;
+                return;
+            }
+            var a = live.attackerInfo;
+            var d = live.defenderInfo;
+            bool knownA = CardPointHelper.TryNarrowPlayedRange(a, true, out int aMin, out int aMax);
+            bool knownD = CardPointHelper.TryNarrowPlayedRange(d, false, out int dMin, out int dMax);
+            if (!knownA && !knownD && _lastSyncedCardOdds == null) return;
+            string key = live.battleId + "|" + knownA + "|" + aMin + "|" + aMax + "|" + knownD + "|" + dMin + "|" + dMax
+                + "|" + a.Atk + "|" + d.Def + "|" + a.MinAtk + "|" + a.MaxAtk
+                + "|" + d.MinDef + "|" + d.MaxDef + "|" + GameEvents.AttackerPoint;
+            if (key == _lastSyncedCardOdds) return;
+            _lastSyncedCardOdds = key;
+            OnBattleUpdate(new Battle { BattleId = live.battleId, Attacker = a, Defender = d });
+        }
 
         private static int _lastOrbitalDiscardCount;
         private static int _lastOrbitalDiscardCost;
