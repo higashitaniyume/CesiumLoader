@@ -58,6 +58,8 @@ namespace CombatOddsMod
                 // 0 是有效点数(摩西【破绽】可把怪物战斗骰点压到 0), 不能用 Point > 0 判断是否投过。
                 int atkPoint = GameEvents.AttackerPoint;
                 int finalAtk = SafeInt(() => atk.Atk);
+                bool lockedAttackCards = CardPointHelper.TryNarrowPlayedRange(atk, true, out int minAtk, out int maxAtk);
+                bool lockedDefenseCards = CardPointHelper.TryNarrowPlayedRange(def, false, out int minDef, out int maxDef);
                 int bonnieBonus = BonnieMarkedMonsterBonus(atk, def);
                 finalAtk += bonnieBonus;
                 bool attackerThrew = atkPoint >= 0;
@@ -79,7 +81,7 @@ namespace CombatOddsMod
                 {
                     int hp = HpOf(def.PlayerId);
                     int initDef = SafeInt(() => def.InitDef);
-                    int maxDef = SafeInt(() => def.MaxDef);
+
 
                     // 摩西 PVE 被动【精密技巧】: 每层使闪避最小骰点 +1。层数从目标 buff 读取,
                     // 队友/观战对象的摩西同样适用(ShowForOthers 控制是否显示别人的战斗)。
@@ -107,7 +109,7 @@ namespace CombatOddsMod
 
                     // 防御 = MinDef..MaxDef 的范围随机值 + 一颗判定骰。
                     int flat; int[] dice;
-                    CombatMath.RangeWithJudgeDice(SafeInt(() => def.MinDef), maxDef, out flat, out dice, JudgeFaces());
+                    CombatMath.RangeWithJudgeDice(minDef, maxDef, out flat, out dice, JudgeFaces());
 
                     if (attackerThrew)
                     {
@@ -137,7 +139,7 @@ namespace CombatOddsMod
                     else
                     {
                         // 攻方未投：最大范围值 + 判定骰上限，作为最坏攻击。
-                        int atkMax = SafeInt(() => atk.MaxAtk) + bonnieBonus + JudgeFaces();
+                        int atkMax = maxAtk + bonnieBonus + JudgeFaces();
                         var d = CombatMath.Defend(atkMax, hp, flat, dice, 1, dmgAdjust, targetImmune, dmgCap);
                         sb.Append(Big(C("⏳ 等对方投骰", Gray)));
                         sb.Append('\n').Append(Dim(defName + " " + hp + "血, 最坏被击倒 " + PctPlain(d.KnockdownProb)));
@@ -151,20 +153,20 @@ namespace CombatOddsMod
                 if (showAttacker)
                 {
                     int targetHp = HpOf(def.PlayerId);
-                    int maxDef = SafeInt(() => def.MaxDef);
+
 
                     // 未投：攻击范围随机值 + 单颗判定骰；已投：最终攻击锁定，不能再加骰点。
                     int aFlat; int[] aDice;
                     if (attackerThrew) { aFlat = finalAtk; aDice = new int[0]; }
                     else
                     {
-                        CombatMath.RangeWithJudgeDice(SafeInt(() => atk.MinAtk) + bonnieBonus,
-                            SafeInt(() => atk.MaxAtk) + bonnieBonus, out aFlat, out aDice, JudgeFaces());
+                        CombatMath.RangeWithJudgeDice(minAtk + bonnieBonus,
+                            maxAtk + bonnieBonus, out aFlat, out aDice, JudgeFaces());
                     }
 
                     // 目标选择防御：防御范围随机值 + 单颗判定骰。
                     int dFlat; int[] dDice;
-                    CombatMath.RangeWithJudgeDice(SafeInt(() => def.MinDef), maxDef, out dFlat, out dDice, JudgeFaces());
+                    CombatMath.RangeWithJudgeDice(minDef, maxDef, out dFlat, out dDice, JudgeFaces());
 
                     var r = CombatMath.Attack(aFlat, aDice, dFlat, dDice, targetHp, 1, dmgAdjust, targetImmune, dmgCap);
                     if (bonnieBonus > 0) sb.Append('\n').Append(C("邦妮标记目标攻击+3", Orange));
@@ -188,6 +190,7 @@ namespace CombatOddsMod
                         sb.Append('\n').Append(C("🛡 目标每击最多受伤" + dmgCap, Green)).Append(Dim(BuffTail(badj.Applied)));
                 }
 
+                if (lockedAttackCards || lockedDefenseCards) sb.Append("\n").Append(Dim("已计入实际牌点"));
                 Publish(sb.ToString());
             }
             catch (Exception e)
