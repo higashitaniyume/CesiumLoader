@@ -59,6 +59,13 @@ struct LoaderConfig
     // mod 写请求文件。关掉它只影响该功能, 不影响游戏与其它 mod。
     bool windowControlEnabled = true;
 
+    // 原生音频控制通道(UDP 端口 + <audio>\request.txt / state.txt)。
+    // Astral Party 为 IL2CPP 构建且裁剪了 AudioSource 方法，热更程序集无法 P/Invoke，
+    // 由原生加载器提供底层音效与背景音乐播放。
+    // **当前该通道在代码里被硬编码关闭**(runtime/loader.cpp 的 kEnableAudioControl=false)，
+    // 本键只保留解析与读写，不再决定是否启动；改代码常量才能重新打开。
+    bool audioControlEnabled = true;
+
     // Steam 自杀门绕过(见 steamhack.h)。默认**开**:
     // 国服客户端在非 Steam 客户端启动时, AOT 类 SteamManager(全局命名空间)的
     // Awake() 会打印 "[ERROR] [SteamManager] 非Steam客户端启动, 退出游戏" 并退出。

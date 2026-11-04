@@ -35,6 +35,8 @@ const Field kFields[] = {
       "变速文件通道(<loader>\\speed); 只能从关到开" },
     { "windowControlEnabled", ValueType::Bool, 0, 0, nullptr, Apply::StartOnly,
       "窗口置前文件通道(<loader>\\window); 只能从关到开" },
+    { "audioControlEnabled", ValueType::Bool, 0, 0, nullptr, Apply::StartOnly,
+      "原生音频控制通道(UDP + <loader>\\audio); 只能从关到开" },
 
     { "enabled", ValueType::Bool, 0, 0, nullptr, Apply::Restart,
       "加载器总开关; false 时完全不加载" },
@@ -231,6 +233,7 @@ std::string field_value(const LoaderConfig& cfg, const Field& f)
     if (n == "debugShell") return cfg.debugShell ? "true" : "false";
     if (n == "speedControlEnabled") return cfg.speedControlEnabled ? "true" : "false";
     if (n == "windowControlEnabled") return cfg.windowControlEnabled ? "true" : "false";
+    if (n == "audioControlEnabled") return cfg.audioControlEnabled ? "true" : "false";
     if (n == "steamBypassEnabled") return cfg.steamBypassEnabled ? "true" : "false";
     if (n == "steamBypassRestartCheck") return cfg.steamBypassRestartCheck ? "true" : "false";
     if (n == "steamBypassMatchmaking") return cfg.steamBypassMatchmaking ? "true" : "false";
@@ -296,6 +299,7 @@ bool field_assign(LoaderConfig& cfg, const Field& f, const std::string& text, st
     else if (n == "debugShell") cfg.debugShell = (v == "true");
     else if (n == "speedControlEnabled") cfg.speedControlEnabled = (v == "true");
     else if (n == "windowControlEnabled") cfg.windowControlEnabled = (v == "true");
+    else if (n == "audioControlEnabled") cfg.audioControlEnabled = (v == "true");
     else if (n == "steamBypassEnabled") cfg.steamBypassEnabled = (v == "true");
     else if (n == "steamBypassRestartCheck") cfg.steamBypassRestartCheck = (v == "true");
     else if (n == "steamBypassMatchmaking") cfg.steamBypassMatchmaking = (v == "true");

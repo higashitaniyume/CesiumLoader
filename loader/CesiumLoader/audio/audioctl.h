@@ -27,6 +27,12 @@
 
 #include <string>
 
+// 原生音频通道总开关 —— **硬编码关闭**。
+// 关掉后加载器不再起 UDP/MCI 音频服务: 游戏本体音效不受影响, 只损失"自定义音效/BGM 替换"
+// (依赖 AudioService 的 mod 会判定后端不可用)。配置键 audioControlEnabled 只保留解析与读写,
+// 不再决定是否启动; 要恢复把这里改回 true。
+constexpr bool kEnableAudioControl = false;
+
 // 控制文件目录(供环境变量 CESIUM_AUDIO_DIR 使用)。
 std::wstring audioctl_dir();
 

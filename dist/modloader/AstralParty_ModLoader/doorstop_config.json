@@ -30,6 +30,11 @@
   // 窗口切到前台(热更程序集无法 P/Invoke user32)。false = 关闭该通道, 只影响
   // "回合置前"类 mod, 不影响游戏与其它 mod。
   "windowControlEnabled": true,
+  // 原生音频控制通道(UDP 端口 + <audio>\request.txt / state.txt):
+  // 游戏裁剪了 AudioSource 方法且热更程序集无法 P/Invoke，由加载器提供底层音频播放。
+  // 注意: 该通道目前在加载器代码里硬编码关闭(kEnableAudioControl=false)，本键只保留读写，
+  // 不再决定是否启动；关闭后自定义音效/BGM 替换不可用，游戏本体音效不受影响。
+  "audioControlEnabled": true,
   // Steam 自杀门绕过: 国服客户端在非 Steam 客户端启动时, AOT 类 SteamManager 的
   // Awake() 会打印 "[ERROR] 非Steam客户端启动, 退出游戏" 并退出。true=把 Awake()
   // 换成 no-op(原生 inline hook), 让游戏继续启动; false=恢复原版行为(会退出游戏)。

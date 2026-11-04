@@ -43,6 +43,28 @@ namespace fs = std::filesystem;
 namespace boot = cesium::runtime::boot;
 namespace forward = cesium::runtime::forward;
 
+// 原生音频服务关闭时清理遗留的状态文件:
+// 音频通道由 audioctl.h 的 kEnableAudioControl 硬编码关闭, 但上一轮运行可能留下
+// port.txt / state.txt(写着 available=1 + 旧端口), 托管侧(NativeAudioBackend)会据此
+// 误判"服务还在跑", 把音效请求静默丢弃 —— 启动时一并清掉。
+static void purge_audio_state_files()
+{
+    std::vector<std::wstring> dirs{ audioctl_dir() };
+    wchar_t buf[MAX_PATH] = {};
+    DWORD n = GetEnvironmentVariableW(L"LOCALAPPDATA", buf, MAX_PATH);
+    if (n > 0 && n < MAX_PATH)
+        dirs.push_back(std::wstring(buf) + L"\\AstralParty_ModLoader\\audio");
+
+    for (const auto& d : dirs)
+    {
+        for (const wchar_t* name : { L"port.txt", L"state.txt" })
+        {
+            std::error_code ec;
+            fs::remove(fs::path(d) / name, ec);   // 不存在/被占用都忽略
+        }
+    }
+}
+
 // 宽字符 → UTF-8
 static std::string utf8_from_wide(const wchar_t* w)
 {
@@ -189,7 +211,21 @@ static DWORD WINAPI boot_thread(LPVOID)
         windowctl_start(windowctl_dir());
     else
         log_line("[loader] windowControlEnabled=false, skipping foreground control file channel");
-    audioctl_start(audioctl_dir());
+    // 3.7.1b 原生音频通道(见 audioctl.h): 是否启动只由代码常量 kEnableAudioControl 决定,
+    //        配置键 audioControlEnabled 仅保留解析(Toys 读写), 不再能打开该通道。
+    if (kEnableAudioControl)
+    {
+        if (cfg.audioControlEnabled)
+            audioctl_start(audioctl_dir());
+        else
+            log_line("[loader] audioControlEnabled=false, skipping native audio service");
+    }
+    else
+    {
+        log_line("[loader] native audio service disabled in code (kEnableAudioControl=false), "
+                 "custom sound replacement unavailable");
+        purge_audio_state_files();
+    }
 
     // 3.7.2 CesiumLoader Debug Shell: 控制台就绪后启动(配置 debugShell 默认关闭),
     //       之后游戏加载 mod 的几秒里就能查状态/改配置。没有控制台时 shell_start 返回 false。
@@ -285,6 +321,9 @@ static DWORD WINAPI boot_thread(LPVOID)
     set_env_w(L"CESIUM_SPEED_DIR", speed);
     set_env_w(L"CESIUM_WINDOW_DIR", window);
     set_env_w(L"CESIUM_AUDIO_DIR", audioctl_dir());
+    // 原生音频服务的真实状态(0 = 本次没有启动): 托管侧据此直接判定后端不可用,
+    // 不去读残留的 port.txt / state.txt 猜"服务可能在跑"。
+    set_env_w(L"CESIUM_AUDIO_ENABLED", kEnableAudioControl ? L"1" : L"0");
     set_env_w(L"CESIUM_LOADER_DIR", loader_root());
     set_env_w(L"CESIUM_GAME_DIR", parent_dir(loader_root()));
 

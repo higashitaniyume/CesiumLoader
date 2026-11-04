@@ -15,6 +15,7 @@
 #include "speed/speedctl.h"
 #include "speed/speedhack.h"
 #include "window/windowctl.h"
+#include "audio/audioctl.h"
 
 #include <windows.h>
 
@@ -129,6 +130,22 @@ void apply_loader_hot(const Field& field, const LoaderConfig& cfg, const std::st
         {
             windowctl_start(windowctl_dir());
             print("  已启动窗口置前通道", LOG_GREEN);
+        }
+        else
+        {
+            print("  该通道只能从关到开; 关闭需要重启游戏", LOG_YELLOW);
+        }
+    }
+    else if (name == "audioControlEnabled")
+    {
+        if (!kEnableAudioControl)
+        {
+            print("  原生音频通道已在代码里硬编码关闭(kEnableAudioControl=false), 配置项无法打开", LOG_YELLOW);
+        }
+        else if (cfg.audioControlEnabled)
+        {
+            audioctl_start(audioctl_dir());
+            print("  已启动原生音频通道", LOG_GREEN);
         }
         else
         {

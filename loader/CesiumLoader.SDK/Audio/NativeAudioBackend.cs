@@ -57,6 +57,17 @@ namespace CesiumLoader.SDK.Audio
 
                 try
                 {
+                    // 加载器显式告知"本次没有启动原生音频服务"(CESIUM_AUDIO_ENABLED=0):
+                    // 直接判定不可用。否则目录还在、port.txt/state.txt 可能是上一轮的残留,
+                    // 会被误判成"仅文件通道就绪", 让自定义音效请求被静默丢弃。
+                    string enabledFlag = Environment.GetEnvironmentVariable("CESIUM_AUDIO_ENABLED");
+                    if (enabledFlag != null && enabledFlag.Trim() == "0")
+                    {
+                        SdkLog.Info("AUDIO", "原生音频服务未启动(加载器已关闭音频通道), 自定义音效不可用。");
+                        _isAvailable = false;
+                        return;
+                    }
+
                     int port = ResolveAudioPort();
                     if (port > 0)
                     {
@@ -74,9 +85,11 @@ namespace CesiumLoader.SDK.Audio
                         }
                     }
 
-                    // 检查文件通道
+                    // 检查文件通道: 目录存在还不够 —— 必须是服务本轮写下的 port.txt/state.txt 才算就绪,
+                    // 否则只是上一轮遗留的空壳目录, 会被误判成可用。
                     string dir = ResolveAudioDir();
-                    if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
+                    if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir) &&
+                        (File.Exists(Path.Combine(dir, "port.txt")) || File.Exists(Path.Combine(dir, "state.txt"))))
                     {
                         _channelDir = dir;
                         _isAvailable = true;
