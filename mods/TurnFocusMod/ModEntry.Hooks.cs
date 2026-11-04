@@ -83,7 +83,6 @@ namespace TurnFocusMod
                     _rpcManager = net;
                     _roomChatInstalls = 0;
                     _teamChatInstalls = 0;
-                    _matchSuccessInstalls = 0;
                     _inviteInstalls = 0;
                     _roomChatRpc = null;
                     _roomChatOriginal = null;
@@ -91,15 +90,11 @@ namespace TurnFocusMod
                     _teamChatRpc = null;
                     _teamChatOriginal = null;
                     _teamChatWrapped = null;
-                    _matchSuccessRpc = null;
-                    _matchSuccessOriginal = null;
-                    _matchSuccessWrapped = null;
                     _inviteRpc = null;
                     _inviteOriginal = null;
                     _inviteWrapped = null;
                 }
 
-                HookMatchSuccess(net);
                 HookFriendInviteNotify(net);
                 HookRoomShortChat(net);
                 HookMatchTeamChat(net);
@@ -142,35 +137,6 @@ namespace TurnFocusMod
             _inviteWrapped = wrapped;
             rpc.OnFriendInviteNotifyS2CServerCallBackAsync = wrapped;
             Log.Info("已挂钩房间邀请通知。");
-        }
-
-        private void HookMatchSuccess(Core.Net.RPCMsgManager net)
-        {
-            var rpc = net.MatchSuccessS2C;
-            if (rpc == null) return;
-
-            var current = rpc.OnMatchSuccessS2CServerCallBackAsync;
-            if (current == null || ReferenceEquals(current, _matchSuccessWrapped)) return;
-            if (_matchSuccessInstalls >= MaxRoomHookInstallsPerLogin) return;
-
-            var original = current;
-            MatchSuccessS2CRPC.OnMatchSuccessS2CServerDelegate wrapped =
-                (model, errId, isDispatch) =>
-                {
-                    try
-                    {
-                        if (errId == 0 && model != null) FocusForMatchSuccess();
-                    }
-                    catch (Exception e) { WarnThrottled("处理匹配成功通知失败：" + e.Message); }
-                    return original(model, errId, isDispatch);
-                };
-
-            _matchSuccessInstalls++;
-            _matchSuccessRpc = rpc;
-            _matchSuccessOriginal = original;
-            _matchSuccessWrapped = wrapped;
-            rpc.OnMatchSuccessS2CServerCallBackAsync = wrapped;
-            Log.Info("已挂钩匹配成功通知。");
         }
 
         private void HookRoomShortChat(Core.Net.RPCMsgManager net)
@@ -285,6 +251,13 @@ namespace TurnFocusMod
             return false;
         }
 
+        /// <summary>SDK 的匹配成功事件(MatchSuccessS2C 由 SDK 统一包装)。</summary>
+        private void OnMatchSuccess(party.model.Room room)
+        {
+            try { FocusForMatchSuccess(); }
+            catch (Exception e) { WarnThrottled("处理匹配成功通知失败：" + e.Message); }
+        }
+
         private void WarnThrottled(string message)
         {
             long now = DateTime.UtcNow.Ticks;
@@ -299,6 +272,7 @@ namespace TurnFocusMod
             {
                 _subscribed = false;
                 try { GameEvents.RawAction -= OnRawAction; } catch { }
+                try { GameEvents.MatchSuccess -= OnMatchSuccess; } catch { }
             }
 
             try
@@ -324,13 +298,6 @@ namespace TurnFocusMod
 
             try
             {
-                if (_matchSuccessRpc != null && ReferenceEquals(_matchSuccessRpc.OnMatchSuccessS2CServerCallBackAsync, _matchSuccessWrapped))
-                    _matchSuccessRpc.OnMatchSuccessS2CServerCallBackAsync = _matchSuccessOriginal;
-            }
-            catch { }
-
-            try
-            {
                 if (_inviteRpc != null && ReferenceEquals(_inviteRpc.OnFriendInviteNotifyS2CServerCallBackAsync, _inviteWrapped))
                     _inviteRpc.OnFriendInviteNotifyS2CServerCallBackAsync = _inviteOriginal;
             }
@@ -345,9 +312,6 @@ namespace TurnFocusMod
             _teamChatRpc = null;
             _teamChatOriginal = null;
             _teamChatWrapped = null;
-            _matchSuccessRpc = null;
-            _matchSuccessOriginal = null;
-            _matchSuccessWrapped = null;
             _inviteRpc = null;
             _inviteOriginal = null;
             _inviteWrapped = null;

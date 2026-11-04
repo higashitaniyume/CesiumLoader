@@ -43,10 +43,10 @@ SDK 类型全部位于 `CesiumLoader.SDK` 根命名空间之下的子命名空�
 └── CesiumLoader.SDK.dll (netstandard2.0, 供 mod 编译期引用)
     ├── ModBase      mod 生命周期基座
     ├── StartupGate  启动门 (游戏就绪即初始化, delayMs 只是上限)
-    ├── GameEvents   17 个游戏事件 (RPC 回调 hook, 含带 sn 的 RawAction 原始动作流)
+    ├── GameEvents   20 个游戏事件 (RPC 回调 hook, 含带 sn 的 RawAction 原始动作流)
     ├── Players      玩家数据访问
     ├── Names        名字解析 (卡牌/遗物/技能/角色)
-    ├── GameActions  向服务器发送操作 (投骰/移动/用牌等)
+    ├── GameActions  向服务器发送操作 (投骰/移动/用牌/选人等)
     ├── SpeedHack    游戏变速 (文件通道, 加载器执行时间缩放)
     ├── WindowFocus  把游戏窗口切到前台 (文件通道, 加载器执行激活)
     ├── SdkConfig    mod 配置 (JSON)
@@ -126,7 +126,7 @@ public static class ModEntry
 | 文档 | 内容 |
 |---|---|
 | [SDK-生命周期与日志.md](SDK-生命周期与日志.md) | ModBase.Run / SdkLog 日志分级 |
-| [SDK-事件.md](SDK-事件.md) | GameEvents 17 个事件 + 战斗子阶段 + StartAutoHook (事件驱动) |
+| [SDK-事件.md](SDK-事件.md) | GameEvents 20 个事件 + 战斗子阶段 + StartAutoHook (事件驱动) |
 | [SDK-玩家与名字.md](SDK-玩家与名字.md) | Players 玩家数据 / Names 名字解析 |
 | [SDK-操作.md](SDK-操作.md) | GameActions 投骰/移动/用牌/选择 (⚠ 声明后可操作, 工具/加载器会警告) |
 | [SDK-变速.md](SDK-变速.md) | SpeedHack 游戏变速 (加载器内置功能, 也可 mod 编程控制) |

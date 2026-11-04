@@ -533,6 +533,73 @@ namespace CesiumLoader.SDK.Gameplay
             catch { return false; }
         }
 
+        // ============================== 选人 ==============================
+
+        /// <summary>当前是否处于选人阶段(房间状态为 <c>RoomStateType.CHOICE</c>)。</summary>
+        public static bool CanSelectHero
+        {
+            get
+            {
+                try
+                {
+                    var room = Logic?.room;
+                    var controller = room?.roomController;
+                    return controller != null && controller.roomStateType == RoomStateType.CHOICE;
+                }
+                catch { return false; }
+            }
+        }
+
+        /// <summary>
+        /// 选择角色(服务器消息 <c>ChoiceHeroC2S2</c>, 只带角色 id)。返回是否成功发出。
+        /// </summary>
+        /// <remarks>
+        /// 复刻 <c>RoomLogic.RequestChoiceHeroC2S2</c>。选择本身不会结束选人流程:
+        /// 还需要调用 <see cref="ConfirmHero"/> 才会被服务器确认(与游戏里"选好角色再点确定"一致)。
+        /// 该消息不带 <c>Info</c>/<c>Sn</c>, 因此不受操作序列号门控。
+        /// </remarks>
+        public static bool SelectHero(int heroId)
+        {
+            try
+            {
+                if (heroId <= 0) return false;
+                if (!Permissions.Require(ModPermission.GameActions, "GameActions")) return false;
+                var net = Net;
+                if (net?.RPC?.ChoiceHeroC2S2 == null) return false;
+                net.RPC.ChoiceHeroC2S2.ChoiceHeroC2S2Call(new ChoiceHeroC2S2
+                {
+                    HeroId = heroId
+                });
+                return true;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>
+        /// 确认已选角色(服务器消息 <c>AffirmHeroC2S</c>)。返回是否成功发出。
+        /// </summary>
+        /// <param name="auto">是否与超时自动确认一致(游戏倒计时结束时发的是 <c>true</c>)。</param>
+        /// <remarks>
+        /// 复刻 <c>RoomLogic.RequestAffirmHeroC2S</c>。该消息不带 <c>Info</c>/<c>Sn</c>。
+        /// 确认结果通过 <see cref="GameEvents.HeroSelected"/> 通知: <c>heroTaken=true</c> 表示
+        /// 该角色已被其他玩家占用, 服务器拒绝了这次确认。
+        /// </remarks>
+        public static bool ConfirmHero(bool auto = false)
+        {
+            try
+            {
+                if (!Permissions.Require(ModPermission.GameActions, "GameActions")) return false;
+                var net = Net;
+                if (net?.RPC?.AffirmHeroC2S == null) return false;
+                net.RPC.AffirmHeroC2S.AffirmHeroC2SCall(new AffirmHeroC2S
+                {
+                    Auto = auto
+                });
+                return true;
+            }
+            catch { return false; }
+        }
+
         // ============================== 移动 ==============================
 
         /// <summary>移动到目标地块(targetLandId = 目标地块 ID, 即方向箭头指向的格)。返回是否成功发出。</summary>

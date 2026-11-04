@@ -95,6 +95,26 @@ namespace CesiumLoader.SDK.Gameplay
         /// <summary>手牌变化: (playerId, 原始CardInfo列表)。队友的 CardId 可能是负数(服务器掩码)。</summary>
         public static event Action<long, IReadOnlyList<CardInfo>> HandChanged;
 
+        /// <summary>
+        /// 匹配成功: 服务器已经为本局建好房间。参数是房间快照(可能为 null)。
+        /// 触发时房间已建好并切到选人(CHOICE)状态; 匹配成功动画结束后才会打开选人界面。
+        /// </summary>
+        public static event Action<Room> MatchSuccess;
+
+        /// <summary>
+        /// 进入选人阶段: 选人界面已经打开, 可以调用 <see cref="GameActions.SelectHero"/>。
+        /// 匹配成功动画结束后, 或房主开始游戏后服务器要求玩家选角色时触发。
+        /// 参数是房间快照(可能为 null)。同一次匹配只会触发一次; 重开一局会再次触发。
+        /// </summary>
+        public static event Action<Room> HeroSelectionStarted;
+
+        /// <summary>
+        /// 玩家确认角色: (playerId, heroId, heroTaken)。
+        /// <c>heroTaken=true</c> 表示该角色已被其他玩家占用, 服务器拒绝了这次确认
+        /// (客户端会提示并让玩家重选)。
+        /// </summary>
+        public static event Action<long, int, bool> HeroSelected;
+
         /// <summary>实时属性更新(含 CauseOrigin、生命变化和 DamageType)。</summary>
         public static event Action<UpdateHeroAttrS2C> HeroAttrUpdated;
 
@@ -113,7 +133,7 @@ namespace CesiumLoader.SDK.Gameplay
         public static event Action<RawActionEvent> RawAction;
 
         /// <summary>已定义的事件数量(静态常量)。</summary>
-        public static int EventCount => 17;
+        public static int EventCount => 20;
 
         /// <summary>当前战斗的子阶段(由战斗快照与投骰广播的先后顺序推导)。</summary>
         public static BattlePhase CurrentBattlePhase => _battlePhase.Phase;
@@ -152,12 +172,17 @@ namespace CesiumLoader.SDK.Gameplay
         private static Core.Net.BattleS2CRPC.OnBattleS2CServerDelegate _myWrappedBattle;
         private static Core.Net.BattleThrowDiceS2CRPC.OnBattleThrowDiceS2CServerDelegate _myWrappedBattleDice;
         private static Core.Net.MoveS2CRPC.OnMoveS2CServerDelegate _myWrappedMove;
+        private static Core.Net.MatchSuccessS2CRPC.OnMatchSuccessS2CServerDelegate _myWrappedMatchSuccess;
+        private static Core.Net.StartGameS2CRPC.OnStartGameS2CServerDelegate _myWrappedStartGame;
+        private static Core.Net.AffirmHeroS2CRPC.OnAffirmHeroS2CServerDelegate _myWrappedAffirmHero;
 
         /// <summary>
         /// 挂钩全部 RPC(幂等: 已包装的跳过)。游戏每场战斗会重置回调, 所以每秒调用一次。
         /// </summary>
         public static void EnsureHooked()
         {
+            // 匹配/选人发生在战斗之外, 单独挂钩(不能受下面的战斗门控限制)。
+            EnsureRoomHooked();
             try
             {
                 // 只在确认战斗中挂钩。两步都先 hasInstance 判空(纯静态字段, 不触发懒构造):
@@ -429,6 +454,123 @@ namespace CesiumLoader.SDK.Gameplay
             rpc.OnMoveS2CServerCallBackAsync = wrapped;
             _myWrappedMove = wrapped;
             SdkLog.Write("EVENTS", "[挂钩] MoveS2C");
+        }
+
+        // ---------- 匹配 / 选人(战斗之外) ----------
+
+        /// <summary>
+        /// 挂钩匹配成功与选人相关的 RPC(幂等)。
+        ///
+        /// 这些消息在战斗之外到达, 所以不走 <see cref="EnsureHooked"/> 的战斗门控;
+        /// 配套回调同样会被游戏在重新进入匹配/房间时重置, 需要周期性调用
+        /// (StartAutoHook 已经包含本方法)。
+        /// </summary>
+        public static void EnsureRoomHooked()
+        {
+            try
+            {
+                if (!MonoSingletonProvider<NetManager>.hasInstance) return;
+                var net = MonoSingletonProvider<NetManager>.inst?.RPC;
+                if (net == null) return;
+                HookMatchSuccess(net);
+                HookStartGame(net);
+                HookAffirmHero(net);
+            }
+            catch (Exception e)
+            {
+                SdkLog.Write("EVENTS", "匹配/选人挂钩失败: " + e.Message);
+            }
+        }
+
+        private static void HookMatchSuccess(Core.Net.RPCMsgManager net)
+        {
+            var rpc = net.MatchSuccessS2C;
+            if (rpc == null) return;
+            var cur = rpc.OnMatchSuccessS2CServerCallBackAsync;
+            if (cur == null || ReferenceEquals(cur, _myWrappedMatchSuccess)) return;
+            var original = cur;
+            Core.Net.MatchSuccessS2CRPC.OnMatchSuccessS2CServerDelegate wrapped = (model, errId, isDispatch) =>
+            {
+                // 先让游戏同步建好房间并切到选人状态, 再立即通知"匹配成功"(不等 5 秒的匹配动画)。
+                UniTask pending = UniTask.CompletedTask;
+                try
+                {
+                    if (original != null) pending = original(model, errId, isDispatch);
+                }
+                catch (Exception e)
+                {
+                    SdkLog.Write("EVENTS", "MatchSuccessS2C 原回调异常: " + e.Message);
+                }
+
+                if (errId != 0) return pending;
+
+                var room = model != null ? model.Room : null;
+                var handler = MatchSuccess;
+                if (handler != null)
+                {
+                    try { handler(room); } catch { }
+                }
+                // 选人界面在匹配成功动画之后才打开, 因此这条事件等原回调完成后触发。
+                return RaiseAfter(pending, () =>
+                {
+                    var heroHandler = HeroSelectionStarted;
+                    if (heroHandler != null) heroHandler(room);
+                });
+            };
+            rpc.OnMatchSuccessS2CServerCallBackAsync = wrapped;
+            _myWrappedMatchSuccess = wrapped;
+            SdkLog.Write("EVENTS", "[挂钩] MatchSuccessS2C");
+        }
+
+        private static void HookStartGame(Core.Net.RPCMsgManager net)
+        {
+            var rpc = net.StartGameS2C;
+            if (rpc == null) return;
+            var cur = rpc.OnStartGameS2CServerCallBackAsync;
+            if (cur == null || ReferenceEquals(cur, _myWrappedStartGame)) return;
+            var original = cur;
+            Core.Net.StartGameS2CRPC.OnStartGameS2CServerDelegate wrapped = (model, errId, isDispatch) =>
+            {
+                var pending = original != null ? original(model, errId, isDispatch) : UniTask.CompletedTask;
+                return RaiseAfter(pending, () =>
+                {
+                    if (errId != 0 || model == null || model.Room == null) return;
+                    var handler = HeroSelectionStarted;
+                    if (handler != null) handler(model.Room);
+                });
+            };
+            rpc.OnStartGameS2CServerCallBackAsync = wrapped;
+            _myWrappedStartGame = wrapped;
+            SdkLog.Write("EVENTS", "[挂钩] StartGameS2C");
+        }
+
+        private static void HookAffirmHero(Core.Net.RPCMsgManager net)
+        {
+            var rpc = net.AffirmHeroS2C;
+            if (rpc == null) return;
+            var cur = rpc.OnAffirmHeroS2CServerCallBackAsync;
+            if (cur == null || ReferenceEquals(cur, _myWrappedAffirmHero)) return;
+            var original = cur;
+            Core.Net.AffirmHeroS2CRPC.OnAffirmHeroS2CServerDelegate wrapped = (model, errId, isDispatch) =>
+            {
+                var pending = original != null ? original(model, errId, isDispatch) : UniTask.CompletedTask;
+                return RaiseAfter(pending, () =>
+                {
+                    if (errId != 0 || model == null) return;
+                    var handler = HeroSelected;
+                    if (handler != null) handler(model.PlayerId, model.HeroId, model.HasChoice);
+                });
+            };
+            rpc.OnAffirmHeroS2CServerCallBackAsync = wrapped;
+            _myWrappedAffirmHero = wrapped;
+            SdkLog.Write("EVENTS", "[挂钩] AffirmHeroS2C");
+        }
+
+        /// <summary>先让游戏处理完原始消息, 再通知订阅者; 两边都不让异常外溢。</summary>
+        private static async UniTask RaiseAfter(UniTask original, System.Action raise)
+        {
+            try { await original; } catch { }
+            try { if (raise != null) raise(); } catch { }
         }
 
         // ---------- 事件触发 ----------

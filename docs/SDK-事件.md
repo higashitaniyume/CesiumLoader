@@ -12,10 +12,11 @@ public static void GameEvents.EnsureHooked();
 
 - **必须在战斗开始后周期性调用**（推荐放在 `ModBase.Run` 的 `tick` 里，每秒一次）。
 - 幂等：已包装的回调跳过；游戏每场战斗会重置 RPC 回调，所以每秒调用一次。
-- 安全：只在确认战斗中挂钩（`GameLogicManager.battle` 存在且有玩家），避免启动早期强制创建 NetManager 单例崩溃。
+- 安全：战斗相关回调只在确认战斗中挂钩（`GameLogicManager.battle` 存在且有玩家），避免启动早期强制创建 NetManager 单例崩溃。
+- 匹配/选人相关回调由 `EnsureRoomHooked()` 单独挂钩：只要 `NetManager` 存在就生效，不受“必须在战斗中”的限制。`StartAutoHook()` 与 `EnsureHooked()` 都会自动调用它。
 - 包装后的回调会**转发给游戏原回调**，不干扰游戏逻辑。
 
-## 17 个事件
+## 20 个事件
 
 ### 战斗用牌
 
@@ -79,6 +80,18 @@ public static void GameEvents.EnsureHooked();
 > 想做"替玩家操作"这类需要回传 `sn` 的功能（见 `docs/MCP-Agent桥接.md`），必须用这条事件建窗口；
 > 用不带 `sn` 的事件建窗口会得到 `Sn=0`，请求发出去服务器不认。
 
+### 匹配 / 选人
+
+| 事件 | 签名 | 触发时机 |
+|---|---|---|
+| `MatchSuccess` | `Action<Room>` `(room)` | 匹配成功，服务器已为本局建好房间（状态已切到选人）。在匹配成功动画之前触发 |
+| `HeroSelectionStarted` | `Action<Room>` `(room)` | 选人界面打开、可以选角色时触发：匹配成功动画结束，或房主开始游戏后服务器要求选角色。要做“自动选角色”请用这条事件 |
+| `HeroSelected` | `Action<long, int, bool>` `(playerId, heroId, heroTaken)` | 玩家确认角色。`heroTaken=true` 表示该角色已被其他玩家占用、服务器拒绝了这次确认 |
+
+- `room` 是 `party.model.Room` 快照，可能为 `null`；重开一局会再次触发 `MatchSuccess` / `HeroSelectionStarted`。
+- 这三条事件在战斗之外到达，由 `EnsureRoomHooked()` 挂钩，`StartAutoHook()` 已包含，无需额外轮询。
+- 选择角色本身不会结束流程：`GameActions.SelectHero(heroId)` 之后还要 `GameActions.ConfirmHero()`（与游戏里“选好角色再点确定”一致）。
+
 ## 用法示例
 
 ```csharp
@@ -88,6 +101,10 @@ static void OnInit()
         SdkLog.Info("MyMod", $"玩家{pid} 使用 {Names.Card(cardId)} 剩{remain}张");
     GameEvents.BattleUpdate += b =>
         SdkLog.Info("MyMod", $"战斗 {Names.BattleRole(b.Attacker)} vs {Names.BattleRole(b.Defender)} 攻{b.Attacker.Atk} 防{b.Defender.Def}");
+    GameEvents.MatchSuccess += room =>
+        SdkLog.Info("MyMod", "匹配成功" + (room != null ? "，房间 " + room.Id : ""));
+    GameEvents.HeroSelectionStarted += room =>
+        SdkLog.Info("MyMod", "进入选人阶段");
 }
 
 static void OnTick()

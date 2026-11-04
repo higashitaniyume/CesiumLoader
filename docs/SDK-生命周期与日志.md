@@ -67,7 +67,7 @@ public static class ModEntry
 }
 ```
 
-> `GameEvents.EnsureHooked()` 本身只在"已经进入战斗"时才挂钩，并且所有单例读取都先过 `hasInstance`，不会在游戏启动早期强行构造单例；所以它不再需要前置等待，`StartAutoHook()` 从第一帧就可以开始轮询。
+> `GameEvents.EnsureHooked()` 里，战斗相关的回调只在“已经进入战斗”时才挂钩，匹配/选人相关回调则由 `EnsureRoomHooked()` 单独挂钩；所有单例读取都先过 `hasInstance`，不会在游戏启动早期强行构造单例。所以它不需要前置等待，`StartAutoHook()` 从第一帧就可以开始轮询。
 
 ## SdkLog — 日志
 

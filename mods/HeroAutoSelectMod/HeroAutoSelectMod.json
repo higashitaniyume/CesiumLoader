@@ -1,0 +1,1 @@
+{"id":"HeroAutoSelectMod","name":"自动选角色（示例）","version":"1.0.0","author":"CesiumLoader","description":"匹配成功或进入选人阶段后自动选择指定角色（默认 102 芬妮「古怪神探」）并确认；用于演示 SDK 的选人事件与选人操作 API。","permissions":11,"sdkVersion":"3.2.0","dependencies":[]}

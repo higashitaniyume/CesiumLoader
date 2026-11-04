@@ -10,7 +10,7 @@
 
 - 所有方法带空保护：不在战斗/房间时**静默失败返回 `false`**，绝不抛异常。
 - 所有方法返回 `bool`：是否成功发出（不代表服务器接受）。
-- 所有方法可选 `long? sn = null` 参数：默认取服务器下发的当前操作序列号（`action.throwDiceSn`），一般无需手动指定。
+- 除选人类方法外，其它方法可选 `long? sn = null` 参数：默认取服务器下发的当前操作序列号（`action.throwDiceSn`），一般无需手动指定。选人消息不带 `Info`/`Sn`，因此不需要 `sn`。
 
 ## 属性
 
@@ -18,6 +18,22 @@
 |---|---|---|
 | `CurrentSn` | `long` (get) | 当前待响应的操作序列号（最近一个 Action 的 Sn）。不在回合/无操作时为 0 |
 | `CanThrowDice` | `bool` (get) | 是否能投骰子（轮到自己的行动回合，`throwDiceSn > 0`） |
+
+## 选人
+
+```csharp
+public static bool CanSelectHero { get; }
+public static bool SelectHero(int heroId);
+public static bool ConfirmHero(bool auto = false);
+```
+
+| 成员 | 说明 |
+|---|---|
+| `CanSelectHero` | 当前是否处于选人阶段（房间状态 `RoomStateType.CHOICE`） |
+| `SelectHero` | 选择角色（`ChoiceHeroC2S2`，只带角色 id）。不会结束流程，仍需确认 |
+| `ConfirmHero` | 确认已选角色（`AffirmHeroC2S`）。`auto=true` 与倒计时结束时的自动确认一致 |
+
+确认结果通过 `GameEvents.HeroSelected(playerId, heroId, heroTaken)` 返回；`heroTaken=true` 表示该角色已被其他玩家占用。完整示例见 [mod-HeroAutoSelectMod.md](mod-HeroAutoSelectMod.md)。
 
 ## 投骰子
 

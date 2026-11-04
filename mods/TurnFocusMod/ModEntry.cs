@@ -23,7 +23,7 @@ namespace TurnFocusMod
     ///   - 行动开始通知(ActionStartNotifyS2C, 1026): 轮到自己的回合;
     ///   - SDK 原始动作流(RawAction): 5211 筹码三选一 / 5047 战斗询问 /
     ///     5035 战斗出牌 / 5037 攻击骰 / 5039 防御选择;
-    ///   - 匹配成功(MatchSuccessS2C, 5226): 匹配成功时立即提醒;
+    ///   - 匹配成功(SDK 事件 GameEvents.MatchSuccess): 匹配成功时立即提醒;
     ///   - 房间邀请(FriendInviteNotifyS2C): 好友邀请你加入房间, 游戏在右上角
     ///     显示邀请按钮时提醒;
     ///   - 房间快捷消息(RoomShortChatS2C / MatchTeamChatS2C): 匹配成功开房后,
@@ -53,11 +53,6 @@ namespace TurnFocusMod
         private MatchTeamChatS2CRPC.OnMatchTeamChatS2CServerDelegate _teamChatOriginal;
         private MatchTeamChatS2CRPC.OnMatchTeamChatS2CServerDelegate _teamChatWrapped;
         private int _teamChatInstalls;
-
-        private MatchSuccessS2CRPC _matchSuccessRpc;
-        private MatchSuccessS2CRPC.OnMatchSuccessS2CServerDelegate _matchSuccessOriginal;
-        private MatchSuccessS2CRPC.OnMatchSuccessS2CServerDelegate _matchSuccessWrapped;
-        private int _matchSuccessInstalls;
 
         private FriendInviteNotifyS2CRPC _inviteRpc;
         private FriendInviteNotifyS2CRPC.OnFriendInviteNotifyS2CServerDelegate _inviteOriginal;
@@ -116,6 +111,8 @@ namespace TurnFocusMod
 
             ReadConfig();
             GameEvents.RawAction += OnRawAction;
+            // 匹配成功由 SDK 统一包装 MatchSuccessS2C; mod 侧不再自己套一层。
+            GameEvents.MatchSuccess += OnMatchSuccess;
             _subscribed = true;
             Context?.RegisterCleanup(Unhook);
 
