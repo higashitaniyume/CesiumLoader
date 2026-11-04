@@ -69,7 +69,7 @@ namespace CombatOddsMod
         private static CombatOddsConfig _cfg;
         private static LifecycleContext _ctx;
         private static LifecycleOwner _overlay, _hudBonus, _skillCooldown, _monsterCooldown,
-            _handCount, _megasDamage, _playerAttrOverlay, _moveBonus;
+            _handCount, _megasDamage, _playerAttrOverlay, _moveBonus, _handOdds;
         private static object _lastBattle;
         private static string _hud, _lastLogged, _lastAtkBonusLog, _lastMoveBonusLog;
         private static readonly Dictionary<string, float> _recentDamageEvents = new Dictionary<string, float>();
@@ -99,6 +99,7 @@ namespace CombatOddsMod
             _skillCooldown = new LifecycleOwner(); _monsterCooldown = new LifecycleOwner();
             _handCount = new LifecycleOwner(); _megasDamage = new LifecycleOwner();
             _playerAttrOverlay = new LifecycleOwner(); _moveBonus = new LifecycleOwner();
+            _handOdds = new LifecycleOwner();
             _atkBound = _moveBound = true;
             _lastBattle = new object();
             _hud = _lastLogged = _lastAtkBonusLog = _lastMoveBonusLog = "test";
@@ -108,7 +109,7 @@ namespace CombatOddsMod
             ThrowDiceProbe.EnsureCalls = ThrowDiceProbe.ResetCalls = 0;
             MoveBuffTracker.EnsureCalls = MoveBuffTracker.ResetCalls = 0;
             return new[] { _overlay, _hudBonus, _skillCooldown, _monsterCooldown,
-                _handCount, _megasDamage, _playerAttrOverlay, _moveBonus };
+                _handCount, _megasDamage, _playerAttrOverlay, _moveBonus, _handOdds };
         }
 
         private static void UnbindAtk() => _atkBound = false;
@@ -128,7 +129,7 @@ namespace CombatOddsMod
         internal static void SetMoveTrackingForTest(bool enabled) { _cfg.ShowMoveBonus = enabled; UpdateMoveTracking(); }
         internal static bool LifecycleReferencesCleared => _ctx == null && _overlay == null && _hudBonus == null &&
             _skillCooldown == null && _monsterCooldown == null && _handCount == null && _megasDamage == null &&
-            _playerAttrOverlay == null && _moveBonus == null && _lastBattle == null && _hud == null &&
+            _playerAttrOverlay == null && _moveBonus == null && _handOdds == null && _lastBattle == null && _hud == null &&
             _lastLogged == null && _lastAtkBonusLog == null && _lastMoveBonusLog == null &&
             !_atkBound && !_moveBound && !_featuresStarted && !_moveTracking && !_uiRegistered &&
             _disposed && !_configApplyPending && _recentDamageEvents.Count == 0 &&
@@ -157,6 +158,7 @@ namespace CombatOddsMod.Tests
             for (int i = 1; i <= 6; i++) Assert.Equal(1, owners[i].DisposeCount);
             Assert.Equal(1, owners[0].HideCount);
             Assert.Equal(1, owners[7].ResetCount);
+            Assert.Equal(1, owners[8].DisposeCount);
             Assert.True(ModEntry.LifecycleReferencesCleared);
             ModEntry.EndLifecycleTest();
             Assert.Equal(1, owners[1].DisposeCount);

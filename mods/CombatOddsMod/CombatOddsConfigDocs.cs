@@ -54,6 +54,21 @@ namespace CombatOddsMod
                 "在戰鬥視窗顯示 FairyGUI 覆蓋層；失敗時自動降級到通知或主控台。",
                 "Draw a FairyGUI overlay on the battle window; falls back to notifications or the console on failure.",
                 "戦闘ウィンドウに FairyGUI オーバーレイを表示します（失敗時は通知やコンソールへ自動降格）。"));
+            changed |= config.Describe("HandOddsFontSize", D(
+                "手牌概率字号，范围 8–96，默认 24。",
+                "手牌機率字級，範圍 8–96，預設 24。",
+                "Font size for hand card odds (8–96, default 24).",
+                "手札の確率表示の文字サイズ（8～96、既定値は24）。"));
+            changed |= config.Describe("HandOddsOffsetX", D(
+                "手牌概率相对卡牌顶部中央的水平偏移，正数向右。",
+                "手牌機率相對卡牌頂部中央的水平偏移，正數向右。",
+                "Horizontal offset from the top center of each card (positive moves right).",
+                "各カードの上辺中央からの水平オフセット（正で右へ）。"));
+            changed |= config.Describe("HandOddsOffsetY", D(
+                "手牌概率相对卡牌上方默认位置的垂直偏移，正数向下。",
+                "手牌機率相對卡牌上方預設位置的垂直偏移，正數向下。",
+                "Vertical offset from the default position above each card (positive moves down).",
+                "各カード上方の既定位置からの垂直オフセット（正で下へ）。"));
             changed |= config.Describe("OverlayFontScale", D(
                 "覆盖层字号缩放，1.0 为默认，建议 0.8–1.5。",
                 "覆蓋層字級縮放，1.0 為預設，建議 0.8–1.5。",

@@ -104,7 +104,13 @@ namespace CombatOddsMod
                 var d = new CombatOddsConfig();   // 默认值来源
                 if (c != null)
                 {
-                    bool docsChanged = CombatOddsConfigDocs.Apply(c);
+                    bool configChanged = CombatOddsConfigDocs.Apply(c);
+                    if (isInitial)
+                    {
+                        configChanged |= c.SetDefault("HandOddsFontSize", d.HandOddsFontSize);
+                        configChanged |= c.SetDefault("HandOddsOffsetX", d.HandOddsOffsetX);
+                        configChanged |= c.SetDefault("HandOddsOffsetY", d.HandOddsOffsetY);
+                    }
                     _cfg.Enabled               = c.GetBool("Enabled", d.Enabled);
                     _cfg.ShowForOthers         = c.GetBool("ShowForOthers", d.ShowForOthers);
                     _cfg.PopupNotification     = c.GetBool("PopupNotification", d.PopupNotification);
@@ -114,6 +120,9 @@ namespace CombatOddsMod
                     _cfg.ShowBuffBreakdown     = c.GetBool("ShowBuffBreakdown", d.ShowBuffBreakdown);
                     _cfg.ShowMosesDodge        = c.GetBool("ShowMosesDodge", d.ShowMosesDodge);
                     _cfg.InGameOverlay         = c.GetBool("InGameOverlay", d.InGameOverlay);
+                    _cfg.HandOddsFontSize      = Math.Max(8, Math.Min(96, c.GetInt("HandOddsFontSize", d.HandOddsFontSize)));
+                    _cfg.HandOddsOffsetX       = c.GetInt("HandOddsOffsetX", d.HandOddsOffsetX);
+                    _cfg.HandOddsOffsetY       = c.GetInt("HandOddsOffsetY", d.HandOddsOffsetY);
                     _cfg.OverlayFontScale      = c.GetDouble("OverlayFontScale", d.OverlayFontScale);
                     _cfg.OverlayAnchor         = c.GetString("OverlayAnchor", d.OverlayAnchor);
                     _cfg.OverlayOffsetX        = c.GetDouble("OverlayOffsetX", d.OverlayOffsetX);
@@ -180,9 +189,9 @@ namespace CombatOddsMod
                         c.Set("LogCdDetail", _cfg.LogCdDetail);
                         if (!c.SaveIfDirty()) SdkLog.Warn("CombatOdds", "配置未能保存，请检查 mod 目录写入权限。");
                     }
-                    else if (docsChanged)
+                    else if (configChanged)
                     {
-                        if (!c.SaveIfDirty()) SdkLog.Warn("CombatOdds", "配置说明未能保存，请检查 mod 目录写入权限。");
+                        if (!c.SaveIfDirty()) SdkLog.Warn("CombatOdds", "配置未能保存，请检查 mod 目录写入权限。");
                     }
                 }
             }
@@ -273,6 +282,13 @@ namespace CombatOddsMod
             // FightWindow 内嵌覆盖层(FairyGUI 反射, 需进游戏目视确认位置; 失败自动降级到控制台)。
             try { _overlay = new FightOverlayController(new RuntimeFightOverlayReflector()); }
             catch (Exception e) { SdkLog.Warn("CombatOdds", "覆盖层初始化失败(仅用控制台): " + e.Message); }
+
+            try
+            {
+                _handOdds = new HandCardOddsOverlay();
+                _handOdds.Start();
+            }
+            catch (Exception e) { SdkLog.Warn("CombatOdds", "手牌概率初始化失败: " + e.Message); }
 
             try
             {

@@ -21,6 +21,9 @@ namespace CombatOddsMod
         public bool ShowMosesDodge = true;
         /// <summary>是否把读数以 FairyGUI 覆盖层显示在 FightWindow 上(真机验证; 失败自动降级到控制台/通知)。</summary>
         public bool InGameOverlay = true;
+        public int HandOddsFontSize = 24;
+        public int HandOddsOffsetX = 0;
+        public int HandOddsOffsetY = 0;
         /// <summary>覆盖层字号缩放(1.0=默认已放大版; 想更大调 1.2~1.5, 想更小调 0.8)。</summary>
         public double OverlayFontScale = 1.0;
         /// <summary>覆盖层锚点: "left-center"(默认, 靠左竖直居中) / "top-left" / "top-center" / "top-right" / "right-center"。</summary>

@@ -20,7 +20,7 @@ namespace CombatOddsMod
         {
             if (cardId < 10001) return default;
 
-            // 仅处理范围已知的普通攻防牌，其他牌继续使用服务器范围。
+            // CardInfoConfigure.Params 的直接攻防加点范围。额外效果不属于牌点。
             switch (cardId)
             {
                 case 10001: return new PointRange { Min = 1, Max = 3, IsAttack = true, IsValid = true };
@@ -30,6 +30,10 @@ namespace CombatOddsMod
                 case 10005: return new PointRange { Min = 1, Max = 10, IsAttack = true, IsValid = true };
                 case 10006: return new PointRange { Min = 1, Max = 10, IsAttack = false, IsValid = true };
                 case 10007: return new PointRange { Min = 1, Max = 20, IsAttack = true, IsValid = true };
+                case 10008: return new PointRange { Min = 3, Max = 3, IsAttack = true, IsValid = true }; // 暗影突袭
+                case 10009: return new PointRange { Min = 5, Max = 5, IsAttack = true, IsValid = true }; // 蓄力
+                case CombatMath.PowerfulAttackCardId: return new PointRange { Min = 6, Max = 6, IsAttack = true, IsValid = true };
+                case CombatMath.DragonRoarCardId: return new PointRange { Min = 3, Max = 3, IsAttack = true, IsValid = true };
                 default: return default;
             }
         }
@@ -41,6 +45,15 @@ namespace CombatOddsMod
             return cards != null && cards.TryGetValue(cardGuid, out var card) && card != null
                 ? card.CardId
                 : 0;
+        }
+
+        internal static bool HasPlayedCard(party.model.BattleRole role, int cardId)
+        {
+            foreach (var bonus in role.CardCombatBonus)
+                if (bonus.CardId == cardId) return true;
+            foreach (int guid in role.UseCards)
+                if (ResolvePlayedCardId(role.PlayerId, guid) == cardId) return true;
+            return false;
         }
 
         // Match by ID and occurrence, never by the position of the server's bonus list.
