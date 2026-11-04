@@ -32,6 +32,7 @@ namespace CesiumLoader.SDK.Runtime
         private static readonly Action _lateFrameCallback = OnLateFrame;
 
         private static int _mainThreadId;
+        private static int _lastDrainThreadId;
         private static int _frameCount;
         private static int _running;
         private static int _started;
@@ -58,26 +59,66 @@ namespace CesiumLoader.SDK.Runtime
             Volatile.Write(ref _mainThreadId, id);
         }
 
-        /// <summary>显式确认当前线程为主线程（如 ModHost 启动或主线程生命周期开始时）。</summary>
+        /// <summary>显式确认当前线程为主线程（仅在当前确为 Unity 主线程或已由 UniTask 判定时生效）。</summary>
         public static void ConfirmMainThread()
         {
-            if (Volatile.Read(ref _mainThreadId) == 0)
+            try
             {
-                int id = Thread.CurrentThread.ManagedThreadId;
-                if (Interlocked.CompareExchange(ref _mainThreadId, id, 0) == 0)
+                if (Cysharp.Threading.Tasks.PlayerLoopHelper.IsMainThread)
                 {
-                    SdkLog.Info("MAINTHREAD", "主线程 id 已确认: " + id);
+                    int id = Thread.CurrentThread.ManagedThreadId;
+                    int old = Volatile.Read(ref _mainThreadId);
+                    if (old != id)
+                    {
+                        Volatile.Write(ref _mainThreadId, id);
+                        SdkLog.Info("MAINTHREAD", "主线程 id 已确认 (PlayerLoopHelper): " + id);
+                    }
                 }
             }
+            catch { }
         }
 
-        /// <summary>当前线程是否 Unity 主线程。主线程尚未确认时保守返回 false。</summary>
+        /// <summary>当前线程是否 Unity 主线程。结合登记 ID、UniTask PlayerLoop 与帧泵状态做自愈判定。</summary>
         public static bool IsMainThread
         {
             get
             {
                 int id = Volatile.Read(ref _mainThreadId);
-                return id != 0 && Thread.CurrentThread.ManagedThreadId == id;
+                int currentId = Thread.CurrentThread.ManagedThreadId;
+                if (id != 0 && currentId == id) return true;
+
+                // 检查 UniTask 的 PlayerLoopHelper 是否已确定主线程
+                try
+                {
+                    int uniTaskId = Cysharp.Threading.Tasks.PlayerLoopHelper.MainThreadId;
+                    if (uniTaskId > 0 && currentId == uniTaskId)
+                    {
+                        if (id != uniTaskId)
+                        {
+                            if (id != 0)
+                                SdkLog.Warn("MAINTHREAD", $"主线程 ID 自愈更正: 原记录={id}, PlayerLoopHelper={uniTaskId}");
+                            else
+                                SdkLog.Info("MAINTHREAD", "主线程 id 已确认 (PlayerLoopHelper): " + uniTaskId);
+                            Volatile.Write(ref _mainThreadId, uniTaskId);
+                        }
+                        return true;
+                    }
+                }
+                catch { }
+
+                // 若当前线程是正在执行帧泵 Drain 的线程，则必定是真主线程
+                int drainId = Volatile.Read(ref _lastDrainThreadId);
+                if (drainId != 0 && currentId == drainId)
+                {
+                    if (id != drainId)
+                    {
+                        SdkLog.Warn("MAINTHREAD", $"主线程 ID 自愈更正 (Drain 线程): 原记录={id}, 当前={drainId}");
+                        Volatile.Write(ref _mainThreadId, drainId);
+                    }
+                    return true;
+                }
+
+                return false;
             }
         }
 
@@ -239,9 +280,20 @@ namespace CesiumLoader.SDK.Runtime
         {
             try
             {
-                // 首次在 PlayerLoop 中执行 = 这就是主线程
-                if (Interlocked.CompareExchange(ref _mainThreadId, Thread.CurrentThread.ManagedThreadId, 0) == 0)
-                    SdkLog.Info("MAINTHREAD", "主线程 id 已确认: " + Thread.CurrentThread.ManagedThreadId);
+                int currentId = Thread.CurrentThread.ManagedThreadId;
+                Volatile.Write(ref _lastDrainThreadId, currentId);
+
+                int recordedId = Volatile.Read(ref _mainThreadId);
+                if (recordedId == 0)
+                {
+                    if (Interlocked.CompareExchange(ref _mainThreadId, currentId, 0) == 0)
+                        SdkLog.Info("MAINTHREAD", "主线程 id 已确认 (PlayerLoop): " + currentId);
+                }
+                else if (recordedId != currentId)
+                {
+                    SdkLog.Warn("MAINTHREAD", $"检测到主线程 ID 偏离: 原记录={recordedId}, 当前 PlayerLoop 线程={currentId}, 已自动更正为当前线程");
+                    Volatile.Write(ref _mainThreadId, currentId);
+                }
 
                 Interlocked.Increment(ref _frameCount);
 

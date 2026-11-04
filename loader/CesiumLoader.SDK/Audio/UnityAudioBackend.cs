@@ -181,8 +181,8 @@ namespace CesiumLoader.SDK.Audio
                     _canPlay = (_sourcePlayMethod != null || _sourcePlayOneShotMethod != null);
                     _available = _canCreateClip && _canPlay;
 
-                    var methodNames = string.Join(", ", _audioSourceType.GetMethods(BindingFlags.Public | BindingFlags.Instance).Select(m => $"{m.Name}({string.Join(",", m.GetParameters().Select(p => p.ParameterType.Name))})"));
-                    SdkLog.Info("AUDIO", $"Unity 音频接口绑定: available={_available}, canCreate={_canCreateClip}, canPlay={_canPlay}, play={_sourcePlayMethod != null}({_sourcePlayMethod?.GetParameters().Length}p). All AudioSource methods: [{methodNames}]");
+                    int methodCount = _audioSourceType.GetMethods(BindingFlags.Public | BindingFlags.Instance).Length;
+                    SdkLog.Info("AUDIO", $"Unity 音频接口绑定: available={_available}, canCreate={_canCreateClip}, canPlay={_canPlay}, play={_sourcePlayMethod != null}({_sourcePlayMethod?.GetParameters().Length}p), methodCount={methodCount}");
                 }
                 catch (Exception e)
                 {
@@ -224,7 +224,7 @@ namespace CesiumLoader.SDK.Audio
                 }
             }
 
-            if (MainThread.IsMainThread || !MainThread.HasMainThread)
+            if (MainThread.IsMainThread)
             {
                 Setup();
             }
@@ -266,7 +266,7 @@ namespace CesiumLoader.SDK.Audio
                 }
             }
 
-            if (MainThread.IsMainThread || !MainThread.HasMainThread)
+            if (MainThread.IsMainThread)
             {
                 DoCreate();
             }

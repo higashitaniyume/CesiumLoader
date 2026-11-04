@@ -87,7 +87,16 @@ namespace CesiumLoader.SDK.Runtime
             int startTicks = Environment.TickCount;
             while (Volatile.Read(ref completed) == 0)
             {
-                if (unchecked(Environment.TickCount - startTicks) >= timeoutMs) return false;
+                int elapsed = unchecked(Environment.TickCount - startTicks);
+                if (elapsed >= timeoutMs) return false;
+
+                // 防自等待死锁: 若当前线程其实是主线程, 无法由帧泵排空自己排队的项, 超过 100ms 立即放弃并报错
+                if (elapsed >= 100 && SafeIsMainThread())
+                {
+                    RaiseError(new TimeoutException("检测到主线程自等待超过 100ms, 已放弃等待以避免游戏冻结"));
+                    return false;
+                }
+
                 try { Thread.Sleep(1); } catch { }
             }
 
