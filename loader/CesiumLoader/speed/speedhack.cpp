@@ -137,6 +137,9 @@ BOOL WINAPI Hook_QPC(LARGE_INTEGER* lpCount)
 
 bool g_hooked = false;
 int g_hook_count = 0;   // 成功 EnableHook 的数量(0 表示变速不可用)
+// MinHook 是进程级单例: fsredir / steamhack 可能先一步 MH_Initialize()。
+// 只有本次调用真正完成初始化时才由变速模块负责 MH_Uninitialize()。
+bool g_owns_minhook = false;
 
 } // namespace
 
@@ -144,11 +147,13 @@ bool speedhack_init()
 {
     if (g_enabled.load() || g_hooked) return g_hooked;
 
-    if (MH_Initialize() != MH_OK)
+    const MH_STATUS init = MH_Initialize();
+    if (init != MH_OK && init != MH_ERROR_ALREADY_INITIALIZED)
     {
-        log_line("[speedhack] MinHook init failed");
+        log_line("[speedhack] MinHook init failed: " + std::to_string((int)init));
         return false;
     }
+    g_owns_minhook = (init == MH_OK);
 
     bool any = false;
     MH_STATUS st;
@@ -168,7 +173,8 @@ bool speedhack_init()
     if (!any)
     {
         log_line("[speedhack] all hooks failed to create, speedhack unavailable");
-        MH_Uninitialize();
+        if (g_owns_minhook) MH_Uninitialize();
+        g_owns_minhook = false;
         return false;
     }
 
@@ -197,7 +203,9 @@ bool speedhack_init()
     if (enabled == 0)
     {
         log_line("[speedhack] hook enable failed, speedhack unavailable");
-        MH_Uninitialize();
+        // 共享 MinHook 时不能 MH_Uninitialize() —— 那会把 fsredir/steamhack 的 hook 一起拆掉。
+        if (g_owns_minhook) MH_Uninitialize();
+        g_owns_minhook = false;
         return false;
     }
 
@@ -211,8 +219,14 @@ bool speedhack_init()
 void speedhack_shutdown()
 {
     if (!g_hooked) return;
-    MH_DisableHook(MH_ALL_HOOKS);
-    MH_Uninitialize();
+    // 只有自己初始化的 MinHook 才能在这里整体卸载；共享时 fsredir/steamhack
+    // 仍可能持有 hook，进程退出交给系统回收。
+    if (g_owns_minhook)
+    {
+        MH_DisableHook(MH_ALL_HOOKS);
+        MH_Uninitialize();
+    }
+    g_owns_minhook = false;
     g_hooked = false;
     g_hook_count = 0;
     g_enabled.store(false);
