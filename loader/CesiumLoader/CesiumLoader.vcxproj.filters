@@ -31,6 +31,12 @@
       <Filter Include="audio">
       <UniqueIdentifier>{63EA9A3C-392A-4942-A4B8-DBBCA230F4BA}</UniqueIdentifier>
     </Filter>
+    <Filter Include="profile">
+      <UniqueIdentifier>{2C4A9F6B-0D18-4E77-9B52-71F0A3C6D8E4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="fsredir">
+      <UniqueIdentifier>{8F31B7D5-4A6C-42E8-91D0-5C7B2E9A4F16}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="config\config.cpp">
@@ -90,6 +96,12 @@
     <ClCompile Include="speed\speedctl.cpp">
       <Filter>speed</Filter>
     </ClCompile>
+    <ClCompile Include="profile\profile.cpp">
+      <Filter>profile</Filter>
+    </ClCompile>
+    <ClCompile Include="fsredir\fsredir.cpp">
+      <Filter>fsredir</Filter>
+    </ClCompile>
     <ClCompile Include="speed\speedhack.cpp">
       <Filter>speed</Filter>
     </ClCompile>
@@ -120,6 +132,12 @@
     </ClInclude>
     <ClInclude Include="config\jsonc_patch.h">
       <Filter>config</Filter>
+    </ClInclude>
+    <ClInclude Include="profile\profile.h">
+      <Filter>profile</Filter>
+    </ClInclude>
+    <ClInclude Include="fsredir\fsredir.h">
+      <Filter>fsredir</Filter>
     </ClInclude>
     <ClInclude Include="logging\logging.h">
       <Filter>logging</Filter>

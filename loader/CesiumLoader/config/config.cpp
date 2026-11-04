@@ -46,13 +46,36 @@ double read_speed(const jsonc::Json& j, const char* key, double def)
     return v;
 }
 
+// CESIUM_PROFILE: 启动脚本/快捷方式用它指定本次启动的 profile, 优先于配置文件里的字段。
+// 未设置或为空 = 用配置文件的值(空 = 不启用 profile)。
+// 为什么走环境变量而不是命令行参数: UnityPlayer 对无法识别的参数会弹
+// "Bad command line arguments" 对话框。
+std::string profile_from_env()
+{
+    wchar_t buf[512] = {};
+    const DWORD n = GetEnvironmentVariableW(L"CESIUM_PROFILE", buf, 512);
+    if (n == 0 || n >= 512) return "";
+
+    const int len = WideCharToMultiByte(CP_UTF8, 0, buf, (int)n, nullptr, 0, nullptr, nullptr);
+    if (len <= 0) return "";
+    std::string s((size_t)len, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, buf, (int)n, s.data(), len, nullptr, nullptr);
+    return s;
+}
+
 } // namespace
 
 LoaderConfig load_config(const std::wstring& config_path)
 {
     LoaderConfig cfg;
+    const std::string env_profile = profile_from_env();
+
     const std::string text = read_file(config_path);
-    if (text.empty()) return cfg;   // 无配置文件 = 全默认(加载器启用)
+    if (text.empty())   // 无配置文件 = 全默认(加载器启用)
+    {
+        cfg.profile = env_profile;
+        return cfg;
+    }
 
     const jsonc::Json j = jsonc::parse(text);
     if (j.is_discarded())
@@ -63,6 +86,7 @@ LoaderConfig load_config(const std::wstring& config_path)
         // 新实现一旦语法不合法就整体用默认值。等价性测试里对此有专门的用例(见 tests\native)。
         log_line("[config] warning: failed to parse doorstop_config.json, using ALL defaults; "
                  "check JSON syntax (// comments are allowed; trailing commas, single quotes and unbalanced quotes fail)");
+        cfg.profile = env_profile;
         return cfg;
     }
 
@@ -112,6 +136,14 @@ LoaderConfig load_config(const std::wstring& config_path)
     // 同样缺失/损坏走默认(启用), 绝不阻止启动。独立开关, 与上面几个互不影响。
     cfg.steamBypassLobbyQuery = jsonc::boolean(j, "steamBypassLobbyQuery", cfg.steamBypassLobbyQuery);
     cfg.sdkVersion = jsonc::str(j, "sdkVersion", cfg.sdkVersion);
+    // 多 profile: 目录重定向(见 profile/profile.h)。空 = 不重定向。
+    cfg.profile = jsonc::str(j, "profile", cfg.profile);
+    if (!env_profile.empty())
+    {
+        // 环境变量优先: 同一个安装目录可以用不同启动脚本开不同 profile, 不用改配置。
+        cfg.profile = env_profile;
+        log_line("[config] profile=" + cfg.profile + " (from CESIUM_PROFILE)");
+    }
 
     // 记录加载到的配置, 便于排查
     log_line("[config] enabled=" + std::string(cfg.enabled ? "true" : "false"));

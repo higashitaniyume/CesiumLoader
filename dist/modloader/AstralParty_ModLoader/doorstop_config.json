@@ -2,6 +2,15 @@
   // Doorstop 式配置 —— 加载器(version.dll)启动时读取
   // 所有字段可选, 缺失/损坏时使用默认值, 不会阻止游戏启动
   "enabled": true,
+  // 多 profile: 把游戏读写账号/存档/回放的目录重定向到独立目录, 一份安装记多套账号。
+  //   ""          = 不重定向, 游戏写自己的 LocalLow\<公司>\<产品>(默认)
+  //   "P2"        = 重定向到 <同一父目录>\<产品>_profiles\P2
+  //   "D:\\AP\\P2" = 绝对路径 = 直接把 profile 放到指定目录(可以在别的盘)
+  // 环境变量 CESIUM_PROFILE 优先于本字段。首次使用会自动建目录, 并把下载缓存
+  // (com.unity.addressables, 约 7 GB)硬链接过去, 不必重新下载。
+  // 注意: PlayerPrefs(分辨率等)在注册表, 各 profile 共用; Player.log 是进程启动
+  // 瞬间写的, 仍会落在主目录(只有它)。
+  "profile": "",
   // 编排层: false=原生加载 sdk/mods(默认,可靠); true=托管 Bootstrap 编排(实验,
   // HybridCLR 会裁剪部分反射 API 如 Assembly.GetType, 托管编排可能不可用)
   "useManagedBootstrap": false,

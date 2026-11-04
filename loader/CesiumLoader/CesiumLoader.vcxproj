@@ -113,6 +113,8 @@
   <ItemGroup>
     <ClCompile Include="config\config.cpp" />
     <ClCompile Include="config\jsonc_patch.cpp" />
+    <ClCompile Include="profile\profile.cpp" />
+    <ClCompile Include="fsredir\fsredir.cpp" />
     <ClCompile Include="platform\console.cpp" />
     <ClCompile Include="platform\exports.cpp" />
     <ClCompile Include="runtime\activity_forward.cpp" />
@@ -145,6 +147,8 @@
     <ClInclude Include="config\config.h" />
     <ClInclude Include="config\jsonc.h" />
     <ClInclude Include="config\jsonc_patch.h" />
+    <ClInclude Include="profile\profile.h" />
+    <ClInclude Include="fsredir\fsredir.h" />
     <ClInclude Include="platform\loader.h" />
     <ClInclude Include="logging\logging.h" />
     <ClInclude Include="mods\modmeta.h" />

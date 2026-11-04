@@ -25,6 +25,22 @@ struct LoaderConfig
     //                  托管编排可能不可用; 此开关用于实验/验证。
     bool useManagedBootstrap = false;
 
+    // 多 profile: 把游戏读写账号/存档/回放的目录重定向到独立目录, 便于一份安装记多套账号。
+    //   ""    (默认) = 不重定向, 游戏写自己的 LocalLow\feimo\AstralParty_CN
+    //   "P2"  = 重定向到 LocalLow\feimo\AstralParty_CN_profiles\P2
+    //   "D:\AP\P2"  = 绝对路径 = 直接把 profile 放到指定目录(可以在别的盘)
+    // 环境变量 CESIUM_PROFILE 优先于本字段(启动脚本用, 不必改配置文件)。
+    //
+    // 说明:
+    //   - 重定向在本进程内完成(CreateFileW 等前缀改写), 不复制任何游戏文件;
+    //   - 首次使用某 profile 时会创建目录, 并把 com.unity.addressables(下载缓存,
+    //     约 7 GB)硬链接过去, 避免重新下载; 账号令牌与 SaveFile.es3 不会共用;
+    //   - PlayerPrefs(分辨率、自动登录标记等)在注册表 HKCU\Software\feimo\<product>,
+    //     目前**不隔离**(各 profile 共用);
+    //   - 同时开多个实例需要不同的 exe 路径(UnityPlayer 的单实例互斥与 exe 路径绑定),
+    //     且各自打开 Steam 绕过。
+    std::string profile;
+
     // 等待超时(秒)
     unsigned gameAssemblyTimeoutSec = 60;   // GameAssembly.dll 出现
     unsigned domainTimeoutSec = 30;         // il2cpp domain 就绪
@@ -179,11 +195,11 @@ struct LoaderConfig
     // 只受本开关控制。设为 false = 恢复原版行为(退房/解散/被踢时 await 之后的代码仍会被 NRE 跳过)。
     bool steamBypassLobbyQuery = true;
 
-    std::string sdkVersion = "3.1.4";
+    std::string sdkVersion = "3.2.0";
 
     // 加载器自身版本(SemVer)。与发布 tag (modloader-<版本>) 对应, 启动横幅会打印。
     // 与 sdkVersion 独立递增: 改动引导/互操作/打包时递增此值。
-    static constexpr const char* loaderVersion = "3.1.4";
+    static constexpr const char* loaderVersion = "3.2.0";
 };
 
 // 从 config_path 读取配置。文件不存在/解析失败返回默认配置(不抛异常)。

@@ -40,6 +40,8 @@ const Field kFields[] = {
 
     { "enabled", ValueType::Bool, 0, 0, nullptr, Apply::Restart,
       "加载器总开关; false 时完全不加载" },
+    { "profile", ValueType::String, 0, 0, nullptr, Apply::Restart,
+      "多 profile: 账号/存档目录重定向到 <LocalLow>\\<产品>_profiles\\<名>; 空=不重定向" },
     { "useManagedBootstrap", ValueType::Bool, 0, 0, nullptr, Apply::Restart,
       "实验特性: 由托管 Bootstrap 编排加载" },
     { "consoleEnabled", ValueType::Bool, 0, 0, nullptr, Apply::Restart,
@@ -226,6 +228,7 @@ std::string field_value(const LoaderConfig& cfg, const Field& f)
 {
     const std::string n = f.name;
     if (n == "enabled") return cfg.enabled ? "true" : "false";
+    if (n == "profile") return cfg.profile;
     if (n == "useManagedBootstrap") return cfg.useManagedBootstrap ? "true" : "false";
     if (n == "consoleEnabled") return cfg.consoleEnabled ? "true" : "false";
     if (n == "consoleTopmost") return cfg.consoleTopmost ? "true" : "false";
@@ -292,6 +295,7 @@ bool field_assign(LoaderConfig& cfg, const Field& f, const std::string& text, st
 
     const std::string n = f.name;
     if (n == "enabled") cfg.enabled = (v == "true");
+    else if (n == "profile") cfg.profile = v;
     else if (n == "useManagedBootstrap") cfg.useManagedBootstrap = (v == "true");
     else if (n == "consoleEnabled") cfg.consoleEnabled = (v == "true");
     else if (n == "consoleTopmost") cfg.consoleTopmost = (v == "true");

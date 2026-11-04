@@ -100,6 +100,7 @@ winget install Hiynet.AstralParty.Toys
 | `speedControlEnabled` | 允许通过文件通道调整倍率 |
 | `windowControlEnabled` | 允许模组通过文件通道把游戏窗口切到前台并播放提示音(WAV) |
 | `useManagedBootstrap` | 实验性托管编排；默认使用原生编排 |
+| `profile` | 多 profile：把账号、存档、回放目录重定向到独立目录，见 [多 profile](docs/多开-profile.md) |
 
 模组加载采用**启动门就绪判定**：进入主界面或可玩场景且稳定 1 秒后立刻完成初始化，告别旧版固定等待 30 秒；若特殊场景未触发判定，到达 30 秒上限后仍会兜底触发。如需恢复固定等待，可设置环境变量 `CESIUM_MOD_BOOT_GATE=0`。
 

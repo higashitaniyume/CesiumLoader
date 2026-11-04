@@ -18,6 +18,8 @@
 #include "platform/loader.h"
 
 #include "config/config.h"
+#include "fsredir/fsredir.h"
+#include "profile/profile.h"
 #include "speed/speedhack.h"
 #include "speed/speedctl.h"
 #include "window/windowctl.h"
@@ -181,6 +183,22 @@ static DWORD WINAPI boot_thread(LPVOID)
     cesium::runtime::mark_started();
     cesium::runtime::set_config(cfg);
     cesium::runtime::set_forward_enabled(cfg.forwardActivityLog);
+
+    // 3.4 多 profile(见 profile/profile.h): 把游戏读写账号/存档/回放的目录
+    //     %USERPROFILE%\AppData\LocalLow\<company>\<product> 重定向到 profile 目录。
+    //     时机: 必须早于游戏自身的文件访问 —— 实测那批访问都在 il2cpp 就绪之后
+    //     (≥5s), 这里刚过 loader lock 的 1.5s, 只有进程启动瞬间的 Player.log 会漏。
+    //     失败只记日志: profile 配错不应该挡住玩家进游戏。
+    {
+        cesium::profile::ProfilePaths paths;
+        if (cesium::profile::prepare(cfg.profile, paths) && paths.active)
+        {
+            if (cesium::fsredir::install(paths.source_dir, paths.target_dir))
+                cesium::profile::start_seed(paths);   // 首次建 profile 时后台硬链接下载缓存
+            else
+                log_line("[profile] file redirection failed to install; the game will use its own folder");
+        }
+    }
 
     // 3.5 变速引擎: 在 loader lock 释放后安装 hook(不在 DllMain 里做, 避免
     // ERROR_DLL_INIT_FAILED / 内存竞态)。游戏进程已初始化, hook 生效后

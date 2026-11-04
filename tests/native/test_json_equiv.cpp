@@ -155,6 +155,7 @@ LoaderConfig load_values(const std::string& json)
     cfg.steamBypassLobbyMethods = json_bool(json, "steamBypassLobbyMethods", false);
     cfg.steamBypassLobbyQuery = json_bool(json, "steamBypassLobbyQuery", true);
     cfg.sdkVersion = json_string(json, "sdkVersion", cfg.sdkVersion);
+    cfg.profile = json_string(json, "profile", cfg.profile);
     return cfg;
 }
 } // namespace oldcfg
@@ -294,6 +295,7 @@ std::vector<std::pair<std::string, std::string>> fields(const LoaderConfig& c)
         { "steamBypassLobbyMethods", s(c.steamBypassLobbyMethods) },
         { "steamBypassLobbyQuery", s(c.steamBypassLobbyQuery) },
         { "sdkVersion", s(c.sdkVersion) },
+        { "profile", s(c.profile) },
     };
 }
 
