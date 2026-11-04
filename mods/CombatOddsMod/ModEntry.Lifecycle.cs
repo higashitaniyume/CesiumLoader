@@ -67,6 +67,7 @@ namespace CombatOddsMod
             try { _skillCooldown?.Dispose(); } catch { }
             try { _monsterCooldown?.Dispose(); } catch { }
             try { _handCount?.Dispose(); } catch { }
+            try { _handOdds?.Dispose(); } catch { }
             try { _megasDamage?.Dispose(); } catch { }
             try { _playerAttrOverlay?.Dispose(); } catch { }
             try { _moveBonus?.Reset(); } catch { }
@@ -75,6 +76,7 @@ namespace CombatOddsMod
             _skillCooldown = null;
             _monsterCooldown = null;
             _handCount = null;
+            _handOdds = null;
             _megasDamage = null;
             _playerAttrOverlay = null;
             _moveBonus = null;

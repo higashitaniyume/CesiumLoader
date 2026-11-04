@@ -324,7 +324,8 @@ namespace CombatOddsMod
         /// maxDamage 为单次受伤上限(0 = 无上限)。
         /// </summary>
         public static AttackResult Attack(int attackFlat, IReadOnlyList<int> attackDice,
-            int defenseFlat, IReadOnlyList<int> defenseDice, int targetHp, int minChip = 1, int damageAdjust = 0, bool immune = false, int maxDamage = 0)
+            int defenseFlat, IReadOnlyList<int> defenseDice, int targetHp, int minChip = 1, int damageAdjust = 0,
+            bool immune = false, int maxDamage = 0, int finalAttackBonusPercent = 0)
         {
             int atkMin;
             var atk = Distribution(attackFlat, attackDice, out atkMin);
@@ -339,6 +340,8 @@ namespace CombatOddsMod
                 double pa = atk[a];
                 if (pa == 0.0) continue;
                 int atkVal = atkMin + a;
+                if (finalAttackBonusPercent != 0)
+                    atkVal += (int)Math.Ceiling(atkVal * (finalAttackBonusPercent / 100.0));
                 for (int d = 0; d < def.Length; d++)
                 {
                     double pd = def[d];
@@ -369,6 +372,39 @@ namespace CombatOddsMod
                 MinDamage = minDmg,
                 MaxDamage = maxDmg
             };
+        }
+
+        internal const int PowerfulAttackCardId = 10010;
+        internal const int DragonRoarCardId = 10013;
+
+        internal static double PreviewCardOdds(bool attacking, int minBonus, int maxBonus,
+            int attackFlat, IReadOnlyList<int> attackDice, int defenseFlat, IReadOnlyList<int> defenseDice,
+            int targetHp, int damageAdjust = 0, bool immune = false, int maxDamage = 0,
+            int cardId = 0, int baseDefense = 0, bool powerfulAttackActive = false)
+        {
+            var dice = attacking ? attackDice : defenseDice;
+            int flatBonus = minBonus;
+            if (maxBonus > minBonus)
+            {
+                // A shifted die models the card's independent uniform bonus.
+                int count = dice?.Count ?? 0;
+                var withCard = new int[count + 1];
+                for (int i = 0; i < count; i++) withCard[i] = dice[i];
+                withCard[count] = maxBonus - minBonus + 1;
+                dice = withCard;
+                flatBonus--;
+            }
+
+            // The multiplier applies to the rolled attack total and does not stack.
+            int attackBonusPercent = powerfulAttackActive || (attacking && cardId == PowerfulAttackCardId) ? 50 : 0;
+            if (attacking && cardId == DragonRoarCardId)
+                defenseFlat -= Math.Min(3, Math.Max(0, baseDefense));
+
+            var result = attacking
+                ? Attack(attackFlat + flatBonus, dice, defenseFlat, defenseDice, targetHp, 1, damageAdjust, immune, maxDamage, attackBonusPercent)
+                : Attack(attackFlat, attackDice, defenseFlat + flatBonus, dice, targetHp, 1, damageAdjust, immune, maxDamage, attackBonusPercent);
+            double probability = attacking ? result.KillProb : 1 - result.KillProb;
+            return Math.Max(0, Math.Min(1, probability));
         }
 
         // =====================================================================
