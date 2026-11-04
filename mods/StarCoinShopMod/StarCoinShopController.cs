@@ -35,11 +35,13 @@ namespace StarCoinShopMod
             Log.Info("星币商店助手已启用：进入商城推荐面板可一键顺序购买 8 个每日商品。");
         }
 
+        private UIManager _cachedUiManager;
+
         public override void OnUpdate()
         {
             if (!_cfg.Enabled) return;
 
-            var mgr = SimpleSingletonProvider<UIManager>.inst;
+            var mgr = _cachedUiManager ?? (_cachedUiManager = SimpleSingletonProvider<UIManager>.inst);
             if (mgr == null) return;
 
             var currentPanel = mgr.currentPanel as ProductRecommendationPanel;
@@ -50,6 +52,7 @@ namespace StarCoinShopMod
                 if (_injectedPanel != null)
                 {
                     _injectedPanel = null;
+                    _cachedUiManager = null;
                     _quickBuyButton = null;
                     _buttonText = null;
                     _buttonBg = null;
@@ -417,6 +420,7 @@ namespace StarCoinShopMod
                 _quickBuyButton = null;
             }
             _injectedPanel = null;
+            _cachedUiManager = null;
         }
     }
 }

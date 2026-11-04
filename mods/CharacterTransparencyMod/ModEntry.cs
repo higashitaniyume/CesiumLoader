@@ -129,7 +129,7 @@ namespace CharacterTransparencyMod
             {
                 if (_hotkey.Active)
                 {
-                    _applier.Apply(_settings.Opacity);
+                    _applier.MaintainTrackedAlphas(_settings.Opacity);
                 }
             }
             catch { }

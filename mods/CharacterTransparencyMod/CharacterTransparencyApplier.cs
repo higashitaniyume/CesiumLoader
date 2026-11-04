@@ -81,6 +81,14 @@ namespace CharacterTransparencyMod
             }
 
             // 3. 保持已跟踪的渲染器 alpha 为目标值（应对动画或帧刷新重置 color 的情况）
+            MaintainTrackedAlphas(targetAlpha);
+        }
+
+        /// <summary>
+        /// 仅维持已跟踪渲染器的透明度（用于 LateUpdate 避免重复全量遍历与 GetComponentsInChildren 产生 GC 压力）。
+        /// </summary>
+        public void MaintainTrackedAlphas(float targetAlpha)
+        {
             for (int i = _trackedRenderers.Count - 1; i >= 0; i--)
             {
                 var sr = _trackedRenderers[i];
@@ -97,9 +105,12 @@ namespace CharacterTransparencyMod
             }
         }
 
-        private void ApplyToCharacter(Character ch, float targetAlpha)
+        private void ApplyToCharacter(Character ch, float targetAlpha, bool force = false)
         {
             if (ch == null || ch.gameObject == null) return;
+
+            bool isNew = _modifiedCharacters.Add(ch);
+            if (!isNew && !force) return;
 
             // ★ 关键顺序：必须在执行任何修改前，先记录原本的真实 alpha！
             var srs = ch.GetComponentsInChildren<SpriteRenderer>(true);
@@ -108,27 +119,16 @@ namespace CharacterTransparencyMod
                 for (int i = 0; i < srs.Length; i++)
                 {
                     RecordOriginalAlpha(srs[i], targetAlpha);
+                    SetAlpha(srs[i], targetAlpha);
                 }
             }
 
             // 记录并设置 Character 内部机制（支持修女/邦妮等原生隐身技能）
-            if (_modifiedCharacters.Add(ch))
+            try
             {
-                try
-                {
-                    ch.SetSpriteAlpha(Character.AlphaSourceType.None, targetAlpha);
-                }
-                catch { }
+                ch.SetSpriteAlpha(Character.AlphaSourceType.None, targetAlpha);
             }
-
-            // 确保角色下所有 SpriteRenderer 都更新为 targetAlpha
-            if (srs != null)
-            {
-                for (int i = 0; i < srs.Length; i++)
-                {
-                    SetAlpha(srs[i], targetAlpha);
-                }
-            }
+            catch { }
         }
 
         private void ApplyToAnimator(CharacterAnimator anim, float targetAlpha)
