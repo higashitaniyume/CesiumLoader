@@ -138,6 +138,8 @@ LoaderConfig load_config(const std::wstring& config_path)
     cfg.sdkVersion = jsonc::str(j, "sdkVersion", cfg.sdkVersion);
     // 多 profile: 目录重定向(见 profile/profile.h)。空 = 不重定向。
     cfg.profile = jsonc::str(j, "profile", cfg.profile);
+    // 多 profile: 是否在游戏窗口标题后追加 profile 名。缺失/损坏走默认(开启)。
+    cfg.profileWindowTitle = jsonc::boolean(j, "profileWindowTitle", cfg.profileWindowTitle);
     if (!env_profile.empty())
     {
         // 环境变量优先: 同一个安装目录可以用不同启动脚本开不同 profile, 不用改配置。

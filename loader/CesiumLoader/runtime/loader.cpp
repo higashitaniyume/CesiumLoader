@@ -23,6 +23,7 @@
 #include "speed/speedhack.h"
 #include "speed/speedctl.h"
 #include "window/windowctl.h"
+#include "window/windowtitle.h"
 #include "audio/audioctl.h"
 #include "mods/modmeta.h"
 #include "logging/logging.h"
@@ -197,6 +198,14 @@ static DWORD WINAPI boot_thread(LPVOID)
                 cesium::profile::start_seed(paths);   // 首次建 profile 时后台硬链接下载缓存
             else
                 log_line("[profile] file redirection failed to install; the game will use its own folder");
+
+            // 3.3.0 窗口标题带上 profile 名(见 window/windowtitle.h): 同时开多个实例时,
+            //       任务栏 / Alt+Tab 里的标题能直接看出是哪个 profile。
+            //       等窗口出现后由后台线程追加, 不阻塞引导; 失败只记日志。
+            if (cfg.profileWindowTitle)
+                cesium::windowing::windowtitle_start(file_name_of(paths.name));
+            else
+                log_line("[profile] profileWindowTitle=false, game window title left unchanged");
         }
     }
 

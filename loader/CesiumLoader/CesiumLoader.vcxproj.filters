@@ -108,6 +108,9 @@
     <ClCompile Include="window\windowctl.cpp">
       <Filter>window</Filter>
     </ClCompile>
+    <ClCompile Include="window\windowtitle.cpp">
+      <Filter>window</Filter>
+    </ClCompile>
     <ClCompile Include="steam\steamhack.cpp">
       <Filter>steam</Filter>
     </ClCompile>
@@ -182,6 +185,9 @@
       <Filter>window</Filter>
     </ClInclude>
     <ClInclude Include="window\windowctl.h">
+      <Filter>window</Filter>
+    </ClInclude>
+    <ClInclude Include="window\windowtitle.h">
       <Filter>window</Filter>
     </ClInclude>
     <ClInclude Include="steam\steamhack.h">

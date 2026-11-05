@@ -156,6 +156,7 @@ LoaderConfig load_values(const std::string& json)
     cfg.steamBypassLobbyQuery = json_bool(json, "steamBypassLobbyQuery", true);
     cfg.sdkVersion = json_string(json, "sdkVersion", cfg.sdkVersion);
     cfg.profile = json_string(json, "profile", cfg.profile);
+    cfg.profileWindowTitle = json_bool(json, "profileWindowTitle", true);
     return cfg;
 }
 } // namespace oldcfg
@@ -296,6 +297,7 @@ std::vector<std::pair<std::string, std::string>> fields(const LoaderConfig& c)
         { "steamBypassLobbyQuery", s(c.steamBypassLobbyQuery) },
         { "sdkVersion", s(c.sdkVersion) },
         { "profile", s(c.profile) },
+        { "profileWindowTitle", s(c.profileWindowTitle) },
     };
 }
 
@@ -428,7 +430,8 @@ void build_corpus(const std::string& root)
                "  \"steamBypassEnabled\": false,\n  \"steamBypassRestartCheck\": false,\n"
                "  \"steamBypassMatchmaking\": false,\n  \"steamBypassLobbyHasValue\": false,\n"
                "  \"steamBypassTaskCtorMode\": \"direct\",\n  \"steamBypassLobbyMethods\": true,\n"
-               "  \"steamBypassLobbyQuery\": false,\n  \"sdkVersion\": \"9.9.9\"\n"
+               "  \"steamBypassLobbyQuery\": false,\n  \"sdkVersion\": \"9.9.9\",\n"
+               "  \"profileWindowTitle\": false\n"
                "}");
 
     // ---- B. 已记录的差异: consoleTopmost 缺失(旧硬编码默认 true, 新按 config.h 默认 false) ----

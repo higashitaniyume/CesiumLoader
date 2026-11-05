@@ -31,6 +31,26 @@ Start-Process "AstralParty_CN.exe"
 
 也可以用 AstralParty.Toys 的「游戏多开」页管理档案（新建 / 改名 / 删除 / 切换），并从那里直接启动游戏。
 
+## 窗口标题
+
+同时开多个实例时，各窗口标题默认完全一样，任务栏和 Alt+Tab 里分不清是哪个 profile。加载器会在游戏窗口出现后把 profile 名追加到标题后面：
+
+```text
+吉星派对 · P2
+```
+
+配置字段 `profileWindowTitle`（默认 `true`）：
+
+| 取值 | 效果 |
+| --- | --- |
+| `true`（默认） | 选了 profile 时，窗口标题后追加 ` · <profile 名>` |
+| `false` | 标题保持游戏原样；目录隔离照常生效 |
+
+- 只在配置了 `profile`（或环境变量 `CESIUM_PROFILE`）时生效；绝对路径形式的 profile 只取目录名显示。
+- 游戏自己重置标题时加载器会补回后缀，不会重复叠加。
+- 写入的是窗口标题，不改变窗口大小、位置或焦点。
+- 修改后下次启动游戏生效；也可以在同一页的「游戏窗口标题带上 profile 名」开关里切换。
+
 ## 目录
 
 ```text
@@ -97,6 +117,8 @@ Unity 的单实例互斥与 **exe 路径**绑定：
 | `[profile] seeded com.unity.addressables: ...` | 播种完成（或部分失败的统计） |
 | `[fsredir] <API> failed (error ...) -> ...` | 某个改写后的文件操作失败（见下方「登录界面只有封面」） |
 | `[profile] warning: ...` | profile 被拒绝（名称非法、目录不可写等），游戏退回主目录继续运行 |
+| `[windowtitle] title is now "..."` | 窗口标题已追加 profile 名 |
+| `[windowtitle] cannot start the title thread` | 标题线程启动失败，标题保持原样（不影响游戏） |
 
 ### 登录界面只有封面、没有登录按钮
 
