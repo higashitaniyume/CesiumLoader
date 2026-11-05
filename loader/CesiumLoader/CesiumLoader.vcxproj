@@ -138,6 +138,7 @@
     <ClCompile Include="audio\audioctl.cpp" />
     <ClCompile Include="steam\steamhack.cpp" />
     <ClCompile Include="steam\steam_diagnostics.cpp" />
+    <ClCompile Include="taptap\taptaphack.cpp" />
     <ClCompile Include="..\..\third_party\minhook\src\buffer.c" />
     <ClCompile Include="..\..\third_party\minhook\src\hook.c" />
     <ClCompile Include="..\..\third_party\minhook\src\trampoline.c" />
@@ -169,6 +170,7 @@
     <ClInclude Include="steam\steamhack.h" />
     <ClInclude Include="steam\steam_diagnostics.h" />
     <ClInclude Include="steam\steamhack_internal.h" />
+    <ClInclude Include="taptap\taptaphack.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="platform\version.def" />

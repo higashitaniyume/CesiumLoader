@@ -87,12 +87,19 @@ struct LoaderConfig
     // 本键只保留解析与读写，不再决定是否启动；改代码常量才能重新打开。
     bool audioControlEnabled = true;
 
-    // Steam 自杀门绕过(见 steamhack.h)。默认**开**:
-    // 国服客户端在非 Steam 客户端启动时, AOT 类 SteamManager(全局命名空间)的
-    // Awake() 会打印 "[ERROR] [SteamManager] 非Steam客户端启动, 退出游戏" 并退出。
-    // 本开关把 Awake() 换成 no-op(原生 inline hook), 让游戏继续启动。
-    // 设为 false = 恢复原版行为(非 Steam 启动会退出游戏)。
+    // Steam 自杀门绕过(见 steamhack.h)。默认**开**。
     bool steamBypassEnabled = true;
+
+    // TapTap 版(测试版)绕过(见 taptaphack.h)。默认**关** —— TapTap 是托管 async 链,
+    // 只做 IsLaunchedFromTapTapPC + Restart 两个 hook, 在 Steam 版上自然不命中, 不影响原行为。
+    bool tapTapBypassEnabled = false;
+
+    // TapTap 附加保险(默认关): 让 taptap_api.dll 的 TapSDK_RestartAppIfNecessary 恒返回 0。
+    bool tapTapBypassRestartCheck = false;
+
+    // TapTap 登录 stub(默认关): 让 TapSDK_Init / TapUser_AsyncAuthorize /
+    // TapSDK_GetClientID / TapUser_GetOpenID 回可被调用的"空成功"值。
+    bool tapTapBypassLogin = false;
 
     // 附加保险(默认开): 让 steam_api64.dll 的 SteamAPI_RestartAppIfNecessary
     // 恒返回 0。它本是 Steamworks 的无害样板调用, 万一退出判断不在 Awake() 里也能兜住。

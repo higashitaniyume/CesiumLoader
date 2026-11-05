@@ -37,6 +37,9 @@
     <Filter Include="fsredir">
       <UniqueIdentifier>{8F31B7D5-4A6C-42E8-91D0-5C7B2E9A4F16}</UniqueIdentifier>
     </Filter>
+    <Filter Include="taptap">
+      <UniqueIdentifier>{C8B2D461-7A04-4F99-AF30-3E1C6E9D5B77}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="config\config.cpp">
@@ -116,6 +119,9 @@
     </ClCompile>
     <ClCompile Include="steam\steam_diagnostics.cpp">
       <Filter>steam</Filter>
+    </ClCompile>
+    <ClCompile Include="taptap\taptaphack.cpp">
+      <Filter>taptap</Filter>
     </ClCompile>
     <ClCompile Include="..\..\third_party\minhook\src\buffer.c" />
     <ClCompile Include="..\..\third_party\minhook\src\hook.c" />
@@ -198,6 +204,9 @@
     </ClInclude>
     <ClInclude Include="steam\steamhack_internal.h">
       <Filter>steam</Filter>
+    </ClInclude>
+    <ClInclude Include="taptap\taptaphack.h">
+      <Filter>taptap</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

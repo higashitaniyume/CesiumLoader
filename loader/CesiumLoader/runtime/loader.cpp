@@ -31,6 +31,7 @@
 #include "runtime/state.h"
 #include "shell/shell.h"
 #include "steam/steamhack.h"
+#include "taptap/taptaphack.h"
 
 #include <tlhelp32.h>
 #include <vector>
@@ -328,6 +329,22 @@ static DWORD WINAPI boot_thread(LPVOID)
     else
     {
         log_line("[steamhack] all bypass switches off, skipping Steam bypass (vanilla behavior)");
+    }
+
+    // 3.9 TapTap 版绕过(见 taptaphack.h)。与 Steam 版平行插入同一时机点:
+    //     tapTapBypassEnabled = IsLaunchedFromTapTapPC 恒通过(当前只枚举不真正 hook,
+    //                          签名/返回类型未钉死, 避免硬套把 async 状态机打崩, 只记日志);
+    //     tapTapBypassRestartCheck = taptap_api.dll 的 TapSDK_RestartAppIfNecessary 恒返回 0;
+    //     tapTapBypassLogin = 登录链 stub(未钉死签名, 目前只记日志/枚举)。
+    //     **失败只记日志, 绝不阻止游戏启动**。
+    if (cfg.tapTapBypassEnabled || cfg.tapTapBypassRestartCheck || cfg.tapTapBypassLogin)
+    {
+        taptaphack_install(boot::safe_il2cpp(), cfg.tapTapBypassEnabled,
+                           cfg.tapTapBypassRestartCheck, cfg.tapTapBypassLogin);
+    }
+    else
+    {
+        log_line("[taptaphack] all TapTap bypass switches off, skipping TapTap bypass");
     }
 
     if (!boot::wait_hybridclr(domain, cfg.hybridclrTimeoutSec)) { log_line("[loader] AstralParty.Runtime timed out"); return 0; }

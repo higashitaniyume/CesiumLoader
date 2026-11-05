@@ -116,6 +116,10 @@ LoaderConfig load_config(const std::wstring& config_path)
     // Steam 自杀门绕过: 缺失/损坏走默认(启用), 绝不阻止启动(见 steamhack.h)。
     cfg.steamBypassEnabled = jsonc::boolean(j, "steamBypassEnabled", cfg.steamBypassEnabled);
     cfg.steamBypassRestartCheck = jsonc::boolean(j, "steamBypassRestartCheck", cfg.steamBypassRestartCheck);
+    // TapTap 版绕过: 缺失/损坏走默认(关闭), 绝不阻止启动(见 taptaphack.h)。
+    cfg.tapTapBypassEnabled = jsonc::boolean(j, "tapTapBypassEnabled", cfg.tapTapBypassEnabled);
+    cfg.tapTapBypassRestartCheck = jsonc::boolean(j, "tapTapBypassRestartCheck", cfg.tapTapBypassRestartCheck);
+    cfg.tapTapBypassLogin = jsonc::boolean(j, "tapTapBypassLogin", cfg.tapTapBypassLogin);
     // 阶段2: 大厅匹配绕过(CreateLobbyAsync/JoinLobbyAsync -> 已完成的空 Task)。
     // 同样缺失/损坏走默认(启用), 绝不阻止启动。
     cfg.steamBypassMatchmaking = jsonc::boolean(j, "steamBypassMatchmaking", cfg.steamBypassMatchmaking);

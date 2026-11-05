@@ -70,6 +70,12 @@ const Field kFields[] = {
       "备用安全网(实测会导致启动崩溃, 默认关闭)" },
     { "steamBypassLobbyQuery", ValueType::Bool, 0, 0, nullptr, Apply::Restart,
       "LobbyQuery.RequestAsync 恒返回空数组" },
+    { "tapTapBypassEnabled", ValueType::Bool, 0, 0, nullptr, Apply::Restart,
+      "TapTap 自杀门绕过(IsLaunchedFromTapTapPC 恒真; TapTap 版专用, 默认关闭)" },
+    { "tapTapBypassRestartCheck", ValueType::Bool, 0, 0, nullptr, Apply::Restart,
+      "让 TapSDK_RestartAppIfNecessary 恒返回 0(附加保险, 默认关闭)" },
+    { "tapTapBypassLogin", ValueType::Bool, 0, 0, nullptr, Apply::Restart,
+      "TapTap 登录链 stub(Init/Authorize/GetClientID/GetOpenID 空成功, 默认关闭)" },
 
     { "sdkVersion", ValueType::String, 0, 0, nullptr, Apply::Restart,
       "用于校验 mod 声明的 SDK 版本" },
@@ -246,6 +252,9 @@ std::string field_value(const LoaderConfig& cfg, const Field& f)
     if (n == "steamBypassLobbyHasValue") return cfg.steamBypassLobbyHasValue ? "true" : "false";
     if (n == "steamBypassLobbyMethods") return cfg.steamBypassLobbyMethods ? "true" : "false";
     if (n == "steamBypassLobbyQuery") return cfg.steamBypassLobbyQuery ? "true" : "false";
+    if (n == "tapTapBypassEnabled") return cfg.tapTapBypassEnabled ? "true" : "false";
+    if (n == "tapTapBypassRestartCheck") return cfg.tapTapBypassRestartCheck ? "true" : "false";
+    if (n == "tapTapBypassLogin") return cfg.tapTapBypassLogin ? "true" : "false";
 
     if (n == "speedhackBaseSpeed") return format_double(cfg.speedhackBaseSpeed);
     if (n == "gameAssemblyTimeoutSec") return std::to_string(cfg.gameAssemblyTimeoutSec);
@@ -314,6 +323,9 @@ bool field_assign(LoaderConfig& cfg, const Field& f, const std::string& text, st
     else if (n == "steamBypassLobbyHasValue") cfg.steamBypassLobbyHasValue = (v == "true");
     else if (n == "steamBypassLobbyMethods") cfg.steamBypassLobbyMethods = (v == "true");
     else if (n == "steamBypassLobbyQuery") cfg.steamBypassLobbyQuery = (v == "true");
+    else if (n == "tapTapBypassEnabled") cfg.tapTapBypassEnabled = (v == "true");
+    else if (n == "tapTapBypassRestartCheck") cfg.tapTapBypassRestartCheck = (v == "true");
+    else if (n == "tapTapBypassLogin") cfg.tapTapBypassLogin = (v == "true");
     else if (n == "speedhackBaseSpeed") cfg.speedhackBaseSpeed = std::strtod(v.c_str(), nullptr);
     else if (n == "gameAssemblyTimeoutSec") cfg.gameAssemblyTimeoutSec = (unsigned)std::strtoul(v.c_str(), nullptr, 10);
     else if (n == "domainTimeoutSec") cfg.domainTimeoutSec = (unsigned)std::strtoul(v.c_str(), nullptr, 10);
