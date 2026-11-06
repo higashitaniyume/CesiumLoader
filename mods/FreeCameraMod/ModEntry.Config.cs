@@ -81,6 +81,7 @@ namespace FreeCameraMod
             _rotateStep = _config.GetFloat("rotateStep", _rotateStep);
             _invertRotate = _config.GetBool("invertRotate", _invertRotate);
             _blockPanWhileRotate = _config.GetBool("blockPanWhileRotate", _blockPanWhileRotate);
+            _restoreOnMonsterFocus = _config.GetBool("restoreOnMonsterFocus", _restoreOnMonsterFocus);
 
             // 数值兜底: 配置写坏也不能变成"滚轮没反应"或"一滚飞出去"
             if (!IsUsable(_zoomStep)) _zoomStep = FreeCameraMath.DefaultZoomStep;
@@ -139,6 +140,7 @@ namespace FreeCameraMod
             _config.Set("rotateStep", _rotateStep);
             _config.Set("invertRotate", _invertRotate);
             _config.Set("blockPanWhileRotate", _blockPanWhileRotate);
+            _config.Set("restoreOnMonsterFocus", _restoreOnMonsterFocus);
             _config.SaveIfDirty();
             _configFixed = true;
         }

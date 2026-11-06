@@ -136,6 +136,9 @@ namespace FreeCameraMod
         /// <summary>旋转时是否抵掉游戏自己的方向键平移(默认 true: 左右键只旋转, 不把地图推走)。</summary>
         private bool _blockPanWhileRotate = true;
 
+        /// <summary>点击怪物头像查信息时是否还原缩放/旋转并正常切换镜头(默认开)。</summary>
+        private bool _restoreOnMonsterFocus = true;
+
         // =====================================================================
         // 运行态
         // =====================================================================
@@ -179,6 +182,18 @@ namespace FreeCameraMod
         /// <summary>本帧要复原(真正处理放在 OnLateUpdate, 那时相机里是"游戏本帧的位姿")。</summary>
         private bool _restoreRequested;
         private string _restoreReason = "";
+
+        /// <summary>按下左键的屏幕位置与时间(区分点击与拖拽)。</summary>
+        private bool _mouseDownActive;
+        private Vector2 _mouseDownPos;
+        private DateTime _mouseDownTime = DateTime.MinValue;
+
+        /// <summary>刚完成一次左键点击(位移小、时长短)，等游戏镜头切换。</summary>
+        private bool _pendingInspectClick;
+        private DateTime _inspectClickTime = DateTime.MinValue;
+
+        /// <summary>跟随目标变化触发的聚焦还原请求(由 Update 置位，PostLateUpdate 消费)。</summary>
+        private bool _focusRestoreRequested;
 
         /// <summary>本次接管的写入帧数(校验日志用)。</summary>
         private int _frames;
@@ -319,7 +334,7 @@ namespace FreeCameraMod
 
         public override string Name { get { return "自由相机"; } }
 
-        public override string Version { get { return "2.6.0"; } }
+        public override string Version { get { return "2.7.0"; } }
     }
 
     internal static class VectorExtensions

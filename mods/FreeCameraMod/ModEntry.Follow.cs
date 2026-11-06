@@ -267,6 +267,12 @@ namespace FreeCameraMod
             if (UnityObject.IsAlive(current) && current != info.OriginalFollow &&
                 CinemachineService.IsCharacterTransform(current))
             {
+                // 点击怪物头像聚焦：锚点先别钉住，等 PostLateUpdate 丢掉锚点重落到新怪物
+                if (_restoreOnMonsterFocus && IsInspectClickFresh())
+                {
+                    _focusRestoreRequested = true;
+                    Log.Info("自由相机: 点击怪物头像切换镜头，已请求还原视角（跟随聚焦）");
+                }
                 info.OriginalFollow = current;
             }
 

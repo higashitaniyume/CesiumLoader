@@ -98,6 +98,9 @@ namespace FreeCameraMod
                     return;
                 }
 
+                // ---- 点击怪物头像查信息：平移与缩放不占用输入时才记 ----
+                TrackInspectClick();
+
                 // ---- 复原键(默认 F1; 没接管时按了不做事) ----
                 if ((_restoreKey != KeyCode.None && InputService.IsKeyPressed(_restoreKey)) ||
                     (_resetKey != KeyCode.None && InputService.IsKeyPressed(_resetKey)))
@@ -152,6 +155,25 @@ namespace FreeCameraMod
                 // 这一步在缩放/旋转之前做, 后面会以锁定位姿作为基准再叠加偏移与旋转。
                 bool cameraLocked = UpdateFollowCameraLock();
 
+                // 点击怪物头像触发（跟随目标已切到新角色）：丢掉缩放/旋转与固定锚点，
+                // 交回游戏走正常切换；下一帧按新怪物的机位重新落锚/锁定。
+                if (_focusRestoreRequested)
+                {
+                    _focusRestoreRequested = false;
+                    _pendingInspectClick = false;
+                    if (_active)
+                    {
+                        var camFR = (_driven != null && UnityObject.IsAlive(_driven))
+                            ? _driven : CameraService.GetMainCamera();
+                        if (UnityObject.IsAlive(camFR)) RestoreBasePose(camFR);
+                        ResetRuntime();
+                    }
+                    if (!_autoFollow) ResetFollowOverride();
+                    Log.Info("自由相机: 点击怪物头像切换镜头，已还原视角（镜头聚焦）");
+                    Notify("自由相机: 已恢复视角以查看怪物");
+                    return;
+                }
+
                 if (!_active) return;
 
                 var camera = (_driven != null && UnityObject.IsAlive(_driven)) ? _driven : CameraService.GetMainCamera();
@@ -170,6 +192,9 @@ namespace FreeCameraMod
                 //    否则会在"已经拉远/转过"的位置上再叠加一次, 越滚越远、越转越多。
                 Vector3 gamePosition = CameraService.GetPosition(camera);
                 Vector3 gameEuler = CameraService.GetEulerAngles(camera);
+                Vector3 baseBefore = _basePosition;
+                bool hadBaseBefore = _hasBasePose;
+                bool gameWroteThisFrame = false;
                 if (cameraLocked)
                 {
                     // 基准已经由 UpdateFollowCameraLock 设成锁定位姿, 不再从游戏相机读取
@@ -186,7 +211,25 @@ namespace FreeCameraMod
                         _basePosition = gamePosition;
                         _baseEuler = gameEuler;
                         _hasBasePose = true;
+                        gameWroteThisFrame = true;
                     }
+                }
+
+                // 1b) 点击怪物头像：游戏镜头跳变（切到怪物）且开关开启时，
+                //     还原缩放/旋转并交回游戏；没有点击的自动运镜不受影响。
+                if (_restoreOnMonsterFocus && !cameraLocked && IsInspectClickFresh() &&
+                    hadBaseBefore && gameWroteThisFrame && Distance(gamePosition, baseBefore) > 5f)
+                {
+                    _pendingInspectClick = false;
+                    float restoredOffset = _offset;
+                    float restoredYaw = _yawDelta;
+                    RestoreBasePose(camera);
+                    ResetRuntime();
+                    if (!_autoFollow) ResetFollowOverride();
+                    Log.Info("自由相机: 点击怪物头像切换镜头，已还原视角（偏移 " +
+                             F(restoredOffset) + "m -> 0, 旋转 " + F(restoredYaw) + "° -> 0）");
+                    Notify("自由相机: 已恢复视角以查看怪物");
+                    return;
                 }
 
                 // 2) 复原(按键): 把游戏自己的位姿写回去, 相机交还游戏
@@ -314,6 +357,65 @@ namespace FreeCameraMod
             if (!_active) return;
             Log.Info("自由相机: 场景切换(" + (scene.IsValid() ? scene.name : "?") + "), 结束接管并清零偏移/旋转");
             ResetRuntime();
+        }
+
+        /// <summary>
+        /// 记住左键一下（按下抬起位移≤12px 且用时≤0.8s），等待游戏自己切镜头。
+        /// 拖拽平移位移大、自动运镜无点击，都不会置位，避免把回合切换误当点头像。
+        /// 只在复原开关打开时记录；UI 阻塞时不记（由调用方保证已过 ShouldBlock 检查）。
+        /// </summary>
+        private void TrackInspectClick()
+        {
+            if (!_restoreOnMonsterFocus)
+            {
+                _mouseDownActive = false;
+                _pendingInspectClick = false;
+                return;
+            }
+            if (!IsInspectClickFresh() && _pendingInspectClick)
+            {
+                // 1.5s 内游戏还没切镜头，视为这次点击不是点头像，丢掉
+                _pendingInspectClick = false;
+            }
+            try
+            {
+                if (InputService.IsMouseButtonPressed(0))
+                {
+                    Vector2 pos;
+                    if (InputService.TryGetMousePosition(out pos))
+                    {
+                        _mouseDownPos = pos;
+                        _mouseDownTime = DateTime.UtcNow;
+                        _mouseDownActive = true;
+                    }
+                }
+                if (_mouseDownActive && InputService.IsMouseButtonReleased(0))
+                {
+                    Vector2 pos2;
+                    if (InputService.TryGetMousePosition(out pos2))
+                    {
+                        float disp = (pos2 - _mouseDownPos).magnitude;
+                        double dur = (DateTime.UtcNow - _mouseDownTime).TotalSeconds;
+                        if (disp <= 12f && dur >= 0d && dur <= 0.8d)
+                        {
+                            _pendingInspectClick = true;
+                            _inspectClickTime = DateTime.UtcNow;
+                            Log.Debug("自由相机: 检测到点击，等待镜头切换（查怪）");
+                        }
+                    }
+                    _mouseDownActive = false;
+                }
+                if (_mouseDownActive && !InputService.IsMouseButtonHeld(0))
+                    _mouseDownActive = false;
+            }
+            catch { _mouseDownActive = false; }
+        }
+
+        private bool IsInspectClickFresh()
+        {
+            if (!_pendingInspectClick) return false;
+            double age = (DateTime.UtcNow - _inspectClickTime).TotalSeconds;
+            return age >= 0d && age <= 1.5d;
         }
 
         /// <summary>卸载: 把相机还给游戏(不还原 enabled, 见 CameraState.Restore 的说明)。</summary>

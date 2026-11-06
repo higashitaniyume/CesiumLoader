@@ -166,6 +166,8 @@ namespace FreeCameraMod
             _brainOwner = null;
             _brainProbeCooldown = 0;
             _followWarned = false;
+            _pendingInspectClick = false;
+            _focusRestoreRequested = false;
 
             if (UnityObject.IsAlive(_followAnchor)) UnityObject.SafeDestroy(_followAnchor);
             _followAnchor = null;

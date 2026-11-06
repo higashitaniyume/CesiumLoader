@@ -201,6 +201,9 @@ namespace FreeCameraMod
             _panSnapshot = Vector3.zero;
             _noCameraWarned = false;
             _pivotWarned = false;
+            _mouseDownActive = false;
+            _pendingInspectClick = false;
+            _focusRestoreRequested = false;
         }
 
         /// <summary>

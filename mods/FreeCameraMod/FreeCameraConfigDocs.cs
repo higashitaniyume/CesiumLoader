@@ -104,6 +104,11 @@ namespace FreeCameraMod
                 "旋轉時抵掉遊戲自己的左右方向鍵平移，預設 true；改為 false 則旋轉的同時地圖也會被推走。",
                 "Cancel the game's own left/right arrow pan while rotating (default true); false lets the map slide while rotating.",
                 "回転中にゲーム自身の左右キー移動を打ち消します（既定 true）。false では回転と同時に地図も動きます。"));
+            changed |= config.Describe("restoreOnMonsterFocus", D(
+                "点击怪物头像查信息时是否还原缩放/旋转并正常切换镜头（默认开；关闭则保持当前缩放）。",
+                "點擊怪物頭像查資訊時是否還原縮放/旋轉並正常切換鏡頭（預設開；關閉則保持目前縮放）。",
+                "Restore zoom/rotation and switch the camera when clicking a monster avatar to inspect it (default on; off keeps the current zoom).",
+                "モンスターヘッドをクリックして確認する際、ズーム/回転を戻して通常のカメラ切り替えに戻します（既定オン。オフでは現在のズームを維持します）。"));
             return changed;
         }
 
