@@ -1,6 +1,20 @@
 # 更新日志 / Changelog
 
-本文件按版本记录 `CesiumLoader` 的功能变更。版本号与 GitHub 发布 tag 一一对应（如 `modloader-3.3.1`，版本号为 `3.3.1`），发布产物由 [release-modloader.yml](.github/workflows/release-modloader.yml) 在打 tag 时自动构建。
+本文件按版本记录 `CesiumLoader` 的功能变更。版本号与 GitHub 发布 tag 一一对应（如 `modloader-3.3.2`，版本号为 `3.3.2`），发布产物由 [release-modloader.yml](.github/workflows/release-modloader.yml) 在打 tag 时自动构建。
+
+## [3.3.2] - 2026-11-06
+
+### 窗口置前：改用每进程独立 UDP
+
+- 回合置前 / 窗口置前不再走共享文件通道（`request.txt` / `state.txt`），改为原生 `windowctl` 监听 `127.0.0.1` 随机端口，端口经 `CESIUM_FOCUS_PORT` 发布，SDK 以 UDP 发送；多开同机多个实例互不串扰。
+
+### 回合时钟
+
+- 选人后加载地图期间计时器待机，不会误触发超时判定。
+
+### 内置模组
+
+- 移除 `CharacterSkinMod` 的内置分发（源码保留），内置 mod 数由 21 降为 20。
 
 ## [3.3.1] - 2026-11-05
 
