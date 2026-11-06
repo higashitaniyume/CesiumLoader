@@ -24,6 +24,7 @@
 #include "speed/speedctl.h"
 #include "window/windowctl.h"
 #include "window/windowtitle.h"
+#include "overlay/overlayctl.h"
 #include "audio/audioctl.h"
 #include "mods/modmeta.h"
 #include "logging/logging.h"
@@ -241,6 +242,12 @@ static DWORD WINAPI boot_thread(LPVOID)
         windowctl_start(windowctl_dir());
     else
         log_line("[loader] windowControlEnabled=false, skipping foreground control UDP channel");
+    // 3.7.1c WPF Overlay 子进程(见 overlayctl.h): 加载器拉起 CesiumOverlay.exe，Mod 的
+    //      CESIUM_OVERLAY_PORT 也在这里写入 —— Mod->WPF 直连，加载器不转发。
+    if (cfg.overlayEnabled)
+        overlayctl_start(overlayctl_dir());
+    else
+        log_line("[loader] overlayEnabled=false, skipping WPF overlay process");
     // 3.7.1b 原生音频通道(见 audioctl.h): 是否启动只由代码常量 kEnableAudioControl 决定,
     //        配置键 audioControlEnabled 仅保留解析(Toys 读写), 不再能打开该通道。
     if (kEnableAudioControl)

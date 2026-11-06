@@ -80,6 +80,11 @@ struct LoaderConfig
     // mod 通过 UDP 发请求。每进程一个端口, 多开互不干扰。关掉只影响该功能。
     bool windowControlEnabled = true;
 
+    // WPF Overlay 子进程通道(进程外 WPF 窗口，Mod -> WPF 走 127.0.0.1 UDP 动态端口)。默认**关** ——
+    // 它是加载器的子进程(overlay/CesiumOverlay.exe)，Mod 发的面板文本直达 WPF，不经加载器转发。
+    // 关掉时不启动 CesiumOverlay.exe，SDK 的 OverlayChannel.IsAvailable 为 false，Mod 降级为游戏内渲染。
+    bool overlayEnabled = false;
+
     // 原生音频控制通道(UDP 端口 + <audio>\request.txt / state.txt)。
     // Astral Party 为 IL2CPP 构建且裁剪了 AudioSource 方法，热更程序集无法 P/Invoke，
     // 由原生加载器提供底层音效与背景音乐播放。

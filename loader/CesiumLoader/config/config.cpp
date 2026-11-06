@@ -111,6 +111,8 @@ LoaderConfig load_config(const std::wstring& config_path)
     cfg.speedControlEnabled = jsonc::boolean(j, "speedControlEnabled", cfg.speedControlEnabled);
     // 窗口置前控制文件通道: 缺失/损坏走默认(启用), 关掉只影响该功能。
     cfg.windowControlEnabled = jsonc::boolean(j, "windowControlEnabled", cfg.windowControlEnabled);
+    // WPF Overlay 子进程通道: 缺失/损坏走默认(关闭, 避免默认起进程), 关掉只影响该功能。
+    cfg.overlayEnabled = jsonc::boolean(j, "overlayEnabled", cfg.overlayEnabled);
     // 原生音频控制通道: 缺失/损坏走默认(启用), 关掉只影响该功能。
     cfg.audioControlEnabled = jsonc::boolean(j, "audioControlEnabled", cfg.audioControlEnabled);
     // Steam 自杀门绕过: 缺失/损坏走默认(启用), 绝不阻止启动(见 steamhack.h)。

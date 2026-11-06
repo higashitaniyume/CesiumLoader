@@ -40,6 +40,9 @@
     <Filter Include="taptap">
       <UniqueIdentifier>{C8B2D461-7A04-4F99-AF30-3E1C6E9D5B77}</UniqueIdentifier>
     </Filter>
+    <Filter Include="overlay">
+      <UniqueIdentifier>{D9C3E4F5-1A2B-4C5D-8E9F-3A4B5C6D7E8F}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="config\config.cpp">
@@ -113,6 +116,9 @@
     </ClCompile>
     <ClCompile Include="window\windowtitle.cpp">
       <Filter>window</Filter>
+    </ClCompile>
+    <ClCompile Include="overlay\overlayctl.cpp">
+      <Filter>overlay</Filter>
     </ClCompile>
     <ClCompile Include="steam\steamhack.cpp">
       <Filter>steam</Filter>
@@ -195,6 +201,9 @@
     </ClInclude>
     <ClInclude Include="window\windowtitle.h">
       <Filter>window</Filter>
+    </ClInclude>
+    <ClInclude Include="overlay\overlayctl.h">
+      <Filter>overlay</Filter>
     </ClInclude>
     <ClInclude Include="steam\steamhack.h">
       <Filter>steam</Filter>

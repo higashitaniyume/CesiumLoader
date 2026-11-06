@@ -5,6 +5,8 @@
   "fontSize": 18,
   // 一键清空看板内容的快捷键，默认 T
   "clearKey": "T",
+  // 渲染后端：internal=游戏内，wpf=进程外 WPF Overlay（需 CESIUM_OVERLAY_PORT）
+  "backend": "internal",
   // 玩家名字前是否显示楼层标签（如【一楼】）
   "showFloorTag": true,
 
@@ -52,6 +54,12 @@
       "zh-Hant": "一鍵清空看板內容的快捷鍵，預設 T。",
       "en": "Hotkey to instantly clear overlay content (default T).",
       "ja": "看板の内容を一括クリアするショートカットキー（既定 T）。"
+    },
+    "backend": {
+      "zh-Hans": "渲染后端：internal=游戏内 FairyGUI 看板，wpf=进程外 WPF Overlay 共用通道（CESIUM_OVERLAY_PORT 就绪时才生效）。",
+      "zh-Hant": "渲染後端：internal=遊戲內 FairyGUI 看板，wpf=進程外 WPF Overlay（CESIUM_OVERLAY_PORT 就緒時才生效）。",
+      "en": "Render backend: internal=in-game FairyGUI overlay, wpf=out-of-process WPF overlay (requires CESIUM_OVERLAY_PORT).",
+      "ja": "描画バックエンド：internal=ゲーム内 FairyGUI、wpf=外部 WPF Overlay（CESIUM_OVERLAY_PORT が揃った時だけ有効）。"
     },
     "showFloorTag": {
       "zh-Hans": "玩家昵称前是否显示一楼至四楼的座位标签（如【一楼】）。",

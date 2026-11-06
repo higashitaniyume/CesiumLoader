@@ -35,6 +35,8 @@ const Field kFields[] = {
       "变速文件通道(<loader>\\speed); 只能从关到开" },
     { "windowControlEnabled", ValueType::Bool, 0, 0, nullptr, Apply::StartOnly,
       "窗口置前 UDP 通道(127.0.0.1 动态端口, 每进程隔离); 只能从关到开" },
+    { "overlayEnabled", ValueType::Bool, 0, 0, nullptr, Apply::Restart,
+      "WPF Overlay 子进程(CesiumOverlay.exe, Mod->WPF 走 127.0.0.1 动态端口)" },
     { "audioControlEnabled", ValueType::Bool, 0, 0, nullptr, Apply::StartOnly,
       "原生音频控制通道(UDP + <loader>\\audio); 只能从关到开" },
 
@@ -245,6 +247,7 @@ std::string field_value(const LoaderConfig& cfg, const Field& f)
     if (n == "debugShell") return cfg.debugShell ? "true" : "false";
     if (n == "speedControlEnabled") return cfg.speedControlEnabled ? "true" : "false";
     if (n == "windowControlEnabled") return cfg.windowControlEnabled ? "true" : "false";
+    if (n == "overlayEnabled") return cfg.overlayEnabled ? "true" : "false";
     if (n == "audioControlEnabled") return cfg.audioControlEnabled ? "true" : "false";
     if (n == "steamBypassEnabled") return cfg.steamBypassEnabled ? "true" : "false";
     if (n == "steamBypassRestartCheck") return cfg.steamBypassRestartCheck ? "true" : "false";
@@ -316,6 +319,7 @@ bool field_assign(LoaderConfig& cfg, const Field& f, const std::string& text, st
     else if (n == "debugShell") cfg.debugShell = (v == "true");
     else if (n == "speedControlEnabled") cfg.speedControlEnabled = (v == "true");
     else if (n == "windowControlEnabled") cfg.windowControlEnabled = (v == "true");
+    else if (n == "overlayEnabled") cfg.overlayEnabled = (v == "true");
     else if (n == "audioControlEnabled") cfg.audioControlEnabled = (v == "true");
     else if (n == "steamBypassEnabled") cfg.steamBypassEnabled = (v == "true");
     else if (n == "steamBypassRestartCheck") cfg.steamBypassRestartCheck = (v == "true");

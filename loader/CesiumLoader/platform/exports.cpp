@@ -13,6 +13,7 @@
 #include "platform/loader.h"
 #include "speed/speedhack.h"
 #include "steam/steamhack.h"
+#include "overlay/overlayctl.h"
 
 #include <windows.h>
 
@@ -197,6 +198,8 @@ BOOL WINAPI DllMain(HINSTANCE, DWORD reason, LPVOID)
         // speedhack_shutdown() 会 MH_Uninitialize(), 卸载整个 MinHook(speedhack 拥有它)。
         steamhack_uninstall();
         speedhack_shutdown();
+        // 关 Job 句柄，WPF Overlay 子进程随之终止
+        overlayctl_shutdown();
     }
     return TRUE;
 }

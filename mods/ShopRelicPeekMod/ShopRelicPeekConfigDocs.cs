@@ -33,6 +33,12 @@ namespace ShopRelicPeekMod
                 "Whether to prefix player names with seat floor tags (e.g. 1st Floor).",
                 "プレイヤー名の前に座席階層タグ（1階～4階）を表示するかどうか。"));
 
+            changed |= config.Describe("backend", D(
+                "渲染后端：internal=游戏内 FairyGUI 看板，wpf=进程外 WPF Overlay 共用通道（CESIUM_OVERLAY_PORT 就绪时才生效）。",
+                "渲染後端：internal=遊戲內 FairyGUI 看板，wpf=進程外 WPF Overlay（CESIUM_OVERLAY_PORT 就緒時才生效）。",
+                "Render backend: internal=in-game FairyGUI overlay, wpf=out-of-process WPF overlay (requires CESIUM_OVERLAY_PORT).",
+                "描画バックエンド：internal=ゲーム内 FairyGUI、wpf=外部 WPF Overlay（CESIUM_OVERLAY_PORT が揃った時だけ有効）。"));
+
             // 商店看板设置
             changed |= config.Describe("showShopCards", D(
                 "是否开启商店独立看板（展示玩家进入商店遇到的卡牌）。",

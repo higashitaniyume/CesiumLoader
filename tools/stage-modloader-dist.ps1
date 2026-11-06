@@ -83,7 +83,50 @@ Copy-WithSymbols "loader\CesiumLoader.Bootstrap\bin\$Configuration\netstandard2.
 Copy-WithSymbols "loader\CesiumLoader.SDK\bin\$Configuration\netstandard2.0\CesiumLoader.SDK.dll" `
     "$layout\sdk\CesiumLoader.SDK.dll" -WithDocs | Out-Null
 
+# WPF Overlay（进程外）：与 version.dll 同发布包，exe + dll + pdb 成组同步
+# 已 fork 到 AstralParty.Overlay（higashitaniyume/AstralParty.Overlay），本地优先用 fork 产物，
+# 再退回 loader/CesiumLoader.Overlay 旧路径（兼容）。CI 优先从 fork Release 下载。
+$forkCandidates = @(
+    "$repo\..\AstralParty.Overlay\bin\$Configuration\net8.0-windows\win-x64",
+    "$repo\loader\CesiumLoader.Overlay\bin\$Configuration\net8.0-windows\win-x64"
+)
+$overlayOut = $forkCandidates | Where-Object { Test-Path -LiteralPath "$_\CesiumOverlay.exe" } | Select-Object -First 1
+if (-not $overlayOut) { $overlayOut = $forkCandidates[0] }
+$overlayStaged = $false
+if (Test-Path -LiteralPath "$overlayOut\CesiumOverlay.exe")
+{
+    $overlayDest = "$layout\overlay"
+    New-Item -ItemType Directory -Path $overlayDest -Force | Out-Null
+    Copy-Item -LiteralPath "$overlayOut\CesiumOverlay.exe" -Destination "$overlayDest\CesiumOverlay.exe" -Force
+    foreach ($ext in @("dll","pdb","deps.json","runtimeconfig.json"))
+    {
+        $f = "$overlayOut\CesiumOverlay.$ext"
+        if (Test-Path -LiteralPath $f) { Copy-Item -LiteralPath $f -Destination "$overlayDest\CesiumOverlay.$ext" -Force }
+    }
+    # self-contained 产物带大量运行时 dll，整目录同步
+    $runtimeFiles = @(
+        "$overlayOut\System.*.dll", "$overlayOut\Presentation*.dll", "$overlayOut\Windows*.dll",
+        "$overlayOut\*.dll"
+    )
+    foreach ($pat in $runtimeFiles)
+    {
+        Get-ChildItem -LiteralPath $overlayOut -Filter (Split-Path -Leaf $pat) -ErrorAction SilentlyContinue | ForEach-Object {
+            Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $overlayDest $_.Name) -Force -ErrorAction SilentlyContinue
+        }
+    }
+    # 默认overlay配置（Toys/拖动写同一文件，存在时不覆盖已有）
+    $cfgDefault = "loader\CesiumLoader.Overlay\overlay_config.default.json"
+    if (Test-Path -LiteralPath $cfgDefault) { Copy-Item -LiteralPath $cfgDefault -Destination "$overlayDest\overlay_config.json" -Force }
+    $overlayStaged = $true
+    Write-Host "WPF Overlay 已同步到 $overlayDest"
+}
+else
+{
+    Write-Warning "未找到 WPF Overlay 产物: $overlayOut\CesiumOverlay.exe（先构建 loader\CesiumLoader.Overlay）"
+}
+
 $staged = @("version.dll", 'AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll', 'AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll')
+if ($overlayStaged) { $staged += 'AstralParty_ModLoader/overlay/CesiumOverlay.exe' }
 foreach ($mod in $builtInMods)
 {
     $modDir = "$layout\mods\$mod"

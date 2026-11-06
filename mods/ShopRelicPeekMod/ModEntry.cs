@@ -6,6 +6,7 @@ using CesiumLoader.SDK.Gameplay;
 using CesiumLoader.SDK.Inputs;
 using CesiumLoader.SDK.Logging;
 using CesiumLoader.SDK.Mods;
+using CesiumLoader.SDK.Overlay;
 using Core.Net;
 using Core.Scene;
 using FairyGUI;
@@ -33,6 +34,11 @@ namespace ShopRelicPeekMod
         private readonly PeekOverlayPanel _relicOverlay = new PeekOverlayPanel("RelicPeekOverlay", 25001);
         private KeyCode _clearKeyCode = KeyCode.T;
         private int _lastRound = -1;
+        private string _lastShopSent;
+        private string _lastRelicSent;
+        private bool _lastShopVisibleSent = false;
+        private bool _lastRelicVisibleSent = false;
+        private bool _wpfWarnedOnce = false;
 
         public override string Name => "商店与筹码看板";
         public override string Version => "1.2.0";
@@ -68,6 +74,7 @@ namespace ShopRelicPeekMod
                     Config.SetDefault("enabled", true);
                     Config.SetDefault("fontSize", 18);
                     Config.SetDefault("clearKey", "T");
+                    Config.SetDefault("backend", "internal");
                     Config.SetDefault("showFloorTag", true);
 
                     Config.SetDefault("showShopCards", true);
@@ -85,6 +92,8 @@ namespace ShopRelicPeekMod
                 }
 
                 _cfg.Enabled = Config.GetBool("enabled", true);
+                _cfg.Backend = Config.GetString("backend", "internal") ?? "internal";
+                if (_cfg.Backend != "internal" && _cfg.Backend != "wpf") _cfg.Backend = "internal";
                 _cfg.FontSize = ShopRelicPeekConfig.Clamp(Config.GetInt("fontSize", 18), 12, 36, 18);
                 _cfg.ShowFloorTag = Config.GetBool("showFloorTag", true);
 
@@ -122,7 +131,12 @@ namespace ShopRelicPeekMod
         public override void OnConfigChanged()
         {
             ReadConfig();
-            Log.Info("商店与筹码看板配置已重载: enabled=" + _cfg.Enabled + ", clearKey=" + _clearKeyCode);
+            _lastShopSent = null;
+            _lastRelicSent = null;
+            _lastShopVisibleSent = false;
+            _lastRelicVisibleSent = false;
+            _wpfWarnedOnce = false;
+            Log.Info("商店与筹码看板配置已重载: enabled=" + _cfg.Enabled + ", backend=" + _cfg.Backend + ", clearKey=" + _clearKeyCode);
         }
 
         private void OnRawAction(RawActionEvent evt)
@@ -214,6 +228,50 @@ namespace ShopRelicPeekMod
             _tracker.RecordRelicSelected(playerId, relicId, DateTime.UtcNow);
         }
 
+        private bool UseWpf()
+        {
+            bool wants = _cfg.Backend == "wpf";
+            if (!wants) return false;
+            if (OverlayChannel.IsAvailable) return true;
+            if (!_wpfWarnedOnce)
+            {
+                _wpfWarnedOnce = true;
+                SdkLog.Warn("ShopRelicPeek", "backend=wpf 但 OverlayChannel 不可用（" + (OverlayChannel.UnavailableReason ?? "未知") + "），已降级为游戏内渲染。");
+            }
+            return false;
+        }
+
+        private void PushShopToWpf(string text, bool visible)
+        {
+            string body = visible ? text : null;
+            if (visible && body == _lastShopSent && _lastShopVisibleSent) return;
+            if (!visible && !_lastShopVisibleSent) return;
+            OverlayChannel.SendPeek("shop", visible, body, _cfg.FontSize, _cfg.ShopPanelWidth, _cfg.ShopOffsetX, _cfg.ShopOffsetY);
+            _lastShopSent = body;
+            _lastShopVisibleSent = visible;
+        }
+
+        private void PushRelicToWpf(string text, bool visible)
+        {
+            string body = visible ? text : null;
+            if (visible && body == _lastRelicSent && _lastRelicVisibleSent) return;
+            if (!visible && !_lastRelicVisibleSent) return;
+            OverlayChannel.SendPeek("relic", visible, body, _cfg.FontSize, _cfg.RelicPanelWidth, _cfg.RelicOffsetX, _cfg.RelicOffsetY);
+            _lastRelicSent = body;
+            _lastRelicVisibleSent = visible;
+        }
+
+        private void HideAll()
+        {
+            _shopOverlay.Hide();
+            _relicOverlay.Hide();
+            if (_cfg.Backend == "wpf" && OverlayChannel.IsAvailable)
+            {
+                PushShopToWpf(null, false);
+                PushRelicToWpf(null, false);
+            }
+        }
+
         private void Draw()
         {
             try
@@ -222,25 +280,24 @@ namespace ShopRelicPeekMod
 
                 if (!_cfg.Enabled)
                 {
-                    _shopOverlay.Hide();
-                    _relicOverlay.Hide();
+                    HideAll();
                     return;
                 }
+
+                bool useWpf = UseWpf();
 
                 if (!SimpleSingletonProvider<Core.Scene.SceneManager>.hasInstance ||
                     SimpleSingletonProvider<Core.Scene.SceneManager>.inst.currentType.Value != SceneType.Battle)
                 {
                     _tracker.Clear();
-                    _shopOverlay.Hide();
-                    _relicOverlay.Hide();
+                    HideAll();
                     return;
                 }
 
                 if (!SimpleSingletonProvider<GameLogicManager>.hasInstance)
                 {
                     _tracker.Clear();
-                    _shopOverlay.Hide();
-                    _relicOverlay.Hide();
+                    HideAll();
                     return;
                 }
 
@@ -248,8 +305,7 @@ namespace ShopRelicPeekMod
                 if (gm == null || gm.battle == null)
                 {
                     _tracker.Clear();
-                    _shopOverlay.Hide();
-                    _relicOverlay.Hide();
+                    HideAll();
                     return;
                 }
 
@@ -269,14 +325,23 @@ namespace ShopRelicPeekMod
                     string shopText = _tracker.BuildShopOverlayText(_cfg, now);
                     if (!string.IsNullOrEmpty(shopText))
                     {
-                        _shopOverlay.Render(shopText, _cfg.ShopPanelWidth, _cfg.ShopOffsetX, _cfg.ShopOffsetY, _cfg.FontSize);
+                        if (useWpf)
+                        {
+                            _shopOverlay.Hide();
+                            PushShopToWpf(shopText, true);
+                        }
+                        else
+                        {
+                            _shopOverlay.Render(shopText, _cfg.ShopPanelWidth, _cfg.ShopOffsetX, _cfg.ShopOffsetY, _cfg.FontSize);
+                        }
                         shopVisible = true;
                     }
                 }
 
                 if (!shopVisible)
                 {
-                    _shopOverlay.Hide();
+                    if (useWpf) PushShopToWpf(null, false);
+                    else _shopOverlay.Hide();
                 }
 
                 // 2. 筹码独立看板
@@ -286,21 +351,29 @@ namespace ShopRelicPeekMod
                     string relicText = _tracker.BuildRelicOverlayText(_cfg, now);
                     if (!string.IsNullOrEmpty(relicText))
                     {
-                        // 筹码默认位于 RelicOffsetY；若上方商店看板正在显示，则自动避让并排在商店面板下方（距其底部 12px），绝不遮挡商店信息
-                        float targetRelicY = _cfg.RelicOffsetY;
-                        if (shopVisible && _shopOverlay.IsVisible)
+                        if (useWpf)
                         {
-                            targetRelicY = Math.Max(targetRelicY, _shopOverlay.Bottom + 12f);
+                            _relicOverlay.Hide();
+                            PushRelicToWpf(relicText, true);
                         }
-
-                        _relicOverlay.Render(relicText, _cfg.RelicPanelWidth, _cfg.RelicOffsetX, targetRelicY, _cfg.FontSize);
+                        else
+                        {
+                            // 筹码默认位于 RelicOffsetY；若上方商店看板正在显示，则自动避让并排在商店面板下方（距其底部 12px），绝不遮挡商店信息
+                            float targetRelicY = _cfg.RelicOffsetY;
+                            if (shopVisible && _shopOverlay.IsVisible)
+                            {
+                                targetRelicY = Math.Max(targetRelicY, _shopOverlay.Bottom + 12f);
+                            }
+                            _relicOverlay.Render(relicText, _cfg.RelicPanelWidth, _cfg.RelicOffsetX, targetRelicY, _cfg.FontSize);
+                        }
                         relicVisible = true;
                     }
                 }
 
                 if (!relicVisible)
                 {
-                    _relicOverlay.Hide();
+                    if (useWpf) PushRelicToWpf(null, false);
+                    else _relicOverlay.Hide();
                 }
             }
             catch (Exception ex)
@@ -446,6 +519,15 @@ namespace ShopRelicPeekMod
             _tracker.Clear();
             _shopOverlay.Clear();
             _relicOverlay.Clear();
+            try
+            {
+                if (_cfg != null && _cfg.Backend == "wpf" && OverlayChannel.IsAvailable)
+                {
+                    PushShopToWpf(null, false);
+                    PushRelicToWpf(null, false);
+                }
+            }
+            catch { }
         }
 
         public override void OnUnload()

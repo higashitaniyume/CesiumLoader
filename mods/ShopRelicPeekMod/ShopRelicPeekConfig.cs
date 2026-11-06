@@ -6,6 +6,7 @@ namespace ShopRelicPeekMod
         public int FontSize { get; set; } = 18;
         public bool ShowFloorTag { get; set; } = true;
         public string ClearKey { get; set; } = "T";
+        public string Backend { get; set; } = "internal";
 
         // 商店独立看板设置
         public bool ShowShopCards { get; set; } = true;

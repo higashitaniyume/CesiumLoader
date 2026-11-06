@@ -135,6 +135,7 @@
     <ClCompile Include="speed\speedhack.cpp" />
     <ClCompile Include="window\windowctl.cpp" />
     <ClCompile Include="window\windowtitle.cpp" />
+    <ClCompile Include="overlay\overlayctl.cpp" />
     <ClCompile Include="audio\audioctl.cpp" />
     <ClCompile Include="steam\steamhack.cpp" />
     <ClCompile Include="steam\steam_diagnostics.cpp" />
@@ -166,6 +167,7 @@
     <ClInclude Include="window\request.h" />
     <ClInclude Include="window\windowctl.h" />
     <ClInclude Include="window\windowtitle.h" />
+    <ClInclude Include="overlay\overlayctl.h" />
     <ClInclude Include="audio\audioctl.h" />
     <ClInclude Include="steam\steamhack.h" />
     <ClInclude Include="steam\steam_diagnostics.h" />

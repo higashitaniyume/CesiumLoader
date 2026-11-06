@@ -1,0 +1,11 @@
+{
+  "enabled": true,
+  "scale": 1.0,
+  "fontSize": 14,
+  "opacity": 0.85,
+  "toggleKey": "Backslash",
+  "toggleVk": 220,
+  "offsetX": 20,
+  "offsetY": 70,
+  "panelWidth": 340
+}

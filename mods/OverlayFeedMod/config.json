@@ -1,0 +1,39 @@
+{
+  "enabled": true,
+  "showShopCards": true,
+  "showRelicCandidates": true,
+  "shopDisplayDurationSeconds": 20,
+  "relicDisplayDurationSeconds": 20,
+  "_comments": {
+    "enabled": {
+      "zh-Hans": "总开关：是否把商店/筹码历史推给 WPF 覆盖层。",
+      "zh-Hant": "總開關：是否把商店/籌碼歷史推給 WPF 覆蓋層。",
+      "en": "Master switch: feed shop/relic history to the WPF overlay.",
+      "ja": "全体スイッチ：ショップ/チップ履歴を WPF オーバーレイに送信します。"
+    },
+    "showShopCards": {
+      "zh-Hans": "是否推送商店看板数据。",
+      "zh-Hant": "是否推送商店看板數據。",
+      "en": "Whether to feed shop panel data.",
+      "ja": "ショップパネルデータを送信するかどうか。"
+    },
+    "showRelicCandidates": {
+      "zh-Hans": "是否推送筹码看板数据。",
+      "zh-Hant": "是否推送籌碼看板數據。",
+      "en": "Whether to feed relic panel data.",
+      "ja": "チップパネルデータを送信するかどうか。"
+    },
+    "shopDisplayDurationSeconds": {
+      "zh-Hans": "商店数据保留秒数，默认 20。",
+      "zh-Hant": "商店數據保留秒數，預設 20。",
+      "en": "Seconds to keep shop data (default 20).",
+      "ja": "ショップデータを保持する秒数（既定 20）。"
+    },
+    "relicDisplayDurationSeconds": {
+      "zh-Hans": "筹码数据保留秒数，默认 20。",
+      "zh-Hant": "籌碼數據保留秒數，預設 20。",
+      "en": "Seconds to keep relic data (default 20).",
+      "ja": "チップデータを保持する秒数（既定 20）。"
+    }
+  }
+}
