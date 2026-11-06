@@ -111,7 +111,7 @@ namespace FreeCameraMod
             bool docsChanged = FreeCameraConfigDocs.Apply(_config);
             if (!force && _config.Has("autoFollow") && _config.Has("zoomStep") && _config.Has("restoreKey") &&
                 _config.Has("rotateLeftKey") && _config.Has("rotateSpeed") && _config.Has("rotateStep") &&
-                _config.Has("invertRotate"))
+                _config.Has("invertRotate") && _config.Has("restoreOnMonsterFocus"))
             {
                 if (docsChanged)
                 {
