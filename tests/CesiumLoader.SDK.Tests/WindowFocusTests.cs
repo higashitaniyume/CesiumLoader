@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
-using System.IO;
+using System.Net;
+using System.Net.Sockets;
 using System.Text;
 using CesiumLoader.SDK.Windowing;
 using Xunit;
@@ -8,144 +9,139 @@ using Xunit;
 namespace CesiumLoader.SDK.Tests
 {
     /// <summary>
-    /// 窗口置前通道 (WindowFocus)。热更程序集无法 P/Invoke, mod 只能写加载器监听的文件,
-    /// 这里用临时目录完整覆盖"可用/不可用/写请求/每次令牌不同"。
+    /// 窗口置前通道 (WindowFocus)。热更程序集无法 P/Invoke, mod 只能发本地 UDP,
+    /// 这里用回环 UDP 监听端完整覆盖"可用/不可用/发报文/每次令牌不同"。
+    /// (旧版文件通道测试已替换为 UDP 版, 与加载器的 bind 0 + CESIUM_FOCUS_PORT 发现一致。)
     /// </summary>
     public class WindowFocusTests : IDisposable
     {
-        private readonly string _dir;
+        private readonly UdpClient _listener;
+        private readonly int _port;
 
         public WindowFocusTests()
         {
-            _dir = Path.Combine(Path.GetTempPath(), "cesium-windowfocus-test-" + Guid.NewGuid().ToString("N"));
-            Directory.CreateDirectory(_dir);
-            WindowFocus.DirectoryOverride = _dir;
+            _listener = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
+            _listener.Client.ReceiveTimeout = 3000;
+            _port = ((IPEndPoint)_listener.Client.LocalEndPoint).Port;
+            WindowFocus.PortOverride = _port;
             WindowFocus.ResetCache();
         }
 
         public void Dispose()
         {
-            WindowFocus.DirectoryOverride = null;
+            WindowFocus.PortOverride = 0;
             WindowFocus.ResetCache();
-            try { Directory.Delete(_dir, true); } catch { }
+            try { _listener.Close(); } catch { }
         }
 
-        private string StatePath => Path.Combine(_dir, "state.txt");
-        private string RequestPath => Path.Combine(_dir, "request.txt");
-
-        private void WriteState(string text) => File.WriteAllText(StatePath, text);
+        private string ReceiveText()
+        {
+            var ep = new IPEndPoint(IPAddress.Any, 0);
+            byte[] bytes = _listener.Receive(ref ep);
+            return Encoding.UTF8.GetString(bytes);
+        }
 
         [Fact]
-        public void Available_RequiresLoaderState()
+        public void Available_RequiresLoaderPort()
         {
-            Assert.False(WindowFocus.IsAvailable);
-            Assert.False(WindowFocus.RequestForeground());
-            Assert.False(File.Exists(RequestPath));
-
-            WriteState("version=2.5.5\r\navailable=0\r\n");
-            Assert.False(WindowFocus.IsAvailable);
-            Assert.False(WindowFocus.RequestForeground());
-            Assert.False(File.Exists(RequestPath));
-
-            WriteState("version=2.5.5\r\navailable=1\r\n");
+            // 有端口即可用(收到一次请求即证明监听端在工作)
             Assert.True(WindowFocus.IsAvailable);
             Assert.True(WindowFocus.RequestForeground());
-            Assert.True(File.Exists(RequestPath));
+            Assert.NotEmpty(ReceiveText());
+
+            WindowFocus.PortOverride = 0;
+            WindowFocus.ResetCache();
+            Assert.False(WindowFocus.IsAvailable);
+            Assert.False(WindowFocus.RequestForeground());
         }
 
         [Fact]
-        public void RequestForeground_WritesAChangingToken()
+        public void RequestForeground_SendsAChangingToken()
         {
-            WriteState("version=2.5.5\r\navailable=1\r\n");
-
             Assert.True(WindowFocus.RequestForeground());
             long first;
-            Assert.True(long.TryParse(File.ReadAllText(RequestPath).Trim(), NumberStyles.Integer,
+            Assert.True(long.TryParse(ReceiveText().Trim(), NumberStyles.Integer,
                 CultureInfo.InvariantCulture, out first));
 
             Assert.True(WindowFocus.RequestForeground());
             long second;
-            Assert.True(long.TryParse(File.ReadAllText(RequestPath).Trim(), NumberStyles.Integer,
+            Assert.True(long.TryParse(ReceiveText().Trim(), NumberStyles.Integer,
                 CultureInfo.InvariantCulture, out second));
 
-            // 加载器只处理内容变化: 每次请求的令牌必须不同。
+            // 每次请求的令牌必须不同(加载器靠令牌去重旧文件版的残留请求)。
             Assert.NotEqual(first, second);
         }
 
         [Fact]
-        public void Describe_ReportsAvailabilityAndDirectory()
+        public void Describe_ReportsAvailabilityAndEndpoint()
         {
-            WriteState("version=2.5.5\r\navailable=1\r\n");
             string text = WindowFocus.Describe();
             Assert.Contains("可用", text);
-            Assert.Contains(_dir, text);
+            Assert.Contains(_port.ToString(), text);
 
-            File.Delete(StatePath);
+            WindowFocus.PortOverride = 0;
+            WindowFocus.ResetCache();
             text = WindowFocus.Describe();
             Assert.Contains("不可用", text);
         }
 
         [Fact]
-        public void Availability_RecoversWhenLoaderWritesStateLater()
+        public void Availability_RecoversWhenLoaderAppearsLater()
         {
+            WindowFocus.PortOverride = 0;
+            WindowFocus.ResetCache();
             Assert.False(WindowFocus.IsAvailable);
-            WriteState("version=2.5.5\r\navailable=1\r\n");
+
+            WindowFocus.PortOverride = _port;
+            WindowFocus.ResetCache();
             Assert.True(WindowFocus.IsAvailable);
         }
 
-        // ---------- 提示音 (2.7.2) ----------
+        // ---------- 提示音 ----------
 
         [Fact]
-        public void SupportsSound_RequiresAudioLine()
+        public void SupportsSound_MirrorsAvailability()
         {
-            WriteState("version=2.7.0\r\navailable=1\r\n");
-            Assert.False(WindowFocus.SupportsSound);   // 旧加载器没有 audio 行
+            Assert.True(WindowFocus.SupportsSound);   // UDP 就绪即支持 WAV
 
-            WriteState("version=2.7.2\r\navailable=1\r\naudio=0\r\n");
+            WindowFocus.PortOverride = 0;
+            WindowFocus.ResetCache();
             Assert.False(WindowFocus.SupportsSound);
-
-            WriteState("version=2.7.2\r\navailable=1\r\naudio=wav\r\n");
-            Assert.True(WindowFocus.SupportsSound);
         }
 
         [Fact]
-        public void RequestForeground_WithSound_WritesTokenAndPath()
+        public void RequestForeground_WithSound_SendsTokenAndPath()
         {
-            WriteState("version=2.7.2\r\navailable=1\r\naudio=wav\r\n");
-            string sound = Path.Combine(_dir, "sounds", "your-turn.wav");
+            string sound = @"C:\sounds\your-turn.wav";
 
             Assert.True(WindowFocus.RequestForeground(sound));
 
-            string[] lines = File.ReadAllLines(RequestPath);
+            string[] lines = ReceiveText().Split(new[] { "\r\n" }, StringSplitOptions.RemoveEmptyEntries);
             Assert.Equal(2, lines.Length);
             Assert.True(long.TryParse(lines[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out _));
             Assert.Equal(sound, lines[1]);
         }
 
         [Fact]
-        public void RequestForeground_WithoutSound_WritesSingleLine()
+        public void RequestForeground_WithoutSound_SendsSingleLine()
         {
-            WriteState("version=2.7.2\r\navailable=1\r\naudio=wav\r\n");
-
             Assert.True(WindowFocus.RequestForeground(null));
-            Assert.Single(File.ReadAllLines(RequestPath));
+            Assert.Single(ReceiveText().Split(new[] { "\r\n" }, StringSplitOptions.RemoveEmptyEntries));
 
             Assert.True(WindowFocus.RequestForeground("   "));
-            Assert.Single(File.ReadAllLines(RequestPath));
+            Assert.Single(ReceiveText().Split(new[] { "\r\n" }, StringSplitOptions.RemoveEmptyEntries));
         }
 
         [Fact]
         public void RequestForeground_DropsRelativeOrMultilineSound()
         {
-            WriteState("version=2.7.2\r\navailable=1\r\naudio=wav\r\n");
-
             // 相对路径: 加载器会按自己的当前目录解析, 不能发出去。
             Assert.True(WindowFocus.RequestForeground(@"sounds\your-turn.wav"));
-            Assert.Single(File.ReadAllLines(RequestPath));
+            Assert.Single(ReceiveText().Split(new[] { "\r\n" }, StringSplitOptions.RemoveEmptyEntries));
 
-            // 换行会破坏请求文件的行结构。
+            // 换行会破坏报文的行结构。
             Assert.True(WindowFocus.RequestForeground("C:\\a.wav\r\nC:\\b.wav"));
-            Assert.Single(File.ReadAllLines(RequestPath));
+            Assert.Single(ReceiveText().Split(new[] { "\r\n" }, StringSplitOptions.RemoveEmptyEntries));
         }
 
         [Theory]
@@ -162,11 +158,14 @@ namespace CesiumLoader.SDK.Tests
         }
 
         [Fact]
-        public void RequestForeground_UnavailableChannel_DoesNotWriteSoundRequest()
+        public void RequestForeground_UnavailableChannel_DoesNotSend()
         {
-            string sound = Path.Combine(_dir, "ding.wav");
+            WindowFocus.PortOverride = 0;
+            WindowFocus.ResetCache();
+
+            string sound = @"C:\ding.wav";
             Assert.False(WindowFocus.RequestForeground(sound));
-            Assert.False(File.Exists(RequestPath));
+            Assert.Throws<SocketException>(() => ReceiveText());
         }
 
         [Fact]
@@ -208,14 +207,13 @@ namespace CesiumLoader.SDK.Tests
         }
 
         [Fact]
-        public void RequestForeground_WithAlwaysPlay_WritesThirdLine()
+        public void RequestForeground_WithAlwaysPlay_SendsThirdLine()
         {
-            WriteState("version=2.7.2\r\navailable=1\r\naudio=wav\r\n");
-            string sound = Path.Combine(_dir, "ding.wav");
+            string sound = @"C:\ding.wav";
 
             Assert.True(WindowFocus.RequestForeground(sound, true));
 
-            string[] lines = File.ReadAllLines(RequestPath);
+            string[] lines = ReceiveText().Split(new[] { "\r\n" }, StringSplitOptions.RemoveEmptyEntries);
             Assert.Equal(3, lines.Length);
             Assert.Equal(sound, lines[1]);
             Assert.Equal("always=1", lines[2]);

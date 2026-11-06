@@ -75,9 +75,9 @@ struct LoaderConfig
     // 关掉它等于"游戏内热键变速"不可用(基础倍率仍然生效)。
     bool speedControlEnabled = true;
 
-    // 窗口置前控制文件通道(<window>\request.txt / state.txt)。默认开:
-    // 热更程序集无法 P/Invoke user32, "轮到自己回合时置前"由加载器执行,
-    // mod 写请求文件。关掉它只影响该功能, 不影响游戏与其它 mod。
+    // 窗口置前控制通道(本地 UDP 127.0.0.1 动态端口)。默认开:
+    // 热更程序集无法 P/Invoke user32, "轮到自己回合时置前"由同进程原生加载器执行,
+    // mod 通过 UDP 发请求。每进程一个端口, 多开互不干扰。关掉只影响该功能。
     bool windowControlEnabled = true;
 
     // 原生音频控制通道(UDP 端口 + <audio>\request.txt / state.txt)。

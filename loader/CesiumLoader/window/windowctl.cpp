@@ -1,15 +1,19 @@
-// windowctl.cpp - 窗口置前控制文件通道实现(见 windowctl.h 的协议说明)
+// windowctl.cpp - 窗口置前控制通道实现(见 windowctl.h 的协议说明)
 //
-// 线程模型: 一个常驻线程(Sleep(100) 轮询 request.txt), 随进程退出结束 ——
+// 线程模型: 一个常驻线程(blocking recvfrom + 超时轮询), 随进程退出结束 ——
 // 与 speedctl 相同, 不需要清理逻辑。
 // 执行环境: SetForegroundWindow / AttachThreadInput / FlashWindowEx 都在监听线程里调用,
 // 不占游戏主线程, 也不改游戏自己的窗口状态(只做激活/恢复/闪烁)。
 //
-// 双目录: 状态文件同时写 <加载器>\window 和 %LocalAppData%\AstralParty_ModLoader\window,
-// 并同时监听两处的 request.txt。mod 侧(热更程序集)定位目录只能靠环境变量和路径推导,
-// 两个位置都摆一份, 只要命中其中一个通道就是通的。
+// 为什么是每进程一个本地 UDP 端口:
+//   文件通道的问题在多开时暴露: 所有 shell 外壳 junction 到同一份
+//   <游戏目录>\AstralParty_ModLoader, request.txt 天然全局共享, 一个进程
+//   的"轮到我"会被另一个进程的加载器取走, 启动时的重置还会互相清请求。
+//   UDP 改为每进程 bind 127.0.0.1:0(临时端口), 端口通过 CESIUM_FOCUS_PORT
+//   告诉同进程的托管代码——每个进程只收自己的 datagram, 天然隔离。
+//   (与 audioctl 同款模式: bind 0 + getsockname + 环境变量发现。)
 //
-// 提示音: request.txt 的第二行可选一个绝对路径(UTF-8), 加载器在置前的同时用
+// 提示音: 报文第 2 行可选一个绝对路径(UTF-8), 加载器在置前的同时用
 // PlaySound 异步播放这个 WAV。放在同一个请求里, 是为了让"窗口已在前台"这条
 // 静默规则同时作用于窗口和声音。
 
@@ -19,6 +23,8 @@
 #include "config/config.h"
 #include "platform/loader.h"
 
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #include <windows.h>
 #include <mmsystem.h>   // PlaySoundW (WIN32_LEAN_AND_MEAN 不会带进来)
 
@@ -26,118 +32,21 @@
 #include <cwchar>
 #include <cstring>
 
+#pragma comment(lib, "ws2_32.lib")
 #pragma comment(lib, "winmm.lib")
 
 namespace
 {
 
-const wchar_t* kRequestName = L"request.txt";
-const wchar_t* kStateName = L"state.txt";
-
-// 轮询间隔(ms): 与 speedctl 一致, 一次文件读取的代价可以忽略。
-const DWORD kPollMs = 100;
-
-// 请求文件上限: 正常内容只有一行令牌 + 一行路径, 超过这个长度的一律当垃圾。
-const long long kMaxBytes = 4096;
-
 // 提示音上限: 一段 1-2 秒的 WAV 通常 < 1MB, 超过 16MB 的多半是放错文件了。
 const long long kMaxSoundBytes = 16ll * 1024 * 1024;
 
-const int kMaxDirs = 2;
-std::wstring g_dirs[kMaxDirs];
-int g_dir_count = 0;
+// UDP datagram 上限: 令牌 + 绝对路径(4096) + 开关, 超过这个长度的一律当垃圾。
+const size_t kMaxDatagramBytes = 8192;
+
 volatile LONG g_started = 0;
-
-std::wstring local_appdata_mirror()
-{
-    wchar_t buf[MAX_PATH];
-    DWORD n = GetEnvironmentVariableW(L"LOCALAPPDATA", buf, MAX_PATH);
-    if (n == 0 || n >= MAX_PATH) return std::wstring();
-    return std::wstring(buf) + L"\\AstralParty_ModLoader\\window";
-}
-
-std::wstring path_of(const std::wstring& dir, const wchar_t* name)
-{
-    return dir + L"\\" + name;
-}
-
-// 逐级创建(CreateDirectoryW 不会自动建中间层)。
-bool ensure_dir(const std::wstring& dir)
-{
-    if (dir.empty()) return false;
-
-    DWORD attr = GetFileAttributesW(dir.c_str());
-    if (attr != INVALID_FILE_ATTRIBUTES) return (attr & FILE_ATTRIBUTE_DIRECTORY) != 0;
-
-    size_t slash = dir.find_last_of(L"\\/");
-    if (slash != std::wstring::npos && slash > 2)   // >2 跳过 "C:\" 这种根
-    {
-        if (!ensure_dir(dir.substr(0, slash))) return false;
-    }
-    return CreateDirectoryW(dir.c_str(), nullptr) != 0;
-}
-
-bool read_text(const std::wstring& path, std::string& out)
-{
-    HANDLE h = CreateFileW(path.c_str(), GENERIC_READ,
-                           FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                           nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return false;
-
-    LARGE_INTEGER size{};
-    if (!GetFileSizeEx(h, &size) || size.QuadPart > kMaxBytes) { CloseHandle(h); return false; }
-
-    std::string buf((size_t)size.QuadPart, '\0');
-    DWORD read = 0;
-    BOOL ok = TRUE;
-    if (!buf.empty())
-        ok = ReadFile(h, &buf[0], (DWORD)buf.size(), &read, nullptr);
-    CloseHandle(h);
-    if (!ok) return false;
-
-    buf.resize(read);
-    out.swap(buf);
-    return true;
-}
-
-// 原子写: 先写 .tmp 再 MoveFileEx 覆盖, 避免 mod 侧读到"写了一半"的内容。
-bool write_text(const std::wstring& path, const std::string& text)
-{
-    std::wstring tmp = path + L".tmp";
-    HANDLE h = CreateFileW(tmp.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
-                           FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return false;
-
-    DWORD written = 0;
-    BOOL ok = TRUE;
-    if (!text.empty()) ok = WriteFile(h, text.data(), (DWORD)text.size(), &written, nullptr);
-    if (ok && !text.empty()) ok = (written == text.size());
-    if (ok) ok = FlushFileBuffers(h);
-    CloseHandle(h);
-
-    if (!ok) { DeleteFileW(tmp.c_str()); return false; }
-    if (!MoveFileExW(tmp.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING))
-    {
-        DeleteFileW(tmp.c_str());
-        return false;
-    }
-    return true;
-}
-
-void write_state()
-{
-    std::string s;
-    s += "version="; s += cesium::config::LoaderConfig::loaderVersion; s += "\r\n";
-    s += "available=1\r\n";
-    // 提示音能力: 目前只支持 WAV(PlaySound)。将来若支持更多格式, 这里写逗号分隔的列表。
-    s += "audio=wav\r\n";
-
-    for (int i = 0; i < g_dir_count; i++)
-    {
-        if (!write_text(path_of(g_dirs[i], kStateName), s))
-            log_line(L"[windowctl] failed to write state file: " + path_of(g_dirs[i], kStateName));
-    }
-}
+SOCKET g_socket = INVALID_SOCKET;
+int g_bound_port = 0;
 
 std::wstring utf8_to_wide(const std::string& text)
 {
@@ -322,76 +231,89 @@ bool bring_to_foreground(HWND hwnd)
     return false;
 }
 
-DWORD WINAPI watch_thread(LPVOID)
+// 处理一条已解析的请求(供文件轮询与 UDP 共用, 便于日志口径一致)。
+void handle_focus_request(const std::string& text)
 {
-    // 与 speedctl 同款: 多目录合并成一行, 路径压缩, 避免同一条事实打印两遍。
-    std::wstring dirs;
-    for (int i = 0; i < g_dir_count; i++)
+    // 初始的 0 / 空白 / 乱码: 不是请求。
+    cesium::windowing::FocusRequest request = cesium::windowing::parse_focus_request(text);
+    if (!request.valid()) return;
+
+    HWND hwnd = find_game_window();
+    const bool foreground = (hwnd != nullptr) && is_foreground_game(hwnd);
+
+    // 提示音策略: 默认只在"窗口不在前台"时播放 —— 这时置前才是真正需要的提醒;
+    // 请求里带 always=1 时, 即使已经在前台也每次播放一次。
+    bool sound_played = false;
+    if (request.has_sound() && (request.always_play || !foreground))
     {
-        if (i > 0) dirs += L" · ";
-        dirs += short_path(g_dirs[i]);
+        std::wstring path = utf8_to_wide(request.sound_path);
+        if (path.empty())
+            log_line("[windowctl] prompt sound path is not valid UTF-8, ignored");
+        else if (play_prompt_sound(path))
+            sound_played = true;
+        else
+            log_line(L"[windowctl] failed to play prompt sound (need PCM WAV, <= 16 MB): " + short_path(path));
     }
-    log_line(L"[windowctl] file channel ready · " + std::to_wstring(g_dir_count) + L" dir(s): " + dirs + L" · sound=wav");
 
-    std::string last_seen[kMaxDirs];
+    std::string sound_note;
+    if (sound_played)
+        sound_note = " (+ prompt sound)";
+    else if (request.has_sound() && foreground)
+        sound_note = " (prompt sound skipped: foreground)";
 
-    // 不从"启动后读到的内容"播种 last_seen: 如果 mod 恰好在监听线程启动前写下请求,
-    // 本轮仍应处理它。初始 request.txt 已被写成 0, 因此第一次看到 0 只会被静默跳过。
+    if (hwnd == nullptr)
+    {
+        log_line(std::string("[windowctl] game window not found, foreground skipped") + sound_note);
+        return;
+    }
+
+    if (foreground)
+    {
+        log_line(std::string("[windowctl] game window already in foreground, foreground skipped") + sound_note);
+        return;
+    }
+
+    if (bring_to_foreground(hwnd))
+        log_line(std::string("[windowctl] brought game window to foreground") + sound_note);
+    else
+        log_line(std::string("[windowctl] system refused foreground switch, flashed taskbar") + sound_note);
+}
+
+DWORD WINAPI udp_thread(LPVOID)
+{
+    log_line(L"[windowctl] UDP channel ready · 127.0.0.1:" + std::to_wstring(g_bound_port) +
+             L" · sound=wav");
+
+    char recv_buf[kMaxDatagramBytes + 1];
     for (;;)
     {
-        Sleep(kPollMs);
-
-        for (int i = 0; i < g_dir_count; i++)
+        sockaddr_in client_addr{};
+        int client_len = sizeof(client_addr);
+        int n = recvfrom(g_socket, recv_buf, static_cast<int>(sizeof(recv_buf) - 1), 0,
+                         (sockaddr*)&client_addr, &client_len);
+        if (n <= 0)
         {
-            std::string text;
-            if (!read_text(path_of(g_dirs[i], kRequestName), text)) continue;
-            if (text == last_seen[i]) continue;
-            last_seen[i] = text;
-
-            // 初始的 0 / 空白 / 乱码: 不是请求。
-            cesium::windowing::FocusRequest request = cesium::windowing::parse_focus_request(text);
-            if (!request.valid()) continue;
-
-            HWND hwnd = find_game_window();
-            const bool foreground = (hwnd != nullptr) && is_foreground_game(hwnd);
-
-            // 提示音策略: 默认只在"窗口不在前台"时播放 —— 这时置前才是真正需要的提醒;
-            // 请求里带 always=1 时, 即使已经在前台也每次播放一次。
-            bool sound_played = false;
-            if (request.has_sound() && (request.always_play || !foreground))
+            // 超时(500ms)或套接字错误: 超时是常态, 静默继续; 其它错误也只记日志不退出。
+            if (n < 0)
             {
-                std::wstring path = utf8_to_wide(request.sound_path);
-                if (path.empty())
-                    log_line("[windowctl] prompt sound path is not valid UTF-8, ignored");
-                else if (play_prompt_sound(path))
-                    sound_played = true;
-                else
-                    log_line(L"[windowctl] failed to play prompt sound (need PCM WAV, <= 16 MB): " + short_path(path));
+                const int err = WSAGetLastError();
+                if (err != WSAETIMEDOUT && err != WSAEWOULDBLOCK)
+                    log_line(L"[windowctl] UDP recv failed (error " + std::to_wstring(err) + L"), ignored");
             }
-
-            std::string sound_note;
-            if (sound_played)
-                sound_note = " (+ prompt sound)";
-            else if (request.has_sound() && foreground)
-                sound_note = " (prompt sound skipped: foreground)";
-
-            if (hwnd == nullptr)
-            {
-                log_line(std::string("[windowctl] game window not found, foreground skipped") + sound_note);
-                continue;
-            }
-
-            if (foreground)
-            {
-                log_line(std::string("[windowctl] game window already in foreground, foreground skipped") + sound_note);
-                continue;
-            }
-
-            if (bring_to_foreground(hwnd))
-                log_line(std::string("[windowctl] brought game window to foreground") + sound_note);
-            else
-                log_line(std::string("[windowctl] system refused foreground switch, flashed taskbar") + sound_note);
+            continue;
         }
+        if (static_cast<size_t>(n) >= sizeof(recv_buf))
+        {
+            log_line("[windowctl] UDP datagram too large, ignored");
+            continue;
+        }
+        // 只接受本机回环: 绑了 127.0.0.1 本来就不会收到局域网包, 再校验一遍防
+        // 大机型多网卡的回环绕行, 也能让"端口被同机其它程序扫到"时静默丢弃。
+        if (client_addr.sin_addr.s_addr != htonl(INADDR_LOOPBACK))
+            continue;
+
+        recv_buf[n] = '\0';
+        handle_focus_request(std::string(recv_buf, static_cast<size_t>(n)));
     }
     return 0;
 }
@@ -400,62 +322,67 @@ DWORD WINAPI watch_thread(LPVOID)
 
 std::wstring windowctl_dir()
 {
+    // 遗留路径: 不再承载传输, 仅供环境变量 CESIUM_WINDOW_DIR 兼容。
     return loader_root() + L"\\window";
 }
 
 void windowctl_start(const std::wstring& dir)
 {
+    (void)dir; // 已切换到 UDP, 不再创建/读写 window 目录
     if (InterlockedExchange(&g_started, 1) != 0) return;
 
-    g_dir_count = 0;
-    if (!dir.empty()) g_dirs[g_dir_count++] = dir;
-
-    std::wstring mirror = local_appdata_mirror();
-    if (!mirror.empty())
+    WSADATA wsa_data{};
+    if (WSAStartup(MAKEWORD(2, 2), &wsa_data) != 0)
     {
-        if (mirror == dir)
-            log_line("[windowctl] mirror dir equals primary dir, using a single copy");
-        else
-            g_dirs[g_dir_count++] = mirror;
-    }
-    else
-    {
-        log_line("[windowctl] %LOCALAPPDATA% unavailable, using primary dir only");
-    }
-
-    std::wstring kept[kMaxDirs];
-    int kept_count = 0;
-    for (int i = 0; i < g_dir_count; i++)
-    {
-        if (ensure_dir(g_dirs[i])) kept[kept_count++] = g_dirs[i];
-        else log_line(L"[windowctl] failed to create control dir, unusable: " + g_dirs[i]);
-    }
-    for (int i = 0; i < kept_count; i++) g_dirs[i] = kept[i];
-    g_dir_count = kept_count;
-
-    if (g_dir_count == 0)
-    {
-        log_line("[windowctl] no usable control dir, foreground channel unavailable");
+        log_line("[windowctl] WSAStartup failed, foreground channel unavailable");
         return;
     }
 
-    // 初始请求置 0: 上一次会话残留的令牌不会被误当成新请求。
-    for (int i = 0; i < g_dir_count; i++)
+    g_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (g_socket == INVALID_SOCKET)
     {
-        if (!write_text(path_of(g_dirs[i], kRequestName), "0\r\n"))
-            log_line(L"[windowctl] failed to write initial request.txt: " + path_of(g_dirs[i], kRequestName));
+        log_line("[windowctl] UDP socket creation failed, foreground channel unavailable");
+        return;
     }
-    write_state();
 
-    HANDLE h = CreateThread(nullptr, 0, watch_thread, nullptr, 0, nullptr);
+    // 500ms 接收超时: 线程既能及时处理请求, 又不会在进程退出过程中永久卡在
+    // recvfrom 上(本进程退出不需要清理, 但超时让调试 shell / 卸载路径可感知)。
+    const DWORD timeout_ms = 500;
+    setsockopt(g_socket, SOL_SOCKET, SO_RCVTIMEO,
+               reinterpret_cast<const char*>(&timeout_ms), sizeof(timeout_ms));
+
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK); // 127.0.0.1
+    addr.sin_port = htons(0); // 0 = 让系统分配临时端口(每进程唯一, 天然隔离)
+
+    if (bind(g_socket, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0)
+    {
+        log_line("[windowctl] UDP bind on 127.0.0.1 failed, foreground channel unavailable");
+        return;
+    }
+
+    sockaddr_in bound{};
+    int bound_len = sizeof(bound);
+    if (getsockname(g_socket, reinterpret_cast<sockaddr*>(&bound), &bound_len) == 0)
+    {
+        g_bound_port = ntohs(bound.sin_port);
+    }
+    if (g_bound_port <= 0)
+    {
+        log_line("[windowctl] UDP getsockname failed, foreground channel unavailable");
+        return;
+    }
+
+    // 端口只走进程环境变量: 这样每个进程只看见自己的端口, 不存在共享文件竞争。
+    SetEnvironmentVariableW(L"CESIUM_FOCUS_PORT", std::to_wstring(g_bound_port).c_str());
+
+    HANDLE h = CreateThread(nullptr, 0, udp_thread, nullptr, 0, nullptr);
     if (h != nullptr)
     {
         CloseHandle(h);
         return;
     }
 
-    // 线程起不来时删掉状态文件, SDK 的 IsAvailable 会返回 false(而不是"请求了没反应")。
-    log_line("[windowctl] watch thread creation failed, foreground channel unavailable");
-    for (int i = 0; i < g_dir_count; i++)
-        DeleteFileW(path_of(g_dirs[i], kStateName).c_str());
+    log_line("[windowctl] UDP listener thread creation failed, foreground channel unavailable");
 }

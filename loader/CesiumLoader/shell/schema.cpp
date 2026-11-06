@@ -34,7 +34,7 @@ const Field kFields[] = {
     { "speedControlEnabled", ValueType::Bool, 0, 0, nullptr, Apply::StartOnly,
       "变速文件通道(<loader>\\speed); 只能从关到开" },
     { "windowControlEnabled", ValueType::Bool, 0, 0, nullptr, Apply::StartOnly,
-      "窗口置前文件通道(<loader>\\window); 只能从关到开" },
+      "窗口置前 UDP 通道(127.0.0.1 动态端口, 每进程隔离); 只能从关到开" },
     { "audioControlEnabled", ValueType::Bool, 0, 0, nullptr, Apply::StartOnly,
       "原生音频控制通道(UDP + <loader>\\audio); 只能从关到开" },
 

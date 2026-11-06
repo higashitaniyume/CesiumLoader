@@ -233,12 +233,14 @@ static DWORD WINAPI boot_thread(LPVOID)
     else
         log_line("[loader] speedControlEnabled=false, skipping speed control file channel");
 
-    // 3.7.1 窗口置前控制文件通道(见 windowctl.h): 同样因为热更程序集无法 P/Invoke,
-    //       mod 只能写请求文件, 由原生侧调用 SetForegroundWindow。
+    // 3.7.1 窗口置前控制通道(见 windowctl.h): 同样因为热更程序集无法 P/Invoke,
+    //       mod 通过本进程本地 UDP(127.0.0.1 动态端口)发请求, 由原生侧调用 SetForegroundWindow。
+    //       每进程一个端口, 多开隔离。端口通过 CESIUM_FOCUS_PORT 告诉托管代码,
+    //       由 windowctl_start 内部 bind 后写入, 这里不用再设置。
     if (cfg.windowControlEnabled)
         windowctl_start(windowctl_dir());
     else
-        log_line("[loader] windowControlEnabled=false, skipping foreground control file channel");
+        log_line("[loader] windowControlEnabled=false, skipping foreground control UDP channel");
     // 3.7.1b 原生音频通道(见 audioctl.h): 是否启动只由代码常量 kEnableAudioControl 决定,
     //        配置键 audioControlEnabled 仅保留解析(Toys 读写), 不再能打开该通道。
     if (kEnableAudioControl)
