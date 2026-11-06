@@ -62,7 +62,6 @@ winget install Hiynet.AstralParty.Toys
 | --- | --- |
 | AutoThanksMod | 队友治疗、给牌、转星币后自动感谢，结算逐人点赞 |
 | [CardSkinMod](mods/CardSkinMod/README.md) | 自定义卡面、多方案与 PNG 序列帧动态卡面 |
-| CharacterSkinMod | 角色外观、多人物皮肤方案与精灵动画 |
 | CombatOddsMod | 战斗胜率分析、头顶攻防数字与悬停详情，可选显示角色卡与玩家头顶的移速加成，怪物名字/血量旁显示技能 CD，梅加斯技能按钮上方显示轨道轰炸理论伤害（回放可见），标记与摩西精密技巧闪避显示，对局结束与场景切换时自动释放状态缓存 |
 | FreeCameraMod | 滚轮沿视线缩放，`←`/`→` 绕观察点旋转地图，默认 `F1` 恢复视角；锁定镜头默认关闭，需手动设置 `autoFollow=false` |
 | SpeedHackMod | 游戏内调整倍率，切换正常速度与上次倍率 |
