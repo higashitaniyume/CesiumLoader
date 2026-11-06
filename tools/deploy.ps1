@@ -168,6 +168,28 @@ $nativeCandidates = @(
 if (-not $nativeCandidates) { throw "找不到 version.dll，请先构建原生加载器。" }
 $nativeOut = $nativeCandidates[0]
 
+function Backup-IfDifferent([string]$Target, [string]$Suffix)
+{
+    if (-not (Test-Path -LiteralPath $Target))
+    {
+        Write-Host "跳过 $Target（尚不存在），无须备份。"
+        return
+    }
+
+    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $name = [System.IO.Path]::GetFileNameWithoutExtension($Target)
+    $ext = [System.IO.Path]::GetExtension($Target)
+    $backup = Join-Path (Split-Path -Parent $Target) ($name + '.' + $stamp + $Suffix + $ext)
+    $attempt = 1
+    while (Test-Path -LiteralPath $backup)
+    {
+        $backup = Join-Path (Split-Path -Parent $Target) ($name + '.' + $stamp + '-' + $attempt + $Suffix + $ext)
+        $attempt++
+    }
+    Copy-Item -LiteralPath $Target -Destination $backup
+    Write-Host "已备份 $Target -> $backup"
+}
+
 # 1) 原生加载器 -> 游戏 exe 同目录
 if (Test-Path -LiteralPath (Join-Path $gameDir 'version.dll'))
 {
@@ -185,7 +207,8 @@ Deploy-File -From (Join-Path $repo 'LICENSE') -To (Join-Path $gameDir 'CesiumLoa
 Deploy-File -From (Join-Path $repo 'CesiumLoader-NOTICE.txt') -To (Join-Path $loaderDir 'CesiumLoader-NOTICE.txt')
 Deploy-File -From (Join-Path $repo 'LICENSE') -To (Join-Path $loaderDir 'CesiumLoader-LICENSE.txt')
 
-# 2) 加载器配置
+# 2) 加载器配置：先备份再覆盖，避免把用户的 profile / console / 注释直接抹掉。
+Backup-IfDifferent -Target (Join-Path $loaderDir 'doorstop_config.json') -Suffix '.bak'
 Deploy-File -From (Join-Path $repo 'dist\modloader\AstralParty_ModLoader\doorstop_config.json') `
             -To (Join-Path $loaderDir 'doorstop_config.json')
 

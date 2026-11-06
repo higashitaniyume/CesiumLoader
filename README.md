@@ -51,8 +51,7 @@ winget install Hiynet.AstralParty.Toys
     ├── bootstrap/              托管引导程序
     ├── mods/{ModId}/           模组 DLL、元数据与配置
     ├── logs/                   每次启动独立的引导、行为与错误日志
-    ├── speed/                  变速控制文件通道
-    └── window/                 窗口置前控制文件通道
+    └── speed/                  变速控制文件通道
 ```
 
 新增模组解压至 `mods/`，保持 `{ModId}/{ModId}.dll` 布局；新增模组或修改加载器配置后重启游戏。模组自身的 `config.json` 在支持热重载的模组中保存后自动生效，具体见各模组文档。旧版 `winmm.dll` 加载器需先移除，避免重复引导。兼容旧版直接放在 `mods/` 根目录的 DLL。
@@ -98,7 +97,7 @@ winget install Hiynet.AstralParty.Toys
 | `forwardActivityLog` | 将模组行为日志转发到控制台（按 `DBG`/`INF`/`WRN`/`ERR` 级别着色） |
 | `speedhackBaseSpeed` | 启动时的基础倍率，`1.0` 为正常速度 |
 | `speedControlEnabled` | 允许通过文件通道调整倍率 |
-| `windowControlEnabled` | 允许模组通过文件通道把游戏窗口切到前台并播放提示音(WAV) |
+| `windowControlEnabled` | 允许模组通过本地 UDP 把游戏窗口切到前台并播放提示音(WAV，每进程独立端口) |
 | `useManagedBootstrap` | 实验性托管编排；默认使用原生编排 |
 | `profile` | 多 profile：把账号、存档、回放目录重定向到独立目录，见 [多 profile](docs/多开-profile.md) |
 | `profileWindowTitle` | 多 profile 时在游戏窗口标题后追加 profile 名（默认开），便于区分多开实例 |

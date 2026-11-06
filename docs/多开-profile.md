@@ -94,7 +94,7 @@ Unity 的单实例互斥与 **exe 路径**绑定：
 - 同一个 exe 路径只能开一个实例；
 - 需要同时多开时，为每个实例准备不同路径的启动外壳（把 `version.dll`、`GameAssembly.dll`、`UnityPlayer.dll` 等与 exe 一起硬链接到不同目录，`_Data` 目录使用 junction 或硬链接外壳），并对每个实例打开 Steam 绕过（`steamBypassEnabled` / `steamBypassRestartCheck`），否则非 Steam 启动会自行退出；
 - 同一个账号不能同时在线，服务器会互相踢下线，多开请使用不同账号；
-- 变速与窗口置前通道的目录位于安装目录，多个实例会互相影响。
+- 变速通道的目录位于安装目录，多个实例会互相影响（UDP 窗口置前通道已按进程隔离，不互相影响）。
 
 ## 回放与 AstralParty.Toys
 
