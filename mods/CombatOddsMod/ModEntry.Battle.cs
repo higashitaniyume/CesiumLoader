@@ -27,7 +27,7 @@ namespace CombatOddsMod
             try
             {
                 if (b == null || b.Attacker == null || b.Defender == null) return;
-                if (b.IsEnd) { _lastBattle = null; Clear(); return; }
+                if (b.IsEnd) { _lastBattle = null; _abyssBattleId = -1; _abyssBaselineLayers = -1; Clear(); return; }
 
                 _lastBattle = b;
 
@@ -68,13 +68,17 @@ namespace CombatOddsMod
                 // 攻、守两个视角命中的都是同一个"被击中者"= 防守方, 故只求一次。
                 // 攻方 HeroId 一并传进去: 渊蚀印记只对赛克斯(129)打出的伤害生效。
                 int attackerHeroId = HeroIdOf(atk);
-                var badj = BuffAdjOf(def.PlayerId, CombatMath.DamageContext.NormalBattle, 0, IsMonster(def.PlayerId), attackerHeroId);
+                bool defenderIsMonster = IsMonster(def.PlayerId);
+                var badj = BuffAdjOf(def.PlayerId, CombatMath.DamageContext.NormalBattle, 0, defenderIsMonster, attackerHeroId);
 #if COMBATODDS_DEBUG_PROBES
                 LogAshDiagnostic(def.PlayerId, badj);
 #endif
                 int dmgAdjust = badj.Delta;
                 bool targetImmune = badj.Immune;
                 int dmgCap = badj.MaxDamagePerHit;   // 单次受伤上限(0=无)
+                // 赛克斯进入战斗立即 +1 层渊蚀（按层数 +1）：进入前基准已在容器里，
+                // 进入叠层还没落盘时按 baseline+1 预期，不重复叠加。
+                dmgAdjust += SeaxEntryMarkExtra(def.PlayerId, attackerHeroId, defenderIsMonster, targetImmune, b.BattleId, badj);
 
                 // --------- 防守方视角: 一眼看该防还是该闪 ---------
                 if (showDefender)
@@ -303,6 +307,7 @@ namespace CombatOddsMod
         /// <summary>
         /// 战斗角色的角色 id。优先用服务器下发的 <c>BattleRole.HeroId</c>；
         /// 取不到时回退到战斗玩家表里的 Hero 快照, 供【渊蚀印记】这类按来源判定的 buff 使用。
+        /// 房间花名册同步回退：观战/怪物在战斗玩家表中缺失时也能读到宿主的 HeroId。
         /// </summary>
         private static int HeroIdOf(BattleRole role)
         {
@@ -313,6 +318,12 @@ namespace CombatOddsMod
             {
                 var hero = Players.Get(role.PlayerId)?.player?.Hero;
                 if (hero != null) return hero.HeroId;
+            }
+            catch { }
+            try
+            {
+                var roomHero = RoomHeroOf(role.PlayerId);
+                if (roomHero != null) return roomHero.HeroId;
             }
             catch { }
             return 0;

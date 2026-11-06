@@ -49,6 +49,10 @@ namespace CombatOddsMod
         private static string _lastLogged;       // 控制台去重
         private static FightOverlayController _overlay;  // FightWindow 内嵌覆盖层(真机验证)
         private static Battle _lastBattle;
+        // 渊蚀印记“进入战斗即 +1”：本场首次见到的层数（进入前），随后按 +1 预期；
+        // 服务器落层后层数上升时不再重复叠加。按 BattleId 隔离，战斗结束清零。
+        private static long _abyssBattleId = -1;
+        private static int _abyssBaselineLayers = -1;
         private static readonly Dictionary<int, CombatMath.BuffDamageEffect> _buffTable = CombatMath.DefaultBuffTable();
 
         /// <summary>
@@ -495,6 +499,7 @@ namespace CombatOddsMod
 #endif
                 // 战斗已生成提示后，攻/守双方 HP 或易伤/标记单独变化时立即重算。
                 // 不用等下一次 BattleUpdate（攻防不变会被 SDK 去重），也不用等轮询。
+                // 渊蚀印记等 buff 本体变更走 EffectDatas 的 Buff 槽位（无 HP），也要触发。
                 bool touchesBattle = false;
                 var battle = _lastBattle;
                 if (battle != null && battle.Attacker != null && battle.Defender != null)
@@ -503,9 +508,21 @@ namespace CombatOddsMod
                     long defId = battle.Defender.PlayerId;
                     foreach (var effect in update.EffectDatas)
                     {
-                        var hp0 = effect?.Hp;
-                        if (hp0 == null) continue;
-                        if (hp0.PlayerId == atkId || hp0.PlayerId == defId) { touchesBattle = true; break; }
+                        if (effect == null) continue;
+                        var hp0 = effect.Hp;
+                        if (hp0 != null && (hp0.PlayerId == atkId || hp0.PlayerId == defId)) { touchesBattle = true; break; }
+                        long effectPlayer = effect.PlayerId;
+                        if (effectPlayer != 0 && (effectPlayer == atkId || effectPlayer == defId) &&
+                            (effect.Buff != null || effect.Hp != null || effect.MarkNum != null)) { touchesBattle = true; break; }
+                        // Buff 子变更带的 PlayerId 在 Buff.PlayerId（HeroAttrEffect.Buff）
+                        try
+                        {
+                            var buffChange = effect.Buff;
+                            if (buffChange != null && (buffChange.PlayerId == atkId || buffChange.PlayerId == defId)) { touchesBattle = true; break; }
+                            var markChange = effect.MarkNum;
+                            if (markChange != null && (markChange.PlayerId == atkId || markChange.PlayerId == defId)) { touchesBattle = true; break; }
+                        }
+                        catch { }
                     }
                 }
                 foreach (var effect in update.EffectDatas)

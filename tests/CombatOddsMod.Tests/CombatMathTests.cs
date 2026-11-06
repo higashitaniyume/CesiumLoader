@@ -803,7 +803,8 @@ namespace CombatOddsMod.Tests
         [Fact]
         public void BonnieBonus_RequiresBonnieMarkedMonster()
         {
-            Assert.Equal(3, CombatMath.BonnieMarkedMonsterAttackBonus(127, true, true));
+            // 真机核对：+3 已并入服务器 Atk，手动加成一律为 0，避免击杀率偏大。
+            Assert.Equal(0, CombatMath.BonnieMarkedMonsterAttackBonus(127, true, true));
             Assert.Equal(0, CombatMath.BonnieMarkedMonsterAttackBonus(127, true, false));
             Assert.Equal(0, CombatMath.BonnieMarkedMonsterAttackBonus(127, false, true));
             Assert.Equal(0, CombatMath.BonnieMarkedMonsterAttackBonus(129, true, true));

@@ -85,7 +85,9 @@ namespace CombatOddsMod
                 CardPointHelper.TryNarrowPlayedRange(atk, true, out int minAtk, out int maxAtk);
                 CardPointHelper.TryNarrowPlayedRange(def, false, out int minDef, out int maxDef);
                 int bonnie = BonnieMarkedMonsterBonus(atk, def);
-                var adjust = BuffAdjOf(def.PlayerId, CombatMath.DamageContext.NormalBattle, 0, IsMonster(def.PlayerId), HeroIdOf(atk));
+                bool handDefIsMonster = IsMonster(def.PlayerId);
+                var adjust = BuffAdjOf(def.PlayerId, CombatMath.DamageContext.NormalBattle, 0, handDefIsMonster, HeroIdOf(atk));
+                int handAdjustDelta = adjust.Delta + SeaxEntryMarkExtra(def.PlayerId, HeroIdOf(atk), handDefIsMonster, adjust.Immune, live.battleId, adjust);
                 int faces = JudgeFaces();
                 int aFlat = atk.Atk + bonnie;
                 int[] aDice = Array.Empty<int>();
@@ -111,7 +113,7 @@ namespace CombatOddsMod
                     if (!_textByCard.TryGetValue(config.Id, out var label))
                     {
                         var odds = CombatMath.PreviewCardOdds(attacking, range.Min, range.Max, aFlat, aDice, dFlat, dDice,
-                            hp, adjust.Delta, adjust.Immune, adjust.MaxDamagePerHit, config.Id, def.InitDef, powerfulAttackActive);
+                            hp, handAdjustDelta, adjust.Immune, adjust.MaxDamagePerHit, config.Id, def.InitDef, powerfulAttackActive);
                         label = PctPlain(odds);
                         _textByCard.Add(config.Id, label);
                     }

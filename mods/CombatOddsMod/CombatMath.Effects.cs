@@ -121,10 +121,14 @@ namespace CombatOddsMod
             return MegasOrbitalBombardmentCount(discardedCards) * MegasOrbitalBombardmentDamage(discardedCards, discardedCost);
         }
 
-        /// <summary>邦妮攻击带标记(10006)怪物时的额外攻击力。</summary>
+        /// <summary>
+        /// 邦妮攻击带标记(10006)怪物时的额外攻击力。
+        /// 真机核对中该 +3 已并入服务器下发的 BattleRole.Atk/MinAtk/MaxAtk，
+        /// 手工再加会重复计入并抬高击杀率，故一律返回 0（保留入口供测试与调用方兼容）。
+        /// </summary>
         public static int BonnieMarkedMonsterAttackBonus(int heroId, bool targetIsMonster, bool targetMarked)
         {
-            return heroId == 127 && targetIsMonster && targetMarked ? 3 : 0;
+            return 0;
         }
 
         /// <summary>日志与协议已确认的角色技能标签；仅用于来源说明，不代表未知公式已被猜测。</summary>

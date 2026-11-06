@@ -52,6 +52,48 @@ namespace CombatOddsMod
         }
 
         /// <summary>
+        /// 渊蚀印记“进入战斗即 +1”：本场首次见到的层数记为进入前基准，
+        /// 服务器落层前面板按 基准+1 预期（每层 +1），已落层后不再重复叠加。
+        /// 仅用于投牌战斗预测（非投牌/实际伤害日志），且只在赛克斯系打怪时参与。
+        /// 返回需要追加到 Delta 的量（0 或 1）。
+        /// </summary>
+        private static int SeaxEntryMarkExtra(long targetId, int attackerHeroId, bool targetIsMonster, bool targetImmune, long battleId, CombatMath.BuffAdjustment badj)
+        {
+            try
+            {
+                if (!CombatMath.IsSeaxDamageCause(attackerHeroId)) return 0;
+                if (!targetIsMonster || targetImmune || battleId <= 0) return 0;
+                int cur = 0;
+                var tb = TargetBuffsOf(targetId);
+                if (tb != null)
+                {
+                    for (int i = 0; i < tb.Count; i++)
+                    {
+                        if (tb[i].BuffId == CombatMath.AbyssMarkBuffId)
+                        {
+                            cur = Math.Max(0, tb[i].Layers);
+                            break;
+                        }
+                    }
+                }
+                if (_abyssBattleId != battleId)
+                {
+                    _abyssBattleId = battleId;
+                    _abyssBaselineLayers = cur;
+                }
+                int baseline = _abyssBaselineLayers < 0 ? cur : _abyssBaselineLayers;
+                // 进入前（cur == baseline）：预期 baseline+1；已落层（cur > baseline）：用当前，不重复加。
+                int expected = cur <= baseline ? baseline + 1 : cur;
+                int extra = expected - cur;
+                if (extra <= 0) return 0;
+                if (badj.Applied != null)
+                    badj.Applied.Add("渊蚀印记 入战+1");
+                return extra;
+            }
+            catch { return 0; }
+        }
+
+        /// <summary>
         /// 防守方 buff/标记指纹，仅用于刷新判定（进去重键）。
         /// 攻防/牌点不变、只有 buff/标记单独变更时用它触发重算，
         /// 覆盖易伤/标记/摩西等一切影响击倒判定的 buff。
