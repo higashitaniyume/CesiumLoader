@@ -139,7 +139,11 @@ namespace CombatOddsMod
                     else
                     {
                         // 攻方未投：最大范围值 + 判定骰上限，作为最坏攻击。
+                        // 蓄力一击(10010)已确认时，最终攻击再 ×1.5 向上取整，
+                        // 口径与 CombatMath.Attack 的 finalAttackBonusPercent 一致。
                         int atkMax = maxAtk + bonnieBonus + JudgeFaces();
+                        if (CardPointHelper.HasPlayedCard(atk, CombatMath.PowerfulAttackCardId))
+                            atkMax += (int)Math.Ceiling(atkMax * (50 / 100.0));
                         var d = CombatMath.Defend(atkMax, hp, flat, dice, 1, dmgAdjust, targetImmune, dmgCap);
                         sb.Append(Big(C("⏳ 等对方投骰", Gray)));
                         sb.Append('\n').Append(Dim(defName + " " + hp + "血, 最坏被击倒 " + PctPlain(d.KnockdownProb)));
@@ -168,8 +172,13 @@ namespace CombatOddsMod
                     int dFlat; int[] dDice;
                     CombatMath.RangeWithJudgeDice(minDef, maxDef, out dFlat, out dDice, JudgeFaces());
 
-                    var r = CombatMath.Attack(aFlat, aDice, dFlat, dDice, targetHp, 1, dmgAdjust, targetImmune, dmgCap);
+                    // 蓄力一击(10010)已确认、尚未投骰时接入最终攻击 +50%；
+                    // 落骰后沿用服务器已结算的最终攻击，不再加乘区，避免重复计算。
+                    bool powerfulActive = !attackerThrew && CardPointHelper.HasPlayedCard(atk, CombatMath.PowerfulAttackCardId);
+                    int powerfulBonus = powerfulActive ? 50 : 0;
+                    var r = CombatMath.Attack(aFlat, aDice, dFlat, dDice, targetHp, 1, dmgAdjust, targetImmune, dmgCap, powerfulBonus);
                     if (bonnieBonus > 0) sb.Append('\n').Append(C("邦妮标记目标攻击+3", Orange));
+                    if (powerfulActive) sb.Append('\n').Append(C("蓄力一击 最终攻击+50%", Orange));
                     if (showDefender) sb.Append('\n');
                     sb.Append(Big("🎯 击杀 " + C(PctPlain(r.KillProb), KillColor(r.KillProb))));
                     sb.Append(Dim("（目标防御）"));

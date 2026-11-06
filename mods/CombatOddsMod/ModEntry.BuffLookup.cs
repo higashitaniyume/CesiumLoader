@@ -52,6 +52,30 @@ namespace CombatOddsMod
         }
 
         /// <summary>
+        /// 防守方 buff/标记指纹，仅用于刷新判定（进去重键）。
+        /// 攻防/牌点不变、只有 buff/标记单独变更时用它触发重算，
+        /// 覆盖易伤/标记/摩西等一切影响击倒判定的 buff。
+        /// </summary>
+        private static string BuffFingerprint(long targetId)
+        {
+            try
+            {
+                var tb = TargetBuffsOf(targetId);
+                if (tb == null || tb.Count == 0) return string.Empty;
+                var sb = new StringBuilder();
+                foreach (var b in tb)
+                {
+                    sb.Append(b.BuffId);
+                    sb.Append(':');
+                    sb.Append(b.Layers);
+                    sb.Append(',');
+                }
+                return sb.ToString();
+            }
+            catch { return string.Empty; }
+        }
+
+        /// <summary>
         /// 读取目标身上的 buff 与<b>原始进度</b>。SDK 的 <see cref="Players.BuffsOf"/> 会把进度 0
         /// 兜底成 1 层(方便展示), 但游戏在层数归零后仍可能保留该条目: 幽魂暗巷的科学怪人初始
         /// 3 层【深度改造】, 三个人工生命体被击倒各移除 1 层后只剩 0 层图标, 而 BOSS 已经可以

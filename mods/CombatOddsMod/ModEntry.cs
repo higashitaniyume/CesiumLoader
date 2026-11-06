@@ -413,9 +413,17 @@ namespace CombatOddsMod
             bool knownA = CardPointHelper.TryNarrowPlayedRange(a, true, out int aMin, out int aMax);
             bool knownD = CardPointHelper.TryNarrowPlayedRange(d, false, out int dMin, out int dMax);
             if (!knownA && !knownD && _lastSyncedCardOdds == null) return;
+            // 攻防/牌点不变时，防守方血量、易伤/标记（dmgAdjust）或技能 CD 相关
+            // buff 单独变化时也应该重算，所以这些状态必须进重键。
+            int defenderHp = HpOf(d.PlayerId);
+            int attackerHp = HpOf(a.PlayerId);
+            var buffKey = BuffAdjOf(d.PlayerId, CombatMath.DamageContext.NormalBattle, 0, IsMonster(d.PlayerId), HeroIdOf(a));
+            string buffFp = BuffFingerprint(d.PlayerId);
             string key = live.battleId + "|" + knownA + "|" + aMin + "|" + aMax + "|" + knownD + "|" + dMin + "|" + dMax
                 + "|" + a.Atk + "|" + d.Def + "|" + a.MinAtk + "|" + a.MaxAtk
-                + "|" + d.MinDef + "|" + d.MaxDef + "|" + GameEvents.AttackerPoint;
+                + "|" + d.MinDef + "|" + d.MaxDef + "|" + GameEvents.AttackerPoint
+                + "|" + defenderHp + "|" + attackerHp + "|" + d.InitDef
+                + "|" + buffKey.Delta + "|" + buffKey.Immune + "|" + buffKey.MaxDamagePerHit + "|" + buffFp;
             if (key == _lastSyncedCardOdds) return;
             _lastSyncedCardOdds = key;
             OnBattleUpdate(new Battle { BattleId = live.battleId, Attacker = a, Defender = d });
@@ -485,6 +493,21 @@ namespace CombatOddsMod
 #if COMBATODDS_DEBUG_PROBES
                 LogPhoenixProbe(update);
 #endif
+                // 战斗已生成提示后，攻/守双方 HP 或易伤/标记单独变化时立即重算。
+                // 不用等下一次 BattleUpdate（攻防不变会被 SDK 去重），也不用等轮询。
+                bool touchesBattle = false;
+                var battle = _lastBattle;
+                if (battle != null && battle.Attacker != null && battle.Defender != null)
+                {
+                    long atkId = battle.Attacker.PlayerId;
+                    long defId = battle.Defender.PlayerId;
+                    foreach (var effect in update.EffectDatas)
+                    {
+                        var hp0 = effect?.Hp;
+                        if (hp0 == null) continue;
+                        if (hp0.PlayerId == atkId || hp0.PlayerId == defId) { touchesBattle = true; break; }
+                    }
+                }
                 foreach (var effect in update.EffectDatas)
                 {
                     var hp = effect?.Hp;
@@ -524,6 +547,8 @@ namespace CombatOddsMod
                         (hp.Killer != 0 ? "；Killer=" + hp.Killer : string.Empty);
                     SdkLog.Info("CombatOdds", line);
                 }
+                if (touchesBattle && _lastBattle != null)
+                    OnBattleUpdate(_lastBattle);
             }
             catch { }
         }
