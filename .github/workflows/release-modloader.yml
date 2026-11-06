@@ -310,7 +310,6 @@ jobs:
           } else {
             Write-Warning "符号缺失, 本包不含 AstralParty.AgentMod.pdb"
           }
-          Copy-Item "docs/MCP-*.md" "agent-staging/docs/" -Force
           Copy-Item "mcp/README.md" "agent-staging/docs/MCP-README.md" -Force
 
           $readme = @(
@@ -331,7 +330,7 @@ jobs:
             "  enableActions=false → 只读; pauseActions=true → 急停; dryRun=true → 只记录不发指令",
             "",
             "⚠ 服务器权威: agent 只能替你点合法的客户端操作, 不能改数值。",
-            "   请只在自己的房间/账号上使用; 详见 docs\MCP-Agent桥接.md 的边界说明。",
+            "   请只在自己的房间/账号上使用; 详见 mcp\README.md 的边界说明。",
             "卸载: 删除 AstralParty_ModLoader\mods\AstralParty.AgentMod\ 目录即可, 不影响加载器与其它 mod。"
           ) -join [Environment]::NewLine
           Set-Content -Path "agent-staging/README.txt" -Value $readme -Encoding UTF8

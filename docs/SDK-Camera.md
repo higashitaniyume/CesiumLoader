@@ -2,7 +2,7 @@
 
 > 相关源码：`Services/CameraBackend.cs`、`Services/CameraService.cs`、`Services/CameraState.cs`、
 > `Services/CinemachineService.cs`、`Services/FreeCameraMath.cs`。
-> 自由相机 mod 见 `docs/mod-FreeCameraMod.md`。
+> 自由相机 mod 见 `mods/FreeCameraMod/`。
 
 ## 1. 分层
 
@@ -60,7 +60,7 @@ CameraService.SetAspect(cam, 1.777f);
 ```
 
 `SomeGet()` 在不可用时返回默认值（0 / false），`SomeSet()` 返回 `bool` 表示是否成功。
-**mod 不应该直接用 `cam.fieldOfView = x`**：那是 ECall，见 `docs/SDK-Unity调用与ECall隔离.md`。
+**mod 不应该直接用 `cam.fieldOfView = x`**：那是 ECall，见 `docs/SDK-UnityInterop.md`。
 
 ## 4. 快照与还原
 

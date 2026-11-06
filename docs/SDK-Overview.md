@@ -125,14 +125,14 @@ public static class ModEntry
 
 | 文档 | 内容 |
 |---|---|
-| [SDK-生命周期与日志.md](SDK-生命周期与日志.md) | ModBase.Run / SdkLog 日志分级 |
-| [SDK-事件.md](SDK-事件.md) | GameEvents 20 个事件 + 战斗子阶段 + StartAutoHook (事件驱动) |
-| [SDK-玩家与名字.md](SDK-玩家与名字.md) | Players 玩家数据 / Names 名字解析 |
-| [SDK-操作.md](SDK-操作.md) | GameActions 投骰/移动/用牌/选择 (⚠ 声明后可操作, 工具/加载器会警告) |
-| [SDK-变速.md](SDK-变速.md) | SpeedHack 游戏变速 (加载器内置功能, 也可 mod 编程控制) |
-| [SDK-帧率.md](SDK-帧率.md) | UnityFrameRate 帧率与垂直同步 (运行时修改, 不写游戏存档) |
-| [SDK-窗口焦点.md](SDK-窗口焦点.md) | WindowFocus 把游戏窗口切到前台 (加载器文件通道) |
-| [SDK-能力声明与元数据.md](SDK-能力声明与元数据.md) | 能力声明(仅警告) / sidecar 元数据 / 依赖解析 / 版本协商 |
-| [SDK-配置与元数据.md](SDK-配置与元数据.md) | SdkConfig JSON 配置 / ModManifest 元数据 / SdkManifest sidecar |
+| [SDK-LifecycleAndLogging.md](SDK-LifecycleAndLogging.md) | ModBase.Run / SdkLog 日志分级 |
+| [SDK-Events.md](SDK-Events.md) | GameEvents 20 个事件 + 战斗子阶段 + StartAutoHook (事件驱动) |
+| [SDK-PlayersAndNames.md](SDK-PlayersAndNames.md) | Players 玩家数据 / Names 名字解析 |
+| [SDK-Actions.md](SDK-Actions.md) | GameActions 投骰/移动/用牌/选择 (⚠ 声明后可操作, 工具/加载器会警告) |
+| [SDK-SpeedHack.md](SDK-SpeedHack.md) | SpeedHack 游戏变速 (加载器内置功能, 也可 mod 编程控制) |
+| [SDK-FrameRate.md](SDK-FrameRate.md) | UnityFrameRate 帧率与垂直同步 (运行时修改, 不写游戏存档) |
+| [SDK-WindowFocus.md](SDK-WindowFocus.md) | WindowFocus 把游戏窗口切到前台 (本地 UDP 通道) |
+| [SDK-CapabilitiesAndMetadata.md](SDK-CapabilitiesAndMetadata.md) | 能力声明(仅警告) / sidecar 元数据 / 依赖解析 / 版本协商 |
+| [SDK-ConfigAndMetadata.md](SDK-ConfigAndMetadata.md) | SdkConfig JSON 配置 / ModManifest 元数据 / SdkManifest sidecar |
 | [SDK-Paths.md](SDK-Paths.md) | SdkPath / Path 路径服务 (各级目录发现、子路径定位与安全文件操作) |
-| [工具-cesium-CLI.md](工具-cesium-CLI.md) | 脚手架与包分发 CLI (new/build/package/list/verify) |
+

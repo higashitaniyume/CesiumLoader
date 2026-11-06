@@ -12,7 +12,7 @@ namespace AstralParty.AgentMod.Bridge
     /// <summary>
     /// 倒计时 / 棋盘 / 用牌窗口的探针。
     ///
-    /// 全部走"编译期能拿到的类型 + 少量私有字段反射", 依据是反编译结论(见 docs/MCP-Agent桥接.md):
+    /// 全部走"编译期能拿到的类型 + 少量私有字段反射", 依据是反编译结论(见 mcp/README.md):
     ///   - <c>GameLogic.OperationTimer</c>(public static): <c>GetOperateTimer(sn)</c> → Timer.GetTimeRemaining()
     ///     (Timer 是 AOT 类型, 只能反射调用), 兜底读私有静态 <c>operationTime - downtime</c>(秒);
     ///   - <c>ActionLogic.CardSN</c> / <c>UsableCards</c>: 编译期成员, 直接读;

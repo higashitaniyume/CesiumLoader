@@ -88,7 +88,7 @@ InputService.ForceReleaseAll();   // 无视所有权强制释放(出问题时的
 
 本作的实测情况：**游戏没有把按键独占交给任何框架**，SDK 的独占只是给 mod 之间的协商用，
 不会真的阻止游戏收到按键。因此自由相机只用**只读**方式取输入（F1/F2 热键 + 鼠标滚轮），
-不做鼠标 / 键盘接管（见 `docs/mod-FreeCameraMod.md`）。
+不做鼠标 / 键盘接管（见 `mods/FreeCameraMod/`）。
 
 ## 5. 光标（ECall 重灾区）
 

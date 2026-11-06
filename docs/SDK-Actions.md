@@ -33,7 +33,7 @@ public static bool ConfirmHero(bool auto = false);
 | `SelectHero` | 选择角色（`ChoiceHeroC2S2`，只带角色 id）。不会结束流程，仍需确认 |
 | `ConfirmHero` | 确认已选角色（`AffirmHeroC2S`）。`auto=true` 与倒计时结束时的自动确认一致 |
 
-确认结果通过 `GameEvents.HeroSelected(playerId, heroId, heroTaken)` 返回；`heroTaken=true` 表示该角色已被其他玩家占用。完整示例见 [mod-HeroAutoSelectMod.md](mod-HeroAutoSelectMod.md)。
+确认结果通过 `GameEvents.HeroSelected(playerId, heroId, heroTaken)` 返回；`heroTaken=true` 表示该角色已被其他玩家占用。完整示例见 `mods/HeroAutoSelectMod/`。
 
 ## 投骰子
 

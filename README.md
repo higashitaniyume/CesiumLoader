@@ -22,7 +22,7 @@
 ![HybridCLR](https://img.shields.io/badge/HybridCLR-555?style=flat-square)
 ![MSVC v145](https://img.shields.io/badge/VS%202026-MSVC%20v145-555?style=flat-square)
 
-[下载加载器](https://github.com/higashitaniyume/CesiumLoader/releases/latest) · [SDK 工具包](https://github.com/higashitaniyume/CesiumLoader/releases/latest/download/cesium-sdk-tools.zip) · [NuGet CLI](https://www.nuget.org/packages/apcsm) · [SDK 文档](docs/SDK-概览.md) · [AstralParty.Toys](https://github.com/higashitaniyume/AstralParty.Toys)
+[下载加载器](https://github.com/higashitaniyume/CesiumLoader/releases/latest) · [SDK 工具包](https://github.com/higashitaniyume/CesiumLoader/releases/latest/download/cesium-sdk-tools.zip) · [NuGet CLI](https://www.nuget.org/packages/apcsm) · [SDK 文档](docs/SDK-Overview.md) · [更新日志](CHANGELOG.md) · [AstralParty.Toys](https://github.com/higashitaniyume/AstralParty.Toys)
 
 </div>
 
@@ -30,7 +30,7 @@
 
 为 Astral Party 的 **Unity IL2CPP + HybridCLR** 运行环境提供模组加载、依赖解析、日志与变速能力。原生 `version.dll` 代理在游戏启动时引导，进入主界面或可玩场景且就绪后自动完成 SDK 与托管模组初始化（支持启动门快速就绪与兜底等待）。
 
-目标环境：Windows x64，Astral Party（Steam App ID `2622000`，Unity 2022 / 3.3.0+）。版本变更见 [Release 记录](https://github.com/higashitaniyume/CesiumLoader/releases)。
+目标环境：Windows x64，Astral Party（Steam App ID `2622000`，Unity 2022 / 3.3.0+）。版本变更见 [CHANGELOG](CHANGELOG.md) 与 [Release 记录](https://github.com/higashitaniyume/CesiumLoader/releases)。
 
 ## 安装
 
@@ -60,29 +60,29 @@ winget install Hiynet.AstralParty.Toys
 
 | 模组 | 功能 |
 | --- | --- |
-| [AutoThanksMod](docs/mod-AutoThanksMod.md) | 队友治疗、给牌、转星币后自动感谢，结算逐人点赞 |
+| AutoThanksMod | 队友治疗、给牌、转星币后自动感谢，结算逐人点赞 |
 | [CardSkinMod](mods/CardSkinMod/README.md) | 自定义卡面、多方案与 PNG 序列帧动态卡面 |
-| [CharacterSkinMod](docs/mod-CharacterSkinMod.md) | 角色外观、多人物皮肤方案与精灵动画 |
-| [CombatOddsMod](docs/mod-CombatOddsMod.md) | 战斗胜率分析、头顶攻防数字与悬停详情，可选显示角色卡与玩家头顶的移速加成，怪物名字/血量旁显示技能 CD，梅加斯技能按钮上方显示轨道轰炸理论伤害（回放可见），标记与摩西精密技巧闪避显示，对局结束与场景切换时自动释放状态缓存 |
-| [FreeCameraMod](docs/mod-FreeCameraMod.md) | 滚轮沿视线缩放，`←`/`→` 绕观察点旋转地图，默认 `F1` 恢复视角；锁定镜头默认关闭，需手动设置 `autoFollow=false` |
-| [SpeedHackMod](docs/mod-SpeedHackMod.md) | 游戏内调整倍率，切换正常速度与上次倍率 |
-| [TurnClockMod](docs/mod-TurnClockMod.md) | 变速时把自己的操作倒计时、选人界面、结算界面、房间等待与剧情自动播放按真实时间走，动画、战斗与其他玩家回合照常加速 |
+| CharacterSkinMod | 角色外观、多人物皮肤方案与精灵动画 |
+| CombatOddsMod | 战斗胜率分析、头顶攻防数字与悬停详情，可选显示角色卡与玩家头顶的移速加成，怪物名字/血量旁显示技能 CD，梅加斯技能按钮上方显示轨道轰炸理论伤害（回放可见），标记与摩西精密技巧闪避显示，对局结束与场景切换时自动释放状态缓存 |
+| FreeCameraMod | 滚轮沿视线缩放，`←`/`→` 绕观察点旋转地图，默认 `F1` 恢复视角；锁定镜头默认关闭，需手动设置 `autoFollow=false` |
+| SpeedHackMod | 游戏内调整倍率，切换正常速度与上次倍率 |
+| TurnClockMod | 变速时把自己的操作倒计时、选人界面、结算界面、房间等待与剧情自动播放按真实时间走，动画、战斗与其他玩家回合照常加速 |
 | ActivityLogMod | 记录出牌、投骰、回合等行为并转发到控制台 |
 | [ForkDirectionMod](mods/ForkDirectionMod/README.md) | PVE 岔路三个相邻地块按顺序显示红 A、黄 B、蓝 C 与地块 ID |
 | [PveWaveForecastMod](mods/PveWaveForecastMod/README.md) | 在 PVE 地图上按回合显示任务波次的刷新内容与地块预告 |
-| [HideHudMod](docs/mod-HideHudMod.md) | 长按反引号键（Tab 上方）隐藏战斗 HUD，可改为按一下切换；手牌、怪物信息、头像与其他 HUD 可分别开关 |
+| HideHudMod | 长按反引号键（Tab 上方）隐藏战斗 HUD，可改为按一下切换；手牌、怪物信息、头像与其他 HUD 可分别开关 |
 | [TurnFocusMod](mods/TurnFocusMod/README.md) | 轮到自己回合、选择筹码、战斗出牌、攻击或防御、匹配成功，或开房后有人发准备消息时把游戏窗口切到前台，可选播放提示音 |
 | [QuickChatPlusMod](mods/QuickChatPlusMod/README.md) | 战斗内快捷短语面板补入房间等待、结算与其他模式的既有短语，可按类别与模式开关 |
-| [ChatDurationMod](docs/mod-ChatDurationMod.md) | 战斗中的快捷消息与表情按真实时间停留（默认 15 秒），不受变速影响 |
+| [ChatDurationMod](mods/ChatDurationMod/README.md) | 战斗中的快捷消息与表情按真实时间停留（默认 15 秒），不受变速影响 |
 | [HomeBottomBarMod](mods/HomeBottomBarMod/README.md) | 主页底栏隐藏公告，设置左移一位，最右侧增加退出按钮 |
 | [UnlockFrameRateMod](mods/UnlockFrameRateMod/README.md) | 在游戏帧率列表追加 144/165/240/360/不限帧 选项，选中后由游戏自己应用 |
 | [LanguageUnlockMod](mods/LanguageUnlockMod/README.md) | 国服启用设置里已有的英文 / 日文 / 繁中语言选项，切换后重登生效 |
-| [AudioSkinMod](docs/SDK-音频服务.md) | 游戏内置音效/语音替换与音量控制 |
+| [AudioSkinMod](docs/SDK-Audio.md) | 游戏内置音效/语音替换与音量控制 |
 | [StarCoinShopMod](mods/StarCoinShopMod/README.md) | 主界面商城星币商店一键顺序购买全部商品，带可配置的冷却间隔与槽位开关 |
 | [CharacterTransparencyMod](mods/CharacterTransparencyMod/README.md) | 按 H 使游戏中角色半透明化（默认 36% 不透明度），支持长按与点击切换 |
 | [ShopRelicPeekMod](mods/ShopRelicPeekMod/README.md) | 在游戏右上角展示玩家进店卡牌与选筹码候选历史，按一至四楼红绿蓝黄排列 |
 
-内置模组的 `config.json` 带简中、繁中、英文、日文配置说明，Toys 会按界面语言显示；第三方模组可按 [配置与元数据](docs/SDK-配置与元数据.md) 用 `ConfigDoc` 提供说明。
+内置模组的 `config.json` 带简中、繁中、英文、日文配置说明，Toys 会按界面语言显示；第三方模组可按 [配置与元数据](docs/SDK-ConfigAndMetadata.md) 用 `ConfigDoc` 提供说明。
 
 
 ## 配置与运行
@@ -99,14 +99,14 @@ winget install Hiynet.AstralParty.Toys
 | `speedControlEnabled` | 允许通过文件通道调整倍率 |
 | `windowControlEnabled` | 允许模组通过本地 UDP 把游戏窗口切到前台并播放提示音(WAV，每进程独立端口) |
 | `useManagedBootstrap` | 实验性托管编排；默认使用原生编排 |
-| `profile` | 多 profile：把账号、存档、回放目录重定向到独立目录，见 [多 profile](docs/多开-profile.md) |
+| `profile` | 多 profile：把账号、存档、回放目录重定向到独立目录 |
 | `profileWindowTitle` | 多 profile 时在游戏窗口标题后追加 profile 名（默认开），便于区分多开实例 |
 
 模组加载采用**启动门就绪判定**：进入主界面或可玩场景且稳定 1 秒后立刻完成初始化，告别旧版固定等待 30 秒；若特殊场景未触发判定，到达 30 秒上限后仍会兜底触发。如需恢复固定等待，可设置环境变量 `CESIUM_MOD_BOOT_GATE=0`。
 
 **变速范围为 1–100 倍，建议不超过 3 倍。** 变速影响动画、演出、回合与网络超时；切换倍率时保持虚拟时间连续。默认 `Delete` 切换正常速度与上次倍率，`Alt` + `=` / `Alt` + `-` 调整倍率，热键可在 Toys 中修改。
 
-Steam 绕过涉及多个独立开关，推荐通过 Toys 选择启动方式。原理、配置与回退方法见 [Steam 绕过说明](docs/steam-bypass.md)。
+Steam 绕过涉及多个独立开关，推荐通过 Toys 选择启动方式。
 
 控制台窗口由加载器通过 `AllocConsole` 分配，始终由传统控制台承载：Windows 的默认终端应用设置只作用于控制台程序启动时创建的控制台，不会接管这里后分配的控制台。`consoleTopmost` 作用于这个控制台窗口。
 
@@ -121,7 +121,7 @@ cesium> set loader.speedhackBaseSpeed 3
 cesium> exit
 ```
 
-配置键为 `loader.<字段>` 或 `<ModId>.<键>`，`ls` 列出全部可配置项，`get` / `set` 读写单个键，`help` 查看全部命令。行编辑与常见 shell 一致：方向键移动光标、`Home` / `End`、`Delete`、`Ctrl+W`/`Ctrl+K`/`Ctrl+U` 删词删行，`Tab` 补全命令名与配置键。修改会立即写盘并保留文件原有格式。完整说明见 [调试 shell](docs/工具-调试Shell.md)。
+配置键为 `loader.<字段>` 或 `<ModId>.<键>`，`ls` 列出全部可配置项，`get` / `set` 读写单个键，`help` 查看全部命令。行编辑与常见 shell 一致：方向键移动光标、`Home` / `End`、`Delete`、`Ctrl+W`/`Ctrl+K`/`Ctrl+U` 删词删行，`Tab` 补全命令名与配置键。修改会立即写盘并保留文件原有格式。
 
 日志按启动会话分别保存，文件名包含时间与进程 ID；排障时保留对应会话的日志及同次构建的 DLL/PDB。
 
@@ -151,21 +151,19 @@ apcsm verify <mods_dir>
 
 SDK 提供生命周期、游戏事件、玩家数据、相机、输入、UI、场景、协程、诊断、帧率与游戏操作 API。加载器依据元数据检查 SDK 版本与依赖，并按依赖顺序加载；单个模组失败会记录日志，不中断其他模组。能力声明用于展示提示，不限制 API 调用。
 
-**HybridCLR 热更侧受 AOT 裁剪约束，无法任意使用 P/Invoke 或完整 .NET BCL。** 开发前请阅读平台约束与 Unity 调用说明。
+**HybridCLR 热更侧受 AOT 裁剪约束，无法任意使用 P/Invoke 或完整 .NET BCL。** 开发前请阅读 Unity 调用说明（[SDK-UnityInterop](docs/SDK-UnityInterop.md)）。
 
 | 文档 | 内容 |
 | --- | --- |
-| [SDK 概览](docs/SDK-概览.md) · [生命周期与日志](docs/SDK-生命周期与日志.md) | 开始开发、初始化与清理 |
-| [配置与元数据](docs/SDK-配置与元数据.md) · [路径服务](docs/SDK-Paths.md) · [能力声明](docs/SDK-能力声明与元数据.md) | 配置、路径定位、版本、依赖与能力描述 |
-| [事件](docs/SDK-事件.md) · [玩家与名字](docs/SDK-玩家与名字.md) | 对局事件与数据查询 |
-| [相机](docs/SDK-相机.md) · [输入与光标](docs/SDK-输入与光标.md) · [UI](docs/SDK-UI.md) | 交互与覆盖层 |
-| [场景与协程](docs/SDK-场景与协程.md) · [变速](docs/SDK-变速.md) · [帧率](docs/SDK-帧率.md) | 场景、调度、时间与画面帧率控制 |
-| [窗口焦点](docs/SDK-窗口焦点.md) | 把游戏窗口切到前台并播放提示音的文件通道 |
-| [操作](docs/SDK-操作.md) · [诊断](docs/SDK-诊断.md) | 游戏指令与排障 |
-| [Unity 调用与 ECall 隔离](docs/SDK-Unity调用与ECall隔离.md) · [平台约束](docs/平台约束-第三方库与AOT裁剪.md) | 运行时兼容要求 |
-| [apcsm / cesium CLI](docs/工具-cesium-CLI.md) | 脚手架、打包与离线预检（支持 NuGet 安装与自包含运行） |
-| [调试 shell](docs/工具-调试Shell.md) | 控制台命令：查环境、改配置、看日志 |
-| [MCP 桥接](mcp/README.md) · [桥接设计](docs/MCP-Agent桥接.md) | 可选 AI 接管组件，默认发布包不包含 |
+| [SDK 概览](docs/SDK-Overview.md) · [生命周期与日志](docs/SDK-LifecycleAndLogging.md) | 开始开发、初始化与清理 |
+| [配置与元数据](docs/SDK-ConfigAndMetadata.md) · [路径服务](docs/SDK-Paths.md) · [能力声明](docs/SDK-CapabilitiesAndMetadata.md) | 配置、路径定位、版本、依赖与能力描述 |
+| [事件](docs/SDK-Events.md) · [玩家与名字](docs/SDK-PlayersAndNames.md) | 对局事件与数据查询 |
+| [相机](docs/SDK-Camera.md) · [输入与光标](docs/SDK-InputAndCursor.md) · [UI](docs/SDK-UI.md) | 交互与覆盖层 |
+| [场景与协程](docs/SDK-SceneAndCoroutines.md) · [变速](docs/SDK-SpeedHack.md) · [帧率](docs/SDK-FrameRate.md) | 场景、调度、时间与画面帧率控制 |
+| [窗口焦点](docs/SDK-WindowFocus.md) | 把游戏窗口切到前台并播放提示音的本地 UDP 通道 |
+| [操作](docs/SDK-Actions.md) · [诊断](docs/SDK-Diagnostics.md) | 游戏指令与排障 |
+| [Unity 调用与 ECall 隔离](docs/SDK-UnityInterop.md) | 运行时兼容要求 |
+| [MCP 桥接](mcp/README.md) | 可选 AI 接管组件，默认发布包不包含 |
 
 ## 构建与发布
 
@@ -195,7 +193,7 @@ pwsh -NoProfile -File tools/package-modloader.ps1
 
 发布由 `modloader-<版本>` 标签触发。CI 从源码构建原生加载器、Bootstrap、SDK、全部内置模组与 CLI，运行测试，再用 `tools/stage-modloader-dist.ps1` 组装 `dist/modloader/` 分发布局并打包；内置清单统一读取 `tools/builtin-mods.json`。`tools/package-modloader.ps1` 复刻同一套步骤，打 tag 前可先在本地验证。
 
-Release 提供加载器包、SDK 工具包及独立默认皮肤包，加载器与工具包均有版本化名称和固定下载名称。**先发布 CesiumLoader，再发布 Toys**，确保 Toys 内嵌最新加载器。部署包细节见 [发布包布局](docs/发布包布局.md)。
+Release 提供加载器包、SDK 工具包及独立默认皮肤包，加载器与工具包均有版本化名称和固定下载名称。**先发布 CesiumLoader，再发布 Toys**，确保 Toys 内嵌最新加载器。
 
 ## 许可
 

@@ -6,7 +6,7 @@ namespace AstralParty.AgentMod.Bridge
     /// <summary>
     /// "现在服务器在等我做什么"的状态机。
     ///
-    /// 依据(见 docs/MCP-Agent桥接.md 的坐标表):
+    /// 依据(见 mcp/README.md 的坐标表):
     ///   - 投骰 5021: SDK 的 <c>GameActions.CanThrowDice</c> / <c>CurrentSn</c>(ActionLogic.throwDiceSn);
     ///   - 用牌 5055/5073: <c>ActionLogic.CardSN</c>(>0 = 等我对效果牌/快速卡表态) + <c>UsableCards</c>(可出的牌);
     ///   - 筹码三选一 5211: Action.Data = SelectRelicC2S{Relics[]};

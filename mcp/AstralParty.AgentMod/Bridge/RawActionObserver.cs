@@ -16,7 +16,7 @@ namespace AstralParty.AgentMod.Bridge
     /// 两个 mod 各自包装同一条回调链会让包装层层套娃(历史上踩过), 所以原始动作流
     /// 由 SDK 统一提供 —— 见 <c>loader\CesiumLoader.SDK\GameEvents.cs</c> 的 RawAction。
     ///
-    /// 解码坐标见 docs/MCP-Agent桥接.md(命令号 → 消息类 → 字段), 全部来自反编译实证。
+    /// 解码坐标见 mcp/README.md(命令号 → 消息类 → 字段), 全部来自反编译实证。
     /// 线程: 回调在**网络线程**。这里只做纯计算 + 入队(加锁), 不碰 Unity API。
     /// </summary>
     internal sealed class RawActionObserver

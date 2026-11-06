@@ -13,7 +13,7 @@
 > - **验证状态（2026-10-02）**：**只读链路已真机实测通过**（心跳、场景/房间识别、只读闸门确实拒绝动作、
 >   命令/结果目录零残留）；**窗口级与真实下发没有验完** —— 用户主动叫停。
 >   期间抓到一个只在真机暴露的 BCL 坑：`new FileInfo(...).Length` → `MethodNotFind System.IO.FileInfo::get_Length`
->   （日志轮转里，每帧刷一条并打断 tick）。已修 + 已进 lint，详见 `docs\MCP-Agent桥接.md` 的状态章节。
+>   （日志轮转里，每帧刷一条并打断 tick）。已修 + 已进 lint，详见本文件的状态章节。
 > - 别把这一块当成"能放心用的成品"：它做过协议反编译与离线测试，但真机只跑通过只读。
 
 这个目录是 **CesiumLoader 的第三个模块**（另外两个是 `loader\` 与 `mods\`）：把游戏状态暴露成
@@ -198,7 +198,7 @@ dotnet build mcp\AstralParty.Mcp\AstralParty.Mcp.csproj -c Release
 - 服务器 1097 超时踢人未验证。
 - 战役图（`MapType==10`）没有倒计时，`RemainingMs` 会是 `-1`。
 
-详见 `docs\MCP-Agent桥接.md`。
+详见本文件的状态与协议说明。
 
 ## 测试
 

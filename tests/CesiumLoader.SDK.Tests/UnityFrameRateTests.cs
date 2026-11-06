@@ -5,7 +5,7 @@ namespace CesiumLoader.SDK.Tests
 {
     /// <summary>
     /// 没有 Unity 运行时也必须安全降级: 读取返回 0, 写入返回 false, 不把 ECall 的
-    /// JIT 失败抛出 SDK 边界(与 <c>docs/SDK-Unity调用与ECall隔离.md</c> 的契约一致)。
+    /// JIT 失败抛出 SDK 边界(与 <c>docs/SDK-UnityInterop.md</c> 的契约一致)。
     /// </summary>
     public class UnityFrameRateTests
     {

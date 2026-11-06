@@ -1,4 +1,4 @@
-# SDK-变速 (SpeedHack)
+# SDK-SpeedHack (变速)
 
 > 游戏时间流速控制接口。mod 可调用 `SpeedHack.SetSpeed()` 变速，配合热键轮询实现 CheatEngine 式变速。
 > 实现借鉴 [speedhack-rs](https://github.com/Hirtol/speedhack-rs)（CheatEngine speedhack 的开源复刻）。
@@ -100,7 +100,7 @@ string text = SpeedHack.Describe();
 （`1.0`=正常，`2.0`=全程 2 倍速），游戏启动即应用并全程保持。
 AstralParty.Toys 的模组页面提供可视化开关（写入该字段）。
 
-**已经做好的热键 mod**：随包内置的 `SpeedHackMod`（[文档](mod-SpeedHackMod.md)）——
+**已经做好的热键 mod**：随包内置的 `SpeedHackMod`（`mods/SpeedHackMod/`）——
 `Delete` 在 `1.0x` 与"刚才的倍率"之间切换（再按一次切回；引擎保持开启，不是"关闭变速"）、
 `Alt+=` / `Alt+-` 实时调倍率、调完自动写回配置。
 想自己写一个的话，下面是最小示例（示例只演示"设为 1.0x"，不含回切）。

@@ -77,7 +77,7 @@ public static void GameEvents.EnsureHooked();
 | `RawAction` | `Action<RawActionEvent>` `(Id, Sn, PlayerId, Data)` | **原始动作流**（1002 `PredictActionS2C` 里逐条广播，未解码）。`Data` 是原始 protobuf 字节，按 `Id` 用 `Parser.ParseFrom` 自行解码 |
 
 > `RawAction` 是唯一带 **`Sn`（服务器操作序号）** 的事件 —— 其它事件都不带 `sn`。
-> 想做"替玩家操作"这类需要回传 `sn` 的功能（见 `docs/MCP-Agent桥接.md`），必须用这条事件建窗口；
+> 想做"替玩家操作"这类需要回传 `sn` 的功能，必须用这条事件建窗口；
 > 用不带 `sn` 的事件建窗口会得到 `Sn=0`，请求发出去服务器不认。
 
 ### 匹配 / 选人

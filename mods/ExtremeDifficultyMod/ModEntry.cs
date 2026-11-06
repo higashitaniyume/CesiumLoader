@@ -86,7 +86,7 @@ namespace ExtremeDifficultyMod
     ///     HybridCLR/IL2CPP 下 <c>DateTimeOffset.FromUnixTimeSeconds</c> 不在 AOT 元数据里,
     ///     调用即失败; 而这类失败<b>发生在方法被解析/编译时</b>, 所以
     ///     <c>try { ... } catch { }</c> 写在同一个方法里是<b>无效</b>的 ——
-    ///     正是 SDK 文档 `SDK-Unity调用与ECall隔离.md` 第 5 节写明的反模式。
+    ///     正是 SDK 文档 `SDK-UnityInterop.md` 第 5 节写明的反模式。
     ///     现在改成<b>纯整数运算</b>换算日期, 完全不碰 BCL 日期 API, 从根上消除。
     ///   </item>
     ///   <item>

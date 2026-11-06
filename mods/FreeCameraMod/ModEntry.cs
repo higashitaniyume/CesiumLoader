@@ -39,7 +39,7 @@ namespace FreeCameraMod
     ///      立刻回到游戏自己的机位, 并把相机交还给游戏;
     ///   5) <b>autoFollow=false(可选)</b>: 关掉游戏自带的自动跟随, 见下。
     ///
-    /// 为什么这么实现(本作实测约束, 详见 docs/SDK-相机.md / docs/mod-FreeCameraMod.md):
+    /// 为什么这么实现(本作实测约束, 详见 docs/SDK-Camera.md):
     ///   - 菜单/过渡期 Cinemachine Brain 可能在失活对象上, 靠 vcam 抢优先级不生效,
     ///     所以缩放/旋转只有"每帧直接写主相机"可靠; 战斗内角色相机的跟随仍由 vcam 驱动;
     ///   - 游戏自己的相机逻辑每帧都写相机, 所以我们的写入要放在 UpdateService 的

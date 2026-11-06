@@ -63,7 +63,7 @@ namespace SpeedHackMod
     ///    (1.0x 是"临时恢复正常", 切回的倍率又恰好等于记忆倍率, 都不该覆盖你习惯的倍率)。
     ///
     /// ⚠️ 变速影响游戏感知的所有时间(动画/演出/回合/网络超时), 倍率别调太高(建议 ≤3x),
-    /// 详见 docs/mod-SpeedHackMod.md。
+    /// 详见 docs/SDK-SpeedHack.md。
     /// </summary>
     public sealed class SpeedHackController : ModBase
     {
