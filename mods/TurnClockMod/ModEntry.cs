@@ -117,7 +117,7 @@ namespace TurnClockMod
         private int _errors;
 
         public override string Name { get { return "回合时钟"; } }
-        public override string Version { get { return "1.4.0"; } }
+        public override string Version { get { return "1.4.1"; } }
         public override string Author { get { return "CesiumLoader"; } }
 
         public override string Description
@@ -196,6 +196,14 @@ namespace TurnClockMod
                 _lastFrameAt = now;
                 // 首帧 / 长卡顿(切场景): 不做"实测速率 vs 缓存倍率"的判断
                 if (!(realDt > 0.0) || realDt > 0.5) realDt = 0.0;
+
+                // 选人结束 → 进入地图: 完全不工作(不收集、不补偿、不写日志)
+                if (InLoadTransition())
+                {
+                    SuspendForLoading(now);
+                    return;
+                }
+                ResumeFromLoading();
 
                 int operationCount = CollectTimers(_buffer);
                 int extraCount = CollectExtraClocks(_extraBuffer);

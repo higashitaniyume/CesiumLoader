@@ -37,6 +37,7 @@ namespace TurnClockMod
         private bool _uiResolveFailed;
         private string _uiError;
         private string _panelDictError;
+        private string _panelReadError;
         private bool _storyFieldWarned;
 
         private readonly List<TimerFlag> _finishFlags = new List<TimerFlag>();
@@ -210,7 +211,12 @@ namespace TurnClockMod
             }
             catch (Exception e)
             {
-                Log.Warn("读取面板缓存失败: " + Describe(e));
+                string error = Describe(e);
+                if (error != _panelReadError)
+                {
+                    _panelReadError = error;
+                    Log.Warn("读取面板缓存失败: " + error);
+                }
             }
 
             if (IsClockEnabled("storyAuto"))
@@ -245,6 +251,10 @@ namespace TurnClockMod
 
                 object timer = slot.Read(host);
                 if (timer == null) continue;
+
+                // 面板关闭 / 计时器取消后, 字段仍可能指向那个计时器。已经结束的不再接管:
+                // 否则每帧都会新建一条 trace 又立刻结束, 日志被"接管/结束"刷屏(加载地图时最严重)。
+                if (IsTimerFinished(timer)) continue;
 
                 if (slot.FromFallback && !_fallbackLogged.ContainsKey(type))
                 {
