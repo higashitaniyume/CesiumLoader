@@ -33,6 +33,12 @@ namespace ShopRelicPeekMod
                 "Whether to prefix player names with seat floor tags (e.g. 1st Floor).",
                 "プレイヤー名の前に座席階層タグ（1階～4階）を表示するかどうか。"));
 
+            changed |= config.Describe("showCharacterName", D(
+                "玩家昵称后是否显示所选角色名（如（芬妮）），方便一眼认人。",
+                "玩家暱稱後是否顯示所選角色名（如（芬妮）），方便一眼認人。",
+                "Whether to append the selected character name after the player name.",
+                "プレイヤー名の後に選択したキャラクター名を表示するかどうか。"));
+
             // 商店看板设置
             changed |= config.Describe("showShopCards", D(
                 "是否开启商店独立看板（展示玩家进入商店遇到的卡牌）。",
@@ -63,6 +69,12 @@ namespace ShopRelicPeekMod
                 "離開商店後貨架卡牌保持顯示的秒數，預設 20 秒。",
                 "Duration in seconds to keep showing shop cards after leaving the shop (default 20).",
                 "ショップ退出後もカードを表示し続ける秒数（既定 20 秒）。"));
+
+            changed |= config.Describe("showShopAge", D(
+                "商店看板每条信息是否显示相对时间（刚刚 / Xs前），默认 false。",
+                "商店看板每條資訊是否顯示相對時間（剛剛 / Xs前），預設 false。",
+                "Whether shop entries show their relative age (just now / Xs ago, default false).",
+                "ショップ看板の各項目に相対時間を表示するかどうか（既定 false）。"));
 
             // 筹码看板设置
             changed |= config.Describe("showRelicCandidates", D(
@@ -100,6 +112,12 @@ namespace ShopRelicPeekMod
                 "候選籌碼名稱是否按品質著色（普通藍、稀有紫、傳說橙）。",
                 "Whether to color relic names by quality (common blue, rare purple, legendary orange).",
                 "チップの名前を品質別（ノーマル青、レア紫、レジェンド橙）に着色するかどうか。"));
+
+            changed |= config.Describe("showRelicAge", D(
+                "筹码看板每条信息是否显示相对时间（刚刚 / Xs前），默认 false。",
+                "籌碼看板每條資訊是否顯示相對時間（剛剛 / Xs前），預設 false。",
+                "Whether relic entries show their relative age (just now / Xs ago, default false).",
+                "チップ看板の各項目に相対時間を表示するかどうか（既定 false）。"));
 
             return changed;
         }

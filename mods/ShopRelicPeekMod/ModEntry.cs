@@ -35,7 +35,7 @@ namespace ShopRelicPeekMod
         private int _lastRound = -1;
 
         public override string Name => "商店与筹码看板";
-        public override string Version => "1.2.0";
+        public override string Version => "1.3.1";
         public override string Author => "CesiumLoader";
         public override string Description => "在游戏右上侧独立展示进店卡牌与选筹码候选历史，按一至四楼红绿蓝黄排列，支持按键一键清空";
 
@@ -46,10 +46,12 @@ namespace ShopRelicPeekMod
             _tracker.CardNameResolver = ResolveCardName;
             _tracker.RelicInfoResolver = ResolveRelicInfo;
             _tracker.NickResolver = ResolvePlayerNick;
+            _tracker.CharacterResolver = ResolvePlayerHeroName;
             _tracker.SlotResolver = ResolvePlayerSlot;
 
             GameEvents.RawAction += OnRawAction;
             GameEvents.RelicSelected += OnRelicSelected;
+            GameEvents.ShopSettled += OnShopSettled;
             GameEvents.StartAutoHook();
 
             UpdateEvents.LateUpdate += Draw;
@@ -69,12 +71,14 @@ namespace ShopRelicPeekMod
                     Config.SetDefault("fontSize", 18);
                     Config.SetDefault("clearKey", "T");
                     Config.SetDefault("showFloorTag", true);
+                    Config.SetDefault("showCharacterName", true);
 
                     Config.SetDefault("showShopCards", true);
                     Config.SetDefault("shopPanelWidth", 340f);
                     Config.SetDefault("shopOffsetX", 20f);
                     Config.SetDefault("shopOffsetY", 70f);
                     Config.SetDefault("shopDisplayDurationSeconds", 20);
+                    Config.SetDefault("showShopAge", false);
 
                     Config.SetDefault("showRelicCandidates", true);
                     Config.SetDefault("relicPanelWidth", 340f);
@@ -82,11 +86,13 @@ namespace ShopRelicPeekMod
                     Config.SetDefault("relicOffsetY", 320f);
                     Config.SetDefault("relicDisplayDurationSeconds", 20);
                     Config.SetDefault("colorRelicByQuality", true);
+                    Config.SetDefault("showRelicAge", false);
                 }
 
                 _cfg.Enabled = Config.GetBool("enabled", true);
                 _cfg.FontSize = ShopRelicPeekConfig.Clamp(Config.GetInt("fontSize", 18), 12, 36, 18);
                 _cfg.ShowFloorTag = Config.GetBool("showFloorTag", true);
+                _cfg.ShowCharacterName = Config.GetBool("showCharacterName", true);
 
                 _cfg.ClearKey = Config.GetString("clearKey", "T");
                 if (Enum.TryParse<KeyCode>(_cfg.ClearKey, true, out var parsedKey))
@@ -107,6 +113,7 @@ namespace ShopRelicPeekMod
                 _cfg.ShopOffsetX = ShopRelicPeekConfig.Clamp(Config.GetFloat("shopOffsetX", fallbackOffsetX), 0f, 1000f, 20f);
                 _cfg.ShopOffsetY = ShopRelicPeekConfig.Clamp(Config.GetFloat("shopOffsetY", fallbackOffsetY), 0f, 1000f, 70f);
                 _cfg.ShopDisplayDurationSeconds = ShopRelicPeekConfig.Clamp(Config.GetInt("shopDisplayDurationSeconds", 20), 0, 300, 20);
+                _cfg.ShowShopAge = Config.GetBool("showShopAge", false);
 
                 _cfg.ShowRelicCandidates = Config.GetBool("showRelicCandidates", true);
                 _cfg.RelicPanelWidth = ShopRelicPeekConfig.Clamp(Config.GetFloat("relicPanelWidth", fallbackPanelWidth), 200f, 600f, 340f);
@@ -114,6 +121,7 @@ namespace ShopRelicPeekMod
                 _cfg.RelicOffsetY = ShopRelicPeekConfig.Clamp(Config.GetFloat("relicOffsetY", 320f), 0f, 1000f, 320f);
                 _cfg.RelicDisplayDurationSeconds = ShopRelicPeekConfig.Clamp(Config.GetInt("relicDisplayDurationSeconds", 20), 0, 300, 20);
                 _cfg.ColorRelicByQuality = Config.GetBool("colorRelicByQuality", true);
+                _cfg.ShowRelicAge = Config.GetBool("showRelicAge", false);
 
                 if (isInitial) Config.SaveIfDirty();
             }
@@ -139,24 +147,28 @@ namespace ShopRelicPeekMod
                             if (offer != null && offer.Relics != null && offer.Relics.Count > 0)
                             {
                                 var relicList = new List<int>(offer.Relics);
-                                _tracker.RecordRelicCandidates(evt.PlayerId, evt.Sn, relicList);
+                                _tracker.RecordRelicCandidates(evt.PlayerId, evt.Sn, relicList, DateTime.UtcNow);
                             }
                         }
                         break;
 
-                    case 5029: // PVP 卡牌商店候选 (ShopBuyC2S)
+                    case 5029: // PVP 卡牌商店（ShopBuyC2S）：Cards>0=进店；Cards 空=离店/自动超时关店
                         {
                             var shop = ByteBuf.ReadObject<ShopBuyC2S>(evt.Data);
                             if (shop != null && shop.Cards != null && shop.Cards.Count > 0)
                             {
                                 var cardList = new List<int>(shop.Cards);
                                 var alreadys = shop.Alreadys != null ? new List<bool>(shop.Alreadys) : null;
-                                _tracker.RecordShopEnter(evt.PlayerId, "PVP商店", cardList, alreadys);
+                                _tracker.RecordShopEnter(evt.Sn, evt.PlayerId, "PVP商店", cardList, alreadys, DateTime.UtcNow);
+                            }
+                            else
+                            {
+                                _tracker.RecordShopClose(evt.PlayerId, DateTime.UtcNow);
                             }
                         }
                         break;
 
-                    case 5215: // PVE 卡牌商店候选 (PVEShopBuyC2S)
+                    case 5215: // PVE 卡牌商店（PVEShopBuyC2S）：IsClose=离店；Cards>0=进店
                         {
                             var shop = ByteBuf.ReadObject<PVEShopBuyC2S>(evt.Data);
                             if (shop != null)
@@ -169,36 +181,25 @@ namespace ShopRelicPeekMod
                                 {
                                     var cardList = new List<int>(shop.Cards);
                                     var alreadys = shop.Alreadys != null ? new List<bool>(shop.Alreadys) : null;
-                                    _tracker.RecordShopEnter(evt.PlayerId, "PVE商店", cardList, alreadys);
+                                    _tracker.RecordShopEnter(evt.Sn, evt.PlayerId, "PVE商店", cardList, alreadys, DateTime.UtcNow);
+                                }
+                                else if (shop.Alreadys != null && shop.Alreadys.Count > 0)
+                                {
+                                    _tracker.RecordShopAlreadys(evt.PlayerId, new List<bool>(shop.Alreadys), DateTime.UtcNow);
                                 }
                             }
                         }
                         break;
 
-                    case 5323: // 商人买卡 (VendorBuyCardC2S)
+                    case 5323: // 商人买卡（VendorBuyCardC2S）：瞬时快照，走离店倒计时（无在店停留）
                         {
                             var vendor = ByteBuf.ReadObject<VendorBuyCardC2S>(evt.Data);
                             if (vendor != null && vendor.CardId > 0)
                             {
                                 var cardList = new List<int> { vendor.CardId };
                                 var alreadys = vendor.IsBuy ? new List<bool> { true } : new List<bool> { false };
-                                _tracker.RecordShopEnter(evt.PlayerId, "商人", cardList, alreadys);
+                                _tracker.RecordShopSnapshot(evt.PlayerId, "商人", cardList, alreadys, DateTime.UtcNow);
                             }
-                        }
-                        break;
-
-                    case 5030: // PVP 商店购买回执
-                    case 5216: // PVE 商店购买回执
-                        {
-                            try
-                            {
-                                var shop = ByteBuf.ReadObject<PVEShopBuyC2S>(evt.Data);
-                                if (shop != null && shop.Alreadys != null)
-                                {
-                                    _tracker.RecordShopAlreadys(evt.PlayerId, new List<bool>(shop.Alreadys));
-                                }
-                            }
-                            catch { }
                         }
                         break;
                 }
@@ -212,6 +213,24 @@ namespace ShopRelicPeekMod
         private void OnRelicSelected(long playerId, int relicId)
         {
             _tracker.RecordRelicSelected(playerId, relicId, DateTime.UtcNow);
+        }
+
+        private void OnShopSettled(ShopSettlement settlement)
+        {
+            // 服务端成交回执（S2C）：PVE 有 IsClose；PVP 用 BuyCards 为空表示关店
+            if (settlement == null || settlement.PlayerId == 0) return;
+            try
+            {
+                if (settlement.IsClose || (settlement.BuyCards == null ? true : settlement.BuyCards.Length == 0))
+                {
+                    _tracker.RecordShopClose(settlement.PlayerId, DateTime.UtcNow);
+                }
+                else if (settlement.Already != null && settlement.Already.Length > 0)
+                {
+                    _tracker.RecordShopAlreadys(settlement.PlayerId, new List<bool>(settlement.Already), DateTime.UtcNow);
+                }
+            }
+            catch { }
         }
 
         private void Draw()
@@ -253,14 +272,13 @@ namespace ShopRelicPeekMod
                     return;
                 }
 
+                var now = DateTime.UtcNow;
                 int curRound = gm.room?.curRoomInfo != null ? gm.room.curRoomInfo.Round : 0;
                 if (curRound != _lastRound)
                 {
                     _lastRound = curRound;
-                    _tracker.OnRoundChanged();
+                    _tracker.OnRoundChanged(now);
                 }
-
-                var now = DateTime.UtcNow;
 
                 // 1. 商店独立看板
                 bool shopVisible = false;
@@ -398,6 +416,50 @@ namespace ShopRelicPeekMod
             return "P" + playerId;
         }
 
+        private static string ResolvePlayerHeroName(long playerId)
+        {
+            if (playerId == 0) return string.Empty;
+            try
+            {
+                var gm = SimpleSingletonProvider<GameLogicManager>.inst;
+                int heroId = 0;
+                var pd = gm?.battle?.GetPlayerDataById(playerId);
+                if (pd?.player?.Hero != null && pd.player.Hero.HeroId > 0)
+                {
+                    heroId = pd.player.Hero.HeroId;
+                }
+                else if (pd?.player?.characterConfig != null && pd.player.characterConfig.Id > 0)
+                {
+                    heroId = pd.player.characterConfig.Id;
+                }
+                else
+                {
+                    var room = gm?.room?.curRoomInfo;
+                    if (room?.Players != null)
+                    {
+                        foreach (var p in room.Players)
+                        {
+                            if (p != null && p.Id == playerId)
+                            {
+                                if (p.Hero != null && p.Hero.HeroId > 0) heroId = p.Hero.HeroId;
+                                else if (p.characterConfig != null && p.characterConfig.Id > 0) heroId = p.characterConfig.Id;
+                                else if (p.serverPlayer?.Hero != null && p.serverPlayer.Hero.HeroId > 0) heroId = p.serverPlayer.Hero.HeroId;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (heroId > 0)
+                {
+                    string name = Names.Character(heroId);
+                    if (!string.IsNullOrEmpty(name) && name != "角色" + heroId) return name;
+                    try { return CharacterHandle.GetCharacterName(heroId); } catch { return name; }
+                }
+            }
+            catch { }
+            return string.Empty;
+        }
+
         private static int ResolvePlayerSlot(long playerId)
         {
             if (playerId == 0) return -1;
@@ -443,6 +505,7 @@ namespace ShopRelicPeekMod
             UpdateEvents.LateUpdate -= Draw;
             GameEvents.RawAction -= OnRawAction;
             GameEvents.RelicSelected -= OnRelicSelected;
+            GameEvents.ShopSettled -= OnShopSettled;
             _tracker.Clear();
             _shopOverlay.Clear();
             _relicOverlay.Clear();

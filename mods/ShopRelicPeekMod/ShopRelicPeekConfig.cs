@@ -5,6 +5,7 @@ namespace ShopRelicPeekMod
         public bool Enabled { get; set; } = true;
         public int FontSize { get; set; } = 18;
         public bool ShowFloorTag { get; set; } = true;
+        public bool ShowCharacterName { get; set; } = true;
         public string ClearKey { get; set; } = "T";
 
         // 商店独立看板设置
@@ -13,6 +14,7 @@ namespace ShopRelicPeekMod
         public float ShopOffsetX { get; set; } = 20f;
         public float ShopOffsetY { get; set; } = 70f;
         public int ShopDisplayDurationSeconds { get; set; } = 20;
+        public bool ShowShopAge { get; set; } = false;
 
         // 筹码独立看板设置
         public bool ShowRelicCandidates { get; set; } = true;
@@ -21,6 +23,7 @@ namespace ShopRelicPeekMod
         public float RelicOffsetY { get; set; } = 320f;
         public int RelicDisplayDurationSeconds { get; set; } = 20;
         public bool ColorRelicByQuality { get; set; } = true;
+        public bool ShowRelicAge { get; set; } = false;
 
         public static int Clamp(int value, int min, int max, int fallback)
         {

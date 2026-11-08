@@ -56,7 +56,10 @@ namespace ShopRelicPeekMod.Tests
                 ColorRelicByQuality = true,
                 ShopDisplayDurationSeconds = 20,
                 RelicDisplayDurationSeconds = 20,
-                ShowFloorTag = true
+                ShowFloorTag = true,
+                ShowCharacterName = false,
+                ShowShopAge = false,
+                ShowRelicAge = false
             };
         }
 
@@ -237,6 +240,190 @@ namespace ShopRelicPeekMod.Tests
             Assert.Equal("#D26DFF", ShopRelicTracker.QualityColor(2)); // 稀有
             Assert.Equal("#FFAA00", ShopRelicTracker.QualityColor(3)); // 传说
             Assert.Equal("#E0E0E0", ShopRelicTracker.QualityColor(0)); // 未知
+        }
+
+        [Fact]
+        public void FormatAge_JustNowAndSeconds()
+        {
+            var t0 = new DateTime(2026, 11, 3, 12, 0, 0, DateTimeKind.Utc);
+            Assert.Equal("刚刚", ShopRelicTracker.FormatAge(t0, t0.AddMilliseconds(500)));
+            Assert.Equal("刚刚", ShopRelicTracker.FormatAge(t0, t0));
+            Assert.Equal("1秒前", ShopRelicTracker.FormatAge(t0, t0.AddSeconds(1)));
+            Assert.Equal("7秒前", ShopRelicTracker.FormatAge(t0, t0.AddSeconds(7)));
+            Assert.Equal("75秒前", ShopRelicTracker.FormatAge(t0, t0.AddSeconds(75)));
+            Assert.Equal(string.Empty, ShopRelicTracker.FormatAge(DateTime.MinValue, t0));
+        }
+
+        [Fact]
+        public void Age_ShownInShopAndRelicHeaders()
+        {
+            var t0 = new DateTime(2026, 11, 3, 12, 0, 0, DateTimeKind.Utc);
+            var cfg = new ShopRelicPeekConfig
+            {
+                Enabled = true, ShowShopCards = true, ShowRelicCandidates = true,
+                ColorRelicByQuality = true, ShopDisplayDurationSeconds = 20,
+                RelicDisplayDurationSeconds = 20, ShowFloorTag = true,
+                ShowCharacterName = false, ShowShopAge = true, ShowRelicAge = true
+            };
+            var tracker = new ShopRelicTracker
+            {
+                CardNameResolver = id => $"卡牌{id}",
+                RelicInfoResolver = id => new RelicItemInfo($"筹码{id}", 1),
+                NickResolver = pid => $"User{pid}",
+                SlotResolver = pid => 0
+            };
+            tracker.RecordShopEnter(77, 2001, "PVE商店", new[] { 101 }, null, t0);
+            tracker.RecordRelicCandidates(2002, 99, new[] { 501 }, t0);
+
+            var justNow = tracker.BuildShopOverlayText(cfg, t0.AddMilliseconds(400));
+            Assert.NotNull(justNow);
+            Assert.Contains("刚刚", justNow);
+
+            var seven = tracker.BuildShopOverlayText(cfg, t0.AddSeconds(7));
+            Assert.NotNull(seven);
+            Assert.Contains("7秒前", seven);
+
+            var relicText = tracker.BuildRelicOverlayText(cfg, t0.AddSeconds(5));
+            Assert.NotNull(relicText);
+            Assert.Contains("5秒前", relicText);
+        }
+
+        [Fact]
+        public void RelicHistoryAge_ShowsPerEntryAge()
+        {
+            var t0 = new DateTime(2026, 11, 3, 12, 0, 0, DateTimeKind.Utc);
+            var cfg = new ShopRelicPeekConfig
+            {
+                Enabled = true, ShowRelicCandidates = true, ColorRelicByQuality = true,
+                RelicDisplayDurationSeconds = 20, ShowFloorTag = true,
+                ShowCharacterName = false, ShowRelicAge = true, ShowShopCards = true, ShowShopAge = true
+            };
+            var tracker = new ShopRelicTracker
+            {
+                CardNameResolver = id => $"卡牌{id}",
+                RelicInfoResolver = id => new RelicItemInfo($"筹码{id}", 1),
+                NickResolver = pid => $"User{pid}",
+                SlotResolver = pid => 0
+            };
+            tracker.RecordRelicCandidates(2001, 10, new[] { 501 }, t0);
+            tracker.RecordRelicCandidates(2001, 20, new[] { 502 }, t0.AddSeconds(10));
+
+            var text = tracker.BuildRelicOverlayText(cfg, t0.AddSeconds(15));
+            Assert.NotNull(text);
+            Assert.Contains("第 1 次 (15秒前):", text);
+            Assert.Contains("当前候选 (5秒前):", text);
+        }
+
+        [Fact]
+        public void CharacterName_ShownNextToPlayerName()
+        {
+            var t0 = new DateTime(2026, 11, 3, 12, 0, 0, DateTimeKind.Utc);
+            ShopRelicPeekConfig MakeCfg(bool showChar) => new ShopRelicPeekConfig
+            {
+                Enabled = true, ShowShopCards = true, ShowRelicCandidates = true,
+                ColorRelicByQuality = true, ShopDisplayDurationSeconds = 20,
+                RelicDisplayDurationSeconds = 20, ShowFloorTag = true,
+                ShowCharacterName = showChar, ShowShopAge = false, ShowRelicAge = false
+            };
+            var tracker = new ShopRelicTracker
+            {
+                CardNameResolver = id => $"卡牌{id}",
+                RelicInfoResolver = id => new RelicItemInfo($"筹码{id}", 1),
+                NickResolver = pid => "PlayerRed",
+                CharacterResolver = pid => "芬妮",
+                SlotResolver = pid => 0
+            };
+            tracker.RecordShopEnter(2001, "PVE商店", new[] { 101 }, null, t0);
+            tracker.RecordRelicCandidates(2001, 10, new[] { 501 }, t0);
+
+            var shopText = tracker.BuildShopOverlayText(MakeCfg(true), t0);
+            Assert.NotNull(shopText);
+            Assert.Contains("PlayerRed", shopText);
+            Assert.Contains("（芬妮）", shopText);
+
+            var relicText = tracker.BuildRelicOverlayText(MakeCfg(true), t0);
+            Assert.NotNull(relicText);
+            Assert.Contains("（芬妮）", relicText);
+
+            var hidden = tracker.BuildShopOverlayText(MakeCfg(false), t0);
+            Assert.NotNull(hidden);
+            Assert.DoesNotContain("（芬妮）", hidden);
+        }
+
+        [Fact]
+        public void Shop_StaleInShop_ExpiresWithoutClosePacket()
+        {
+            var t0 = new DateTime(2026, 11, 3, 12, 0, 0, DateTimeKind.Utc);
+            var tracker = new ShopRelicTracker
+            {
+                CardNameResolver = id => $"卡牌{id}",
+                NickResolver = pid => $"User{pid}",
+                SlotResolver = pid => 0
+            };
+            tracker.RecordShopEnter(55, 2001, "PVP商店", new[] { 101 }, null, t0);
+            // 在店 30 秒仍未过期
+            Assert.True(tracker.HasActiveShop(t0.AddSeconds(30), 20));
+            // 在店超保底（max(60, 20*3)）仍无任何包则过期
+            Assert.False(tracker.HasActiveShop(t0.AddSeconds(61), 20));
+        }
+
+        [Fact]
+        public void Shop_DuplicateSn_DoesNotReviveAfterClose()
+        {
+            var t0 = new DateTime(2026, 11, 3, 12, 0, 0, DateTimeKind.Utc);
+            var tracker = new ShopRelicTracker
+            {
+                CardNameResolver = id => $"卡牌{id}",
+                NickResolver = pid => $"User{pid}",
+                SlotResolver = pid => 0
+            };
+            tracker.RecordShopEnter(10, 2001, "PVE商店", new[] { 101 }, null, t0);
+            tracker.RecordShopClose(2001, t0.AddSeconds(3));
+            // 同 Sn 重复广播（不同货架）不应复活
+            tracker.RecordShopEnter(10, 2001, "PVE商店", new[] { 102 }, null, t0.AddSeconds(4));
+            var cfg = new ShopRelicPeekConfig
+            {
+                Enabled = true, ShowShopCards = true, ShowRelicCandidates = true,
+                ShopDisplayDurationSeconds = 20, RelicDisplayDurationSeconds = 20,
+                ShowFloorTag = true, ShowCharacterName = false, ShowShopAge = false, ShowRelicAge = false
+            };
+            var text = tracker.BuildShopOverlayText(cfg, t0.AddSeconds(4));
+            Assert.NotNull(text);
+            Assert.Contains("卡牌101", text);
+            Assert.DoesNotContain("卡牌102", text);
+            Assert.True(tracker.HasActiveShop(t0.AddSeconds(10), 20));
+            Assert.False(tracker.HasActiveShop(t0.AddSeconds(24), 20));
+        }
+
+        [Fact]
+        public void Shop_VendorSnapshot_ExpiresAfterDurationWithoutClose()
+        {
+            var t0 = new DateTime(2026, 11, 3, 12, 0, 0, DateTimeKind.Utc);
+            var tracker = new ShopRelicTracker
+            {
+                CardNameResolver = id => $"卡牌{id}",
+                NickResolver = pid => $"User{pid}",
+                SlotResolver = pid => 0
+            };
+            tracker.RecordShopSnapshot(2001, "商人", new[] { 101 }, null, t0);
+            Assert.True(tracker.HasActiveShop(t0.AddSeconds(10), 20));
+            Assert.False(tracker.HasActiveShop(t0.AddSeconds(21), 20));
+        }
+
+        [Fact]
+        public void Shop_RoundChanged_ForceClosesInShop()
+        {
+            var t0 = new DateTime(2026, 11, 3, 12, 0, 0, DateTimeKind.Utc);
+            var tracker = new ShopRelicTracker
+            {
+                CardNameResolver = id => $"卡牌{id}",
+                NickResolver = pid => $"User{pid}",
+                SlotResolver = pid => 0
+            };
+            tracker.RecordShopEnter(66, 2001, "PVE商店", new[] { 101 }, null, t0);
+            tracker.OnRoundChanged(t0.AddSeconds(5));
+            Assert.True(tracker.HasActiveShop(t0.AddSeconds(10), 20));
+            Assert.False(tracker.HasActiveShop(t0.AddSeconds(26), 20));
         }
     }
 }
