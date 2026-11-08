@@ -1,0 +1,1 @@
+{"id":"WidgetProbeMod","name":"控件 API 探针","version":"0.1.0","author":"CesiumLoader","description":"逐项验证 WidgetService: Canvas / Panel / Text / Slider / Badge 创建、属性写回、锚点布局、作用域销毁、DestroyAll 与跨线程调用。","permissions":1,"sdkVersion":"3.4.0","dependencies":[]}

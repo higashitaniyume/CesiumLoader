@@ -1,0 +1,37 @@
+{
+  // 总开关：是否显示观测面板
+  "enabled": true,
+  // 显示/隐藏面板热键，默认 F9
+  "toggleKey": "F9",
+  // 清空事件流水与计数热键，默认 F8
+  "clearKey": "F8",
+  // 面板正文字号，范围 12–20，默认 14
+  "fontSize": 14,
+
+  "_comments": {
+    "enabled": {
+      "zh-Hans": "总开关：是否显示观测面板。",
+      "zh-Hant": "總開關：是否顯示觀測面板。",
+      "en": "Master switch: show/hide the observation panel.",
+      "ja": "マスタースイッチ: 観測パネルを表示します。"
+    },
+    "toggleKey": {
+      "zh-Hans": "显示/隐藏观测面板的热键，默认 F9。",
+      "zh-Hant": "顯示/隱藏觀測面板的熱鍵，預設 F9。",
+      "en": "Hotkey to show/hide the observation panel (default F9).",
+      "ja": "観測パネル表示/非表示のホットキー（既定値 F9）。"
+    },
+    "clearKey": {
+      "zh-Hans": "清空事件流水与计数（用于分段验证）的热键，默认 F8。",
+      "zh-Hant": "清空事件流水與計數（用於分段驗證）的熱鍵，預設 F8。",
+      "en": "Hotkey to clear the event feed and counters (default F8).",
+      "ja": "イベントログとカウンターをクリアするホットキー（既定値 F8）。"
+    },
+    "fontSize": {
+      "zh-Hans": "面板正文字号，范围 12–20，默认 14。",
+      "zh-Hant": "面板正文字號，範圍 12–20，預設 14。",
+      "en": "Panel body font size (12-20, default 14).",
+      "ja": "パネル本文フォントサイズ（12–20、既定値 14）。"
+    }
+  }
+}
