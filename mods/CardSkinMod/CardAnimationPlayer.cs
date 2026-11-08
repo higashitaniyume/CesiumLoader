@@ -154,6 +154,7 @@ namespace CardSkinMod
             catch { }
             if (texture == null || texture.width != animation.Width || texture.height != animation.Height)
             {
+                if (texture == null && sequence.Loader.LastWasPending) return; // pending: retry next Pump
                 sequence.Loader.ReleaseFile(file, sequence.AssetKey);
                 _failed.Add(animation.ManifestPath);
                 return;

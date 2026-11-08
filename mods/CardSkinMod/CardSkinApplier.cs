@@ -174,7 +174,7 @@ namespace CardSkinMod
                 bool discover = now >= _nextDiscovery;
                 if (discover)
                 {
-                    _nextDiscovery = now + 100;
+                    _nextDiscovery = now + 1000;
                     _visitedAnimations.Clear();
                     var root = GRoot.inst;
                     if (root != null) VisitCards(root, 0);

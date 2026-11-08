@@ -49,12 +49,14 @@ namespace CardSkinMod
                 var result = new CardAnimation { ManifestPath = path, Fps = fps, FrameCount = count, Width = w, Height = h };
                 string dir = Path.ChangeExtension(path, "frames");
                 if (!Directory.Exists(dir) || (File.GetAttributes(dir) & FileAttributes.ReparsePoint) != 0) return false;
+                // Existence-only validation: full PNG header scan over up to 300 frames on skin load
+                // previously read every frame via ReadAllBytes on the main thread (hundreds of MiB IO).
+                // Per-frame header is validated lazily in CardAnimationPlayer.Load via
+                // CardTextureLoader's ValidPngHeader before decode, so pre-scanning is redundant.
                 for (int i = 0; i < count; i++)
                 {
                     string frame = result.FramePath(i);
                     if (!File.Exists(frame) || (File.GetAttributes(frame) & FileAttributes.ReparsePoint) != 0) return false;
-                    byte[] png = File.ReadAllBytes(frame);
-                    if (!ValidPngHeader(png, w, h)) return false;
                 }
                 animation = result;
                 return true;

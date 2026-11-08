@@ -29,6 +29,9 @@ namespace CardSkinMod
         private static bool _requestNonReadable;
         public static bool LoadsNonReadable => _loadImageNonReadable;
 
+        /// <summary>True when the last GetOrCreateTexture deferred because a UnityWebRequest was still pending (retryable, not a hard failure).</summary>
+        public bool LastWasPending { get; private set; }
+
         public static void EnsureMethodsResolved()
         {
             if (_methodsResolved) return;
@@ -88,7 +91,7 @@ namespace CardSkinMod
             }
 
             EnsureMethodsResolved();
-
+            LastWasPending = false;
             NTexture loaded = LoadFromFile(filePath, expectedWidth, expectedHeight);
             if (loaded != null)
             {
@@ -99,7 +102,7 @@ namespace CardSkinMod
             return loaded;
         }
 
-        private static NTexture LoadFromFile(string filePath, int expectedWidth, int expectedHeight)
+        private NTexture LoadFromFile(string filePath, int expectedWidth, int expectedHeight)
         {
             try
             {
@@ -141,12 +144,18 @@ namespace CardSkinMod
                         var asyncOp = sendMethod?.Invoke(req, null);
                         if (asyncOp != null)
                         {
-                            // 等待本地请求完成 (本地文件通常 < 2ms)
+                            // Non-blocking: never spin on the main thread. If the request is not
+                            // already done, defer to the next Pump tick so a slow local file does
+                            // not stall the game frame for up to 1s.
                             var isDoneProp = asyncOp.GetType().GetProperty("isDone");
-                            var startTicks = DateTime.UtcNow.Ticks;
-                            while (isDoneProp != null && !(bool)isDoneProp.GetValue(asyncOp, null))
+                            bool done = isDoneProp == null;
+                            try { if (!done) done = (bool)isDoneProp.GetValue(asyncOp, null); } catch { done = false; }
+                            if (!done)
                             {
-                                if ((DateTime.UtcNow.Ticks - startTicks) > 10000000L) break; // 1s 超时
+                                // Defer: Pump will retry the same index next frame.
+                                // Mark pending so CardAnimationPlayer does not treat this as a hard failure.
+                                LastWasPending = true;
+                                return null;
                             }
                         }
 
