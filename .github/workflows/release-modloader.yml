@@ -87,9 +87,10 @@ jobs:
             Write-Warning "version.pdb 未生成: 本次发布包不含加载器符号"
           }
 
-          # 2) 托管侧: 构建所有 csproj
+          # 2) 托管侧: 构建出货用的 csproj (loader/SDK/bootstrap/mods/mcp/CLI)。
+          # tests\ 与 smoke\ 是测试与冒烟 harness, 只编不跑且不进 dist, 别浪费时间编它们。
           $projects = @(Get-ChildItem -Recurse -File -Filter *.csproj |
-            Where-Object { $_.FullName -notmatch '\\(obj|bin|artifacts|staging|sdk-staging|agent-staging)\\' } |
+            Where-Object { $_.FullName -notmatch '\\(obj|bin|artifacts|staging|sdk-staging|agent-staging|tests|smoke)\\' } |
             Sort-Object FullName)
           if ($projects.Count -lt 20) { throw "只找到 $($projects.Count) 个 csproj, 检出内容不完整?" }
           $failed = @()
