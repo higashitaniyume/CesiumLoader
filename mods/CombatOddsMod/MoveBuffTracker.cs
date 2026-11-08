@@ -30,6 +30,8 @@ namespace CombatOddsMod
         private static MovePointBuffS2CRPC.OnMovePointBuffS2CServerDelegate _wrapped;
         private static MovePointBuffS2CRPC.OnMovePointBuffS2CServerDelegate _original;
         private static int _hookGeneration;
+        private static int _installCount;
+        private const int MaxInstallsPerSession = 8;
 
         internal static void EnsureHooked()
         {
@@ -41,6 +43,7 @@ namespace CombatOddsMod
 
                 var current = rpc.MovePointBuffS2C.OnMovePointBuffS2CServerCallBackAsync;
                 if (current == null || ReferenceEquals(current, _wrapped)) return;
+                if (_installCount >= MaxInstallsPerSession) return;
 
                 var original = current;
                 int generation = ++_hookGeneration;
@@ -54,6 +57,7 @@ namespace CombatOddsMod
                 rpc.MovePointBuffS2C.OnMovePointBuffS2CServerCallBackAsync = wrapped;
                 _wrapped = wrapped;
                 _original = original;
+                _installCount++;
             }
             catch { }
         }
@@ -79,6 +83,7 @@ namespace CombatOddsMod
         internal static void Reset()
         {
             _byBuffConfig.Clear();
+            _installCount = 0;
         }
 
         /// <summary>

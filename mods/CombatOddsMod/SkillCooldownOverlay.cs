@@ -82,8 +82,9 @@ namespace CombatOddsMod
                 }
                 if (_panel == null || _panel.isDisposed || _panel.parent == null)
                 {
+                    SharedPanelLocator.Invalidate();
                     Reset();
-                    _panel = FindPanel(GRoot.inst, 0);
+                    _panel = SharedPanelLocator.Get();
                 }
                 if (_panel == null) return;
                 var container = _panel.com_BattlePlayer.com_Container;
@@ -165,17 +166,6 @@ namespace CombatOddsMod
             anchor.parent.SetChildIndex(label, anchor.parent.numChildren - 1);
         }
 
-        private static UI.UIBattleInfoPanel FindPanel(GObject node, int depth)
-        {
-            if (node == null || depth > 12) return null;
-            if (node is UI.UIBattleInfoPanel panel) return panel;
-            if (node is GComponent component)
-                for (int i = 0; i < component.numChildren; i++)
-                {
-                    var found = FindPanel(component.GetChildAt(i), depth + 1);
-                    if (found != null) return found;
-                }
-            return null;
-        }
+        private static UI.UIBattleInfoPanel FindPanel(GObject node, int depth) => SharedPanelLocator.Get();
     }
 }

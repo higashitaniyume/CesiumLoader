@@ -43,6 +43,8 @@ namespace CombatOddsMod
         private static ThrowDiceS2CRPC.OnThrowDiceS2CServerDelegate _wrapped;
         private static ThrowDiceS2CRPC.OnThrowDiceS2CServerDelegate _original;
         private static int _hookGeneration;
+        private static int _installCount;
+        private const int MaxInstallsPerSession = 8;
 
         /// <summary>把记录器挂到 <c>ThrowDiceS2C</c> 上(幂等)。</summary>
         internal static void EnsureHooked()
@@ -55,6 +57,7 @@ namespace CombatOddsMod
 
                 var current = rpc.ThrowDiceS2C.OnThrowDiceS2CServerCallBackAsync;
                 if (current == null || ReferenceEquals(current, _wrapped)) return;
+                if (_installCount >= MaxInstallsPerSession) return;
 
                 // 创建时捕获原始委托(闭包), 不在回调里读静态字段 —— 避免把自己包进自己。
                 var original = current;
@@ -69,6 +72,7 @@ namespace CombatOddsMod
                 rpc.ThrowDiceS2C.OnThrowDiceS2CServerCallBackAsync = wrapped;
                 _wrapped = wrapped;
                 _original = original;
+                _installCount++;
             }
             catch { }
         }
@@ -100,6 +104,7 @@ namespace CombatOddsMod
         internal static void Reset()
         {
             _last.Clear();
+            _installCount = 0;
         }
 
         private static void Record(ThrowDiceS2C model)

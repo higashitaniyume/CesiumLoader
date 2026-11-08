@@ -371,6 +371,7 @@ namespace CombatOddsMod
             SdkLog.Info("CombatOdds", "已订阅战斗事件, 等待打怪/PK。判定骰面数=" + JudgeFaces());
         }
 
+        private static float _lastOverlaySyncAt;
         private static void OnTick()
         {
             if (_disposed) return;
@@ -380,19 +381,17 @@ namespace CombatOddsMod
                 OnConfigChanged();
             }
             if (_cfg == null || !_cfg.Enabled) return;
-            // 事件挂钩由 SDK 内部维持; 本 mod 无需轮询逻辑。
-            GameEvents.EnsureHooked();
-            RefreshSyncedCardOdds();
-            // HUD 攻击力加成: 星币/血量/层数变化不触发 ATK 事件, 靠这每秒一次兜底刷新。
+            if (_lastBattle != null)
+                RefreshSyncedCardOdds();
             RefreshHudAtkBonus();
-            // 移速加成: 加速/减速随 Buff、筹码与地图事件变化, 每秒读一次即可。
-            // 两个 RPC 记录器也要每秒重挂一次(游戏每场战斗会重置 RPC 回调)。
             UpdateMoveTracking();
             RefreshHudMoveBonus();
-            // 棋盘头顶攻防: 位置/数值的实时刷新已由 PlayerAttrOverlay 自己的每帧(LateUpdate)回调负责,
-            // 这里每秒一次只用于把配置开关同步过去(不承担跟随刷新, 否则又会变成低刷新率)。
-            if (_playerAttrOverlay != null)
+            // 棋盘头顶攻防: 位置/数值的实时刷新已由 PlayerAttrOverlay 自己的每帧回调负责,
+            // 这里每 2s 同步一次配置开关即可, 无需每秒重复赋值。
+            float now = UnityEngine.Time.realtimeSinceStartup;
+            if (_playerAttrOverlay != null && now - _lastOverlaySyncAt >= 2f)
             {
+                _lastOverlaySyncAt = now;
                 _playerAttrOverlay.SetEnabled(_cfg.ShowBoardPlayerAttrs);
                 _playerAttrOverlay.SetShowMove(_cfg.ShowMoveBonus);
             }

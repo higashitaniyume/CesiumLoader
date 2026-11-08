@@ -66,6 +66,8 @@ namespace CombatOddsMod
         private static PropertyInfo _mousePosition;
         private static Func<Vector3> _readMousePosition;
         private static bool _mouseProbeDone;
+        /// <summary>数值刷新节流: 位置每帧更新, 数值最多 0.2s 一次。</summary>
+        private float _nextDataAt;
 
         public void Start()
         {
@@ -129,7 +131,7 @@ namespace CombatOddsMod
                     HideTip();
                     return;
                 }
-                _panel = FindPanel();
+                _panel = SharedPanelLocator.Get();
                 if (_panel == null || !_panel.visible || _panel.parent == null || _panel.com_PlayerAttrInfos == null)
                 {
                     HideEntries();
@@ -178,67 +180,62 @@ namespace CombatOddsMod
                     // label individually makes them displace each other each frame.
                     _orderedBoxes.Add(entry.Box);
 
-                    // 数值: 只有影响显示的东西真的变了才重排文本
-                    // (字符串拼接 + textWidth 排版 + 子节点尺寸重算都不便宜, 没变就别做)。
-                    // 注意: 显示的是 finalAtk(基础攻击 + 筹码加成), 与原来一致; 加成明细进悬停浮框。
+                    // 数值: 只在 0.2s 节流窗口内重算评估/移速/文本; 位置/可见性仍每帧更新,
+                    // 避免每帧做 ReadAtkInput/Evaluate + 字符串排版。
+                    bool needData = Time.realtimeSinceStartup >= _nextDataAt;
                     int atk = player.Property.ATK != null ? player.Property.ATK.Value : 0;
                     int def = player.Property.DEF != null ? player.Property.DEF.Value : 0;
                     int hp = player.Property.HP != null ? player.Property.HP.Value : 0;
 
-                    var input = ModEntry.ReadAtkInput(player);
-                    bool inputChanged = !entry.HasInput || !RelicAtkBonus.SameInput(entry.Input, input);
-                    if (inputChanged)
+                    if (needData)
                     {
-                        entry.Bonuses = RelicAtkBonus.Evaluate(input);
-                        entry.Input = input;
-                        entry.HasInput = true;
-                    }
-                    var bonuses = entry.Bonuses;
-                    int finalAtk = atk + RelicAtkBonus.Total(bonuses);
-
-                    // 移速加成(可选): 头顶标签也带上, 与角色卡上的读数同一套预测口径。
-                    // 预测要遍历身上的 Buff, 不能每帧算, 每个角色最多每 0.5 秒刷新一次。
-                    if (_showMove)
-                    {
-                        float now = Time.realtimeSinceStartup;
-                        if (now - entry.MoveBonusAt >= 0.5f || entry.MoveBonusAt <= 0f)
+                        var input = ModEntry.ReadAtkInput(player);
+                        bool inputChanged = !entry.HasInput || !RelicAtkBonus.SameInput(entry.Input, input);
+                        if (inputChanged)
                         {
-                            entry.MoveBonusAt = now;
-                            entry.MoveBonus = ModEntry.MoveBonusPredicted(id);
+                            entry.Bonuses = RelicAtkBonus.Evaluate(input);
+                            entry.Input = input;
+                            entry.HasInput = true;
                         }
-                    }
+                        var bonuses = entry.Bonuses;
+                        int finalAtk = atk + RelicAtkBonus.Total(bonuses);
 
-                    int shownMove = _showMove ? entry.MoveBonus : 0;
-                    string nick = Players.SafeNick(player);
-                    if (nick == null)
-                    {
-                        if (entry.FallbackNick == null) entry.FallbackNick = "P" + id;
-                        nick = entry.FallbackNick;
-                    }
-                    // Compare every tooltip input, including changes that keep
-                    // the final attack total unchanged, before allocating text.
-                    if (entry.LastText == null || inputChanged || entry.LastAtk != atk ||
-                        entry.LastDef != def || entry.LastHp != hp || entry.LastShownMove != shownMove || entry.LastNick != nick)
-                    {
-                        string text = "[color=#5AA9FF]攻 " + finalAtk + "[/color]   [color=#6DE0A2]防 " + def + "[/color]";
-                        if (shownMove != 0)
-                            text += "   [color=#FFD24A]速 " + (shownMove > 0 ? "+" : "") + shownMove + "[/color]";
-                        entry.LastText = text;
-                        entry.LastAtk = atk;
-                        entry.LastDef = def;
-                        entry.LastHp = hp;
-                        entry.LastShownMove = shownMove;
-                        entry.LastNick = nick;
-                        entry.Text.text = text;
-                        // 尺寸给 Box(普通 GComponent, 会老实采纳)。不能改成给 GTextField.SetSize:
-                        // 本字段 autoSize=Both, GTextField.HandleSizeChanged 在 Both 下直接 return,
-                        // 那个 SetSize 是空操作, 宽度/高度都不会按我们给的算。
-                        entry.Box.SetSize(Math.Max(90f, entry.Text.textWidth + 14f), Math.Max(30f, entry.Text.textHeight + 8f));
+                        if (_showMove)
+                        {
+                            float now = Time.realtimeSinceStartup;
+                            if (now - entry.MoveBonusAt >= 0.5f || entry.MoveBonusAt <= 0f)
+                            {
+                                entry.MoveBonusAt = now;
+                                entry.MoveBonus = ModEntry.MoveBonusPredicted(id);
+                            }
+                        }
 
-                        entry.Data = player;
-                        // 悬停浮框内容直接存进 Box.data(ShowTip 就取它), 不再另存一份, 避免两处状态不一致。
-                        entry.Box.data = BuildTip(nick, atk, finalAtk, def, hp, bonuses, shownMove);
+                        int shownMove = _showMove ? entry.MoveBonus : 0;
+                        string nick = Players.SafeNick(player);
+                        if (nick == null)
+                        {
+                            if (entry.FallbackNick == null) entry.FallbackNick = "P" + id;
+                            nick = entry.FallbackNick;
+                        }
+                        if (entry.LastText == null || inputChanged || entry.LastAtk != atk ||
+                            entry.LastDef != def || entry.LastHp != hp || entry.LastShownMove != shownMove || entry.LastNick != nick)
+                        {
+                            string text = "[color=#5AA9FF]攻 " + finalAtk + "[/color]   [color=#6DE0A2]防 " + def + "[/color]";
+                            if (shownMove != 0)
+                                text += "   [color=#FFD24A]速 " + (shownMove > 0 ? "+" : "") + shownMove + "[/color]";
+                            entry.LastText = text;
+                            entry.LastAtk = atk;
+                            entry.LastDef = def;
+                            entry.LastHp = hp;
+                            entry.LastShownMove = shownMove;
+                            entry.LastNick = nick;
+                            entry.Text.text = text;
+                            entry.Box.SetSize(Math.Max(90f, entry.Text.textWidth + 14f), Math.Max(30f, entry.Text.textHeight + 8f));
 
+                            entry.Data = player;
+                            entry.Box.data = BuildTip(nick, atk, finalAtk, def, hp, bonuses, shownMove);
+
+                        }
                     }
                     // 文字维持固定字号；只有与实际顶部之间的小间距使用 UI 单位。
                     entry.Box.SetXY(local.x - entry.Box.width * 0.5f, local.y - HeadGap - entry.Box.height);
@@ -248,6 +245,7 @@ namespace CombatOddsMod
                 foreach (var pair in _entries) if (!_active.Contains(pair.Key)) _stale.Add(pair.Key);
                 foreach (long id in _stale) Hide(id);
                 RaiseEntries(container);
+                if (Time.realtimeSinceStartup >= _nextDataAt) _nextDataAt = Time.realtimeSinceStartup + 0.2f;
             }
             catch (Exception e) { SdkLog.Warn("CombatOdds", "更新棋盘玩家攻防显示失败: " + e.Message); }
         }
@@ -485,22 +483,6 @@ namespace CombatOddsMod
             _hoverId = 0;
         }
 
-        private static UI.UIBattleInfoPanel FindPanel()
-        {
-            try { return Walk(GRoot.inst, 0); } catch { return null; }
-        }
-
-        private static UI.UIBattleInfoPanel Walk(GObject node, int depth)
-        {
-            if (node == null || depth > 12) return null;
-            if (node is UI.UIBattleInfoPanel panel) return panel;
-            if (node is GComponent component)
-                for (int i = 0; i < component.numChildren; i++)
-                {
-                    var found = Walk(component.GetChildAt(i), depth + 1);
-                    if (found != null) return found;
-                }
-            return null;
-        }
+        private static UI.UIBattleInfoPanel FindPanel() => SharedPanelLocator.Get();
     }
 }

@@ -110,8 +110,10 @@ namespace CombatOddsMod
                 }
                 if (_panel == null || _panel.isDisposed || _panel.parent == null)
                 {
-                    Reset();
-                    _panel = FindPanel(GRoot.inst, 0);
+                    // 面板生命周期与共享定位器对齐: 丢失只换缓存, 不重置已建好的 Badge
+                    SharedPanelLocator.Invalidate();
+                    _panel = null;
+                    _panel = SharedPanelLocator.Get();
                 }
                 if (_panel == null) return;
 
@@ -449,17 +451,6 @@ namespace CombatOddsMod
             return format;
         }
 
-        private static UI.UIBattleInfoPanel FindPanel(GObject node, int depth)
-        {
-            if (node == null || depth > 12) return null;
-            if (node is UI.UIBattleInfoPanel panel) return panel;
-            if (node is GComponent component)
-                for (int i = 0; i < component.numChildren; i++)
-                {
-                    var found = FindPanel(component.GetChildAt(i), depth + 1);
-                    if (found != null) return found;
-                }
-            return null;
-        }
+        private static UI.UIBattleInfoPanel FindPanel(GObject node, int depth) => SharedPanelLocator.Get();
     }
 }

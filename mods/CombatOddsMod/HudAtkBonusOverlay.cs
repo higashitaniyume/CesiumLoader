@@ -37,8 +37,8 @@ namespace CombatOddsMod
         internal static float GapX = 6f;
         /// <summary>相邻两个 "+N" 之间的水平间距(像素)。</summary>
         internal static float GapBetween = 6f;
-        /// <summary>轮询间隔(秒)。0.05 ≈ 20Hz, 悬浮手感够用。</summary>
-        internal static float PollInterval = 0.05f;
+        /// <summary>轮询间隔(秒)。0.1 = 10Hz, 悬浮手感足够且主线程开销更低。</summary>
+        internal static float PollInterval = 0.1f;
 
         private static readonly Color Yellow = new Color32(0xFF, 0xD2, 0x4A, 0xFF);   // 星币锤 / 手电筒
         private static readonly Color Green = new Color32(0x5B, 0xE3, 0x7A, 0xFF);    // 美工刀
@@ -182,7 +182,7 @@ namespace CombatOddsMod
                 if (_txtAtk != null && _txtAtk.parent != null && BoxesAlive()) return true;
 
                 Reset();
-                _panel = FindPanel();
+                _panel = SharedPanelLocator.Get();
                 if (_panel == null) return false;
 
                 _txtAtk = _panel.txt_ATK;
@@ -347,7 +347,9 @@ namespace CombatOddsMod
                 if (hit != null) ShowTip(hit.Box, hit.Box.data as string);
                 else if (_tipOwner != null) HideTip();
 
+#if COMBATODDS_DEBUG_PROBES
                 DiagNearPointer();
+#endif
             }
             catch { }
         }
@@ -396,7 +398,7 @@ namespace CombatOddsMod
         /// </summary>
         private void DiagNearPointer()
         {
-            if (++_pollCount % 40 != 0) return;                  // 0.05s × 40 ≈ 2s
+            if (++_pollCount % 20 != 0) return;                  // 0.1s × 20 ≈ 2s
             var b = _boxes[0];
             if (b == null || b.Box == null) return;
 
@@ -568,30 +570,6 @@ namespace CombatOddsMod
         // ------------------------------------------------------------------ 定位
 
         /// <summary>在 GRoot 下找当前活跃的主 HUD 面板(移速加成覆盖层也复用这一处定位)。</summary>
-        internal static UI.UIBattleInfoPanel FindPanel()
-        {
-            try
-            {
-                var root = GRoot.inst;
-                return root == null ? null : Walk(root, 0);
-            }
-            catch { return null; }
-        }
-
-        private static UI.UIBattleInfoPanel Walk(GObject node, int depth)
-        {
-            if (node == null || depth > 12) return null;
-            if (node is UI.UIBattleInfoPanel panel) return panel;
-            if (node is GComponent comp)
-            {
-                int n = comp.numChildren;
-                for (int i = 0; i < n; i++)
-                {
-                    var found = Walk(comp.GetChildAt(i), depth + 1);
-                    if (found != null) return found;
-                }
-            }
-            return null;
-        }
+        internal static UI.UIBattleInfoPanel FindPanel() => SharedPanelLocator.Get();
     }
 }

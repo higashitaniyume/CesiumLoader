@@ -37,7 +37,7 @@ namespace CombatOddsMod
         /// <summary>是否在棋盘上每个玩家头顶显示实时攻击/防御, 悬停查看详情。</summary>
         public bool ShowBoardPlayerAttrs = true;
         /// <summary>把每次攻击的攻击力加成明细打进加载器日志(星币/治愈/星光/血量/持有筹码 + 各筹码加成), 便于与结算伤害对拍。</summary>
-        public bool LogAtkBonusDetail = true;
+        public bool LogAtkBonusDetail = false;
         /// <summary>是否把每次战斗读数(多行框)写进加载器日志。默认关闭: 读数已经显示在战斗窗口面板与通知里,
         /// 排障时再打开。</summary>
         public bool LogBattleOdds = false;
