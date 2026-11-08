@@ -33,7 +33,7 @@ namespace MapPeekMod
         private string _cachedText;
 
         public override string Name => "选人地图预览";
-        public override string Version => "1.0.0";
+        public override string Version => "1.0.1";
         public override string Author => "CesiumLoader";
         public override string Description => "选人阶段显示本局地图名、模式、难度与人数（左上角浮窗），便于选角前确认地图";
 

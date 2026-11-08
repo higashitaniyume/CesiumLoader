@@ -38,7 +38,7 @@ namespace ShopRelicPeekMod
         private DateTime _nextTextBuild = DateTime.MinValue;
 
         public override string Name => "商店与筹码看板";
-        public override string Version => "1.3.1";
+        public override string Version => "1.3.2";
         public override string Author => "CesiumLoader";
         public override string Description => "在游戏右上侧独立展示进店卡牌与选筹码候选历史，按一至四楼红绿蓝黄排列，支持按键一键清空";
 

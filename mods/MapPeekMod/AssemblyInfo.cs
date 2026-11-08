@@ -1,3 +1,3 @@
 using CesiumLoader.SDK.Manifests;
 
-[assembly: ModManifest("选人地图预览", "1.0.0", "CesiumLoader", "选人阶段显示本局地图名、模式、难度与人数（左上角浮窗），便于选角前确认地图", Permissions = ModPermission.ReadGameState, SdkVersion = "2.8.6")]
+[assembly: ModManifest("选人地图预览", "1.0.1", "CesiumLoader", "选人阶段显示本局地图名、模式、难度与人数（左上角浮窗），便于选角前确认地图", Permissions = ModPermission.ReadGameState, SdkVersion = "2.8.6")]
