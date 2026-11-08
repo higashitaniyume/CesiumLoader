@@ -192,9 +192,9 @@ static void log_version_banner()
     log_line("[loader] ──────────────────────────────────────────────");
     log_line("[loader] CesiumLoader v" + loader_version + " (version.dll, native) · SDK v" + sdk_version);
     log_line("[loader] CesiumLoader: https://github.com/higashitaniyume/CesiumLoader");
-    log_line("[loader] Releases: https://github.com/higashitaniyume/CesiumLoader/releases");
+    log_line("[loader] CesiumLoader Releases: https://github.com/higashitaniyume/CesiumLoader/releases");
     log_line("[loader] AstralParty.Toys: https://github.com/higashitaniyume/AstralParty.Toys");
-    log_line("[loader] Toys releases: https://github.com/higashitaniyume/AstralParty.Toys/releases");
+    log_line("[loader] AstralParty.Toys Releases: https://github.com/higashitaniyume/AstralParty.Toys/releases");
     log_line("[loader] ──────────────────────────────────────────────");
     console_set_color(LOG_DEFAULT);
 }
