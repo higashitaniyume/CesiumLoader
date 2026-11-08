@@ -310,6 +310,15 @@ namespace FreeCameraMod
         {
             if (_autoFollow || !_hasCameraLock) return false;
 
+            // Idle release: if the player has not panned the free camera for 5s
+            // and the player is not actively zooming/rotating, do not freeze
+            // cinematic/turn cameras. Prevents "sound continues but flow stopped".
+            if (!_active && !_playerMovingFreeCamera)
+            {
+                float now = UnityEngine.Time.realtimeSinceStartup;
+                if (now - _lastFollowInteractionAt > 5f) return false;
+            }
+
             // 演出/开大时游戏会禁用棋盘主相机、启用独立的 PKMainCamera;
             // 这台相机也要冻结在开场机位, 否则开大运镜照样会动。
             UpdateExtraCameraLocks();
@@ -337,6 +346,7 @@ namespace FreeCameraMod
             // 会把这些偏移再叠加一次(旋转会越转越多)。此时用上一帧识别到的游戏位姿。
             if (IsPlayerPanningFreeCamera())
             {
+                _lastFollowInteractionAt = UnityEngine.Time.realtimeSinceStartup;
                 if (_active && _hasBasePose)
                 {
                     _lockedCameraPosition = _basePosition;

@@ -279,6 +279,9 @@ namespace FreeCameraMod
         /// <summary>是否已锁定主相机位姿(autoFollow=false 时把游戏自动运镜也挡掉)。</summary>
         private bool _hasCameraLock;
 
+        /// <summary>最近一次玩家主动移动自由相机的时间(闲置释放用, 避免演出被永久冻住)。</summary>
+        private float _lastFollowInteractionAt = -10f;
+
         /// <summary>锁定的主相机世界位置。</summary>
         private Vector3 _lockedCameraPosition;
 

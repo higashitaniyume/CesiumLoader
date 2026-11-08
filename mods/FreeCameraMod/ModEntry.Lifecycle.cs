@@ -125,6 +125,8 @@ namespace FreeCameraMod
 
                 // ---- 左右方向键: 旋转地图(同样不需要开关) ----
                 HandleRotateInput();
+
+                if (_active) _lastFollowInteractionAt = UnityEngine.Time.realtimeSinceStartup;
             }
             catch (Exception e)
             {
