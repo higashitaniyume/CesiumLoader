@@ -40,8 +40,8 @@ namespace CesiumLoader.SDK.Runtime
         private static int _warnedNotMainThread;
         private static Timer _watchdog;
 
-        /// <summary>默认等待超时(毫秒)。</summary>
-        public static int SendTimeoutMs = 5000;
+        /// <summary>默认等待超时(毫秒)。1500ms 可避开 Windows 5s Not Responding 判定边缘。</summary>
+        public static int SendTimeoutMs = 1500;
 
         // ---------- 状态 ----------
 

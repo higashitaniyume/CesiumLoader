@@ -106,7 +106,7 @@ namespace CesiumLoader.SDK.Logging
                 lock (_lock)
                 {
                     if (_errorFile != null)
-                        File.AppendAllText(_errorFile, head + "\r\n" + new string('-', 60) + "\r\n");
+                        File.AppendAllText(_errorFile, head + "\r\n" + new string('-', 60) + "\r\n", System.Text.Encoding.UTF8);
                 }
                 Log(SdkLogLevel.Error, modId, context + ": " + ex?.Message);
             }
@@ -178,7 +178,7 @@ namespace CesiumLoader.SDK.Logging
                 lock (_lock)
                 {
                     File.AppendAllText(_logFile,
-                        $"[{DateTime.Now:HH:mm:ss.fff}] [{levelTag}] [{tag}] {line}\r\n");
+                        $"[{DateTime.Now:HH:mm:ss.fff}] [{levelTag}] [{tag}] {line}\r\n", System.Text.Encoding.UTF8);
                 }
             }
             catch { }

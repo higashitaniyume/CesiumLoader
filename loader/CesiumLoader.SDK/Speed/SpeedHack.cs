@@ -52,9 +52,9 @@ namespace CesiumLoader.SDK.Speed
         public const double MinSpeed = 1.0;
 
         /// <summary>热键调倍率的上限(比这更快容易触发服务器异常节奏判定, 也更容易崩)。</summary>
-        public const double MaxSpeed = 10.0;
+        public const double MaxSpeed = 3.0;
 
-        /// <summary>加载器(原生)允许的倍率上限, 与 speedhack.h 的 kSpeedMax 一致。</summary>
+        /// <summary>加载器(原生)允许的倍率上限, 与 speedhack.h 的 kSpeedMax 一致。仅用于 config 基础倍率, 热键不走这里。</summary>
         public const double HardMaxSpeed = 100.0;
 
         /// <summary>热键调倍率的默认步进。</summary>
