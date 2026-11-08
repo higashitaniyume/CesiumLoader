@@ -52,12 +52,58 @@ struct TimeState
     int64_t qpc_offset;
 };
 
-std::atomic<TimeState> g_state{ {1.0, 0,0, 0,0, 0,0, 0,0} };
+// ★ 性能坑(实机转储定位, 见 22:52 hang DMP) ★
+// 旧实现是 std::atomic<TimeState> g_state(整个 56 字节的结构一次拷贝)。
+// MSVC 里 >16 字节的 atomic 拷贝要走内部自旋锁(_Atomic_lock_acquire), hook 入口
+// 每调一次 QueryPerformanceCounter / GetTickCount 都要抢这把全进程共用的锁。
+// Unity 的 Job.Worker + 主线程 + 显卡线程全部在极高频调 QPC, 于是几十个线程在
+// 同一把锁上排队自旋(高 CPU、锁长时间被预抢占者攥着), 主线程饥饿 → "无响应"
+// (声音还在、画面冻结正是时钟调用被锁住的症状)。
+// 现实现每个基准值各一个 <=8 字节的独立原子(全部 lock-free, x64),
+// hook 时只读 (先速度、后基准) 快照, 绝不取锁。写顺序: 基准/偏置先写、速度最后
+// 以 release 发布 —— 任何撕裂读都落在 "旧速度 + 新基准" 这种误差只有微秒的
+// 组合上, 不会把新速度配上旧基准跳出几秒的时钟。
+std::atomic<double>    g_speed{1.0};
+std::atomic<uint32_t>  g_gtc_basetime{0},  g_gtc_offset{0};
+std::atomic<uint64_t>  g_gtc64_basetime{0}, g_gtc64_offset{0};
+std::atomic<uint32_t>  g_tgt_basetime{0},  g_tgt_offset{0};
+std::atomic<int64_t>   g_qpc_basetime{0},  g_qpc_offset{0};
 std::atomic<bool> g_enabled{ false };
+
+inline TimeState load_state()
+{
+    TimeState s;
+    // 先读速度(acquire), 再读基准(relaxed): 与 store_state 的 release 配对。
+    s.speed = g_speed.load(std::memory_order_acquire);
+    if (s.speed <= 0.0) s.speed = 1.0;
+    s.gtc_basetime = g_gtc_basetime.load(std::memory_order_relaxed);
+    s.gtc_offset = g_gtc_offset.load(std::memory_order_relaxed);
+    s.gtc64_basetime = g_gtc64_basetime.load(std::memory_order_relaxed);
+    s.gtc64_offset = g_gtc64_offset.load(std::memory_order_relaxed);
+    s.tgt_basetime = g_tgt_basetime.load(std::memory_order_relaxed);
+    s.tgt_offset = g_tgt_offset.load(std::memory_order_relaxed);
+    s.qpc_basetime = g_qpc_basetime.load(std::memory_order_relaxed);
+    s.qpc_offset = g_qpc_offset.load(std::memory_order_relaxed);
+    return s;
+}
+
+inline void store_state(const TimeState& st)
+{
+    // 基准/偏置先落, 速度最后 release 发布(见上方注释的撕裂说明)。
+    g_gtc_basetime.store(st.gtc_basetime, std::memory_order_relaxed);
+    g_gtc_offset.store(st.gtc_offset, std::memory_order_relaxed);
+    g_gtc64_basetime.store(st.gtc64_basetime, std::memory_order_relaxed);
+    g_gtc64_offset.store(st.gtc64_offset, std::memory_order_relaxed);
+    g_tgt_basetime.store(st.tgt_basetime, std::memory_order_relaxed);
+    g_tgt_offset.store(st.tgt_offset, std::memory_order_relaxed);
+    g_qpc_basetime.store(st.qpc_basetime, std::memory_order_relaxed);
+    g_qpc_offset.store(st.qpc_offset, std::memory_order_relaxed);
+    g_speed.store(st.speed, std::memory_order_release);
+}
 
 inline double load_speed()
 {
-    double s = g_state.load(std::memory_order_relaxed).speed;
+    double s = g_speed.load(std::memory_order_acquire);
     return s <= 0.0 ? 1.0 : s;
 }
 
@@ -108,20 +154,20 @@ ULONG WINAPI Hook_GetTickCount()
     ULONG real = Real_GetTickCount();
     // 注意: 不能在这里对 speed==1.0 做"直接返回 real"的短路 —— 那会让时钟在切回 1.0 时
     // 向后跳变(见 virt_gtc 上方注释)。virt_gtc 在 1.0 下就是纯平移。
-    return virt_gtc(g_state.load(std::memory_order_relaxed), real);
+    return virt_gtc(load_state(), real);
 }
 
 ULONGLONG WINAPI Hook_GetTickCount64()
 {
     ULONGLONG real = Real_GetTickCount64();
     // 同 Hook_GetTickCount: 1.0 也要经过 virt_gtc64(纯平移), 不能直接返回 real
-    return virt_gtc64(g_state.load(std::memory_order_relaxed), real);
+    return virt_gtc64(load_state(), real);
 }
 
 DWORD WINAPI Hook_timeGetTime()
 {
     DWORD real = Real_timeGetTime();
-    return virt_tgt(g_state.load(std::memory_order_relaxed), real);
+    return virt_tgt(load_state(), real);
 }
 
 BOOL WINAPI Hook_QPC(LARGE_INTEGER* lpCount)
@@ -129,7 +175,7 @@ BOOL WINAPI Hook_QPC(LARGE_INTEGER* lpCount)
     if (!lpCount) return Real_QPC(lpCount);
     BOOL ok = Real_QPC(lpCount);
     if (!ok) return ok;
-    lpCount->QuadPart = virt_qpc(g_state.load(std::memory_order_relaxed), lpCount->QuadPart);
+    lpCount->QuadPart = virt_qpc(load_state(), lpCount->QuadPart);
     return ok;
 }
 
@@ -186,7 +232,7 @@ bool speedhack_init()
     st0.tgt_basetime = st0.tgt_offset = timeGetTime();
     LARGE_INTEGER q; QueryPerformanceCounter(&q);
     st0.qpc_basetime = st0.qpc_offset = q.QuadPart;
-    g_state.store(st0);
+    store_state(st0);
 
     // 逐个 enable; 失败不影响其他
     int enabled = 0;
@@ -239,7 +285,7 @@ bool speedhack_set_speed(double speed)
 
     // 与 speedhack-rs 相同: 先取当前真实时间与旧虚拟时间, 更新 basetime/offset
     // 注意: hook 已 enable, 必须经 Real_* (trampoline) 取真实时间, 不能调 API 本身
-    TimeState oldSt = g_state.load();
+    TimeState oldSt = load_state();
     TimeState newSt;
     newSt.speed = speed;
     newSt.gtc_basetime = Real_GetTickCount();
@@ -254,14 +300,14 @@ bool speedhack_set_speed(double speed)
     newSt.tgt_offset = virt_tgt(oldSt, newSt.tgt_basetime);
     newSt.qpc_offset = virt_qpc(oldSt, newSt.qpc_basetime);
 
-    g_state.store(newSt);
+    store_state(newSt);
     log_line("[speedhack] speed -> " + speed_text(speed));
     return true;
 }
 
 double speedhack_get_speed()
 {
-    return g_enabled.load() ? g_state.load().speed : 1.0;
+    return g_enabled.load() ? load_state().speed : 1.0;
 }
 
 std::string speed_text(double speed)
