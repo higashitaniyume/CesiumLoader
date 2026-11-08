@@ -46,6 +46,8 @@ struct State
     std::wstring errors_path;                 // errors 当前对应路径(避免重复建 sink)
     bool loader_failed = false;               // 建 sink 失败后不再反复重试
     bool errors_failed = false;
+    std::wstring profile_label;               // 当前 profile 显示名(用于文件名尾缀, 空=无)
+    bool profile_applied = false;
 };
 
 // 故意 new 出来且不 delete: 进程/DLL 退出时其它线程(如 mod 日志转发线程)可能仍在写日志,
@@ -110,9 +112,50 @@ bool session_taken(const std::wstring& dir, const std::wstring& sid)
     return false;
 }
 
-// 会话标识 = <yyyyMMdd>-<HHmmss>-<pid>。
+std::wstring from_utf8_local(const std::string& s)
+{
+    if (s.empty()) return std::wstring();
+    const int len = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int)s.size(), nullptr, 0);
+    if (len <= 0) return std::wstring();
+    std::wstring w((size_t)len, L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int)s.size(), w.data(), len);
+    return w;
+}
+
+std::wstring sanitize_profile_label(const std::wstring& raw)
+{
+    if (raw.empty()) return std::wstring();
+    // Absolute paths use basename for display (mirrors windowtitle).
+    std::wstring name = raw;
+    const size_t slash = name.find_last_of(L"\\/") ;
+    if ((raw.size() >= 2 && raw[1] == L':') || (!raw.empty() && (raw[0] == L'\\' || raw[0] == L'/')))
+    {
+        if (slash != std::wstring::npos) name = name.substr(slash + 1);
+    }
+    // Trim trailing separators/spaces/dots
+    while (!name.empty() && (name.back() == L'\\' || name.back() == L'/' || name.back() == L' ' || name.back() == L'\t')) name.pop_back();
+    if (name.empty()) return std::wstring();
+    // Filename-safe: replace illegal chars
+    for (size_t i = 0; i < name.size(); ++i)
+    {
+        wchar_t c = name[i];
+        if (c == L'<' || c == L'>' || c == L':' || c == L'"' || c == L'/' || c == L'\\' || c == L'|' || c == L'?' || c == L'*' || c < 0x20 || c == 0x7F)
+            name[i] = L'_';
+    }
+    // Trim leading/trailing spaces and dots, and cap length
+    size_t b = 0, e = name.size();
+    while (b < e && (name[b] == L' ' || name[b] == L'.' || name[b] == L'_')) ++b;
+    while (e > b && (name[e - 1] == L' ' || name[e - 1] == L'.')) --e;
+    name = name.substr(b, e - b);
+    if (name.size() > 48) name.resize(48);
+    // Empty after sanitize -> no label
+    if (name == L"." || name == L".." || name.empty()) return std::wstring();
+    return name;
+}
+
+// 会话标识 = <yyyyMMdd>-<HHmmss>-<pid>[-<profile>]。
 // 撞名时(极端情况, 如 pid 复用)追加 -2 / -3 … 序号, 绝不覆盖已有日志。
-std::wstring make_session_id()
+std::wstring make_session_id(const std::wstring& profile_label)
 {
     SYSTEMTIME st{};
     GetLocalTime(&st);
@@ -121,7 +164,8 @@ std::wstring make_session_id()
                st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
 
     const std::wstring dir = logs_dir();
-    const std::wstring base = std::wstring(stamp) + L"-" + std::to_wstring(GetCurrentProcessId());
+    std::wstring base = std::wstring(stamp) + L"-" + std::to_wstring(GetCurrentProcessId());
+    if (!profile_label.empty()) base += L"-" + profile_label;
 
     std::wstring sid = base;
     for (int i = 2; i <= 99 && session_taken(dir, sid); ++i)
@@ -132,7 +176,7 @@ std::wstring make_session_id()
 // 调用者必须已持有 s.mtx(下面的 ensure_* 会调它, 而 std::mutex 不可重入)。
 const std::wstring& session_id_locked(State& s)
 {
-    if (s.session.empty()) s.session = make_session_id();
+    if (s.session.empty()) s.session = make_session_id(s.profile_label);
     return s.session;
 }
 
@@ -171,6 +215,48 @@ void ensure_errors_locked(State& s, const std::wstring& dir)
 
 namespace cesium::log
 {
+
+void set_profile_name(const std::string& profile)
+{
+    std::wstring label = sanitize_profile_label(from_utf8_local(profile));
+    State& s = state();
+    std::lock_guard<std::mutex> lock(s.mtx);
+    if (s.profile_applied) return;
+    s.profile_applied = true;
+    if (label.empty()) return;
+    s.profile_label = label;
+    if (s.session.empty())
+    {
+        return;
+    }
+    // Session already created (early DllMain/banner logs). Retire old files,
+    // rename them to the new profile-suffixed session so one startup keeps one set.
+    const std::wstring dir = logs_dir();
+    const std::wstring old = s.session;
+    if (old.size() >= label.size() + 1 && old.compare(old.size() - label.size(), label.size(), label) == 0
+        && old[old.size() - label.size() - 1] == L'-')
+        return;
+    std::wstring base = old + L"-" + label;
+    std::wstring candidate = base;
+    for (int i = 2; i <= 99 && session_taken(dir, candidate); ++i)
+        candidate = base + L"-" + std::to_wstring(i);
+    if (candidate == old) return;
+    if (s.loader) { try { s.loader->flush(); } catch (...) {} s.loader.reset(); }
+    if (s.errors) { try { s.errors->flush(); } catch (...) {} s.errors.reset(); }
+    s.errors_path.clear();
+    auto try_rename = [&](const wchar_t* prefix) {
+        const std::wstring old_path = join_log_path(dir, prefix, old);
+        const std::wstring new_path = join_log_path(dir, prefix, candidate);
+        if (GetFileAttributesW(old_path.c_str()) != INVALID_FILE_ATTRIBUTES)
+        {
+            MoveFileW(old_path.c_str(), new_path.c_str());
+        }
+    };
+    try_rename(kLoaderPrefix);
+    try_rename(kActivityPrefix);
+    try_rename(kErrorsPrefix);
+    s.session = candidate;
+}
 
 std::wstring session_id()
 {

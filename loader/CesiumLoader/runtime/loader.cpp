@@ -185,6 +185,7 @@ static DWORD WINAPI boot_thread(LPVOID)
     cesium::runtime::mark_started();
     cesium::runtime::set_config(cfg);
     cesium::runtime::set_forward_enabled(cfg.forwardActivityLog);
+    cesium::log::set_profile_name(cfg.profile);
 
     // 3.4 多 profile(见 profile/profile.h): 把游戏读写账号/存档/回放的目录
     //     %USERPROFILE%\AppData\LocalLow\<company>\<product> 重定向到 profile 目录。

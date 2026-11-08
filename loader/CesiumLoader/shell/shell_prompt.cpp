@@ -8,6 +8,7 @@
 
 #include "shell/shell_internal.h"
 
+#include "runtime/state.h"
 #include "shell/lineedit.h"
 
 #include <string>
@@ -17,6 +18,39 @@ namespace cesium::shell::term
 {
 
 const wchar_t* kPrompt = L"cesium> ";
+
+std::wstring current_prompt()
+{
+    std::string profile;
+    try
+    {
+        LoaderConfig cfg = cesium::runtime::config();
+        profile = cfg.profile;
+    }
+    catch (...) { profile.clear(); }
+    if (profile.empty()) return kPrompt;
+    std::wstring wide_profile;
+    try
+    {
+        const int len = MultiByteToWideChar(CP_UTF8, 0, profile.c_str(), (int)profile.size(), nullptr, 0);
+        if (len > 0)
+        {
+            wide_profile.resize((size_t)len);
+            MultiByteToWideChar(CP_UTF8, 0, profile.c_str(), (int)profile.size(), wide_profile.data(), len);
+        }
+    }
+    catch (...) { wide_profile.clear(); }
+    if (wide_profile.empty()) return kPrompt;
+    // Absolute paths show basename only (same as window title).
+    const size_t slash = wide_profile.find_last_of(L"\\/");
+    const bool absolute = wide_profile.size() >= 2 && wide_profile[1] == L':' ||
+                          (!wide_profile.empty() && (wide_profile[0] == L'\\' || wide_profile[0] == L'/'));
+    std::wstring label = (absolute && slash != std::wstring::npos) ? wide_profile.substr(slash + 1) : wide_profile;
+    // Trim trailing separators/spaces.
+    while (!label.empty() && (label.back() == L'\\' || label.back() == L'/' || label.back() == L' ')) label.pop_back();
+    if (label.empty()) return kPrompt;
+    return std::wstring(L"cesium - ") + label + L"> ";
+}
 
 CRITICAL_SECTION g_line_cs;
 bool g_line_cs_ready = false;
@@ -147,7 +181,7 @@ int detect_scroll_rows(const EditPos& at_end, SHORT width)
 // 光标落在输入中间时, 把它从行末挪回去。光标正好在末尾时不用动(控制台本来就在那里)。
 void place_edit_cursor_locked(const std::wstring& text, size_t cursor, SHORT width)
 {
-    const int start_col = g_prompt_at.X + text_width_w(kPrompt);
+    const int start_col = g_prompt_at.X + text_width_w(current_prompt());
     const EditPos at_end = advance_edit_pos(text, text.size(), start_col, width);
 
     // 滚动行数每次重画都要重新算: 它决定擦除范围和提示符首行坐标。
@@ -171,8 +205,35 @@ void draw_prompt_locked()
     if (h == nullptr || h == INVALID_HANDLE_VALUE || !GetConsoleScreenBufferInfo(h, &info)) return;
 
     g_prompt_at = info.dwCursorPosition;
-    SetConsoleTextAttribute(h, LOG_CYAN);
-    raw_write(kPrompt);
+    {
+        std::wstring prompt = current_prompt();
+        // cesium (cyan) + " - profile" (yellow) + "> " (default)
+        const size_t sepPos = prompt.find(L" - ");
+        const size_t gtPos = prompt.rfind(L"> ");
+        if (!prompt.empty() && prompt.size() >= 6 && prompt.compare(0, 6, L"cesium") == 0)
+        {
+            SetConsoleTextAttribute(h, LOG_CYAN);
+            raw_write(L"cesium");
+            if (sepPos != std::wstring::npos && gtPos != std::wstring::npos && gtPos > sepPos)
+            {
+                SetConsoleTextAttribute(h, LOG_YELLOW);
+                raw_write(prompt.substr(6, gtPos - 6));
+                SetConsoleTextAttribute(h, LOG_DEFAULT);
+                raw_write(prompt.substr(gtPos));
+            }
+            else
+            {
+                SetConsoleTextAttribute(h, LOG_DEFAULT);
+                raw_write(prompt.substr(6));
+            }
+        }
+        else
+        {
+            SetConsoleTextAttribute(h, LOG_CYAN);
+            raw_write(kPrompt);
+            SetConsoleTextAttribute(h, LOG_DEFAULT);
+        }
+    }
     SetConsoleTextAttribute(h, LOG_DEFAULT);
     raw_write(g_line.text);
     g_prompt_visible = true;

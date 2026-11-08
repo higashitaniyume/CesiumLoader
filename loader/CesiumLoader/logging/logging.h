@@ -17,6 +17,10 @@
 namespace cesium::log
 {
 
+// 告知当前 profile 名(来自 config 的 `profile` 字段): 日志文件名尾缀
+// `-[profile]` 标识本次启动归属。必须在首次写日志前调用, 或在已建文件时自动改名。
+void set_profile_name(const std::string& profile);
+
 // ---------- 本次启动的日志文件(每次启动一套, 不共用) ----------
 //
 // **每次启动(每个进程)各写一套自己的日志文件**, 而不是所有启动都往同一批文件里追加:
