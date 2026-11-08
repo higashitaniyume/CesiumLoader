@@ -29,6 +29,8 @@ namespace MapPeekMod
         private readonly MapPeekConfig _cfg = new MapPeekConfig();
         private readonly MapPeekOverlay _overlay = new MapPeekOverlay("MapPeekOverlay", 25002);
         private DateTime _nextError = DateTime.MinValue;
+        private string _cachedKey;
+        private string _cachedText;
 
         public override string Name => "选人地图预览";
         public override string Version => "1.0.0";
@@ -101,9 +103,17 @@ namespace MapPeekMod
 
                 var gm = SimpleSingletonProvider<GameLogicManager>.inst;
                 var room = gm?.room?.curRoomInfo;
-                if (room == null || !IsSelectionState(room)) { _overlay.Hide(); return; }
+                if (room == null || !IsSelectionState(room)) { _overlay.Hide(); _cachedKey = null; _cachedText = null; return; }
 
-                string text = BuildOverlayText(room);
+                string key = room.MapId + "|" + room.MapType + "|" + room.Difficulty + "|" +
+                             (room.Players != null ? room.Players.Count : 0) + "|" +
+                             _cfg.FontSize + "|" + _cfg.ShowMapId + "|" + _cfg.ShowMode + "|" + _cfg.ShowDifficulty + "|" + _cfg.ShowPlayerCount;
+                if (key != _cachedKey)
+                {
+                    _cachedKey = key;
+                    _cachedText = BuildOverlayText(room);
+                }
+                string text = _cachedText;
                 _overlay.Render(text, _cfg.PanelWidth, _cfg.OffsetX, _cfg.OffsetY, _cfg.FontSize);
             }
             catch (Exception ex)
