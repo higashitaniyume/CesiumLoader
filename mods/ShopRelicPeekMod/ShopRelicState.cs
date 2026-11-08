@@ -419,82 +419,117 @@ namespace ShopRelicPeekMod
         {
             if (config == null || !config.Enabled || !config.ShowShopCards) return null;
 
+            List<PlayerShopState> activeShops;
             lock (_lock)
             {
-                var activeShops = new List<PlayerShopState>();
+                activeShops = new List<PlayerShopState>();
                 foreach (var pair in _shops)
                 {
                     if (!pair.Value.IsExpired(now, config.ShopDisplayDurationSeconds) && pair.Value.Cards.Count > 0)
                     {
                         var s = pair.Value;
-                        if (s.Slot < 0 && SlotResolver != null) s.Slot = SlotResolver(s.PlayerId);
-                        if (string.IsNullOrEmpty(s.Nick) && NickResolver != null) s.Nick = NickResolver(s.PlayerId);
-                        if (string.IsNullOrEmpty(s.Nick)) s.Nick = "P" + s.PlayerId;
-                        if (string.IsNullOrEmpty(s.HeroName) && CharacterResolver != null) s.HeroName = CharacterResolver(s.PlayerId);
-                        activeShops.Add(s);
+                        activeShops.Add(new PlayerShopState
+                        {
+                            PlayerId = s.PlayerId,
+                            Slot = s.Slot,
+                            Nick = s.Nick,
+                            HeroName = s.HeroName,
+                            ShopType = s.ShopType,
+                            Cards = new List<int>(s.Cards),
+                            Alreadys = new List<bool>(s.Alreadys),
+                            IsInShop = s.IsInShop,
+                            EnterTime = s.EnterTime,
+                            LastSeenTime = s.LastSeenTime,
+                        });
                     }
                 }
-
-                if (activeShops.Count == 0) return null;
-
-                // Sort: 0 (一楼), 1 (二楼), 2 (三楼), 3 (四楼), -1 (未知)
-                activeShops.Sort((a, b) =>
-                {
-                    int sa = a.Slot >= 0 ? a.Slot : 999;
-                    int sb = b.Slot >= 0 ? b.Slot : 999;
-                    if (sa != sb) return sa.CompareTo(sb);
-                    return a.PlayerId.CompareTo(b.PlayerId);
-                });
-
-                var sb = new StringBuilder();
-                for (int i = 0; i < activeShops.Count; i++)
-                {
-                    if (i > 0) sb.Append("\n\n");
-                    AppendShopPlayerSection(sb, activeShops[i], config, now);
-                }
-                return sb.ToString();
             }
+
+            // Resolvers touch game config (GetLocal) — do them outside the lock.
+            foreach (var s in activeShops)
+            {
+                if (s.Slot < 0 && SlotResolver != null) s.Slot = SlotResolver(s.PlayerId);
+                if (string.IsNullOrEmpty(s.Nick) && NickResolver != null) s.Nick = NickResolver(s.PlayerId);
+                if (string.IsNullOrEmpty(s.Nick)) s.Nick = "P" + s.PlayerId;
+                if (string.IsNullOrEmpty(s.HeroName) && CharacterResolver != null) s.HeroName = CharacterResolver(s.PlayerId);
+            }
+
+            if (activeShops.Count == 0) return null;
+
+            activeShops.Sort((a, b) =>
+            {
+                int sa = a.Slot >= 0 ? a.Slot : 999;
+                int sb = b.Slot >= 0 ? b.Slot : 999;
+                if (sa != sb) return sa.CompareTo(sb);
+                return a.PlayerId.CompareTo(b.PlayerId);
+            });
+
+            var sb = new StringBuilder();
+            for (int i = 0; i < activeShops.Count; i++)
+            {
+                if (i > 0) sb.Append("\n\n");
+                AppendShopPlayerSection(sb, activeShops[i], config, now);
+            }
+            return sb.ToString();
         }
 
         public string BuildRelicOverlayText(ShopRelicPeekConfig config, DateTime now)
         {
             if (config == null || !config.Enabled || !config.ShowRelicCandidates) return null;
 
+            List<PlayerRelicState> activeRelics;
             lock (_lock)
             {
-                var activeRelics = new List<PlayerRelicState>();
+                activeRelics = new List<PlayerRelicState>();
                 foreach (var pair in _relics)
                 {
                     if (!pair.Value.IsExpired(now, config.RelicDisplayDurationSeconds))
                     {
                         var r = pair.Value;
-                        if (r.Slot < 0 && SlotResolver != null) r.Slot = SlotResolver(r.PlayerId);
-                        if (string.IsNullOrEmpty(r.Nick) && NickResolver != null) r.Nick = NickResolver(r.PlayerId);
-                        if (string.IsNullOrEmpty(r.Nick)) r.Nick = "P" + r.PlayerId;
-                        if (string.IsNullOrEmpty(r.HeroName) && CharacterResolver != null) r.HeroName = CharacterResolver(r.PlayerId);
-                        activeRelics.Add(r);
+                        var clone = new PlayerRelicState
+                        {
+                            PlayerId = r.PlayerId,
+                            Slot = r.Slot,
+                            Nick = r.Nick,
+                            HeroName = r.HeroName,
+                            IsSelecting = r.IsSelecting,
+                            LastSn = r.LastSn,
+                            CurrentCandidatesTime = r.CurrentCandidatesTime,
+                            SelectedRelicId = r.SelectedRelicId,
+                            SelectedTime = r.SelectedTime,
+                        };
+                        clone.CurrentCandidates.AddRange(r.CurrentCandidates);
+                        foreach (var h in r.History) clone.History.Add(new RelicHistoryEntry { Ids = new List<int>(h.Ids), Time = h.Time });
+                        activeRelics.Add(clone);
                     }
                 }
-
-                if (activeRelics.Count == 0) return null;
-
-                // Sort: 0 (一楼), 1 (二楼), 2 (三楼), 3 (四楼), -1 (未知)
-                activeRelics.Sort((a, b) =>
-                {
-                    int sa = a.Slot >= 0 ? a.Slot : 999;
-                    int sb = b.Slot >= 0 ? b.Slot : 999;
-                    if (sa != sb) return sa.CompareTo(sb);
-                    return a.PlayerId.CompareTo(b.PlayerId);
-                });
-
-                var sb = new StringBuilder();
-                for (int i = 0; i < activeRelics.Count; i++)
-                {
-                    if (i > 0) sb.Append("\n\n");
-                    AppendRelicPlayerSection(sb, activeRelics[i], config, now);
-                }
-                return sb.ToString();
             }
+
+            foreach (var r in activeRelics)
+            {
+                if (r.Slot < 0 && SlotResolver != null) r.Slot = SlotResolver(r.PlayerId);
+                if (string.IsNullOrEmpty(r.Nick) && NickResolver != null) r.Nick = NickResolver(r.PlayerId);
+                if (string.IsNullOrEmpty(r.Nick)) r.Nick = "P" + r.PlayerId;
+                if (string.IsNullOrEmpty(r.HeroName) && CharacterResolver != null) r.HeroName = CharacterResolver(r.PlayerId);
+            }
+
+            if (activeRelics.Count == 0) return null;
+
+            activeRelics.Sort((a, b) =>
+            {
+                int sa = a.Slot >= 0 ? a.Slot : 999;
+                int sb = b.Slot >= 0 ? b.Slot : 999;
+                if (sa != sb) return sa.CompareTo(sb);
+                return a.PlayerId.CompareTo(b.PlayerId);
+            });
+
+            var sb = new StringBuilder();
+            for (int i = 0; i < activeRelics.Count; i++)
+            {
+                if (i > 0) sb.Append("\n\n");
+                AppendRelicPlayerSection(sb, activeRelics[i], config, now);
+            }
+            return sb.ToString();
         }
 
         private void AppendShopPlayerSection(StringBuilder sb, PlayerShopState shop, ShopRelicPeekConfig config, DateTime now)

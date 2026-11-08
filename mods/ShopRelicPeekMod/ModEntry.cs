@@ -33,6 +33,9 @@ namespace ShopRelicPeekMod
         private readonly PeekOverlayPanel _relicOverlay = new PeekOverlayPanel("RelicPeekOverlay", 25001);
         private KeyCode _clearKeyCode = KeyCode.T;
         private int _lastRound = -1;
+        private string _cachedShopText;
+        private string _cachedRelicText;
+        private DateTime _nextTextBuild = DateTime.MinValue;
 
         public override string Name => "商店与筹码看板";
         public override string Version => "1.3.1";
@@ -280,16 +283,24 @@ namespace ShopRelicPeekMod
                     _tracker.OnRoundChanged(now);
                 }
 
+                // Throttle text rebuild to 4Hz; overlay internal dedup already avoids re-render when unchanged.
+                bool needRebuild = now >= _nextTextBuild;
+                if (needRebuild)
+                {
+                    _nextTextBuild = now.AddSeconds(0.25);
+                    _cachedShopText = _cfg.ShowShopCards && _tracker.HasActiveShop(now, _cfg.ShopDisplayDurationSeconds)
+                        ? _tracker.BuildShopOverlayText(_cfg, now) : null;
+                    _cachedRelicText = _cfg.ShowRelicCandidates && _tracker.HasActiveRelic(now, _cfg.RelicDisplayDurationSeconds)
+                        ? _tracker.BuildRelicOverlayText(_cfg, now) : null;
+                }
+
                 // 1. 商店独立看板
                 bool shopVisible = false;
-                if (_cfg.ShowShopCards && _tracker.HasActiveShop(now, _cfg.ShopDisplayDurationSeconds))
+                if (!string.IsNullOrEmpty(_cachedShopText))
                 {
-                    string shopText = _tracker.BuildShopOverlayText(_cfg, now);
-                    if (!string.IsNullOrEmpty(shopText))
-                    {
-                        _shopOverlay.Render(shopText, _cfg.ShopPanelWidth, _cfg.ShopOffsetX, _cfg.ShopOffsetY, _cfg.FontSize);
-                        shopVisible = true;
-                    }
+                    string shopText = _cachedShopText;
+                    _shopOverlay.Render(shopText, _cfg.ShopPanelWidth, _cfg.ShopOffsetX, _cfg.ShopOffsetY, _cfg.FontSize);
+                    shopVisible = true;
                 }
 
                 if (!shopVisible)
@@ -299,9 +310,9 @@ namespace ShopRelicPeekMod
 
                 // 2. 筹码独立看板
                 bool relicVisible = false;
-                if (_cfg.ShowRelicCandidates && _tracker.HasActiveRelic(now, _cfg.RelicDisplayDurationSeconds))
+                if (!string.IsNullOrEmpty(_cachedRelicText))
                 {
-                    string relicText = _tracker.BuildRelicOverlayText(_cfg, now);
+                    string relicText = _cachedRelicText;
                     if (!string.IsNullOrEmpty(relicText))
                     {
                         // 筹码默认位于 RelicOffsetY；若上方商店看板正在显示，则自动避让并排在商店面板下方（距其底部 12px），绝不遮挡商店信息
