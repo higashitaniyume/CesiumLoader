@@ -539,6 +539,8 @@ jobs:
           files: artifacts/*
           generate_release_notes: false
           fail_on_unmatched_files: true
+          # 3.5.1 是修复候选, 在 GitHub 上标为 prerelease(不作为 Latest)。
+          prerelease: ${{ github.ref_name == 'modloader-3.5.1' }}
 
       - name: NuGet login (OIDC Trusted Publishing)
         uses: NuGet/login@v1
