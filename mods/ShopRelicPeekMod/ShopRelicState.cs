@@ -428,19 +428,20 @@ namespace ShopRelicPeekMod
                     if (!pair.Value.IsExpired(now, config.ShopDisplayDurationSeconds) && pair.Value.Cards.Count > 0)
                     {
                         var s = pair.Value;
-                        activeShops.Add(new PlayerShopState
+                        var clone = new PlayerShopState
                         {
                             PlayerId = s.PlayerId,
                             Slot = s.Slot,
                             Nick = s.Nick,
                             HeroName = s.HeroName,
                             ShopType = s.ShopType,
-                            Cards = new List<int>(s.Cards),
-                            Alreadys = new List<bool>(s.Alreadys),
                             IsInShop = s.IsInShop,
                             EnterTime = s.EnterTime,
                             LastSeenTime = s.LastSeenTime,
-                        });
+                        };
+                        clone.Cards.AddRange(s.Cards);
+                        clone.Alreadys.AddRange(s.Alreadys);
+                        activeShops.Add(clone);
                     }
                 }
             }
