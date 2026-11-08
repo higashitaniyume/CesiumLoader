@@ -24,6 +24,8 @@ namespace PveWaveForecastMod
         private bool _showRandom = true;
         private int _labelLift = 36;
         private int _lastSignature;
+        private string _lastPanelText;
+        private int _lastPanelProgress = -1;
 
         internal void Configure(int fontSize, bool showPanel, bool showRandom, int labelLift)
         {
@@ -40,6 +42,8 @@ namespace PveWaveForecastMod
             if (_panel != null) { _panel.Dispose(); _panel = null; }
             if (_layer != null) { _layer.Dispose(); _layer = null; }
             _lastSignature = 0;
+            _lastPanelText = null;
+            _lastPanelProgress = -1;
         }
 
         internal void Render(List<WaveInfo> waves, int progress, LandManager lands, Camera camera,
@@ -222,7 +226,12 @@ namespace PveWaveForecastMod
             }
 
             _panel.visible = true;
-            _panel.text = BuildPanelText(waves, progress);
+            if (progress != _lastPanelProgress || _lastPanelText == null)
+            {
+                _lastPanelProgress = progress;
+                _lastPanelText = BuildPanelText(waves, progress);
+            }
+            _panel.text = _lastPanelText;
             _panel.SetXY(18f, 18f);
         }
 
