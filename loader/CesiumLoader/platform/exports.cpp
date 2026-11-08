@@ -11,6 +11,7 @@
 // 签名对照 Windows SDK versionapi.h / winver.h。
 
 #include "platform/loader.h"
+#include "config/config.h"
 #include "speed/speedhack.h"
 #include "steam/steamhack.h"
 
@@ -174,12 +175,37 @@ extern "C" BOOL WINAPI ap_speed_active()
     return speedhack_active() ? TRUE : FALSE;
 }
 
+// ---------- 版本横幅 ----------
+
+// 日志文件的第一段: 打印加载器/SDK 版本与两个项目的 GitHub 地址,
+// 让用户在日志头就能确认装的是哪一版、去哪里看更新。
+// 版本全部取自 config/config.h 的编译期常量(发布时与 tag 一起更新),
+// 不依赖 doorstop_config.json —— DllMain 时尚未加载配置。
+// 注意: 这里只写文件日志(控制台尚未初始化), 且只做字符串拼接, 不读任何外部文件。
+static void log_version_banner()
+{
+    const std::string loader_version = LoaderConfig::loaderVersion;
+    const LoaderConfig defaults;  // 只读编译期默认值里的 sdkVersion(与分发布局 doorstop_config.json 同源)
+    const std::string sdk_version = defaults.sdkVersion;
+
+    console_set_color(LOG_CYAN);
+    log_line("[loader] ──────────────────────────────────────────────");
+    log_line("[loader] CesiumLoader v" + loader_version + " (version.dll, native) · SDK v" + sdk_version);
+    log_line("[loader] CesiumLoader: https://github.com/higashitaniyume/CesiumLoader");
+    log_line("[loader] Releases: https://github.com/higashitaniyume/CesiumLoader/releases");
+    log_line("[loader] AstralParty.Toys: https://github.com/higashitaniyume/AstralParty.Toys");
+    log_line("[loader] Toys releases: https://github.com/higashitaniyume/AstralParty.Toys/releases");
+    log_line("[loader] ──────────────────────────────────────────────");
+    console_set_color(LOG_DEFAULT);
+}
+
 // ---------- DllMain ----------
 
 BOOL WINAPI DllMain(HINSTANCE, DWORD reason, LPVOID)
 {
     if (reason == DLL_PROCESS_ATTACH)
     {
+        log_version_banner();
         log_line("[loader] version.dll loaded (DLL_PROCESS_ATTACH)");
         // 注意: 不在 DllMain 里安装变速 hook —— loader lock 下改写 kernel32 代码
         // 有竞态风险(ERROR_DLL_INIT_FAILED 实测), 改由引导线程在 loader lock

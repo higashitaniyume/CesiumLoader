@@ -28,7 +28,7 @@
     <Filter Include="steam">
       <UniqueIdentifier>{E6EA7D24-1CF8-4E7D-A927-3CAB875AD2D9}</UniqueIdentifier>
     </Filter>
-      <Filter Include="audio">
+    <Filter Include="audio">
       <UniqueIdentifier>{63EA9A3C-392A-4942-A4B8-DBBCA230F4BA}</UniqueIdentifier>
     </Filter>
     <Filter Include="profile">
@@ -128,7 +128,7 @@
     <ClCompile Include="..\..\third_party\minhook\src\trampoline.c" />
     <ClCompile Include="..\..\third_party\minhook\src\hde\hde32.c" />
     <ClCompile Include="..\..\third_party\minhook\src\hde\hde64.c" />
-      <ClCompile Include="audio\audioctl.cpp">
+    <ClCompile Include="audio\audioctl.cpp">
       <Filter>audio</Filter>
     </ClCompile>
   </ItemGroup>
@@ -156,9 +156,6 @@
     </ClInclude>
     <ClInclude Include="platform\loader.h">
       <Filter>platform</Filter>
-    </ClInclude>
-    <ClInclude Include="runtime\il2cpp_safe.h">
-      <Filter>runtime</Filter>
     </ClInclude>
     <ClInclude Include="runtime\loader_internal.h">
       <Filter>runtime</Filter>
@@ -249,7 +246,7 @@
     <None Include="steam\steamhack_entry_part.cpp">
       <Filter>steam</Filter>
     </None>
-      <ClInclude Include="audio\audioctl.h">
+    <ClInclude Include="audio\audioctl.h">
       <Filter>audio</Filter>
     </ClInclude>
   </ItemGroup>
