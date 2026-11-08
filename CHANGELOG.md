@@ -2,6 +2,25 @@
 
 本文件按版本记录 `CesiumLoader` 的功能变更。版本号与 GitHub 发布 tag 一一对应（如 `modloader-3.3.2`，版本号为 `3.3.2`），发布产物由 [release-modloader.yml](.github/workflows/release-modloader.yml) 在打 tag 时自动构建。
 
+## [3.4.0] - 2026-11-08
+
+### SDK：对局观测事件
+
+`GameEvents` 新增商店成交、筹码刷新、血量差值与击杀等事件，并改为按需挂钩：只有存在订阅者的 RPC 才被包装，订阅者清空后还原原回调。
+
+- **商店成交**：新增 `GameEvents.ShopSettled`，参数 `ShopSettlement`，覆盖 PVE 5216 与 PVP 5030。提供本次实际购买的槽位、成交消息自带的卡牌、已买标记、离店状态、PVE 转账目标与下行序号；`ResolveBoughtCardIds()` 把槽位下标换算成卡牌配置 id。
+- **商店报价**：新增 `GameEvents.ShopOffered`，参数 `ShopOffer`，在 `ShopCandidates` 的卡 id 列表之外保留原价、折扣价、免费、已买与转账字段；`TotalGold` 返回应付款（有折扣时取折扣价）。
+- **筹码候选与结果**：新增 `GameEvents.RelicOffered`（`RelicOffer`，含 `Sn`、`IsReroll`、`Lv`、`SupLv`）与 `GameEvents.RelicResult`（`(playerId, relicId, isReroll)`）。`RelicSelected` 保持“只报真正选定”的原有语义。
+- **筹码刷新次数**：新增 `GameEvents.RelicRerollChanged` 与 `GameEvents.RelicRerollRemaining(playerId)`；查不到时返回 `-1`。
+- **血量与击杀**：新增 `GameEvents.HeroHpChanged`（差值为正可负）与 `GameEvents.PlayerKilled`（`victimId, attackerId`）。
+- **下行序号**：新增 `GameEvents.DownSn(int command)` 与 `GameEvents.DownSn(RPCMsgManager, int)`，配合 `GameCommands` 常量在结果事件里同步读取对应消息的下行序号，用于和候选 action 的 `Sn` 对账。
+- **挂钩行为**：`StartAutoHook()` 仍可一次启动内部维护；所有事件改为逐订阅者 `try/catch`，单个 mod 抛异常不影响游戏与其它订阅者。已有事件签名与语义保持不变。
+
+### SDK：uGUI 控件封装（WidgetService）
+
+- 新增 `WidgetService`（`Canvas` / `Panel` / `Text` / `Slider` / `Badge` / `Anchor` / `Stretch` / `Place` / `Destroy` / `DestroyAll` / `EnsureEventSystem`）：SDK 编译期只引用 `UnityEngine.CoreModule`，运行时按名解析 uGUI 类型，缺失时返回 `null` 并在 `UnavailableReason` 给出原因；所有创建/销毁/改属性自动切主线程。`WidgetHandle` 暴露 CoreModule 的 `Rect`（`RectTransform`）与底层 `Component`，常用操作走 `SetText` / `SetValue` / `SetColor` / `SetActive` / `SetRaycastTarget` / `SetSize` / `SetAnchoredPosition`；`WidgetScope` 记录根节点，`Dispose()` 逆序销毁，配合 `ctx.RegisterCleanup` 保证卸载清理。用法见 `docs/SDK-UI.md` 第 9 节。
+- 新增源码示例 `WidgetProbeMod`：在屏幕右上角用 `WidgetService` 画一个常驻 HUD 面板，订阅本版全部新事件（商店报价/成交、筹码候选/结果、刷新余量、血量差值、击杀）并把原始字段与名字渲染到面板上；`F9` 显隐、`F8` 清空。该示例不随加载器内置包分发。
+
 ## [3.3.2] - 2026-11-06
 
 ### 窗口置前：改用每进程独立 UDP

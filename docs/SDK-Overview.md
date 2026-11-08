@@ -13,7 +13,7 @@ SDK 类型全部位于 `CesiumLoader.SDK` 根命名空间之下的子命名空�
 | `CesiumLoader.SDK.Manifests` | `ModManifestAttribute`、`ModPermission`、`SdkManifest`、`SdkVersion` |
 | `CesiumLoader.SDK.Configuration` | `ModConfig`、`SdkConfig`、`CesiumJson` |
 | `CesiumLoader.SDK.Logging` | `SdkLog`、`ModLogger` |
-| `CesiumLoader.SDK.Gameplay` | `GameEvents`、`BattlePhase`、`GameActions`、`Players`、`Names` |
+| `CesiumLoader.SDK.Gameplay` | `GameEvents`、`ShopSettlement`、`ShopOffer`、`RelicOffer`、`GameCommands`、`BattlePhase`、`GameActions`、`Players`、`Names` |
 | `CesiumLoader.SDK.Speed` | `SpeedHack` |
 | `CesiumLoader.SDK.Windowing` | `WindowFocus` |
 | `CesiumLoader.SDK.Cameras` | `CameraService`、`CameraState`、`FreeCameraMath` |
@@ -43,7 +43,7 @@ SDK 类型全部位于 `CesiumLoader.SDK` 根命名空间之下的子命名空�
 └── CesiumLoader.SDK.dll (netstandard2.0, 供 mod 编译期引用)
     ├── ModBase      mod 生命周期基座
     ├── StartupGate  启动门 (游戏就绪即初始化, delayMs 只是上限)
-    ├── GameEvents   20 个游戏事件 (RPC 回调 hook, 含带 sn 的 RawAction 原始动作流)
+    ├── GameEvents   28 个游戏事件 (RPC 回调按需 hook, 含商店成交/筹码刷新/血量击杀与带 sn 的 RawAction)
     ├── Players      玩家数据访问
     ├── Names        名字解析 (卡牌/遗物/技能/角色)
     ├── GameActions  向服务器发送操作 (投骰/移动/用牌/选人等)
@@ -126,7 +126,7 @@ public static class ModEntry
 | 文档 | 内容 |
 |---|---|
 | [SDK-LifecycleAndLogging.md](SDK-LifecycleAndLogging.md) | ModBase.Run / SdkLog 日志分级 |
-| [SDK-Events.md](SDK-Events.md) | GameEvents 20 个事件 + 战斗子阶段 + StartAutoHook (事件驱动) |
+| [SDK-Events.md](SDK-Events.md) | GameEvents 28 个事件 + 商店成交/报价 + 筹码结果与刷新 + 血量击杀 + downSn + 战斗子阶段 + StartAutoHook (事件驱动) |
 | [SDK-PlayersAndNames.md](SDK-PlayersAndNames.md) | Players 玩家数据 / Names 名字解析 |
 | [SDK-Actions.md](SDK-Actions.md) | GameActions 投骰/移动/用牌/选择 (⚠ 声明后可操作, 工具/加载器会警告) |
 | [SDK-SpeedHack.md](SDK-SpeedHack.md) | SpeedHack 游戏变速 (加载器内置功能, 也可 mod 编程控制) |

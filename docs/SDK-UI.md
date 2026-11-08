@@ -79,3 +79,52 @@ UiState s = UiService.Describe();
 // s.NotificationCount / s.OpenWindows(列表)
 UiService.ClearAll();   // 测试/重载用: 清空全部登记
 ```
+
+## 9. uGUI 控件（WidgetService，可选）
+
+`UiService` 只做状态与生命周期；需要真正往屏幕上放 Text / Slider 时用 `WidgetService`。
+它用运行时反射创建 uGUI 组件（SDK 编译期只引用 `UnityEngine.CoreModule`），
+解析不到 uGUI 时 `IsAvailable == false`，所有创建方法返回 `null`。
+
+```csharp
+var scope = WidgetService.CreateScope("hud");
+ctx.RegisterCleanup(scope.Dispose);            // mod 卸载自动销毁
+
+var canvas = scope.Track(WidgetService.Canvas("my-hud", sortingOrder: 1200));
+var panel  = WidgetService.Panel(canvas.Rect, new Color(0f, 0f, 0f, 0.6f), rounded: true);
+WidgetService.Place(panel.Rect, WidgetAnchor.TopLeft, new Vector2(16, -16), new Vector2(320, 120));
+
+var title = WidgetService.Text(panel.Rect, "对局统计", 20, Color.white, WidgetAnchor.TopLeft);
+WidgetService.Place(title.Rect, WidgetAnchor.TopLeft, new Vector2(12, -8), new Vector2(296, 28));
+
+var bar = WidgetService.Slider(panel.Rect, 0f, 100f, 42f);
+WidgetService.Place(bar.Rect, WidgetAnchor.Bottom, new Vector2(0, 12), new Vector2(296, 18));
+WidgetService.EnsureEventSystem();             // Slider 拖动需要
+```
+
+| API | 说明 |
+|---|---|
+| `Canvas(name, sortingOrder = 1000, persist = true)` | 独立 Canvas（ScreenSpaceOverlay + CanvasScaler + GraphicRaycaster），默认跨场景保留 |
+| `Panel(parent, color, rounded)` | 纯色 Image，`rounded` 使用运行时生成的九宫格贴图 |
+| `Text(parent, text, size, color, anchor)` | 文本，默认 `raycastTarget = false`、自动换行 |
+| `Slider(parent, min, max, value)` | 背景 + 填充，数值用 `SetValue` 修改 |
+| `Badge(parent, tint, rounded)` | 带底色的 Image |
+| `Anchor` / `Stretch` / `Place` | 设置锚点 / 铺满父节点 / 贴角定位 |
+| `Destroy(rt)` / `DestroyAll()` | 销毁根节点（子节点递归销毁）/ 销毁本 SDK 创建的全部 Canvas |
+| `EnsureEventSystem()` | 复用已有 EventSystem，没有才创建 |
+
+返回值是 `WidgetHandle`（`Rect` 是 CoreModule 的 `RectTransform`，`Component` 是底层 uGUI 组件）：
+
+```csharp
+title.SetText("第 3 回合");
+bar.SetValue(75f);
+panel.SetColor(Color.black);
+panel.SetActive(false);
+```
+
+约定：
+
+- 所有 API 自动切主线程，可以直接在 RPC 回调里调用。
+- 默认不接收鼠标命中（HUD 不挡游戏点击）；需要交互时显式 `SetRaycastTarget(true)`。
+- 只做最小封装：展开 / 折叠、拖拽、换行估算、配色映射等业务逻辑由 mod 自己实现。
+- `WidgetScope` 记录根节点，`Dispose()` 逆序销毁；配合 `ctx.RegisterCleanup` 满足卸载清理。
