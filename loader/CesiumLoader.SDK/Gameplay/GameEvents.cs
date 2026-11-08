@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using Core.Net;
 using Cysharp.Threading.Tasks;
 using GameLogic;
@@ -125,6 +126,37 @@ namespace CesiumLoader.SDK.Gameplay
         public static event Action<long, int, int> HeroHpChanged;
 
         /// <summary>
+        /// 完整血量变化: 参数是 <see cref="HeroHpChangeInfo"/>。
+        ///
+        /// 与 <see cref="HeroHpChanged"/> 并行广播; 旧事件继续按原条件、原参数触发。
+        /// <b><c>RealHp == 0</c> 表示未提供, 不是血量为 0</b>, 不要据此判死亡。
+        /// </summary>
+        public static event Action<HeroHpChangeInfo> HeroHpChangedFull;
+
+        /// <summary>
+        /// 本局结算(服务器最终值): 参数是每名玩家的 <see cref="PlayerFinalStats"/> 列表。
+        ///
+        /// 结算值与本地事件累计口径不同, 只用于已结算状态与对账, 不要覆盖本地累计。
+        /// 结算可能只含部分玩家(掉线/旁观), 不要补 0; 结算到达不代表战斗对象立即失效。
+        /// </summary>
+        public static event Action<IReadOnlyList<PlayerFinalStats>> MatchSettled;
+
+        /// <summary>
+        /// 一场战斗结算完成: 参数是 <see cref="FightSnapshot"/>。
+        ///
+        /// 只在 <c>battleFightData.isEnd &amp;&amp; !isReConnect</c> 时按 <c>BattleId</c> 去重推送一次。
+        /// <c>ChainAttackerPlayerId == 0</c> 表示无追击; 重连战斗不推送。
+        /// </summary>
+        public static event Action<FightSnapshot> FightResolved;
+
+        /// <summary>
+        /// 累计步数变化: (playerId, 累计已确认步数)。
+        ///
+        /// 累计值从订阅时刻起算, 不含订阅前步数; 步数确认天然有延迟, UI 不要因此判定没生效。
+        /// </summary>
+        public static event Action<long, int> MovementTotalChanged;
+
+        /// <summary>
         /// 击杀: (victimId, attackerId)。
         ///
         /// 只在这条消息里才有攻击者归属 —— 毒、灼烧、地图伤害等掉血不会有击杀消息。
@@ -183,7 +215,7 @@ namespace CesiumLoader.SDK.Gameplay
         public static event Action<RawActionEvent> RawAction;
 
         /// <summary>已定义的事件数量(静态常量, 含 <see cref="RawAction"/>)。</summary>
-        public static int EventCount => 28;
+        public static int EventCount => 32;
 
         /// <summary>当前战斗的子阶段(由战斗快照与投骰广播的先后顺序推导)。</summary>
         public static BattlePhase CurrentBattlePhase => _battlePhase.Phase;
@@ -242,6 +274,22 @@ namespace CesiumLoader.SDK.Gameplay
             catch { return -1; }
         }
 
+        /// <summary>
+        /// 查询累计已确认步数; 查不到/不可用(未订阅事件/非战斗/反射字段不可用)返回 <b>-1</b>。
+        /// 该值从订阅 <see cref="MovementTotalChanged"/> 时刻起累计, 不含订阅前步数。
+        /// </summary>
+        public static int MovementTotal(long playerId)
+        {
+            try
+            {
+                if (_movementSignal == null) return -1;
+                if (!_movementTotals.TryGetValue(playerId, out var total)) return -1;
+                if (total > int.MaxValue) return int.MaxValue;
+                return (int)total;
+            }
+            catch { return -1; }
+        }
+
         // ---------- hook 状态 ----------
 
         private static readonly HashSet<long> _reportedShopSn = new HashSet<long>();
@@ -250,6 +298,54 @@ namespace CesiumLoader.SDK.Gameplay
         private static readonly BattlePhaseTracker _battlePhase = new BattlePhaseTracker();
         private static Battle _currentBattle;
         private static bool _hookSummaryLogged;
+
+        private static readonly HashSet<long> _seenBattles = new HashSet<long>();
+        private static string _fightMatchKey;
+
+        // 累计步数(只在有 MovementTotalChanged 订阅者时才挂 minimapMove 信号)。
+        internal struct MovementState
+        {
+            public object Actor;
+            public int Land;
+            public int Steps;
+            public int? Next;
+            public bool Valid;
+        }
+
+        internal sealed class MovementPending
+        {
+            public long Player;
+            public long Created;
+            public int Target;
+            public MovementState Before;
+        }
+
+        private static readonly Dictionary<long, long> _movementTotals = new Dictionary<long, long>();
+        private static readonly List<MovementPending> _movementPending = new List<MovementPending>();
+        private static bool _movementIncomplete;
+        private static Signal<long, int> _movementSignal;
+        private static Action<long, int> _movementListener;
+        private static string _movementMatchKey;
+
+        // 反射字段懒解析: 游戏内第一次读取步数状态时才碰 Character 类型,
+        // 避免离线测试环境没有 AstralParty.Runtime 时在类型初始化阶段就抛 FileNotFound。
+        private static FieldInfo _movementMoveField;
+        private static FieldInfo _movementNextField;
+        private static bool _movementFieldsProbed;
+
+        private static void EnsureMovementFields()
+        {
+            if (_movementFieldsProbed) return;
+            _movementFieldsProbed = true;
+            try { _movementMoveField = typeof(Core.Unit.Character).GetField("move", BindingFlags.Instance | BindingFlags.NonPublic); } catch { _movementMoveField = null; }
+            try { _movementNextField = typeof(Core.Unit.CharacterMove).GetField("nextStandLand", BindingFlags.Instance | BindingFlags.NonPublic); } catch { _movementNextField = null; }
+        }
+
+        private static FieldInfo FindMovementField(Type owner, string name)
+        {
+            try { return owner.GetField(name, BindingFlags.Instance | BindingFlags.NonPublic); }
+            catch { return null; }
+        }
 
         /// <summary>
         /// 一个 RPC 回调槽位的包装状态。
@@ -341,6 +437,8 @@ namespace CesiumLoader.SDK.Gameplay
             new HookSlot<Core.Net.StartGameS2CRPC.OnStartGameS2CServerDelegate>();
         private static readonly HookSlot<Core.Net.AffirmHeroS2CRPC.OnAffirmHeroS2CServerDelegate> _affirmHeroHook =
             new HookSlot<Core.Net.AffirmHeroS2CRPC.OnAffirmHeroS2CServerDelegate>();
+        private static readonly HookSlot<Core.Net.GameFinishS2CRPC.OnGameFinishS2CServerDelegate> _gameFinishHook =
+            new HookSlot<Core.Net.GameFinishS2CRPC.OnGameFinishS2CServerDelegate>();
 
         /// <summary>
         /// 挂钩全部 RPC(幂等: 已包装的跳过; 没人订阅的还原)。游戏每场战斗会重置回调,
@@ -350,6 +448,8 @@ namespace CesiumLoader.SDK.Gameplay
         {
             // 匹配/选人发生在战斗之外, 单独挂钩(不能受下面的战斗门控限制)。
             EnsureRoomHooked();
+            // 累计步数信号只在有订阅者时挂 minimapMove(懒挂载), 自带战斗门控。
+            EnsureMovementHooked();
             try
             {
                 // 只在确认战斗中挂钩。两步都先 hasInstance 判空(纯静态字段, 不触发懒构造):
@@ -377,6 +477,8 @@ namespace CesiumLoader.SDK.Gameplay
                 HookPveShopBuy(net);
                 HookPvpShopBuy(net);
                 HookKill(net);
+
+                PollFightResolved(gm);
 
                 if (!_hookSummaryLogged)
                 {
@@ -585,7 +687,7 @@ namespace CesiumLoader.SDK.Gameplay
             var rpc = net.UpdateHeroAttrS2C;
             if (rpc == null) return;
 
-            bool needed = HeroAttrUpdated != null || HeroHpChanged != null || RelicRerollChanged != null;
+            bool needed = HeroAttrUpdated != null || HeroHpChanged != null || HeroHpChangedFull != null || RelicRerollChanged != null;
             if (!_attrHook.Prepare(needed, rpc, rpc.OnUpdateHeroAttrS2CServerCallBackAsync,
                     o => rpc.OnUpdateHeroAttrS2CServerCallBackAsync = o)) return;
 
@@ -754,6 +856,7 @@ namespace CesiumLoader.SDK.Gameplay
                 HookMatchSuccess(net);
                 HookStartGame(net);
                 HookAffirmHero(net);
+                HookGameFinish(net);
             }
             catch (Exception e)
             {
@@ -840,6 +943,250 @@ namespace CesiumLoader.SDK.Gameplay
             rpc.OnAffirmHeroS2CServerCallBackAsync = wrapped;
             _affirmHeroHook.Installed(wrapped);
             SdkLog.Write("EVENTS", "[挂钩] AffirmHeroS2C");
+        }
+
+        private static void HookGameFinish(Core.Net.RPCMsgManager net)
+        {
+            var rpc = net.GameFinishS2C;
+            if (rpc == null) return;
+
+            if (!_gameFinishHook.Prepare(MatchSettled != null, rpc, rpc.OnGameFinishS2CServerCallBackAsync,
+                    o => rpc.OnGameFinishS2CServerCallBackAsync = o)) return;
+
+            var original = _gameFinishHook.Original;
+            Core.Net.GameFinishS2CRPC.OnGameFinishS2CServerDelegate wrapped = (model, errId, isDispatch) =>
+            {
+                try { OnGameFinish(model, errId); } catch { }
+                if (original != null) return original(model, errId, isDispatch);
+                return UniTask.CompletedTask;
+            };
+            rpc.OnGameFinishS2CServerCallBackAsync = wrapped;
+            _gameFinishHook.Installed(wrapped);
+            SdkLog.Write("EVENTS", "[挂钩] GameFinishS2C");
+        }
+
+        private static void OnGameFinish(GameFinishS2C model, int errId)
+        {
+            if (model == null || errId != 0 || model.NewAchieve == null) return;
+            var list = new List<PlayerFinalStats>(model.NewAchieve.Count);
+            foreach (var kv in model.NewAchieve)
+            {
+                var a = kv.Value;
+                if (a == null) continue;
+                list.Add(new PlayerFinalStats
+                {
+                    PlayerId = kv.Key,
+                    KillCount = a.KillCount,
+                    TotalDamage = a.TotalDamage,
+                    TotalInjured = a.TotalInjured,
+                    TotalDie = a.TotalDie,
+                    TreatmentScore = a.TreatmentScore,
+                    MovePoint = a.MovePoint,
+                    TotalGold = a.TotalGold,
+                    PveTransferGold = a.PveTransferGold,
+                });
+            }
+            Emit(MatchSettled, list);
+        }
+
+        private static void PollFightResolved(GameLogicManager gm)
+        {
+            try
+            {
+                if (FightResolved == null) return;
+                if (gm == null) return;
+                if (Players.TryGetMatch(out var mi))
+                {
+                    string key = mi.RoomId + "/" + mi.StartTime;
+                    if (!string.Equals(_fightMatchKey, key, StringComparison.Ordinal))
+                    {
+                        _fightMatchKey = key;
+                        _seenBattles.Clear();
+                    }
+                }
+                var fd = gm.fight?.battleFightData;
+                if (fd != null && fd.isEnd && !fd.isReConnect && fd.attackerInfo != null && fd.defenderInfo != null
+                    && _seenBattles.Add(fd.battleId))
+                {
+                    Emit(FightResolved, new FightSnapshot
+                    {
+                        BattleId = fd.battleId,
+                        AttackerPlayerId = fd.attackerInfo.PlayerId,
+                        DefenderPlayerId = fd.defenderInfo.PlayerId,
+                        ChainAttackerPlayerId = fd.defenderInfo.ChainAttacker,
+                        IncHp = fd.defenderInfo.IncHp,
+                        ChainAttackDamage = fd.defenderInfo.ChainAttackDamage,
+                        Ended = true,
+                        Reconnected = false,
+                    });
+                }
+            }
+            catch { }
+        }
+
+        // ---------- 累计步数(懒挂载 minimapMove) ----------
+
+        private static void EnsureMovementHooked()
+        {
+            try
+            {
+                if (MovementTotalChanged == null) { DetachMovement(); return; }
+                if (!SimpleSingletonProvider<GameLogicManager>.hasInstance) { DetachMovement(); return; }
+                var gm = SimpleSingletonProvider<GameLogicManager>.inst;
+                if (gm?.battle == null || gm.battle.PlayerDatas == null || gm.battle.PlayerDatas.Count == 0) { DetachMovement(); return; }
+                if (!Players.TryGetMatch(out var mi)) { DetachMovement(); return; }
+                string key = mi.RoomId + "/" + mi.StartTime;
+                if (!string.Equals(_movementMatchKey, key, StringComparison.Ordinal))
+                {
+                    _movementMatchKey = key;
+                    _movementTotals.Clear();
+                    _movementPending.Clear();
+                    _movementIncomplete = false;
+                    DetachMovementListenerOnly();
+                    foreach (var pd in gm.battle.PlayerDatas)
+                    {
+                        if (pd?.player != null && pd.player.Id != 0)
+                            _movementTotals[pd.player.Id] = 0;
+                    }
+                }
+                else
+                {
+                    foreach (var pd in gm.battle.PlayerDatas)
+                    {
+                        if (pd?.player != null && pd.player.Id != 0 && !_movementTotals.ContainsKey(pd.player.Id))
+                            _movementTotals[pd.player.Id] = 0;
+                    }
+                }
+                var sig = gm.battle.signal?.minimapMove;
+                if (sig == null) { DetachMovementListenerOnly(); return; }
+                if (ReferenceEquals(_movementSignal, sig) && _movementListener != null) return;
+                DetachMovementListenerOnly();
+                _movementSignal = sig;
+                _movementListener = (id, land) =>
+                {
+                    try { MovementPump(ReadMovementState, MovementNowMs()); MovementObserve(id, land, ReadMovementState(id), MovementNowMs()); }
+                    catch { MovementMiss(); }
+                };
+                try { sig.AddListener(_movementListener); }
+                catch { MovementMiss(); }
+            }
+            catch { MovementMiss(); }
+        }
+
+        private static void DetachMovement()
+        {
+            try { DetachMovementListenerOnly(); } catch { }
+            _movementPending.Clear();
+        }
+
+        private static void DetachMovementListenerOnly()
+        {
+            if (_movementSignal != null && _movementListener != null) { try { _movementSignal.RemoveListener(_movementListener); } catch { } }
+            _movementSignal = null;
+            _movementListener = null;
+        }
+
+        private static void MovementMiss() { _movementIncomplete = true; }
+
+        private static long MovementNowMs()
+        {
+            try { return DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond; }
+            catch { return 0; }
+        }
+
+        internal static bool MovementObserveCore(
+            Dictionary<long, long> totals, List<MovementPending> pending, ref bool incomplete,
+            long id, int target, MovementState before, long nowMs)
+        {
+            if (!totals.ContainsKey(id)) return false;
+            if (!before.Valid) { incomplete = true; return false; }
+            if (before.Next != target || before.Land == target || before.Steps <= 0) return false;
+            foreach (var p in pending)
+            {
+                if (p.Player == id && ReferenceEquals(p.Before.Actor, before.Actor) && p.Target == target
+                    && p.Before.Land == before.Land && p.Before.Steps == before.Steps) return false;
+            }
+            if (pending.Count >= 16) { incomplete = true; return false; }
+            pending.Add(new MovementPending { Player = id, Target = target, Before = before, Created = nowMs });
+            return true;
+        }
+
+        internal static bool MovementPumpCore(
+            Dictionary<long, long> totals, List<MovementPending> pending, ref bool incomplete,
+            Func<long, MovementState> read, long nowMs,
+            Action<long, int> onConfirmed)
+        {
+            bool any = false;
+            for (int i = pending.Count - 1; i >= 0; i--)
+            {
+                var p = pending[i];
+                MovementState s;
+                try { s = read(p.Player); } catch { incomplete = true; pending.RemoveAt(i); continue; }
+                if (!s.Valid || !ReferenceEquals(s.Actor, p.Before.Actor)) { incomplete = true; pending.RemoveAt(i); continue; }
+                bool ok = s.Land == p.Target && s.Steps == p.Before.Steps - 1;
+                if (ok && (p.Before.Steps != 1 || !s.Next.HasValue))
+                {
+                    try { totals[p.Player] = checked(totals[p.Player] + 1); }
+                    catch { incomplete = true; pending.RemoveAt(i); continue; }
+                    pending.RemoveAt(i);
+                    any = true;
+                    if (onConfirmed != null)
+                        onConfirmed(p.Player, totals[p.Player] > int.MaxValue ? int.MaxValue : (int)totals[p.Player]);
+                }
+                else if (nowMs - p.Created >= 10000 || (!ok && (s.Land != p.Before.Land || s.Steps != p.Before.Steps)))
+                {
+                    incomplete = true;
+                    pending.RemoveAt(i);
+                }
+            }
+            return any;
+        }
+
+        private static void MovementObserve(long id, int target, MovementState before, long nowMs)
+        {
+            MovementObserveCore(_movementTotals, _movementPending, ref _movementIncomplete, id, target, before, nowMs);
+        }
+
+        private static void MovementPump(Func<long, MovementState> read, long nowMs)
+        {
+            MovementPumpCore(_movementTotals, _movementPending, ref _movementIncomplete, read, nowMs,
+                (pid, total) => Emit(MovementTotalChanged, pid, total));
+        }
+
+        private static MovementState ReadMovementState(long id)
+        {
+            try
+            {
+                if (!SimpleSingletonProvider<GameLogicManager>.hasInstance) return default;
+                EnsureMovementFields();
+                var gm = SimpleSingletonProvider<GameLogicManager>.inst;
+                var battle = gm?.battle;
+                if (battle?.PlayerDatas == null) return default;
+                foreach (var pd in battle.PlayerDatas)
+                {
+                    if (pd?.player == null || pd.player.Id != id) continue;
+                    var ch = pd.CharacterInst;
+                    if (ch == null || ch.standLand == null) return default;
+                    if (_movementMoveField == null) return default;
+                    var mvObj = _movementMoveField.GetValue(ch);
+                    if (!(mvObj is Core.Unit.CharacterMove)) return default;
+                    Core.Unit.UnitLand next = null;
+                    if (_movementNextField != null)
+                    {
+                        try { next = _movementNextField.GetValue(mvObj) as Core.Unit.UnitLand; } catch { }
+                    }
+                    return new MovementState
+                    {
+                        Actor = ch,
+                        Land = ch.standLand.Id,
+                        Steps = ch.canStep,
+                        Next = next == null ? (int?)null : next.Id,
+                        Valid = true,
+                    };
+                }
+            }
+            catch { }
+            return default;
         }
 
         /// <summary>先让游戏处理完原始消息, 再通知订阅者; 两边都不让异常外溢。</summary>
@@ -971,7 +1318,7 @@ namespace CesiumLoader.SDK.Gameplay
 
             Emit(HeroAttrUpdated, model);
 
-            if (HeroHpChanged == null && RelicRerollChanged == null) return;
+            if (HeroHpChanged == null && HeroHpChangedFull == null && RelicRerollChanged == null) return;
             var effects = model.EffectDatas;
             if (effects == null) return;
             for (int i = 0; i < effects.Count; i++)
@@ -981,7 +1328,23 @@ namespace CesiumLoader.SDK.Gameplay
 
                 var hp = effect.Hp;
                 if (hp != null)
-                    Emit(HeroHpChanged, UnitId(model.PlayerId, hp.PlayerId), hp.ChangeHp, hp.MaxHp);
+                {
+                    long victim = UnitId(model.PlayerId, hp.PlayerId);
+                    Emit(HeroHpChanged, victim, hp.ChangeHp, hp.MaxHp);
+                    if (HeroHpChangedFull != null)
+                    {
+                        Emit(HeroHpChangedFull, new HeroHpChangeInfo
+                        {
+                            PlayerId = victim,
+                            Killer = hp.Killer,
+                            OriHp = hp.OriHp,
+                            ChangeHp = hp.ChangeHp,
+                            RealChangeHp = hp.RealChangeHp,
+                            RealHp = hp.RealHp,
+                            MaxHp = hp.MaxHp,
+                        });
+                    }
+                }
 
                 var reroll = effect.Reroll;
                 if (reroll != null)
@@ -1132,37 +1495,66 @@ namespace CesiumLoader.SDK.Gameplay
 
         private static ShopOffer BuildPveShopOffer(party.model.Action a, PVEShopBuyC2S d)
         {
+            var ids = CopyInts(d.Cards);
+            var free = CopyBools(d.TalentSkillFreeCard);
+            int special = ConfigReads.SkillParam(ConfigReads.TalentFreeSkillId, -1);
+            var prices = new int[ids.Length];
+            for (int i = 0; i < ids.Length; i++)
+            {
+                bool talent = free != null && i < free.Length && free[i];
+                prices[i] = ShopUnitPrice(d.Gold, d.DisCountGold, talent, special);
+            }
             return new ShopOffer
             {
                 PlayerId = a.PlayerId,
                 Sn = a.Sn,
-                CardIds = CopyInts(d.Cards),
+                CardIds = ids,
                 BuyCards = CopyInts(d.BuyCards),
                 AlreadyBought = CopyBools(d.Alreadys),
-                Free = CopyBools(d.TalentSkillFreeCard),
+                Free = free,
                 Gold = d.Gold,
                 DisCountGold = d.DisCountGold,
                 AssistPlayer = d.AssistPlayer,
                 AssistGold = d.AssistGold,
                 IsClose = d.IsClose,
-                IsPve = true
+                IsPve = true,
+                UnitPrices = prices
             };
+        }
+
+        /// <summary>逐张单价: 天赋免费取特殊价, 否则取原价, 均减去折扣。未知返回 -1, 天赋免费时钳制到 0。</summary>
+        internal static int ShopUnitPrice(int gold, int discount, bool talent, int special)
+        {
+            try
+            {
+                if (gold < 0 || discount < 0 || (talent && special < 0)) return -1;
+                long num = (long)(talent ? special : gold) - (long)discount;
+                if (!talent) return (num >= 0 && num <= int.MaxValue) ? (int)num : -1;
+                if (num < 0) num = 0;
+                if (num > int.MaxValue) num = int.MaxValue;
+                return (int)num;
+            }
+            catch { return -1; }
         }
 
         private static ShopOffer BuildPvpShopOffer(party.model.Action a, ShopBuyC2S d)
         {
+            var ids = CopyInts(d.Cards);
+            var prices = new int[ids.Length];
+            for (int i = 0; i < prices.Length; i++) prices[i] = -1;
             return new ShopOffer
             {
                 PlayerId = a.PlayerId,
                 Sn = a.Sn,
-                CardIds = CopyInts(d.Cards),
+                CardIds = ids,
                 BuyCards = CopyInts(d.BuyCards),
                 AlreadyBought = CopyBools(d.Alreadys),
                 Free = Array.Empty<bool>(),
                 Gold = d.Gold,
                 FreeCard = d.FreeCard,
                 FreeCardNum = d.FreeCardNum,
-                IsPve = false
+                IsPve = false,
+                UnitPrices = prices
             };
         }
 

@@ -4,6 +4,24 @@
 
 ## [3.5.0] - 2026-11-08
 
+### SDK：玩家与对局上下文
+
+本版新增均为只加不改：不改现有方法签名、不改现有事件语义与触发条件，旧 mod 无需重新编译即可继续运行。
+
+- **名册**：`PlayerStat` 新增 `Slot`（座位号，0 起，异常时按名册顺序兜底）与 `Character`（角色名，缺失为空串）。
+- **模式分数**：新增 `Players.Score(playerId)`，读取当前 `SpecialScore`，查不到返回 0。
+- **对局上下文**：新增 `Players.TryGetMatch(out MatchInfo)`，一次拿到是否在有效对局、房间 id/开始时间（两者同时不变视为同一局）、地图模式与是否 PVE/已入战斗；大厅与战斗未就绪时返回 `false`。
+- **名字开关**：`Names.Card/Relic/Skill` 新增 `(id, withId)` 重载，`withId=false` 只返回名字；原单参签名与输出保持不变。
+- **配置读取**：新增 `ConfigReads.SkillParam(skillId, index)`（越界/缺失返回 `-1`）与 `ConfigReads.RelicQuality(relicId)`（0=无/1=蓝/2=紫/3=橙）。
+- **商店单价**：`ShopOffer` 新增 `UnitPrices`，与卡牌逐张对齐（未知为 `-1`，PVP 恒 `-1`）。
+
+### SDK：结算、追击与累计步数
+
+- **完整血量**：新增 `GameEvents.HeroHpChangedFull`（`HeroHpChangeInfo`，含归属与原始值），与旧 `HeroHpChanged` 并行广播；`RealHp == 0` 表示未提供。
+- **结算数据**：新增 `GameEvents.MatchSettled`（每人 `PlayerFinalStats`，服务器最终值），只做对账不覆盖本地累计。
+- **追击快照**：新增 `GameEvents.FightResolved`（`FightSnapshot`），按 `BattleId` 去重推送攻防/追击归属。
+- **累计步数**：新增 `GameEvents.MovementTotalChanged` 与 `GameEvents.MovementTotal`（按到达确认计数，查不到返回 `-1`）。
+
 ### 内置模组
 
 - **新增 `MapPeekMod`（选人地图预览）**：选人/选皮肤/准备阶段在左上角显示本局地图名、地图 ID、模式、难度与人数，开赛后自动隐藏；纯只读。

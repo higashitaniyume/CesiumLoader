@@ -18,20 +18,37 @@ namespace CesiumLoader.SDK.Gameplay
         private static readonly Dictionary<int, string> _charCache = new Dictionary<int, string>();
         private static readonly Dictionary<int, string> _divinationCache = new Dictionary<int, string>();
 
+        private static readonly Dictionary<int, string> _cardNameCache = new Dictionary<int, string>();
+        private static readonly Dictionary<int, string> _relicNameCache = new Dictionary<int, string>();
+        private static readonly Dictionary<int, string> _skillNameCache = new Dictionary<int, string>();
+
         /// <summary>卡牌名: 真实名(Id)。查不到时尝试技能表, 最后"未知卡{id}"。</summary>
-        public static string Card(int cardId)
+        public static string Card(int cardId) => Card(cardId, withId: true);
+
+        /// <summary>卡牌名: <paramref name="withId"/> 为真时带 "(id)", 为假只返回名字。</summary>
+        public static string Card(int cardId, bool withId)
         {
             if (cardId <= 0) return $"卡{cardId}";
-            lock (_cardCache)
+            if (withId)
             {
-                if (_cardCache.TryGetValue(cardId, out var v)) return v;
-                v = ResolveCard(cardId);
-                _cardCache[cardId] = v;
+                lock (_cardCache)
+                {
+                    if (_cardCache.TryGetValue(cardId, out var v)) return v;
+                    v = ResolveCard(cardId, withId: true);
+                    _cardCache[cardId] = v;
+                    return v;
+                }
+            }
+            lock (_cardNameCache)
+            {
+                if (_cardNameCache.TryGetValue(cardId, out var v)) return v;
+                v = ResolveCard(cardId, withId: false);
+                _cardNameCache[cardId] = v;
                 return v;
             }
         }
 
-        private static string ResolveCard(int cardId)
+        private static string ResolveCard(int cardId, bool withId)
         {
             try
             {
@@ -39,7 +56,7 @@ namespace CesiumLoader.SDK.Gameplay
                 if (cfg != null)
                 {
                     string cn = cfg.NameID.GetLocal(UIStringType.Card);
-                    if (!string.IsNullOrEmpty(cn)) return cn + $"({cardId})";
+                    if (!string.IsNullOrEmpty(cn)) return withId ? cn + $"({cardId})" : cn;
                 }
             }
             catch { }
@@ -49,34 +66,54 @@ namespace CesiumLoader.SDK.Gameplay
                 if (StaticConfigure.Skill.InfoDict.TryGetValue(cardId, out var skillCfg))
                 {
                     string sn = skillCfg.NameID.GetLocal(UIStringType.Skill);
-                    if (!string.IsNullOrEmpty(sn)) return sn + $"({cardId})";
+                    if (!string.IsNullOrEmpty(sn)) return withId ? sn + $"({cardId})" : sn;
                 }
             }
             catch { }
-            return $"未知卡{cardId}";
+            return withId ? $"未知卡{cardId}" : "未知卡牌";
         }
 
         /// <summary>遗物名: 真实名(Id), 查不到"遗物{id}"。</summary>
-        public static string Relic(int relicId)
+        public static string Relic(int relicId) => Relic(relicId, withId: true);
+
+        /// <summary>遗物名: <paramref name="withId"/> 为真时带 "(id)", 为假只返回名字。</summary>
+        public static string Relic(int relicId, bool withId)
         {
             if (relicId <= 0) return $"遗物{relicId}";
-            lock (_relicCache)
+            if (withId)
             {
-                if (_relicCache.TryGetValue(relicId, out var v)) return v;
-                string r = "遗物" + relicId;
-                try
+                lock (_relicCache)
                 {
-                    var cfg = relicId.GetRelicInfoConfigure();
-                    if (cfg != null)
-                    {
-                        string n = cfg.NameID.GetLocal(UIStringType.Relic);
-                        if (!string.IsNullOrEmpty(n)) r = n + $"({relicId})";
-                    }
+                    if (_relicCache.TryGetValue(relicId, out var v)) return v;
+                    v = ResolveRelic(relicId, withId: true);
+                    _relicCache[relicId] = v;
+                    return v;
                 }
-                catch { }
-                _relicCache[relicId] = r;
-                return r;
             }
+            lock (_relicNameCache)
+            {
+                if (_relicNameCache.TryGetValue(relicId, out var v)) return v;
+                v = ResolveRelic(relicId, withId: false);
+                _relicNameCache[relicId] = v;
+                return v;
+            }
+        }
+
+        private static string ResolveRelic(int relicId, bool withId)
+        {
+            string fallback = withId ? ("遗物" + relicId) : "未知筹码";
+            try
+            {
+                var cfg = relicId.GetRelicInfoConfigure();
+                if (cfg != null)
+                {
+                    string n = cfg.NameID.GetLocal(UIStringType.Relic);
+                    if (!string.IsNullOrEmpty(n)) return withId ? n + $"({relicId})" : n;
+                    return fallback;
+                }
+            }
+            catch { }
+            return fallback;
         }
 
         /// <summary>占卜牌名: 真实名(Id), 查不到"占卜{id}"。</summary>
@@ -102,25 +139,45 @@ namespace CesiumLoader.SDK.Gameplay
         }
 
         /// <summary>技能名: 真实名(Id), 查不到"技能{id}"。</summary>
-        public static string Skill(int skillId)
+        public static string Skill(int skillId) => Skill(skillId, withId: true);
+
+        /// <summary>技能名: <paramref name="withId"/> 为真时带 "(id)", 为假只返回名字。</summary>
+        public static string Skill(int skillId, bool withId)
         {
             if (skillId <= 0) return $"技能{skillId}";
-            lock (_skillCache)
+            if (withId)
             {
-                if (_skillCache.TryGetValue(skillId, out var v)) return v;
-                string s = "技能" + skillId;
-                try
+                lock (_skillCache)
                 {
-                    if (StaticConfigure.Skill.InfoDict.TryGetValue(skillId, out var cfg))
-                    {
-                        string n = cfg.NameID.GetLocal(UIStringType.Skill);
-                        if (!string.IsNullOrEmpty(n)) s = n + $"({skillId})";
-                    }
+                    if (_skillCache.TryGetValue(skillId, out var v)) return v;
+                    v = ResolveSkill(skillId, withId: true);
+                    _skillCache[skillId] = v;
+                    return v;
                 }
-                catch { }
-                _skillCache[skillId] = s;
-                return s;
             }
+            lock (_skillNameCache)
+            {
+                if (_skillNameCache.TryGetValue(skillId, out var v)) return v;
+                v = ResolveSkill(skillId, withId: false);
+                _skillNameCache[skillId] = v;
+                return v;
+            }
+        }
+
+        private static string ResolveSkill(int skillId, bool withId)
+        {
+            string fallback = withId ? ("技能" + skillId) : "未知技能";
+            try
+            {
+                if (StaticConfigure.Skill.InfoDict.TryGetValue(skillId, out var cfg))
+                {
+                    string n = cfg.NameID.GetLocal(UIStringType.Skill);
+                    if (!string.IsNullOrEmpty(n)) return withId ? n + $"({skillId})" : n;
+                    return fallback;
+                }
+            }
+            catch { }
+            return fallback;
         }
 
         /// <summary>角色/怪物名: 用 CharacterHandle 查, 查不到返回 id。</summary>

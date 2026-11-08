@@ -48,6 +48,19 @@ namespace CesiumLoader.SDK.Gameplay
             catch { return 0; }
         }
 
+        /// <summary>玩家模式分数(<c>SpecialScore</c>)。查不到返回 0。</summary>
+        /// <remarks>非对称模式表示持有礼物数; 非综合评分。离局/属性未下发时为 0。</remarks>
+        public static long Score(long playerId)
+        {
+            try
+            {
+                var pd = Get(playerId);
+                var score = pd?.Property?.Score;
+                return score != null ? score.Value : 0;
+            }
+            catch { return 0; }
+        }
+
         /// <summary>玩家手牌数, 查不到返回 0。</summary>
         public static int HandCount(long playerId)
         {
@@ -144,11 +157,18 @@ namespace CesiumLoader.SDK.Gameplay
             public bool IsSelf;
             public bool IsMonster;
             public bool IsBot;
+
+            /// <summary>座位号(0 起; 来自 <c>RoomPlayer.Slot</c>, 异常时按名册顺序兜底)。</summary>
+            public int Slot;
+
+            /// <summary>角色名(<c>CharacterHandle.GetCharacterName</c>)。查不到为空串。</summary>
+            public string Character;
         }
 
         /// <summary>
         /// 当前房间全体角色的攻/防/血面板(先玩家、后怪物)。不在房间时返回空。
         /// 数据取自 <c>RoomInfo.Players/Monsters</c> 的 <c>BattleProperty</c>(ATK/DEF/HP/maxHP)。
+        /// <see cref="PlayerStat.Slot"/> 来自 <c>RoomPlayer.Slot</c>, 异常时按名册顺序兜底(同一帧内稳定)。
         /// </summary>
         public static IReadOnlyList<PlayerStat> Roster()
         {
@@ -159,22 +179,25 @@ namespace CesiumLoader.SDK.Gameplay
                 var room = gm?.room?.curRoomInfo;
                 if (room == null) return list;
 
+                var seen = new HashSet<long>();
+                int fallback = 0;
                 if (room.Players != null)
                     foreach (var p in room.Players)
-                        AddStat(list, gm, p, isMonster: false);
+                        AddStat(list, gm, p, isMonster: false, seen, fallback++);
                 if (room.Monsters != null)
                     foreach (var m in room.Monsters)
-                        AddStat(list, gm, m, isMonster: true);
+                        AddStat(list, gm, m, isMonster: true, seen, fallback++);
             }
             catch { }
             return list;
         }
 
-        private static void AddStat(List<PlayerStat> list, GameLogicManager gm, RoomPlayer p, bool isMonster)
+        private static void AddStat(List<PlayerStat> list, GameLogicManager gm, RoomPlayer p, bool isMonster, HashSet<long> seen, int fallbackIndex)
         {
             try
             {
                 if (p == null) return;
+                if (p.Id == 0 || !seen.Add(p.Id)) return;
                 var prop = p.Property;
                 var stat = new PlayerStat
                 {
@@ -187,10 +210,34 @@ namespace CesiumLoader.SDK.Gameplay
                     IsMonster = isMonster,
                     IsBot = SafeBot(p),
                     IsSelf = !isMonster && (gm?.account?.IsSelf(p.Id) ?? false),
+                    Slot = ResolveSlot(SafeSlot(p), fallbackIndex),
+                    Character = SafeCharacter(p),
                 };
                 list.Add(stat);
             }
             catch { }
+        }
+
+        /// <summary>座位兜底: <paramref name="slot"/> 在 0..15 范围内直接用, 否则用名册下标。</summary>
+        internal static int ResolveSlot(int slot, int fallbackIndex)
+        {
+            return (slot >= 0 && slot < 16) ? slot : fallbackIndex;
+        }
+
+        private static int SafeSlot(RoomPlayer p)
+        {
+            try { return p != null ? p.Slot : -1; } catch { return -1; }
+        }
+
+        private static string SafeCharacter(RoomPlayer p)
+        {
+            try
+            {
+                if (p?.characterConfig == null) return "";
+                var name = CharacterHandle.GetCharacterName(p.characterConfig.Id, p.characterConfig.CharacterType);
+                return name ?? "";
+            }
+            catch { return ""; }
         }
 
         private static string SafeRoomNick(RoomPlayer p)
@@ -202,6 +249,60 @@ namespace CesiumLoader.SDK.Gameplay
         private static bool SafeBot(RoomPlayer p)
         {
             try { return p != null && p.IsBot; } catch { return false; }
+        }
+
+        /// <summary>当前有效对局上下文。</summary>
+        public struct MatchInfo
+        {
+            /// <summary>房间 id(<c>Room.Id</c>)。</summary>
+            public long RoomId;
+            /// <summary>对局开始时间。</summary>
+            public long StartTime;
+            /// <summary>地图模式(见 <c>RoomInfo.MapType</c>)。</summary>
+            public int MapType;
+            /// <summary>是否为 PVE 模式(见 <c>BattleConfig.IsPVE</c>)。</summary>
+            public bool IsPve;
+            /// <summary>战斗对象已存在且 <c>PlayerDatas</c> 非空。</summary>
+            public bool InBattle;
+        }
+
+        /// <summary>当前有效对局信息; 不在有效对局返回 <c>false</c>。</summary>
+        /// <remarks>
+        /// 有效判定与 <see cref="GameEvents.StartAutoHook"/> 一致: 房间状态为 Running、房间 id 与开始时间均大于 0、
+        /// 战斗对象存在且 <c>PlayerDatas</c> 非空。大厅、选人界面或战斗未就绪时返回 <c>false</c>。
+        /// <c>RoomId/StartTime</c> 同时不变视为同一局(重连不换局), 换局至少一项变化。
+        /// </remarks>
+        public static bool TryGetMatch(out MatchInfo info)
+        {
+            info = default;
+            try
+            {
+                if (!SimpleSingletonProvider<GameLogicManager>.hasInstance) return false;
+                var gm = SimpleSingletonProvider<GameLogicManager>.inst;
+                var room = gm?.room?.curRoomInfo;
+                if (room == null || room.info == null) return false;
+                if (room.State != Room.Types.State.Running) return false;
+                if (room.info.Id <= 0) return false;
+                long start = room.info.StartTime;
+                if (start <= 0) start = room.StartTime;
+                if (start <= 0) return false;
+                var battle = gm?.battle;
+                if (battle == null || battle.PlayerDatas == null || battle.PlayerDatas.Count == 0) return false;
+                int mapType = 1;
+                try { mapType = room.MapType; } catch { }
+                bool isPve = false;
+                try { isPve = BattleConfig.IsPVE(mapType); } catch { }
+                info = new MatchInfo
+                {
+                    RoomId = room.info.Id,
+                    StartTime = start,
+                    MapType = mapType,
+                    IsPve = isPve,
+                    InBattle = true,
+                };
+                return true;
+            }
+            catch { return false; }
         }
 
         /// <summary>把战斗用牌的 cardGuid 反查成真实 CardId(从该玩家手牌容器)。查不到原样返回。</summary>

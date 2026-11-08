@@ -19,7 +19,7 @@ public static void GameEvents.EnsureHooked();    // 手动维护(自行 tick 时
 - 包装后的回调会**转发给游戏原回调**，不干扰游戏逻辑。
 - 订阅方抛异常不会影响游戏与其它订阅者：SDK 对每个订阅者逐个 `try/catch`。
 
-## 28 个事件
+## 32 个事件
 
 ### 战斗用牌
 
@@ -152,8 +152,9 @@ public static void GameEvents.EnsureHooked();    // 手动维护(自行 tick 时
 | `AssistPlayer` / `AssistGold` | `long` / `int` | PVE 转账目标与金额（PVP 恒 0） |
 | `IsClose` / `IsPve` | `bool` | 是否离店 / 是否 PVE |
 | `TotalGold` | `int` | 应付款：`DisCountGold > 0` 取折扣价，否则取原价 |
+| `UnitPrices` | `int[]` | 逐张最终单价（与 `CardIds` 对齐）；未知为 `-1`，PVP 恒 `-1` |
 
-- 协议只给**总价**，每张卡各自的单价需要按游戏配置自行分摊，SDK 不做臆测。
+- 协议只给**总价**，每张单价按 `(免费?特殊价:Gold) - DisCountGold` 计算（特殊价见 `ConfigReads`），天赋免费时钳制到 0。
 
 ### `RelicOffered` — `RelicOffer`
 
@@ -188,6 +189,46 @@ public static long GameEvents.DownSn(RPCMsgManager rpc, int command); // 指定 
 - 读不到一律返回 **0**（保守失败），不会把反射异常抛进网络回调链。
 - 立即处理、不进队列的命令读不到序号：1001 / 5004 / 5008 / 5012 / 5096 / 5150 / 5238 / 5246 / 5328。
 - `ShopSettlement.DownSn` 已在 SDK 内部用同样方式填好，商店成交无需自己再调。
+
+## 结算与追击（3.5.0 新增）
+
+### `MatchSettled` — `IReadOnlyList<PlayerFinalStats>`
+
+来源：`GameFinishS2C.NewAchieve`。字段：`PlayerId / KillCount / TotalDamage / TotalInjured / TotalDie / TreatmentScore / MovePoint / TotalGold / PveTransferGold`（均为服务器最终值）。
+
+- 只在对局结束推送一次；可能只含部分玩家，不要补 0。
+- 结算值不覆盖本地累计，只做对账。
+
+### `FightResolved` — `FightSnapshot`
+
+来源：`gm.fight.battleFightData`（`isEnd && !isReConnect`），按 `BattleId` 去重。
+
+| 成员 | 含义 |
+|---|---|
+| `BattleId` / `AttackerPlayerId` / `DefenderPlayerId` | 战斗与攻防归属 |
+| `ChainAttackerPlayerId` | 追击方（0 = 无追击） |
+| `IncHp` / `ChainAttackDamage` | 防守方增益与追击伤害 |
+| `Ended` / `Reconnected` | 恒 `true` / 恒 `false`（重连不推） |
+
+SDK 只给事实，追击归属与 HP 对账由调用方做。
+
+### `HeroHpChangedFull` — `HeroHpChangeInfo`
+
+与旧 `HeroHpChanged` 并行广播，字段：`PlayerId / Killer / OriHp / ChangeHp / RealChangeHp / RealHp / MaxHp`（`HeroHpChangeS2C` 全字段）。
+
+- **`<c>RealHp == 0</c> 表示未提供, 不是血量为 0`**，不要据此判死亡。
+- `ChangeHp != RealChangeHp` 时差的是溢出。
+
+### `MovementTotalChanged` 与 `MovementTotal`
+
+```csharp
+public static event Action<long, int> MovementTotalChanged; // (playerId, 累计步数)
+public static int MovementTotal(long playerId);               // 查不到/不可用返回 -1
+```
+
+- 订阅后才挂 `minimapMove`（懒挂载），累计从订阅时刻起算。
+- 按到达确认记步：`Move` 的节点数不是步数，不要累加它。
+- 换局清空，重连（`RoomId/StartTime` 不变）不清空。
 
 ## 用法示例
 

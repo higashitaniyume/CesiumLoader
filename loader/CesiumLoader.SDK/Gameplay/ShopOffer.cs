@@ -53,9 +53,12 @@ namespace CesiumLoader.SDK.Gameplay
         /// <summary>是否 PVE 商店报价(<c>false</c> = PVP)。</summary>
         public bool IsPve;
 
+        /// <summary>逐张最终单价(与 <see cref="CardIds"/> 对齐); 未知为 -1。PVP 恒 -1(协议无逐张折扣/免费)。</summary>
+        public int[] UnitPrices;
+
         /// <summary>
         /// 本次报价的应付款: 有折扣(<see cref="DisCountGold"/> &gt; 0)时取折扣价, 否则取原价。
-        /// 每张卡各自的单价需要按游戏配置自行分摊 —— 协议里只给总价。
+        /// 每张卡各自的单价见 <see cref="UnitPrices"/>。
         /// </summary>
         public int TotalGold
         {
