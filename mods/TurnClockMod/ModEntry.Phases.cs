@@ -51,10 +51,13 @@ namespace TurnClockMod
 
             if (_windowOpen) CloseWindow(now);
             _compensator.Clear();
+            _buffer.Clear();
+            _ticked.Clear();
             ResetExtraClocks();
             _autoPicker.Reset();
             _pickerGaveUp = false;
-            _nextSpeedReadAt = 0.0;
+            _nativeSpeedSampler.RequestRefresh();
+            _hasTimers = false;
         }
 
         /// <summary>离开加载阶段。</summary>

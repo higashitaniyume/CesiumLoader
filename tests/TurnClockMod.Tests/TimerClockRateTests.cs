@@ -12,7 +12,11 @@ namespace TurnClockMod.Tests
         }
         private sealed class FieldTimer { public bool usesRealTime = false; }
         private sealed class UnknownTimer { }
-        private sealed class BrokenTimer { public bool usesRealTime => throw new InvalidOperationException(); }
+        private sealed class BrokenTimer
+        {
+            public int Reads;
+            public bool usesRealTime { get { Reads++; throw new InvalidOperationException(); } }
+        }
 
         [Theory]
         [InlineData(false, 1, 4, 4)]
@@ -44,6 +48,15 @@ namespace TurnClockMod.Tests
             Assert.Equal(2, new TimerClockRate(typeof(UnknownTimer)).EffectiveSpeed(new UnknownTimer(), 2, 4));
             Assert.Equal(2, new TimerClockRate(typeof(BrokenTimer)).EffectiveSpeed(new BrokenTimer(), 2, 4));
             Assert.Equal(2, new TimerClockRate(typeof(Timer)).EffectiveSpeed(new Timer(), 2, double.NaN));
+        }
+
+        [Fact]
+        public void UnsupportedClockMemberIsNotInvokedOncePerFrame()
+        {
+            var timer = new BrokenTimer();
+            var policy = new TimerClockRate(typeof(BrokenTimer));
+            for (int frame = 0; frame < 1000; frame++) Assert.Equal(2, policy.EffectiveSpeed(timer, 2, 4));
+            Assert.Equal(1, timer.Reads);
         }
 
         [Theory]

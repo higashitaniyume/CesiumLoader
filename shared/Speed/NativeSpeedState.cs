@@ -2,11 +2,11 @@ using System;
 using System.IO;
 using CesiumLoader.SDK.Speed;
 
-namespace SpeedHackMod
+namespace CesiumLoader.Shared.Speed
 {
     /// <summary>
     /// Read an explicit acknowledgement without SpeedHack.Speed's 1x error fallback.
-    /// Keep this inside the mod so existing SDK installations remain compatible.
+    /// Source-linked into mods so existing SDK installations remain compatible.
     /// </summary>
     internal static class NativeSpeedState
     {

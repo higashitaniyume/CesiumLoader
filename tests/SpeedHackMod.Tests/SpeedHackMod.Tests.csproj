@@ -19,5 +19,6 @@
   <ItemGroup>
     <!-- Exercise the real controller with a deterministic Unity/SDK boundary. -->
     <Compile Include="../../mods/SpeedHackMod/*.cs" Exclude="../../mods/SpeedHackMod/AssemblyInfo.cs" LinkBase="Production" />
+    <Compile Include="../../shared/Speed/NativeSpeedState.cs" Link="Production/NativeSpeedState.cs" />
   </ItemGroup>
 </Project>

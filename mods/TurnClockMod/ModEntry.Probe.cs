@@ -243,6 +243,8 @@ namespace TurnClockMod
             _windowOpenedAt = now;
             _windowWrites = 0;
             _windowMaxElapsed = 0f;
+            _windowMaxSpeed = 1;
+            _windowNativeUnknown = false;
         }
 
         private void CloseWindow(double now)
@@ -253,10 +255,11 @@ namespace TurnClockMod
             if (!_logWindow || (_windowWrites == 0 && _windowMaxElapsed <= 0f)) return;
 
             Log.Info("操作窗口结束: 计时器 " + F(_windowMaxElapsed) + "s / 墙钟 " + F(wall) + "s, 倍率 " +
-                     F(_speed) + "x, 补偿 " + _windowWrites + " 次");
+                     F(_windowMaxSpeed) + "x(计时器峰值), 原生 " + F(_speed) + "x, 补偿 " + _windowWrites + " 次" +
+                     (_windowNativeUnknown ? "，含原生状态未知的观察帧" : ""));
 
             // 计时器涨得比墙钟快 = 补偿没落到实际推进上(1.0x 时本来就该一样快, 不判)
-            if (_speed > 1.0001 && _windowMaxElapsed > 1f && wall < _windowMaxElapsed * 0.75)
+            if (_windowMaxSpeed > 1.0001 && _windowMaxElapsed > 1f && wall < _windowMaxElapsed * 0.75)
             {
                 Log.Warn("计时器推进快于真实时间(" + F(_windowMaxElapsed) + "s 游戏 / " + F(wall) +
                          "s 真实), 补偿可能没生效 —— 把这条日志和上面的成员清单一起反馈");
@@ -277,22 +280,21 @@ namespace TurnClockMod
         }
 
         /// <summary>引擎当前倍率(按 speedRefreshSeconds 节流, 免得每帧读状态文件)。</summary>
-        private double CurrentSpeed()
+        private double? CurrentSpeed(double now)
         {
-            double now = NowSeconds();
-            if (now < _nextSpeedReadAt) return _speed;
-
-            _nextSpeedReadAt = now + _speedRefreshSeconds;
-            try
+            double? speed = _nativeSpeedSampler.Sample(now, _speedRefreshSeconds, ReadNativeSpeed);
+            if (!speed.HasValue && !_nativeStateWarned)
             {
-                double speed = SpeedHack.Speed;
-                _speed = speed > 1.0 ? speed : 1.0;
+                _nativeStateWarned = true;
+                Log.Warn("原生时钟状态未知，暂不写入计时器，等待有效状态恢复。");
             }
-            catch
+            else if (speed.HasValue && _nativeStateWarned)
             {
-                _speed = 1.0;
+                _nativeStateWarned = false;
+                Log.Info("原生时钟状态已恢复，继续计时补偿。");
             }
-            return _speed;
+            _speed = speed ?? 1;
+            return speed;
         }
 
         // =====================================================================
@@ -311,9 +313,7 @@ namespace TurnClockMod
             _logWindow = _config.GetBool("logWindow", true);
 
             double refresh = _config.GetDouble("speedRefreshSeconds", DefaultSpeedRefreshSeconds);
-            if (refresh < 0.05) refresh = 0.05;
-            if (refresh > 5.0) refresh = 5.0;
-            _speedRefreshSeconds = refresh;
+            _speedRefreshSeconds = NativeSpeedSampler.NormalizeInterval(refresh);
 
             string previousElapsed = _elapsedMemberName;
             string previousStart = _startMemberName;

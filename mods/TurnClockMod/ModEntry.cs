@@ -5,6 +5,7 @@ using System.Reflection;
 using CesiumLoader.SDK.Configuration;
 using CesiumLoader.SDK.Mods;
 using CesiumLoader.SDK.Speed;
+using CesiumLoader.Shared.Speed;
 using GameLogic;
 
 namespace TurnClockMod
@@ -23,8 +24,8 @@ namespace TurnClockMod
     /// <summary>
     /// 回合时钟: 变速时把"我自己的倒计时"按真实时间走。
     ///
-    /// 变速 hook 的是系统时间, 引擎里只有一个时钟 —— 所以 30 秒的操作窗口在 2 倍速下 15 秒
-    /// 墙钟就被客户端判超时(客户端会替你把动作发出去)。这个 mod 不碰全局时间, 只把计时器
+    /// native 模式缩放系统时间，Unity 模式缩放游戏帧时间；计时器还可独立选择实时或游戏时间。
+    /// 加速的操作窗口可能提前超时(客户端会替你把动作发出去)。这个 mod 不碰全局时间, 只把计时器
     /// 自身"还差多久"的时间轴拨回真实速度:
     ///
     /// <code>
@@ -108,13 +109,22 @@ namespace TurnClockMod
         // =====================================================================
         private readonly TimerCompensator _compensator = new TimerCompensator();
         private readonly List<object> _buffer = new List<object>();
+        private readonly HashSet<object> _ticked = new HashSet<object>(TimerReferenceComparer.Instance);
+        private readonly NativeSpeedSampler _nativeSpeedSampler = new NativeSpeedSampler();
+        internal Func<double?> ReadNativeSpeed = NativeSpeedState.Read;
+        internal Func<double> ReadWallSeconds = NowSeconds;
         private double _speed = 1.0;
-        private double _nextSpeedReadAt;
+        private bool _hasTimers;
+        private bool _nativeStateWarned;
+        private bool _frameDeltaUnavailable;
+        private bool _timeScaleUnavailable;
         private double _lastFrameAt;
         private bool _windowOpen;
         private double _windowOpenedAt;
         private int _windowWrites;
         private float _windowMaxElapsed;
+        private double _windowMaxSpeed = 1;
+        private bool _windowNativeUnknown;
         private int _errors;
 
         public override string Name { get { return "回合时钟"; } }
@@ -166,18 +176,24 @@ namespace TurnClockMod
         public override void OnConfigChanged()
         {
             LoadConfig();
+            ResetMembers();
             ResetExtraClocks();
-            if (!_enabled)
-            {
-                _compensator.Clear();
-                _windowOpen = false;
-            }
+            _buffer.Clear();
+            _ticked.Clear();
+            _nativeSpeedSampler.Reset();
+            _hasTimers = false;
+            _nativeStateWarned = false;
+            _lastFrameAt = 0;
+            _frameDeltaUnavailable = _timeScaleUnavailable = false;
+            _errors = 0;
             Log.Info("配置已重载: " + Describe());
         }
 
         public override void OnUnload()
         {
             _compensator.Clear();
+            _buffer.Clear();
+            _ticked.Clear();
             ResetExtraClocks();
             Log.Info("回合时钟已卸载");
         }
@@ -192,7 +208,7 @@ namespace TurnClockMod
 
             try
             {
-                double now = NowSeconds();
+                double now = ReadWallSeconds();
                 double realDt = now - _lastFrameAt;
                 _lastFrameAt = now;
                 // 首帧 / 长卡顿(切场景): 不做"实测速率 vs 缓存倍率"的判断
@@ -211,6 +227,7 @@ namespace TurnClockMod
 
                 if (operationCount == 0 && extraCount == 0)
                 {
+                    _hasTimers = false;
                     if (_windowOpen) CloseWindow(now);
                     FinishTraces();
                     if (_compensator.Count > 0) _compensator.Clear();
@@ -221,9 +238,6 @@ namespace TurnClockMod
                     }
                     return;
                 }
-
-                // 只有真的在计时器窗口里才去读倍率(约 5 次/秒读状态文件), 主菜单/房间里零开销
-                double speed = CurrentSpeed();
 
                 object probe = operationCount > 0 ? _buffer[0] : _extraBuffer[0];
                 EnsureMembers(probe);
@@ -238,9 +252,7 @@ namespace TurnClockMod
                     if (!_windowOpen)
                     {
                         OpenWindow(now);
-                        // 窗口刚开: 强制重读一次真实倍率, 免得沿用上个窗口的缓存
-                        _nextSpeedReadAt = 0.0;
-                        speed = CurrentSpeed();
+                        _nativeSpeedSampler.RequestRefresh();
                     }
                 }
                 else if (_windowOpen)
@@ -248,8 +260,18 @@ namespace TurnClockMod
                     CloseWindow(now);
                 }
 
-                for (int i = 0; i < operationCount; i++) TickTimer(_buffer[i], speed, realDt, true);
-                for (int i = 0; i < extraCount; i++) TickTimer(_extraBuffer[i], speed, realDt, false);
+                // One native-state sample and one Unity frame-clock sample for all
+                // timers. Opening an extra-only window also refreshes stale state.
+                if (!_hasTimers) _nativeSpeedSampler.RequestRefresh();
+                _hasTimers = true;
+                double? speed = CurrentSpeed(now);
+                double frameScale = speed.HasValue ? ReadUnityFrameScale() : 1;
+                _ticked.Clear();
+                for (int i = 0; i < operationCount; i++)
+                    if (_ticked.Add(_buffer[i])) TickTimer(_buffer[i], speed, frameScale, realDt, true);
+                for (int i = 0; i < extraCount; i++)
+                    if (_ticked.Add(_extraBuffer[i])) TickTimer(_extraBuffer[i], speed, frameScale, realDt, false);
+                _ticked.Clear();
 
                 FinishTraces();
 
@@ -257,6 +279,7 @@ namespace TurnClockMod
             }
             catch (Exception e)
             {
+                _ticked.Clear();
                 _errors++;
                 Log.Warn("回合时钟运行异常(" + _errors + "/" + MaxErrors + "): " + Describe(e));
                 if (_errors >= MaxErrors) Log.Warn("异常过多, 本次运行不再尝试补偿(不影响游戏本身)");
@@ -275,12 +298,16 @@ namespace TurnClockMod
         /// 处理一个计时器: 读当前进度 → 按真实时间回退/推后 → 记录窗口统计。
         /// <paramref name="windowStats"/> 只给操作计时器用: 界面倒计时不进"操作窗口"的统计。
         /// </summary>
-        private void TickTimer(object timer, double speed, double realDt, bool windowStats)
+        private void TickTimer(object timer, double? nativeSpeed, double frameScale, double realDt, bool windowStats)
         {
             // 只补偿第一帧探测到的那个计时器类型(游戏里都是 UnityTimer.Timer)
             if (_probedType != null && !ReferenceEquals(timer.GetType(), _probedType)) return;
 
-            speed = _timerClockRate != null ? _timerClockRate.EffectiveSpeed(timer, speed, ReadUnityScale()) : speed;
+            // Missing/replaced state is unknown, not 1x. Observe progress without
+            // writing until the native clock is acknowledged again.
+            double speed = nativeSpeed.HasValue
+                ? (_timerClockRate != null ? _timerClockRate.EffectiveSpeed(timer, nativeSpeed.Value, frameScale) : nativeSpeed.Value)
+                : 1;
 
             float elapsed;
             bool wrote;
@@ -312,10 +339,12 @@ namespace TurnClockMod
 
             if (windowStats)
             {
+                if (speed > _windowMaxSpeed) _windowMaxSpeed = speed;
+                if (!nativeSpeed.HasValue) _windowNativeUnknown = true;
                 if (elapsed > _windowMaxElapsed) _windowMaxElapsed = elapsed;
                 if (wrote) _windowWrites++;
 
-                if (realDt > 0.0) CheckMeasuredSpeed(realDt, speed);
+                if (realDt > 0.0 && nativeSpeed.HasValue) CheckMeasuredSpeed(realDt, speed);
             }
             else
             {
@@ -329,12 +358,41 @@ namespace TurnClockMod
             }
         }
 
-        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-        private static float ReadUnityScale()
+        private double ReadUnityFrameScale()
         {
-            try { return UnityEngine.Time.timeScale; }
-            catch { return 1f; }
+            if (!_frameDeltaUnavailable)
+            {
+                try
+                {
+                    double? scale = ReadFrameDeltaRatio();
+                    if (scale.HasValue) return scale.Value;
+                }
+                catch (Exception e)
+                {
+                    _frameDeltaUnavailable = true;
+                    Log.Warn("Unity 帧时钟不可用，改用 timeScale: " + Describe(e));
+                }
+            }
+            if (!_timeScaleUnavailable)
+            {
+                try { return ReadTimeScale(); }
+                catch (Exception e)
+                {
+                    _timeScaleUnavailable = true;
+                    Log.Warn("Unity 倍率接口不可用，保留原生计时补偿: " + Describe(e));
+                }
+            }
+            return 1;
         }
+
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private static double? ReadFrameDeltaRatio()
+        {
+            return UnityFrameClock.Scale(UnityEngine.Time.deltaTime, UnityEngine.Time.unscaledDeltaTime);
+        }
+
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private static float ReadTimeScale() { return UnityEngine.Time.timeScale; }
 
         /// <summary>
         /// Compare measured progress with this timer's effective clock rate, not
@@ -347,7 +405,7 @@ namespace TurnClockMod
 
             double measured = gameDelta / realDt;
             if (measured > expectedSpeed * 1.35 + 0.05 || measured < expectedSpeed * 0.74 - 0.05)
-                _nextSpeedReadAt = 0.0;                   // 下一帧重新读
+                _nativeSpeedSampler.RequestRefresh(); // subject to the hard read budget
         }
 
     }

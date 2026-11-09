@@ -7,6 +7,7 @@ using CesiumLoader.SDK.Logging;
 using CesiumLoader.SDK.Mods;
 using CesiumLoader.SDK.Speed;
 using CesiumLoader.SDK.UserInterface;
+using CesiumLoader.Shared.Speed;
 using UnityEngine;
 
 namespace SpeedHackMod

@@ -1,5 +1,6 @@
 using CesiumLoader.SDK.Speed;
 using CesiumLoader.SDK.Inputs;
+using CesiumLoader.Shared.Speed;
 using UnityEngine;
 using Xunit;
 

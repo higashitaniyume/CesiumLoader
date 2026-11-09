@@ -80,7 +80,7 @@ fixedDeltaTime = min(原始固定步长 × 目标倍率, maximumDeltaTime)
 切换模式、回到 1 倍或卸载时恢复仍由本 mod 持有的属性；不会主动恢复已被其他代码改成不同值的动画模式。
 不会主动解除游戏暂停；暂停期间撤销动画接管并保留 timeScale 的原始基准，恢复保存的 timeScale 时不会重复相乘。
 
-配合 TurnClockMod 时，可识别的缩放时间计时器按原生倍率与 Unity timeScale 的组合补偿，实时计时器只补偿原生倍率；无法识别时钟类型的计时器保留原生补偿方式。
+配合 TurnClockMod 时，可识别的缩放时间计时器按原生倍率与 Unity 当前帧时间缩放的组合补偿，实时计时器只补偿原生倍率；无法识别时钟类型的计时器保留原生补偿方式。详见[回合时钟说明](../TurnClockMod/README.zh-CN.md)。
 
 ## 构建、启用与回退
 
