@@ -9,6 +9,26 @@ namespace SpeedHackMod
         {
             if (config == null) return false;
             bool changed = false;
+            changed |= config.Describe("accelerateIndependentAnimations", D(
+                "Unity 模式下同步独立计时的 Animator、Timeline、Spine 和静音 UI 视频。视频受 CRI 接口限制最高 3 倍，含音轨或未知音轨的视频跳过。默认开启。",
+                "Unity 模式下同步獨立計時的 Animator、Timeline、Spine 與靜音 UI 影片。影片最高 3 倍，含音軌或未知音軌時略過。預設開啟。",
+                "Adapt unscaled Animator, Timeline and Spine clocks, plus silent UI videos. CRI video speed is capped at 3x; audio/unknown-audio clips are skipped. Enabled by default.",
+                "Unity モードで独立時計の Animator・Timeline・Spine と無音 UI 動画を同期。動画は最大 3 倍、音声あり・不明は除外。既定は有効。"));
+            changed |= config.Describe("accelerateUiAnimations", D(
+                "Unity 模式下让可见 FairyGUI 转场及序列动画同步倍率；分批扫描，每帧最多 64 个处理步骤。切回 1 倍或卸载时恢复。默认开启。",
+                "Unity 模式下讓可見 FairyGUI 轉場及序列動畫同步倍率；分批掃描，每幀最多 64 個步驟。切回 1 倍或卸載時還原。預設開啟。",
+                "Make visible FairyGUI transitions and movie clips follow Unity speed. Incremental scan, at most 64 work steps per update. Restore at 1x or unload. Enabled by default.",
+                "Unity モードで FairyGUI の表示中のトランジション・コマ送りを倍率に同期。更新当たり最大 64 ステップに分割。1 倍または終了時に復元。既定は有効。"));
+            changed |= config.Describe("accelerationMode", D(
+                "变速方式：unity 只缩放 Unity 游戏时间，系统时钟保持 1 倍，减轻全局计时影响；native 使用原有全局时钟加速。Unity 模式下独立计时的 UI/动画可能保持原速。",
+                "變速方式：unity 只縮放 Unity 遊戲時間，系統時鐘維持 1 倍；native 使用原有全域時鐘加速。Unity 模式下獨立計時的 UI/動畫可能維持原速。",
+                "unity scales Unity game time after confirming native clocks at 1x; native retains global clock acceleration. Unscaled UI/animations may remain at normal speed in Unity mode.",
+                "unity はネイティブ時計を 1 倍に戻してゲーム時間を変更、native は従来の時計加速。独立時間の UI・アニメは unity では等速のままの場合があります。"));
+            changed |= config.Describe("optimizeFixedUpdates", D(
+                "加速时同步增大固定更新步长，减少物理/FixedUpdate 开销；回到 1 倍或卸载时恢复。可能降低物理精度，异常时关闭。默认开启。",
+                "加速時同步增大固定更新步長，減少物理/FixedUpdate 開銷；回到 1 倍或卸載時還原。可能降低物理精度，異常時關閉。預設開啟。",
+                "Scale the fixed timestep with confirmed engine speed to reduce physics/FixedUpdate load. Restore at 1x or unload. May reduce physics precision; disable if needed. Enabled by default.",
+                "加速時に固定時間ステップを倍率に合わせ、物理・FixedUpdate の負荷を軽減します。1 倍またはアンロード時に復元。物理精度が下がる場合は無効化してください。既定は有効。"));
             changed |= config.Describe("speed", D(
                 "记住的当前倍速，启动时恢复；范围 1.0–10.0。",
                 "記住的目前倍速，啟動時還原；範圍 1.0–10.0。",
