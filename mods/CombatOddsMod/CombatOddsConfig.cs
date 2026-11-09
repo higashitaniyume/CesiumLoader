@@ -36,6 +36,12 @@ namespace CombatOddsMod
         public bool ShowRelicAtkBonus = true;
         /// <summary>是否在棋盘上每个玩家头顶显示实时攻击/防御, 悬停查看详情。</summary>
         public bool ShowBoardPlayerAttrs = true;
+        /// <summary>玩家头顶攻防标签相对角色头顶的水平微调(像素, 正=右移)。</summary>
+        public double PlayerAttrOffsetX = 0;
+        /// <summary>玩家头顶攻防标签相对角色头顶的垂直微调(像素, 正=下移)。</summary>
+        public double PlayerAttrOffsetY = 0;
+        /// <summary>玩家头顶攻防标签的字号(12–64, 默认 28)。</summary>
+        public double PlayerAttrFontSize = 28;
         /// <summary>把每次攻击的攻击力加成明细打进加载器日志(星币/治愈/星光/血量/持有筹码 + 各筹码加成), 便于与结算伤害对拍。</summary>
         public bool LogAtkBonusDetail = false;
         /// <summary>是否把每次战斗读数(多行框)写进加载器日志。默认关闭: 读数已经显示在战斗窗口面板与通知里,
@@ -51,6 +57,12 @@ namespace CombatOddsMod
         public bool LogHandDetail = false;
         /// <summary>玩梅加斯时, 在右下角发动技能按钮上方显示轨道轰炸的理论伤害(开炮次数 × 单炮伤害); 回放中同样显示。</summary>
         public bool ShowMegasDamage = true;
+        /// <summary>梅加斯理论伤害读数的水平微调(像素, 正=右移; 在技能按钮上方居中的基础上加偏移)。</summary>
+        public double MegasDamageOffsetX = 0;
+        /// <summary>梅加斯理论伤害读数的垂直微调(像素, 正=下移; 在技能按钮上方居中的基础上加偏移)。</summary>
+        public double MegasDamageOffsetY = 0;
+        /// <summary>梅加斯理论伤害读数的字号(12–48); 填 0 表示自动跟随 HUD「出牌」文字的字号。</summary>
+        public double MegasDamageFontSize = 0;
         /// <summary>在棋盘怪物的名字/血量信息条旁显示其主动技能冷却(释放时取服务器值, 之后按轮推算)。</summary>
         public bool ShowMonsterSkillCooldown = true;
         /// <summary>连普通/精英怪物的战斗技能也显示(默认只显示 BOSS 与真正带主动技能的怪物, 避免把普通攻击当成技能 CD)。</summary>

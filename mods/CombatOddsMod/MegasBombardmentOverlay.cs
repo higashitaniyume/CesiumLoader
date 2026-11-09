@@ -48,7 +48,11 @@ namespace CombatOddsMod
         private float _lastWidth = -1f;
         private float _lastHeight = -1f;
         private int _lastTitleSize;
+        private int _autoSize;
         private string _shownKey;
+        private double _offsetX;
+        private double _offsetY;
+        private double _fontSize;
 
         public void Start()
         {
@@ -59,6 +63,15 @@ namespace CombatOddsMod
 
         /// <summary>开关只改标记：配置热重载可能来自后台线程，真正的隐藏发生在主线程刷新里。</summary>
         public void SetEnabled(bool enabled) { _enabled = enabled; }
+
+        /// <summary>配置热重载时同步字号/偏移(下一次刷新生效)。fontSize&lt;=0 表示自动跟随 HUD 字号。</summary>
+        public void SetLayout(double fontSize, double offsetX, double offsetY)
+        {
+            _fontSize = fontSize;
+            _offsetX = offsetX;
+            _offsetY = offsetY;
+            ApplyFontSize();
+        }
 
         public void Dispose()
         {
@@ -88,6 +101,7 @@ namespace CombatOddsMod
             _lastWidth = -1f;
             _lastHeight = -1f;
             _lastTitleSize = 0;
+            _autoSize = 0;
             _shownKey = null;
         }
 
@@ -226,8 +240,9 @@ namespace CombatOddsMod
                 int baseSize = 20;
                 if (source != null && source.size > 0)
                     baseSize = Mathf.Clamp(source.size - 2, 14, 48);
-                int titleSize = baseSize;
-                int detailSize = baseSize;
+                _autoSize = baseSize;
+                int titleSize = ResolveFontSize(baseSize);
+                int detailSize = titleSize;
                 _lastTitleSize = titleSize;
 
                 var box = new GComponent { name = "cesium-megas-bombardment", touchable = false, opaque = false };
@@ -362,9 +377,54 @@ namespace CombatOddsMod
             if (x < EdgePad) x = EdgePad;
             if (y < EdgePad) y = EdgePad;
 
+            // 用户偏移在边缘保护之后再叠加，方便把框挪到贴近技能按钮的位置。
+            x += (float)_offsetX;
+            y += (float)_offsetY;
+
             _box.SetXY(x, y);
             if (_box.parent != null)
                 _box.parent.SetChildIndex(_box, _box.parent.numChildren - 1);
+        }
+
+        private int ResolveFontSize(int autoSize)
+        {
+            if (_fontSize > 0)
+                return Mathf.Clamp((int)Math.Round(_fontSize), 12, 48);
+            return autoSize;
+        }
+
+        private void ApplyFontSize()
+        {
+            try
+            {
+                int size = ResolveFontSize(_autoSize > 0 ? _autoSize : _lastTitleSize);
+                if (size <= 0) return;
+                if (_lastTitleSize != size) _lastTitleSize = size;
+                if (_titleParts != null)
+                    for (int i = 0; i < _titleParts.Length; i++)
+                        SetSize(_titleParts[i], size);
+                if (_detailParts != null)
+                    for (int i = 0; i < _detailParts.Length; i++)
+                        SetSize(_detailParts[i], size);
+                SetSize(_zero, size);
+                _lastWidth = -1f;
+                _lastHeight = -1f;
+            }
+            catch { }
+        }
+
+        private static void SetSize(GTextField field, int size)
+        {
+            try
+            {
+                if (field == null || field.isDisposed) return;
+                var format = field.textFormat;
+                if (format == null) return;
+                if (format.size == size) return;
+                format.size = size;
+                field.textFormat = format;
+            }
+            catch { }
         }
 
         private static GTextField CreateText(GComponent parent, string text, int size, Color color, bool bold, TextFormat source)

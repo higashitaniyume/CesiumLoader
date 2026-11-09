@@ -99,6 +99,21 @@ namespace CombatOddsMod
                 "在棋盤上每個玩家頭頂顯示即時攻擊/防禦。",
                 "Show each player's current attack/defense above their board avatar.",
                 "盤面上の各プレイヤーの頭上に現在の攻撃力/防御力を表示します。"));
+            changed |= config.Describe("PlayerAttrOffsetX", D(
+                "玩家头顶攻防标签相对角色头顶的水平偏移（像素，正数右移）。",
+                "玩家頭頂攻防標籤相對角色頭頂的水平偏移（像素，正數右移）。",
+                "Horizontal offset of the board attack/defense label from the character's head (pixels, positive moves right).",
+                "盤面上の攻撃力/防御力ラベルの、キャラクターの頭からの水平オフセット（ピクセル、正で右へ）。"));
+            changed |= config.Describe("PlayerAttrOffsetY", D(
+                "玩家头顶攻防标签相对角色头顶的垂直偏移（像素，正数下移）。",
+                "玩家頭頂攻防標籤相對角色頭頂的垂直偏移（像素，正數下移）。",
+                "Vertical offset of the board attack/defense label from the character's head (pixels, positive moves down).",
+                "盤面上の攻撃力/防御力ラベルの、キャラクターの頭からの垂直オフセット（ピクセル、正で下へ）。"));
+            changed |= config.Describe("PlayerAttrFontSize", D(
+                "玩家头顶攻防标签的字号，范围 12–64，默认 28。",
+                "玩家頭頂攻防標籤的字級，範圍 12–64，預設 28。",
+                "Font size of the board attack/defense label (12–64, default 28).",
+                "盤面上の攻撃力/防御力ラベルの文字サイズ（12～64、既定 28）。"));
             changed |= config.Describe("LogAtkBonusDetail", D(
                 "把攻击力加成明细写入加载器日志。",
                 "把攻擊力加成明細寫入載入器日誌。",
@@ -134,6 +149,21 @@ namespace CombatOddsMod
                 "玩梅加斯時顯示軌道轟炸的理論傷害。",
                 "Show theoretical orbital bombardment damage while playing Megas.",
                 "メガス使用時に軌道爆撃の理論ダメージを表示します。"));
+            changed |= config.Describe("MegasDamageOffsetX", D(
+                "梅加斯理论伤害读数相对技能按钮上方居中的水平偏移（像素，正数右移）。",
+                "梅加斯理論傷害讀數相對技能按鈕上方居中的水平偏移（像素，正數右移）。",
+                "Horizontal offset of the Megas bombardment readout from its default centered position above the skill button (pixels, positive moves right).",
+                "メガスの理論ダメージ表示の、スキルボタン上方の中央位置からの水平オフセット（ピクセル、正で右へ）。"));
+            changed |= config.Describe("MegasDamageOffsetY", D(
+                "梅加斯理论伤害读数相对技能按钮上方居中的垂直偏移（像素，正数下移）。",
+                "梅加斯理論傷害讀數相對技能按鈕上方居中的垂直偏移（像素，正數下移）。",
+                "Vertical offset of the Megas bombardment readout from its default centered position above the skill button (pixels, positive moves down).",
+                "メガスの理論ダメージ表示の、スキルボタン上方の中央位置からの垂直オフセット（ピクセル、正で下へ）。"));
+            changed |= config.Describe("MegasDamageFontSize", D(
+                "梅加斯理论伤害读数的字号，范围 12–48；填 0 表示自动跟随 HUD「出牌」文字的字号。",
+                "梅加斯理論傷害讀數的字級，範圍 12–48；填 0 表示自動跟隨 HUD「出牌」文字的字級。",
+                "Font size of the Megas bombardment readout (12–48; 0 means automatically follow the HUD \"card state\" text size).",
+                "メガスの理論ダメージ表示の文字サイズ（12～48。0 は HUD の「カード状態」文字に自動追従）。"));
             changed |= config.Describe("ShowMonsterSkillCooldown", D(
                 "在怪物信息条旁显示主动技能冷却。",
                 "在怪物資訊條旁顯示主動技能冷卻。",

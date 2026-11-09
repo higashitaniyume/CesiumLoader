@@ -133,12 +133,18 @@ namespace CombatOddsMod
                     _cfg.OverlayOffsetY        = c.GetDouble("OverlayOffsetY", d.OverlayOffsetY);
                     _cfg.ShowRelicAtkBonus     = c.GetBool("ShowRelicAtkBonus", d.ShowRelicAtkBonus);
                     _cfg.ShowBoardPlayerAttrs  = c.GetBool("ShowBoardPlayerAttrs", d.ShowBoardPlayerAttrs);
+                    _cfg.PlayerAttrOffsetX     = c.GetDouble("PlayerAttrOffsetX", d.PlayerAttrOffsetX);
+                    _cfg.PlayerAttrOffsetY     = c.GetDouble("PlayerAttrOffsetY", d.PlayerAttrOffsetY);
+                    _cfg.PlayerAttrFontSize    = c.GetDouble("PlayerAttrFontSize", d.PlayerAttrFontSize);
                     _cfg.LogAtkBonusDetail     = c.GetBool("LogAtkBonusDetail", d.LogAtkBonusDetail);
                     _cfg.LogBattleOdds         = c.GetBool("LogBattleOdds", d.LogBattleOdds);
                     _cfg.ShowSkillCooldown     = c.GetBool("ShowSkillCooldown", d.ShowSkillCooldown);
                     _cfg.ShowHandCount         = c.GetBool("ShowHandCount", d.ShowHandCount);
                     _cfg.LogHandDetail         = c.GetBool("LogHandDetail", d.LogHandDetail);
                     _cfg.ShowMegasDamage       = c.GetBool("ShowMegasDamage", d.ShowMegasDamage);
+                    _cfg.MegasDamageOffsetX    = c.GetDouble("MegasDamageOffsetX", d.MegasDamageOffsetX);
+                    _cfg.MegasDamageOffsetY    = c.GetDouble("MegasDamageOffsetY", d.MegasDamageOffsetY);
+                    _cfg.MegasDamageFontSize   = c.GetDouble("MegasDamageFontSize", d.MegasDamageFontSize);
                     _cfg.ShowMonsterSkillCooldown = c.GetBool("ShowMonsterSkillCooldown", d.ShowMonsterSkillCooldown);
                     _cfg.ShowMonsterCdForAllMonsters = c.GetBool("ShowMonsterCdForAllMonsters", d.ShowMonsterCdForAllMonsters);
                     _cfg.MonsterCdOffsetX      = c.GetDouble("MonsterCdOffsetX", d.MonsterCdOffsetX);
@@ -158,7 +164,8 @@ namespace CombatOddsMod
                     // 仅初始化时补齐缺失键, 避免热重载写坏外部文件。
                     // 已有配置也补: 新版本新增的显示项(如 ShowHandCount)要在 Toys 配置页里能看到。
                     if (isInitial && (!c.Has("Enabled") || !c.Has("ShowHandCount") || !c.Has("LogHandDetail") ||
-                        !c.Has("ShowMegasDamage") || !c.Has("ShowMoveBonus") ||
+                        !c.Has("ShowMegasDamage") || !c.Has("MegasDamageOffsetX") || !c.Has("PlayerAttrOffsetX") ||
+                        !c.Has("ShowMoveBonus") ||
                         !c.Has("ShowMonsterSkillCooldown") || !c.Has("ShowMonsterCdForAllMonsters")))
                     {
                         c.Set("Enabled", _cfg.Enabled);
@@ -175,12 +182,18 @@ namespace CombatOddsMod
                         c.Set("OverlayOffsetY", _cfg.OverlayOffsetY);
                         c.Set("ShowRelicAtkBonus", _cfg.ShowRelicAtkBonus);
                         c.Set("ShowBoardPlayerAttrs", _cfg.ShowBoardPlayerAttrs);
+                        c.Set("PlayerAttrOffsetX", _cfg.PlayerAttrOffsetX);
+                        c.Set("PlayerAttrOffsetY", _cfg.PlayerAttrOffsetY);
+                        c.Set("PlayerAttrFontSize", _cfg.PlayerAttrFontSize);
                         c.Set("LogAtkBonusDetail", _cfg.LogAtkBonusDetail);
                         c.Set("LogBattleOdds", _cfg.LogBattleOdds);
                         c.Set("ShowSkillCooldown", _cfg.ShowSkillCooldown);
                         c.Set("ShowHandCount", _cfg.ShowHandCount);
                         c.Set("LogHandDetail", _cfg.LogHandDetail);
                         c.Set("ShowMegasDamage", _cfg.ShowMegasDamage);
+                        c.Set("MegasDamageOffsetX", _cfg.MegasDamageOffsetX);
+                        c.Set("MegasDamageOffsetY", _cfg.MegasDamageOffsetY);
+                        c.Set("MegasDamageFontSize", _cfg.MegasDamageFontSize);
                         c.Set("ShowMonsterSkillCooldown", _cfg.ShowMonsterSkillCooldown);
                         c.Set("ShowMonsterCdForAllMonsters", _cfg.ShowMonsterCdForAllMonsters);
                         c.Set("MonsterCdOffsetX", _cfg.MonsterCdOffsetX);
@@ -231,6 +244,7 @@ namespace CombatOddsMod
             {
                 _playerAttrOverlay.SetEnabled(_cfg.ShowBoardPlayerAttrs);
                 _playerAttrOverlay.SetShowMove(_cfg.ShowMoveBonus);
+                _playerAttrOverlay.SetLayout(_cfg.PlayerAttrFontSize, _cfg.PlayerAttrOffsetX, _cfg.PlayerAttrOffsetY);
             }
             if (_handCount != null)
             {
@@ -240,6 +254,7 @@ namespace CombatOddsMod
             if (_megasDamage != null)
             {
                 _megasDamage.SetEnabled(_cfg.ShowMegasDamage);
+                _megasDamage.SetLayout(_cfg.MegasDamageFontSize, _cfg.MegasDamageOffsetX, _cfg.MegasDamageOffsetY);
             }
             if (_hudBonus != null)
             {
@@ -348,6 +363,7 @@ namespace CombatOddsMod
             {
                 _megasDamage = new MegasBombardmentOverlay();
                 _megasDamage.SetEnabled(_cfg.ShowMegasDamage);
+                _megasDamage.SetLayout(_cfg.MegasDamageFontSize, _cfg.MegasDamageOffsetX, _cfg.MegasDamageOffsetY);
                 _megasDamage.Start();
             }
             catch (Exception e) { SdkLog.Warn("CombatOdds", "梅加斯理论伤害覆盖层初始化失败: " + e.Message); }
@@ -355,6 +371,9 @@ namespace CombatOddsMod
             try
             {
                 _playerAttrOverlay = new PlayerAttrOverlay();
+                _playerAttrOverlay.SetEnabled(_cfg.ShowBoardPlayerAttrs);
+                _playerAttrOverlay.SetShowMove(_cfg.ShowMoveBonus);
+                _playerAttrOverlay.SetLayout(_cfg.PlayerAttrFontSize, _cfg.PlayerAttrOffsetX, _cfg.PlayerAttrOffsetY);
                 _playerAttrOverlay.Start();
             }
             catch (Exception e) { SdkLog.Warn("CombatOdds", "棋盘玩家攻防覆盖层初始化失败: " + e.Message); }
@@ -394,6 +413,7 @@ namespace CombatOddsMod
                 _lastOverlaySyncAt = now;
                 _playerAttrOverlay.SetEnabled(_cfg.ShowBoardPlayerAttrs);
                 _playerAttrOverlay.SetShowMove(_cfg.ShowMoveBonus);
+                _playerAttrOverlay.SetLayout(_cfg.PlayerAttrFontSize, _cfg.PlayerAttrOffsetX, _cfg.PlayerAttrOffsetY);
             }
         }
 

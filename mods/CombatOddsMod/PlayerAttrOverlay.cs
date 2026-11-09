@@ -17,7 +17,7 @@ namespace CombatOddsMod
     {
         private const float HeadGap = 2f;
         private const int TipSortingOrder = 30000;
-        private const int FontSize = 28;
+        private const int DefaultFontSize = 28;
         private const int TipFontSize = 22;
         private static readonly Color AtkColor = new Color32(0x5A, 0xA9, 0xFF, 0xFF);
         private static readonly Color DefColor = new Color32(0x6D, 0xE0, 0xA2, 0xFF);
@@ -63,6 +63,42 @@ namespace CombatOddsMod
         private bool _enabled = true;
         /// <summary>是否在头顶标签上附带移速加成(ShowMoveBonus)。</summary>
         private bool _showMove;
+        private double _offsetX;
+        private double _offsetY;
+        private double _fontSize = DefaultFontSize;
+
+        /// <summary>配置热重载时同步字号/偏移(下一次刷新生效)。</summary>
+        public void SetLayout(double fontSize, double offsetX, double offsetY)
+        {
+            double nextSize = fontSize > 0 ? fontSize : DefaultFontSize;
+            if (nextSize < 12) nextSize = 12;
+            if (nextSize > 64) nextSize = 64;
+            bool sizeChanged = nextSize != _fontSize;
+            _fontSize = nextSize;
+            _offsetX = offsetX;
+            _offsetY = offsetY;
+            if (sizeChanged)
+            {
+                int size = (int)Math.Round(nextSize);
+                foreach (var entry in _entries.Values)
+                {
+                    try
+                    {
+                        if (entry.Text != null && !entry.Text.isDisposed)
+                        {
+                            var format = entry.Text.textFormat;
+                            if (format != null && format.size != size)
+                            {
+                                format.size = size;
+                                entry.Text.textFormat = format;
+                            }
+                        }
+                        entry.LastText = null;
+                    }
+                    catch { }
+                }
+            }
+        }
         private static PropertyInfo _mousePosition;
         private static Func<Vector3> _readMousePosition;
         private static bool _mouseProbeDone;
@@ -237,8 +273,9 @@ namespace CombatOddsMod
 
                         }
                     }
-                    // 文字维持固定字号；只有与实际顶部之间的小间距使用 UI 单位。
-                    entry.Box.SetXY(local.x - entry.Box.width * 0.5f, local.y - HeadGap - entry.Box.height);
+                    // 相对角色头顶居中，偏移在头顶锚点基础上叠加(可调位置)。
+                    entry.Box.SetXY(local.x - entry.Box.width * 0.5f + (float)_offsetX,
+                        local.y - HeadGap - entry.Box.height + (float)_offsetY);
                 }
 
                 _stale.Clear();
@@ -334,7 +371,10 @@ namespace CombatOddsMod
                 box.onRollOver.Add(OnRollOver);
                 box.onRollOut.Add(OnRollOut);
                 var text = new GTextField { autoSize = AutoSizeType.Both, touchable = false, UBBEnabled = true };
-                text.textFormat = new TextFormat { size = FontSize, bold = true, color = Color.white, outline = 2f, outlineColor = Color.black };
+                int fontSize = (int)Math.Round(_fontSize > 0 ? _fontSize : DefaultFontSize);
+                if (fontSize < 12) fontSize = 12;
+                if (fontSize > 64) fontSize = 64;
+                text.textFormat = new TextFormat { size = fontSize, bold = true, color = Color.white, outline = 2f, outlineColor = Color.black };
                 box.AddChild(text);
                 _panel.com_PlayerAttrInfos.AddChild(box);
                 entry = new Entry { Id = id, Box = box, Text = text };
