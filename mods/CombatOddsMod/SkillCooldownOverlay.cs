@@ -73,6 +73,7 @@ namespace CombatOddsMod
             try
             {
                 _cooldowns.Poll();
+                if (SkillCooldownTracker.IsReplayOrWatcher()) { HideAll(); return; }
                 if (!_enabled) { HideAll(); return; }
                 var gm = SimpleSingletonProvider<GameLogicManager>.inst;
                 if (gm == null || gm.battle == null)

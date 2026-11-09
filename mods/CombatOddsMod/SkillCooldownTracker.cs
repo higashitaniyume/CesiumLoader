@@ -12,11 +12,12 @@ namespace CombatOddsMod
     /// <summary>
     /// 主动技能冷却的数据源: 只有<b>服务器查询</b>。
     ///
-    ///   1. 每当有角色出牌/释放技能, 就向服务器查询一次<b>所有人</b>的当前冷却
+    ///   1. 每当有角色出牌/释放技能/新回合开始, 就向服务器查询一次<b>所有人</b>的当前冷却
     ///      (<c>GetHeroInfoC2S</c> → <c>GetHeroInfoS2C.Cd</c>, 与游戏自己的玩家信息面板同一条请求);
     ///   2. 释放技能帧顺手记下本次生效的冷却上限, 作为分式分母(没释放过时用配表值)。
+    ///   3. 观战/回放时不发查询、不显示数字(回放里发 C2S 无意义，见 <see cref="IsReplayOrWatcher"/>）。
     ///
-    /// 不做任何本地推算: 不做轮次递减、不读回合帧、不猜队友的值。
+    /// 不做任何本地推算: 不做轮次递减、不读回合帧数值、不猜队友的值; 新回合只当触发时机。
     /// 查询是只读的(只返回击杀/承伤/治疗与当前冷却), 不改对局状态。
     ///
     /// 线程: 回包在网络线程只拷贝数值入队, 覆盖层刷新(主线程)时再写进会话。
@@ -38,6 +39,7 @@ namespace CombatOddsMod
         private bool _queryRequested = true;
         private float _lastQueryBatchAt = -999f;
         private BattleLogic _battle;
+        private int _lastRound;
         private bool _warned;
         private bool _disposed;
 
@@ -76,6 +78,7 @@ namespace CombatOddsMod
                 _pendingCasts.Clear();
             }
             _battle = null;
+            _lastRound = 0;
         }
 
         /// <summary>下一次刷新时向服务器查询所有人的冷却。</summary>
@@ -100,11 +103,28 @@ namespace CombatOddsMod
         internal void Poll()
         {
             SyncBattle();
+            TrackRound();
             EnsureHeroInfoHook();
             ResolveCasts();
             QueryAllIfRequested();
             DrainServerCd();
             FlushLogs();
+        }
+
+        /// <summary>观战/回放判定: 此时不发 CD 查询、也不显示数字。</summary>
+        internal static bool IsReplayOrWatcher()
+        {
+            try
+            {
+                var gm = SimpleSingletonProvider<GameLogicManager>.inst;
+                if (gm == null) return false;
+                try { if (gm.replay != null && gm.replay.Session != null && gm.replay.Session.IsReplay) return true; }
+                catch { }
+                try { if (gm.watch != null && gm.watch.PlayerIsWatcher()) return true; }
+                catch { }
+                return false;
+            }
+            catch { return false; }
         }
 
         internal void Log(string message)
@@ -116,14 +136,20 @@ namespace CombatOddsMod
         // ---------- 查询 ----------
 
         /// <summary>
-        /// 主线程: 给所有玩家发一次查询。出牌/释放技能后调用 RequestQueryAll 触发;
-        /// 连续出牌时按 <see cref="QueryBatchInterval"/> 合并成一批。
+        /// 主线程: 给所有玩家发一次查询。出牌/释放技能/新回合开始后调用 RequestQueryAll 触发;
+        /// 连续触发时按 <see cref="QueryBatchInterval"/> 合并成一批。
+        /// 观战/回放时直接丢弃请求，不发 C2S。
         /// </summary>
         private void QueryAllIfRequested()
         {
             bool requested;
             lock (_gate) requested = _queryRequested;
             if (!requested) return;
+            if (IsReplayOrWatcher())
+            {
+                lock (_gate) _queryRequested = false;
+                return;
+            }
             var battle = _battle;
             if (battle?.PlayerDatas == null || battle.PlayerDatas.Count == 0) return;
             var rpc = MonoSingletonProvider<NetManager>.inst?.RPC?.GetHeroInfoC2S;
@@ -273,6 +299,7 @@ namespace CombatOddsMod
             _battle = battle;
             _heroInfoInstalls = 0;
             _lastQueryBatchAt = -999f;
+            _lastRound = 0;
             _queryRequested = true;     // 开局/换局先查一次
             lock (_gate)
             {
@@ -280,6 +307,47 @@ namespace CombatOddsMod
                 _pendingServerCd.Clear();
                 _pendingCasts.Clear();
             }
+        }
+
+        /// <summary>
+        /// 新回合触发: 轮询 <c>room.curRoomInfo.Round</c>，变大时查一次 CD。
+        /// 同一个 BattleLogic 复用时轮次变小视为新局，清表重查。
+        /// 取不到轮次(0) 时不触发、不更新基线。
+        /// </summary>
+        private void TrackRound()
+        {
+            int round = CurrentRound();
+            if (round <= 0) return;
+            if (_lastRound > 0 && round < _lastRound)
+            {
+                lock (_gate)
+                {
+                    _session.Reset();
+                    _pendingServerCd.Clear();
+                    _pendingCasts.Clear();
+                }
+                _lastRound = round;
+                RequestQueryAll();
+                return;
+            }
+            if (_lastRound > 0 && round > _lastRound)
+            {
+                _lastRound = round;
+                RequestQueryAll();
+                return;
+            }
+            if (_lastRound == 0) _lastRound = round;
+        }
+
+        private static int CurrentRound()
+        {
+            try
+            {
+                var room = SimpleSingletonProvider<GameLogicManager>.inst?.room;
+                var info = room != null ? room.curRoomInfo : null;
+                return info != null ? info.Round : 0;
+            }
+            catch { return 0; }
         }
 
         private static BattlePlayerData GetPlayerData(long playerId)
