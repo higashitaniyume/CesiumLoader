@@ -4,6 +4,16 @@ namespace UnityEngine
     public enum FindObjectsSortMode { None, InstanceID }
     public class Object
     {
+        public bool Destroyed;
+        public static bool operator ==(Object left, Object right)
+        {
+            if (ReferenceEquals(left, null)) return ReferenceEquals(right, null) || right.Destroyed;
+            if (ReferenceEquals(right, null)) return left.Destroyed;
+            return ReferenceEquals(left, right);
+        }
+        public static bool operator !=(Object left, Object right) => !(left == right);
+        public override bool Equals(object other) => ReferenceEquals(this, other);
+        public override int GetHashCode() => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(this);
         public static Object[] FindObjectsByType(Type type, FindObjectsInactive inactive, FindObjectsSortMode sort) => Array.Empty<Object>();
     }
     public enum KeyCode { None, Delete, Equals, Minus, LeftAlt, RightAlt, KeypadPlus, KeypadMinus }
@@ -97,6 +107,7 @@ namespace CesiumLoader.SDK.Speed
     {
         public const double DefaultSpeedStep = 0.5, MinSpeed = 1, MaxSpeed = 3, HardMaxSpeed = 100;
         public static bool IsAvailable { get; set; } = true;
+        public static bool StateReadable { get; set; } = true;
         public static double Actual = 4;
         public static double Speed { get { Reads++; return Actual; } set { Actual = value; } }
         public static double Requested { get; private set; }

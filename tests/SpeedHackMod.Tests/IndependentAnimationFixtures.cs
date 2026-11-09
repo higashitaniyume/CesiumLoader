@@ -1,6 +1,6 @@
 namespace SpeedHackMod.Tests;
 internal enum FakeAnimatorMode { Normal, AnimatePhysics, UnscaledTime }
-internal sealed class FakeAnimator { public FakeAnimatorMode updateMode { get; set; } = FakeAnimatorMode.UnscaledTime; }
+internal sealed class FakeAnimator : UnityEngine.Object { public FakeAnimatorMode updateMode { get; set; } = FakeAnimatorMode.UnscaledTime; }
 internal enum FakeDirectorMode { DSPClock, GameTime, UnscaledGameTime, Manual }
 internal sealed class FakeDirector { public FakeDirectorMode timeUpdateMode { get; set; } = FakeDirectorMode.UnscaledGameTime; }
 internal sealed class FakeSkeleton { public bool unscaledTime = true; }
@@ -12,7 +12,7 @@ internal sealed class FakeMoviePlayer
     public int Writes;
     public void SetSpeed(float speed) { Speed = speed; Writes++; }
 }
-internal sealed class FakeMovieController { public FakeMoviePlayer player { get; set; } = new(); }
+internal sealed class FakeMovieController : UnityEngine.Object { public FakeMoviePlayer player { get; set; } = new(); }
 internal sealed class FakeCameraBrain { public bool m_IgnoreTimeScale = true; }
 internal sealed class FakeWorldPanel
 {

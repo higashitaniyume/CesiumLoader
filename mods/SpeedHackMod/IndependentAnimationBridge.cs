@@ -22,6 +22,10 @@ namespace SpeedHackMod
         private readonly Dictionary<object, Change> _owned = new Dictionary<object, Change>();
         private bool _resolved;
         private float _nextDiscoveryAt;
+        private Source _pendingSource;
+        private object[] _pendingObjects;
+        private int _pendingIndex;
+        private int _cleanupCursor;
         internal int ChangedComponents => _changes.Count;
         internal int ChangedVideos { get; private set; }
         internal int SkippedAudioVideos { get; private set; }
@@ -87,7 +91,9 @@ namespace SpeedHackMod
         internal void Tick(float now, double speed)
         {
             if (!_resolved) Resolve();
-            if (now < _nextDiscoveryAt || _changes.Count >= MaxTracked) return;
+            PruneDestroyed();
+            if (_pendingObjects != null) { ProcessBatch(speed); return; }
+            if (now < _nextDiscoveryAt) return;
             Source selected = null;
             foreach (var source in _sources)
                 if (now >= source.Next && (selected == null || source.Next < selected.Next)) selected = source;
@@ -103,17 +109,27 @@ namespace SpeedHackMod
                 selected.Reported = true;
                 Report?.Invoke("独立动画通道 " + selected.Type.FullName + "：发现 " + objects.Length + " 个场景组件");
             }
-            // Discovery itself is one native type-index query. Bound subsequent work too.
-            int count = Math.Min(objects.Length, 512);
-            for (int i = 0; i < count && _changes.Count < MaxTracked; i++)
+            _pendingSource = selected;
+            _pendingObjects = objects;
+            _pendingIndex = 0;
+            ProcessBatch(speed);
+        }
+
+        private void ProcessBatch(double speed)
+        {
+            // Finish a query across frames instead of repeatedly visiting its first
+            // 512 entries. Release each processed reference, including destroyed ones.
+            int end = Math.Min(_pendingObjects.Length, _pendingIndex + 512);
+            while (_pendingIndex < end)
             {
-                object owner = objects[i];
-                if (owner == null) continue;
+                object owner = _pendingObjects[_pendingIndex];
+                _pendingObjects[_pendingIndex++] = null;
+                if (!IsAlive(owner)) continue;
                 try
                 {
-                    if (selected.Panel) RegisterUiRoot?.Invoke(Read(selected.Access, owner));
-                    else if (selected.Video) SynchronizeVideo(owner, speed);
-                    else SynchronizeMode(owner, selected);
+                    if (_pendingSource.Panel) RegisterUiRoot?.Invoke(Read(_pendingSource.Access, owner));
+                    else if (_pendingSource.Video) SynchronizeVideo(owner, speed);
+                    else SynchronizeMode(owner, _pendingSource);
                 }
                 catch
                 {
@@ -121,6 +137,40 @@ namespace SpeedHackMod
                     // retry only at the staggered discovery cadence, not every render frame.
                 }
             }
+            if (_pendingIndex >= _pendingObjects.Length)
+            {
+                _pendingObjects = null;
+                _pendingSource = null;
+                _pendingIndex = 0;
+            }
+        }
+
+        private void PruneDestroyed()
+        {
+            int count = Math.Min(16, _changes.Count);
+            for (int i = 0; i < count && _changes.Count > 0; i++)
+            {
+                if (_cleanupCursor >= _changes.Count) _cleanupCursor = 0;
+                var change = _changes[_cleanupCursor];
+                bool stale = !IsAlive(change.Owner);
+                if (!stale && change.SetVideoSpeed != null)
+                    try { stale = !ReferenceEquals(change.PlayerProperty.GetValue(change.Owner, null), change.Target); }
+                    catch { }
+                if (!stale) { _cleanupCursor++; continue; }
+                if (_owned.TryGetValue(change.Owner, out var owned) && ReferenceEquals(owned, change))
+                    _owned.Remove(change.Owner);
+                if (change.SetVideoSpeed != null) ChangedVideos--;
+                int last = _changes.Count - 1;
+                _changes[_cleanupCursor] = _changes[last];
+                _changes.RemoveAt(last);
+            }
+        }
+
+        private static bool IsAlive(object value)
+        {
+            if (value == null) return false;
+            var unityObject = value as UnityEngine.Object;
+            return ReferenceEquals(unityObject, null) || unityObject != null;
         }
 
         private void SynchronizeMode(object owner, Source source)
@@ -131,6 +181,7 @@ namespace SpeedHackMod
             object desired = source.Boolean ? (object)false : Enum.Parse(current.GetType(), source.To);
             if (!_owned.TryGetValue(owner, out var change))
             {
+                if (_changes.Count >= MaxTracked) return;
                 Write(source.Access, owner, desired);
                 change = new Change { Owner = owner, Target = owner, Access = source.Access, Original = current, Applied = desired };
                 _owned.Add(owner, change); _changes.Add(change);
@@ -159,6 +210,7 @@ namespace SpeedHackMod
             }
             float desired = (float)Math.Min(3.0, Math.Max(1.0, speed));
             if (existing != null && Math.Abs(existing.VideoSpeed - desired) < 0.0001f) return;
+            if (existing == null && _changes.Count >= MaxTracked) return;
             MethodInfo setter = player.GetType().GetMethod("SetSpeed", Members, null, new[] { typeof(float) }, null);
             if (setter == null) return;
             setter.Invoke(player, new object[] { desired });
@@ -191,6 +243,10 @@ namespace SpeedHackMod
             _changes.Clear(); _owned.Clear();
             ChangedVideos = 0; SkippedAudioVideos = 0;
             _nextDiscoveryAt = 0f;
+            _pendingObjects = null;
+            _pendingSource = null;
+            _pendingIndex = 0;
+            _cleanupCursor = 0;
             foreach (var source in _sources) source.Next = 0f;
         }
 

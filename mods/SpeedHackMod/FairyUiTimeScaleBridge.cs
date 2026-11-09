@@ -32,6 +32,12 @@ namespace SpeedHackMod
         private readonly List<Frame> _stack = new List<Frame>(32);
         private readonly Dictionary<Transition, GComponent> _transitions = new Dictionary<Transition, GComponent>();
         private readonly Dictionary<GObject, IAnimationGear> _gears = new Dictionary<GObject, IAnimationGear>();
+        private readonly List<Transition> _transitionEntries = new List<Transition>();
+        private readonly List<GObject> _gearEntries = new List<GObject>();
+        private int _transitionCleanupCursor;
+        private int _gearCleanupCursor;
+        private int _rootCleanupCursor;
+        private int _cleanupPhase;
         private float _nextSweepAt;
         private int _walkNodes;
         private GRoot _lastRoot;
@@ -64,6 +70,7 @@ namespace SpeedHackMod
 
         internal void Tick(float now)
         {
+            PruneDisposed();
             SynchronizeLiveTransitions();
             if (RootInstance == null || Transitions == null)
                 throw new MissingFieldException("FairyGUI root/transition metadata unavailable");
@@ -104,7 +111,7 @@ namespace SpeedHackMod
                     var gear = node as IAnimationGear;
                     if (gear != null && gear.ignoreEngineTimeScale && _gears.Count < MaxTracked)
                     {
-                        if (!_gears.ContainsKey(node)) _gears.Add(node, gear);
+                        if (!_gears.ContainsKey(node)) { _gears.Add(node, gear); _gearEntries.Add(node); }
                         gear.ignoreEngineTimeScale = false;
                     }
                     var component = node as GComponent;
@@ -121,7 +128,7 @@ namespace SpeedHackMod
                         _stack[top] = frame;
                         if (transition != null && transition.ignoreEngineTimeScale && _transitions.Count < MaxTracked)
                         {
-                            if (!_transitions.ContainsKey(transition)) _transitions.Add(transition, (GComponent)node);
+                            TrackTransition(transition, (GComponent)node);
                             transition.ignoreEngineTimeScale = false;
                         }
                     }
@@ -185,12 +192,72 @@ namespace SpeedHackMod
                 if (transition == null || !transition.ignoreEngineTimeScale || _transitions.Count >= MaxTracked) continue;
                 var owner = TransitionOwner.GetValue(transition) as GComponent;
                 if (owner == null || owner.isDisposed) continue;
-                if (!_transitions.ContainsKey(transition)) _transitions.Add(transition, owner);
+                TrackTransition(transition, owner);
                 // Change the transition's clock once. It propagates to its live tweens
                 // and later child tweens, without seeking, killing, or firing callbacks.
                 transition.ignoreEngineTimeScale = false;
             }
             _tweenCursor = (_tweenCursor + budget) % count;
+        }
+
+        private void TrackTransition(Transition transition, GComponent owner)
+        {
+            if (_transitions.ContainsKey(transition)) return;
+            _transitions.Add(transition, owner);
+            _transitionEntries.Add(transition);
+        }
+
+        private void PruneDisposed()
+        {
+            // Share a small cleanup budget across caches; never scan all retained
+            // objects in one frame, even after a large scene has been disposed.
+            for (int work = 0; work < 16; work++)
+            {
+                switch (_cleanupPhase++ % 3)
+                {
+                    case 0:
+                        if (_transitionEntries.Count == 0) break;
+                        if (_transitionCleanupCursor >= _transitionEntries.Count) _transitionCleanupCursor = 0;
+                        var transition = _transitionEntries[_transitionCleanupCursor];
+                        if (_transitions[transition].isDisposed)
+                        {
+                            _transitions.Remove(transition);
+                            RemoveAtSwap(_transitionEntries, _transitionCleanupCursor);
+                        }
+                        else _transitionCleanupCursor++;
+                        break;
+                    case 1:
+                        if (_gearEntries.Count == 0) break;
+                        if (_gearCleanupCursor >= _gearEntries.Count) _gearCleanupCursor = 0;
+                        var gear = _gearEntries[_gearCleanupCursor];
+                        if (gear.isDisposed)
+                        {
+                            _gears.Remove(gear);
+                            RemoveAtSwap(_gearEntries, _gearCleanupCursor);
+                        }
+                        else _gearCleanupCursor++;
+                        break;
+                    case 2:
+                        if (_externalRoots.Count == 0) break;
+                        if (_rootCleanupCursor >= _externalRoots.Count) _rootCleanupCursor = 0;
+                        var root = _externalRoots[_rootCleanupCursor];
+                        if (root.isDisposed)
+                        {
+                            _externalSet.Remove(root);
+                            RemoveAtSwap(_externalRoots, _rootCleanupCursor);
+                        }
+                        else _rootCleanupCursor++;
+                        break;
+                }
+                if (_cleanupPhase == 3) _cleanupPhase = 0;
+            }
+        }
+
+        private static void RemoveAtSwap<T>(List<T> entries, int index)
+        {
+            int last = entries.Count - 1;
+            entries[index] = entries[last];
+            entries.RemoveAt(last);
         }
 
         internal void Restore()
@@ -212,6 +279,9 @@ namespace SpeedHackMod
                 catch { }
             _transitions.Clear();
             _gears.Clear();
+            _transitionEntries.Clear();
+            _gearEntries.Clear();
+            _transitionCleanupCursor = _gearCleanupCursor = _rootCleanupCursor = _cleanupPhase = 0;
             _stack.Clear();
             _nextSweepAt = 0f;
             _lastRoot = null;

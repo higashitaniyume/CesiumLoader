@@ -7,12 +7,13 @@ using UnityEngine;
 
 namespace SpeedHackMod.Tests;
 
-internal static class Program
+internal static partial class Program
 {
     private static int _passed, _failed;
 
     private static int Main()
     {
+        RunReviewRegressions();
         Run("a newly playing card transition is synchronized immediately before tree discovery", () =>
         {
             FairyGUI.GRoot.SetExisting(new FairyGUI.GRoot());
@@ -418,7 +419,11 @@ internal static class Program
     }
     private static SpeedHackController Create()
     {
-        var mod = new SpeedHackController(); mod.Config.Set("maxSpeed", 100.0); return mod;
+        var mod = new SpeedHackController
+        {
+            ReadNativeSpeed = () => SpeedHack.IsAvailable && SpeedHack.StateReadable ? SpeedHack.Speed : (double?)null
+        };
+        mod.Config.Set("maxSpeed", 100.0); return mod;
     }
     private static SpeedHackController StartUnity()
     {
@@ -432,6 +437,7 @@ internal static class Program
         Time.Scale = 1f; Time.ScaleWrites = 0;
         FairyGUI.GRoot.SetExisting(null);
         SpeedHack.IsAvailable = true; SpeedHack.AcceptRequest = true; SpeedHack.Speed = 4; SpeedHack.Reads = 0;
+        SpeedHack.StateReadable = true;
         SpeedHack.Requests.Clear();
         UnityTime.RealtimeSinceStartup = 0; InputService.Held.Clear(); InputService.Pressed.Clear();
         UiService.ShouldBlockGameInput = false;

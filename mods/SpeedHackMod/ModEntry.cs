@@ -114,6 +114,7 @@ namespace SpeedHackMod
         private bool _unityActive;
         private bool _unityFailed;
         private bool _nativeResetRequested;
+        internal Func<double?> ReadNativeSpeed = NativeSpeedState.Read;
         private int _unityNativeWaitPolls;
         private double _loggedUnityTarget = double.NaN;
         private readonly FairyUiTimeScaleBridge _uiAnimations = new FairyUiTimeScaleBridge();
@@ -171,7 +172,7 @@ namespace SpeedHackMod
             if (_useUnitySpeed)
             {
                 double target = current > 1.0001 ? current : _activeSpeed;
-                StartUnityBackend(target, current);
+                StartUnityBackend(target);
                 current = _unityTargetSpeed;
             }
             else
@@ -250,7 +251,7 @@ namespace SpeedHackMod
                     RestoreUnityScale();
                     RestoreFixedSteps();
                     _awaitingSpeedConfirmation = false;
-                    if (_useUnitySpeed) StartUnityBackend(previousSpeed, current);
+                    if (_useUnitySpeed) StartUnityBackend(previousSpeed);
                     else Apply(previousSpeed);
                 }
                 else if (_useUnitySpeed)
@@ -470,7 +471,7 @@ namespace SpeedHackMod
             SynchronizePerformance(actual);
         }
 
-        private void StartUnityBackend(double target, double nativeSpeed)
+        private void StartUnityBackend(double target)
         {
             _unityTargetSpeed = SpeedHack.ClampSpeed(target, _minSpeed, _maxSpeed);
             _unityActive = false;
@@ -479,22 +480,24 @@ namespace SpeedHackMod
             _unityNativeWaitPolls = 0;
             _loggedUnityTarget = double.NaN;
             _nextPerformanceSyncAt = 0f;
-            if (nativeSpeed <= 1.0001)
-            {
-                _unityActive = true;
-                ApplyUnityScale();
-            }
-            else
-            {
-                _nativeResetRequested = SpeedHack.SetSpeed(1.0);
-                Log.Info("Unity 模式正在请求原生时钟恢复 1x，确认前不叠加 Unity 倍率。");
-            }
+            PollUnityBackend();
         }
 
         private void PollUnityBackend()
         {
             if (_unityFailed) return;
-            double native = SpeedHack.Speed;
+            double? confirmed = ReadNativeSpeed();
+            if (!confirmed.HasValue)
+            {
+                _nextPerformanceSyncAt = UnityTime.RealtimeSinceStartup + 0.5f;
+                RestoreUnityScale();
+                RestoreFixedSteps();
+                _unityActive = false;
+                if (++_unityNativeWaitPolls == 10)
+                    Log.Warn("无法读取有效的原生时钟状态，已暂停 Unity 加速，等待确认恢复 1x。");
+                return;
+            }
+            double native = confirmed.Value;
             _nextPerformanceSyncAt = UnityTime.RealtimeSinceStartup + (float)(0.5 * Math.Max(1.0, native));
             if (native > 1.0001)
             {
