@@ -97,7 +97,7 @@ void apply_loader_hot(const Field& field, const LoaderConfig& cfg, const std::st
     const std::string name = field.name;
     if (name == "speedhackBaseSpeed")
     {
-        if (speedhack_set_speed(cfg.speedhackBaseSpeed))
+        if (speedctl_set_speed(cfg.speedhackBaseSpeed))
             print("  已应用: 当前倍率 " + speed_text(speedhack_get_speed()), LOG_GREEN);
         else
             print("  变速引擎不可用, 倍率没有改变", LOG_YELLOW);

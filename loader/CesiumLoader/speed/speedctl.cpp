@@ -20,6 +20,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <string>
+#include <mutex>
 
 #include <fmt/format.h>
 
@@ -43,6 +44,21 @@ int g_dir_count = 0;
 
 double g_base = 1.0;
 volatile LONG g_started = 0;
+std::mutex g_control_mutex; // control plane only; the time API hooks never take it
+
+struct RequestStamp
+{
+    FILETIME written{};
+    DWORD index_high = 0, index_low = 0;
+    bool operator==(const RequestStamp& other) const
+    {
+        return written.dwHighDateTime == other.written.dwHighDateTime &&
+               written.dwLowDateTime == other.written.dwLowDateTime &&
+               index_high == other.index_high && index_low == other.index_low;
+    }
+};
+std::string g_last_seen[kMaxDirs];
+RequestStamp g_last_stamp[kMaxDirs];
 
 // %LocalAppData%\AstralParty_ModLoader\speed —— SDK 的最后一档候选目录,
 // 与环境变量推导无关, 所以即使 mod 读不到环境变量也能命中。
@@ -76,12 +92,15 @@ bool ensure_dir(const std::wstring& dir)
     return CreateDirectoryW(dir.c_str(), nullptr) != 0;
 }
 
-bool read_text(const std::wstring& path, std::string& out)
+bool read_text(const std::wstring& path, std::string& out, RequestStamp& stamp)
 {
     HANDLE h = CreateFileW(path.c_str(), GENERIC_READ,
                            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                            nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (h == INVALID_HANDLE_VALUE) return false;
+
+    BY_HANDLE_FILE_INFORMATION info{};
+    if (!GetFileInformationByHandle(h, &info)) { CloseHandle(h); return false; }
 
     LARGE_INTEGER size{};
     if (!GetFileSizeEx(h, &size) || size.QuadPart > kMaxBytes) { CloseHandle(h); return false; }
@@ -96,6 +115,7 @@ bool read_text(const std::wstring& path, std::string& out)
 
     buf.resize(read);
     out.swap(buf);
+    stamp = { info.ftLastWriteTime, info.nFileIndexHigh, info.nFileIndexLow };
     return true;
 }
 
@@ -192,6 +212,9 @@ void write_initial_files()
         if (!write_text(path_of(g_dirs[i], kRequestName), init))
             log_line(L"[speedctl] failed to write initial request.txt; later writes still take effect: " +
                      path_of(g_dirs[i], kRequestName));
+        // Capture on the boot thread, before mods can issue the first request.
+        // Capturing in the watch thread can swallow a request made during startup.
+        read_text(path_of(g_dirs[i], kRequestName), g_last_seen[i], g_last_stamp[i]);
     }
     write_state();
 }
@@ -208,14 +231,6 @@ DWORD WINAPI watch_thread(LPVOID)
     }
     log_line(L"[speedctl] file channel ready · " + std::to_wstring(g_dir_count) + L" dir(s): " + dirs);
 
-    std::string last_seen[kMaxDirs];
-    for (int i = 0; i < g_dir_count; i++)
-    {
-        if (!read_text(path_of(g_dirs[i], kRequestName), last_seen[i]))
-            log_line(L"[speedctl] failed to read request.txt, waiting for mod write: " +
-                     path_of(g_dirs[i], kRequestName));
-    }
-
     for (;;)
     {
         Sleep(kPollMs);
@@ -223,9 +238,11 @@ DWORD WINAPI watch_thread(LPVOID)
         for (int i = 0; i < g_dir_count; i++)
         {
             std::string text;
-            if (!read_text(path_of(g_dirs[i], kRequestName), text)) continue;
-            if (text == last_seen[i]) continue;
-            last_seen[i] = text;
+            RequestStamp stamp;
+            if (!read_text(path_of(g_dirs[i], kRequestName), text, stamp)) continue;
+            if (text == g_last_seen[i] && stamp == g_last_stamp[i]) continue;
+            g_last_seen[i] = text;
+            g_last_stamp[i] = stamp;
 
             double want = 0.0;
             if (!parse_speed(text, want))
@@ -239,15 +256,32 @@ DWORD WINAPI watch_thread(LPVOID)
             }
 
             // 成功时由 speedhack 打一行"倍率 -> 2.0x", 这里不再重复同一条事实。
-            if (!speedhack_set_speed(want))
+            if (!speedctl_set_speed(want))
                 log_line("[speedctl] failed to apply speed (speedhack unavailable): " + fmt_speed(want) + "x");
-            write_state();   // 无论成功与否都回写, mod 读到的是真实值
         }
     }
     return 0;
 }
 
 } // namespace
+
+bool speedctl_set_speed(double speed)
+{
+    std::lock_guard<std::mutex> guard(g_control_mutex);
+    // Invalidate old acknowledgements before changing the engine. If republishing
+    // fails, readers must see missing state rather than a valid but obsolete 1x.
+    for (int i = 0; i < g_dir_count; i++)
+    {
+        if (DeleteFileW(path_of(g_dirs[i], kStateName).c_str())) continue;
+        const DWORD error = GetLastError();
+        if (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND) continue;
+        write_state(); // restore any earlier invalidated copies; engine is unchanged
+        return false;
+    }
+    const bool applied = speedhack_set_speed(speed);
+    write_state();
+    return applied;
+}
 
 std::wstring speedctl_dir()
 {
@@ -258,6 +292,7 @@ void speedctl_start(const std::wstring& dir, double base_speed)
 {
     // 幂等: boot 线程只会启动一次, 但用 InterlockedExchange 保证重复调用安全。
     if (InterlockedExchange(&g_started, 1) != 0) return;
+    std::lock_guard<std::mutex> guard(g_control_mutex);
 
     // 基准倍率同样受硬下限约束: doorstop/Toys 里配了 <1 的值也一律抬到 1.0(不允许减速)。
     if (base_speed >= kSpeedMin && base_speed <= kSpeedMax)

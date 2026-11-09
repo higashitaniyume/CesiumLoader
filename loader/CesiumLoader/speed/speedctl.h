@@ -16,7 +16,7 @@
 // 语义:
 //   - 加载器启动时把 request.txt 重置为"当前引擎倍率", 因此上一次会话残留的请求
 //     不会在下次启动时被误应用(基础倍率永远优先);
-//   - 之后只处理**内容变化**: 请求非法(非数字/超范围/NaN)时忽略并记日志, 保持原倍率;
+//   - 之后处理内容或文件版本变化(同倍率重新请求也生效); 非法请求保持原倍率;
 //   - 每次应用后回写 state.txt, mod 可据此显示/校验真实值;
 //   - 任何失败都只记日志, 不影响加载器其余功能(加载 mod 照常)。
 
@@ -31,8 +31,13 @@ std::wstring speedctl_dir();
 // 仅用于 state.txt 里的 base= 字段(记录/诊断)。不抛异常、不阻塞调用者。
 void speedctl_start(const std::wstring& dir, double base_speed);
 
+// Serialize control-plane writers and publish the resulting state for every entry
+// point (boot, shell, export, file channel). Never called by a clock hook reader.
+bool speedctl_set_speed(double speed);
+
 namespace cesium::speed
 {
 using ::speedctl_dir;
 using ::speedctl_start;
+using ::speedctl_set_speed;
 }

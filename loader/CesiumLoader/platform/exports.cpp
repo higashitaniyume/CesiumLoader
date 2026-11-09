@@ -13,6 +13,7 @@
 #include "platform/loader.h"
 #include "config/config.h"
 #include "speed/speedhack.h"
+#include "speed/speedctl.h"
 #include "steam/steamhack.h"
 
 #include <windows.h>
@@ -162,7 +163,7 @@ extern "C" BOOL WINAPI VerQueryValueW(LPCVOID pBlock, LPCWSTR lpSubBlock, LPVOID
 
 extern "C" BOOL WINAPI ap_speed_set(double speed)
 {
-    return speedhack_set_speed(speed) ? TRUE : FALSE;
+    return speedctl_set_speed(speed) ? TRUE : FALSE;
 }
 
 extern "C" double WINAPI ap_speed_get()

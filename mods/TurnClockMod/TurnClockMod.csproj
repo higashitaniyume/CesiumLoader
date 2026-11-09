@@ -20,7 +20,7 @@
       <HintPath>$(GameRefsDir)AstralParty.Runtime.dll</HintPath>
       <Private>false</Private>
     </Reference>
-    <!-- 只为 ModBase 的 Scene 签名: 本 mod 不调用任何 Unity API -->
+    <!-- Scene 签名及按计时器时钟类型读取 Time.timeScale -->
     <Reference Include="UnityEngine.CoreModule">
       <HintPath>$(GameRefsDir)UnityEngine.CoreModule.dll</HintPath>
       <Private>false</Private>

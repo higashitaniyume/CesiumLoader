@@ -35,8 +35,8 @@ namespace SpeedHackMod
                 throw new InvalidOperationException("Unity timeScale is invalid");
             if (current == 0f)
             {
-                // Never unpause the game. Recapture the game's baseline after resume.
-                _ownsScale = false;
+                // Retain ownership: a pause handler may restore our saved applied
+                // value rather than write a fresh baseline. Never unpause the game.
                 return;
             }
             if (!_ownsScale || !Same(current, _applied)) _baseline = current;
@@ -50,7 +50,9 @@ namespace SpeedHackMod
         internal void Restore()
         {
             if (!_ownsScale) return;
-            if (Same(_read(), _applied)) _write(_baseline);
+            float current = _read();
+            if (current == 0f) return; // defer restoration until the game resumes
+            if (Same(current, _applied)) _write(_baseline);
             _ownsScale = false;
         }
 

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using UnityEngine;
+using CesiumLoader.SDK.Runtime;
 
 namespace SpeedHackMod
 {
@@ -20,7 +21,8 @@ namespace SpeedHackMod
         private readonly List<Source> _sources = new List<Source>();
         private readonly List<Change> _changes = new List<Change>();
         private readonly Dictionary<object, Change> _owned = new Dictionary<object, Change>();
-        private bool _resolved;
+        private readonly HashSet<string> _resolved = new HashSet<string>();
+        private float _nextResolveAt;
         private float _nextDiscoveryAt;
         private Source _pendingSource;
         private object[] _pendingObjects;
@@ -67,30 +69,40 @@ namespace SpeedHackMod
 
         private void Resolve()
         {
-            _resolved = true;
             Add("UnityEngine.Animator", "updateMode", "UnscaledTime", "Normal", false, 0.25f);
             Add("UnityEngine.Playables.PlayableDirector", "timeUpdateMode", "UnscaledGameTime", "GameTime", false, 0.5f);
             Add("Spine.Unity.SkeletonAnimation", "unscaledTime", null, null, true, 1f);
             Add("Spine.Unity.SkeletonGraphic", "unscaledTime", null, null, true, 1f);
             Add("Cinemachine.CinemachineBrain", "m_IgnoreTimeScale", null, null, true, 0.5f);
-            Type panel = _findType("FairyGUI.UIPanel");
+            Type panel = ResolveType("FairyGUI.UIPanel");
             MemberInfo panelUi = panel != null ? FindMember(panel, "_ui") : null;
             if (panelUi != null) _sources.Add(new Source { Type = panel, Panel = true, Access = panelUi, Interval = 0.25f });
-            Type video = _findType("UI.CriManaMovieControllerForGGraph");
+            Type video = ResolveType("UI.CriManaMovieControllerForGGraph");
             if (video != null) _sources.Add(new Source { Type = video, Video = true, Interval = 0.5f });
         }
 
         private void Add(string name, string member, string from, string to, bool boolean, float interval)
         {
-            Type type = _findType(name);
+            Type type = ResolveType(name);
             if (type == null) return;
             MemberInfo access = FindMember(type, member);
             if (access != null) _sources.Add(new Source { Type = type, Member = member, Access = access, From = from, To = to, Boolean = boolean, Interval = interval });
         }
 
+        private Type ResolveType(string name)
+        {
+            if (_resolved.Contains(name)) return null;
+            Type type;
+            try { type = _findType(name); }
+            catch { return null; }
+            if (type != null) _resolved.Add(name);
+            return type;
+        }
+
         internal void Tick(float now, double speed)
         {
-            if (!_resolved) Resolve();
+            // Retry only missing optional types, not every render frame.
+            if (now >= _nextResolveAt) { _nextResolveAt = now + 5f; Resolve(); }
             PruneDestroyed();
             if (_pendingObjects != null) { ProcessBatch(speed); return; }
             if (now < _nextDiscoveryAt) return;
@@ -269,6 +281,22 @@ namespace SpeedHackMod
 
     internal static class UnityAnimationDiscovery
     {
+        internal static Type FindType(string name)
+        {
+            // The SDK's global lookup caches misses. The assembly-specific overload
+            // bypasses that cache without invalidating other mods' metadata.
+            foreach (var assembly in RuntimeAssemblyService.GetAssemblies())
+            {
+                try
+                {
+                    Type type = RuntimeAssemblyService.FindType(assembly.GetName().Name, name);
+                    if (type != null) return type;
+                }
+                catch { }
+            }
+            return null;
+        }
+
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static object[] Find(Type type)
         {

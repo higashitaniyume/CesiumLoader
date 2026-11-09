@@ -1,4 +1,5 @@
 using CesiumLoader.SDK.Speed;
+using CesiumLoader.SDK.Inputs;
 using UnityEngine;
 using Xunit;
 
@@ -6,6 +7,129 @@ namespace SpeedHackMod.Tests;
 
 public sealed partial class SpeedHackControllerTests
 {
+    [Theory]
+    [InlineData(1f, 4.0)]
+    [InlineData(0.5f, 4.0)]
+    [InlineData(1f, 100.0)]
+    public void SavedPauseScale_DoesNotCompoundAndRestoresBaseline(float baseline, double speed)
+    {
+        float scale = baseline;
+        var owner = new UnitySpeedScale(() => scale, value => scale = value);
+        owner.Synchronize(speed); float saved = scale;
+        scale = 0; owner.Synchronize(speed); Assert.Equal(0, scale);
+        scale = saved; owner.Synchronize(speed); Assert.Equal(saved, scale);
+        owner.Restore(); Assert.Equal(baseline, scale);
+    }
+
+    [Fact]
+    public void DisableWhilePaused_DefersRestoreWithoutUnpausing()
+    {
+        float scale = 1;
+        var owner = new UnitySpeedScale(() => scale, value => scale = value);
+        owner.Synchronize(4); float saved = scale;
+        scale = 0; owner.Synchronize(4); owner.Synchronize(1); Assert.Equal(0, scale);
+        scale = saved; owner.Synchronize(1); Assert.Equal(1, scale);
+        owner.Synchronize(4); Assert.Equal(4, scale);
+    }
+
+    [Fact]
+    public void ChangedTargetWhilePaused_ReusesOriginalBaseline()
+    {
+        float scale = 1;
+        var owner = new UnitySpeedScale(() => scale, value => scale = value);
+        owner.Synchronize(4); scale = 0; owner.Synchronize(2);
+        scale = 4; owner.Synchronize(2); Assert.Equal(2, scale);
+        owner.Restore(); Assert.Equal(1, scale);
+    }
+
+    [Fact]
+    public void ZeroRepeat_FiresOncePerHoldAndRearmsAfterRelease()
+    {
+        SpeedHack.Speed = 1;
+        var mod = Create(); mod.Config.Set("repeatInterval", 0f); mod.OnInitialize();
+        InputService.Held.Add(KeyCode.LeftAlt); InputService.Held.Add(KeyCode.Equals);
+        Advance(mod, 100, .1f); Assert.Single(SpeedHack.Requests);
+        InputService.Held.Clear(); mod.OnUpdate();
+        InputService.Held.Add(KeyCode.LeftAlt); InputService.Held.Add(KeyCode.Equals);
+        Advance(mod, 100, .1f); Assert.Equal(2, SpeedHack.Requests.Count);
+        mod.OnUnload();
+    }
+
+    [Fact]
+    public void LowerMaximumOnReload_ClampsActiveUnityTarget()
+    {
+        var mod = StartUnity(); mod.Config.Set("maxSpeed", 2.0); mod.OnConfigChanged();
+        Assert.Equal(2, Time.Scale);
+        Advance(mod, 20, .1f); Assert.Equal(2, Time.Scale); mod.OnUnload();
+    }
+
+    [Fact]
+    public void ExternalNativeSpeedChange_SuspendsUnityAndRetriesLostResetAtBoundedRate()
+    {
+        var mod = StartUnity(); Assert.Equal(.08f, Time.Step, 5);
+        SpeedHack.Speed = 4;
+        Advance(mod, 10, .5f);
+        Assert.Equal(1, Time.Scale); Assert.Equal(.02f, Time.Step, 5);
+        Assert.Single(SpeedHack.Requests);
+        Advance(mod, 12, .5f);
+        Assert.Equal(2, SpeedHack.Requests.Count);
+        Assert.All(SpeedHack.Requests, speed => Assert.Equal(1, speed));
+        SpeedHack.Speed = 1; Advance(mod, 6, .5f);
+        Assert.Equal(4, Time.Scale); Assert.Equal(.08f, Time.Step, 5);
+        mod.OnUnload();
+    }
+
+    [Fact]
+    public void LowerMaximumOnReload_RequestsClampedNativeSpeed()
+    {
+        var mod = Create(); mod.OnInitialize();
+        mod.Config.Set("maxSpeed", 2.0); mod.OnConfigChanged();
+        Assert.Equal(2, SpeedHack.Requested);
+        // Do not optimize using the new target until the native engine acknowledges.
+        Assert.Equal(.08f, Time.Step, 5);
+        SpeedHack.Speed = 2; Advance(mod, 20, .1f); Assert.Equal(.04f, Time.Step, 5);
+        mod.OnUnload();
+    }
+
+    [Fact]
+    public void BoundsReload_DoesNotEnableTemporarilyDisabledUnitySpeed()
+    {
+        var mod = StartUnity(); Press(mod); Assert.Equal(1, Time.Scale);
+        mod.Config.Set("minSpeed", 2.0); mod.Config.Set("maxSpeed", 3.0); mod.OnConfigChanged();
+        Assert.Equal(1, Time.Scale); mod.OnUnload();
+    }
+
+    [Fact]
+    public void BoundsReload_ReplacesAnOutOfRangeUnacknowledgedNativeRequest()
+    {
+        SpeedHack.Speed = 2;
+        var mod = Create(); mod.OnInitialize();
+        InputService.Held.Add(KeyCode.LeftAlt); InputService.Held.Add(KeyCode.Equals);
+        mod.OnUpdate(); InputService.Held.Clear(); mod.OnUpdate();
+        Assert.Equal(2.5, SpeedHack.Requested);
+        mod.Config.Set("maxSpeed", 2.0); mod.OnConfigChanged();
+        Assert.Equal(2, SpeedHack.Requested);
+        mod.OnUnload();
+    }
+
+    [Fact]
+    public void MissingAnimationTypes_RetryAtBoundedCadenceWithoutDuplicatingSources()
+    {
+        bool loaded = false; int lookups = 0, queries = 0;
+        var animator = new FakeAnimator();
+        var bridge = new IndependentAnimationBridge(n => { lookups++; return loaded && n == "UnityEngine.Animator" ? typeof(FakeAnimator) : null; },
+            _ => { queries++; return new object[] { animator }; });
+        bridge.Tick(0, 4); int initial = lookups;
+        loaded = true;
+        for (int i = 1; i < 50; i++) bridge.Tick(i * .1f, 4);
+        Assert.Equal(initial, lookups); Assert.Equal(0, queries);
+        bridge.Tick(5, 4); Assert.Equal(FakeAnimatorMode.Normal, animator.updateMode);
+        bridge.Tick(10, 4); Assert.Equal(1, bridge.ChangedComponents);
+        bridge.Restore(); Assert.Equal(FakeAnimatorMode.UnscaledTime, animator.updateMode);
+        bridge.Tick(11, 4); Assert.Equal(1, bridge.ChangedComponents);
+        bridge.Restore();
+    }
+
     [Theory]
     [InlineData("version=2.8.6\r\nspeed=1.000\r\nhooks=4\r\n", 1.0)]
     [InlineData("speed=4.500\nhooks=4", 4.5)]

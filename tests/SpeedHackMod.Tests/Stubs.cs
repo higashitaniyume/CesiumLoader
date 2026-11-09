@@ -39,7 +39,12 @@ namespace UnityEngine
 }
 namespace CesiumLoader.SDK.Runtime
 {
-    public static class RuntimeAssemblyService { public static Type FindType(string name) => null; }
+    public static class RuntimeAssemblyService
+    {
+        public static Type FindType(string name) => null;
+        public static System.Reflection.Assembly[] GetAssemblies() => AppDomain.CurrentDomain.GetAssemblies();
+        public static Type FindType(string assembly, string name) => null;
+    }
 }
 namespace CesiumLoader.SDK.Configuration
 {

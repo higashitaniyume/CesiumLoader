@@ -10,6 +10,7 @@
     <Compile Include="..\..\mods\TurnClockMod\TimerCompensation.Picker.cs" Link="TimerCompensation.Picker.cs" />
     <Compile Include="..\..\mods\TurnClockMod\TimerCompensation.Compensator.cs" Link="TimerCompensation.Compensator.cs" />
     <Compile Include="..\..\mods\TurnClockMod\ExtraClockSources.cs" Link="ExtraClockSources.cs" />
+    <Compile Include="..\..\mods\TurnClockMod\TimerClockRate.cs" Link="TimerClockRate.cs" />
   </ItemGroup>
 
 </Project>

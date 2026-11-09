@@ -94,6 +94,7 @@ namespace TurnClockMod
 
         private Mode _mode = Mode.None;
         private Type _probedType;
+        private TimerClockRate _timerClockRate;
         private TimerMember _elapsed;
         private readonly List<TimerMember> _elapsedCandidates = new List<TimerMember>();
         private TimerMember _start;
@@ -279,6 +280,8 @@ namespace TurnClockMod
             // 只补偿第一帧探测到的那个计时器类型(游戏里都是 UnityTimer.Timer)
             if (_probedType != null && !ReferenceEquals(timer.GetType(), _probedType)) return;
 
+            speed = _timerClockRate != null ? _timerClockRate.EffectiveSpeed(timer, speed, ReadUnityScale()) : speed;
+
             float elapsed;
             bool wrote;
 
@@ -312,7 +315,7 @@ namespace TurnClockMod
                 if (elapsed > _windowMaxElapsed) _windowMaxElapsed = elapsed;
                 if (wrote) _windowWrites++;
 
-                if (realDt > 0.0) CheckMeasuredSpeed(realDt);
+                if (realDt > 0.0) CheckMeasuredSpeed(realDt, speed);
             }
             else
             {
@@ -326,17 +329,24 @@ namespace TurnClockMod
             }
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private static float ReadUnityScale()
+        {
+            try { return UnityEngine.Time.timeScale; }
+            catch { return 1f; }
+        }
+
         /// <summary>
-        /// 用"计时器时钟这帧推进 ÷ 真实帧时长"反推实际倍率, 和缓存的倍率对不上就立刻重读。
-        /// 这样热键改倍率后不用等满 speedRefreshSeconds(默认 0.2s) —— 那一小段漏补在 9x 下能差出 2 秒多。
+        /// Compare measured progress with this timer's effective clock rate, not
+        /// native speed alone; unscaled timers must not force a file read per frame.
         /// </summary>
-        private void CheckMeasuredSpeed(double realDt)
+        private void CheckMeasuredSpeed(double realDt, double expectedSpeed)
         {
             float gameDelta = _compensator.LastDelta;
             if (gameDelta <= 0f) return;                  // 计时器暂停: 量不出速率
 
             double measured = gameDelta / realDt;
-            if (measured > _speed * 1.35 + 0.05 || measured < _speed * 0.74 - 0.05)
+            if (measured > expectedSpeed * 1.35 + 0.05 || measured < expectedSpeed * 0.74 - 0.05)
                 _nextSpeedReadAt = 0.0;                   // 下一帧重新读
         }
 

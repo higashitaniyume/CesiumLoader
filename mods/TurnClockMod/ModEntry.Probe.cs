@@ -20,6 +20,7 @@ namespace TurnClockMod
         {
             _mode = Mode.None;
             _probedType = null;
+            _timerClockRate = null;
             _elapsed = null;
             _start = null;
             _clock = null;
@@ -140,6 +141,7 @@ namespace TurnClockMod
         private void ProbeType(Type type, object instance)
         {
             _probedType = type;
+            _timerClockRate = new TimerClockRate(type);
             _elapsed = null;
             _start = null;
             _clock = null;
