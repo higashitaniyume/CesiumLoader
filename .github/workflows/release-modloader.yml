@@ -157,6 +157,7 @@ jobs:
           Copy-Item "dist/modloader/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll" "staging/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll" -Force
           Copy-Item "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll" "staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll" -Force
           Copy-Item "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.xml" "staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.xml" -Force
+          Copy-Item "CHANGELOG.md" "staging/CHANGELOG.md" -Force
 
           foreach ($p in @(
               @{ From = "bin/Release/version.pdb";                                                              To = "staging/version.pdb" },
@@ -202,6 +203,7 @@ jobs:
           $readme = @(
             "cesium-loader-${{ steps.version.outputs.version }}",
             "- version.dll                          → 复制到游戏 exe 目录 (Doorstop 式代理加载器)",
+            "- CHANGELOG.md                         → 更新日志(Toys 用它做离线兜底)",
             "- AstralParty_ModLoader\doorstop_config.json → 加载器配置 (enabled=false 可完全禁用)",
             "- AstralParty_ModLoader\bootstrap\     → 托管引导程序 (先于 SDK/mods 加载)",
             "- AstralParty_ModLoader\sdk\           → SDK 依赖",
@@ -365,6 +367,7 @@ jobs:
             cesium-loader*.zip
             cesium-default-skins*.zip
             cesium-agent-mcp*.zip
+            CHANGELOG.md
           if-no-files-found: error
           retention-days: 1
 
@@ -519,6 +522,36 @@ jobs:
           name: cli-artifacts
           path: artifacts
 
+      - name: Generate version manifest (version.json)
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#modloader-}"
+          tag="${GITHUB_REF_NAME}"
+          repo="higashitaniyume/CesiumLoader"
+          zip="artifacts/cesium-loader-${version}.zip"
+          test -s "$zip"
+          sha256="$(sha256sum "$zip" | cut -d' ' -f1)"
+          size="$(stat -c %s "$zip")"
+          date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          cat > artifacts/version.json <<EOF
+          {
+            "version": "${version}",
+            "releaseTag": "${tag}",
+            "releaseDate": "${date}",
+            "releaseNotes": "",
+            "packages": {
+              "loaderZip": {
+                "fileName": "cesium-loader-${version}.zip",
+                "url": "https://github.com/${repo}/releases/download/${tag}/cesium-loader-${version}.zip",
+                "sha256": "${sha256}",
+                "size": ${size}
+              }
+            }
+          }
+          EOF
+          cat artifacts/version.json
+
       - name: List and verify artifacts
         shell: bash
         run: |
@@ -530,6 +563,9 @@ jobs:
             test -s "artifacts/$package-$version.zip"
           done
           test -s "artifacts/apcsm.$version.nupkg"
+          test -s "artifacts/version.json"
+          test -s "artifacts/CHANGELOG.md"
+          python3 -m json.tool artifacts/version.json > /dev/null
           echo "全部资产校验通过!"
 
       - name: Publish GitHub release

@@ -154,6 +154,9 @@ Copy-Item 'dist\modloader\AstralParty_ModLoader\sdk\CesiumLoader.SDK.dll' 'stagi
 # XML 文档与 dll 同名同目录, 引用该 dll 的 IDE 才会显示注释。
 Copy-Item 'dist\modloader\AstralParty_ModLoader\sdk\CesiumLoader.SDK.xml' 'staging\AstralParty_ModLoader\sdk\CesiumLoader.SDK.xml' -Force
 
+# 更新日志随包：Toys CI 从这里同步进程序集做离线兜底，不进 SHA256 清单（同 README.txt）。
+Copy-Item 'CHANGELOG.md' 'staging\CHANGELOG.md' -Force
+
 # 符号: dist 里已经和 dll 配好对了(见第 3 步), 这里原样搬进 staging。
 # 缺哪个就在下面的清单过滤里统一警告 —— 符号不全不该拦住发布。
 foreach ($pdb in @(
@@ -214,6 +217,7 @@ $modList = ($BuiltInMods | ForEach-Object { "mods\{$_}\{$_}.dll" }) -join ' / '
 $readme = @(
     "cesium-loader-$version",
     "- version.dll                          → 复制到游戏 exe 目录 (Doorstop 式代理加载器)",
+    "- CHANGELOG.md                         → 更新日志(Toys 用它做离线兜底)",
     "- AstralParty_ModLoader\doorstop_config.json → 加载器配置 (enabled=false 可完全禁用)",
     "- AstralParty_ModLoader\bootstrap\     → 托管引导程序 (先于 SDK/mods 加载)",
     "- AstralParty_ModLoader\sdk\           → SDK 依赖",
