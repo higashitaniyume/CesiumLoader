@@ -10,6 +10,13 @@
 //      游戏不一定逐级 CreateDirectoryW)。
 //   5. 诊断日志有预算: 只打前 N 条改写, 之后按 1000 条一次打汇总 —— hook 在
 //      多线程热路径上, 不能每个调用都写盘。
+//   6. Addressables 的 AssetBundles/__data 打开失败时重试: 该路径在**游戏
+//      _Data 目录**里(多开时经 junction 共享同一份物理文件), 不在 LocalLow
+//      重定向范围内, 原先 hook 直接放行。冷启第一次进图时多实例/multiple
+//      线程同时打开同一 __data 会撞上 SHARING/ACCESS_DENIED, Unity 侧一次
+//      失败就让 dependent bundle 挂掉、加载条停在 90% 不动, 重启进程才好。
+//      这里对名字以 __data 结尾的打开(重定向命中与否都算)做有界重试 +
+//      专项打点, 属瞬时锁的兜底, 不改正常路径的语义。
 
 #include "fsredir/fsredir.h"
 
@@ -44,6 +51,11 @@ std::atomic<int> g_log_budget{60};
 // 表现是"删除被重定向、复制落在原目录", 光看日志会以为一切正常。失败单独记一小段。
 std::atomic<long> g_failures{0};
 std::atomic<int> g_fail_budget{24};
+// bundle(__data) 专项: 这条路径不在前缀重定向范围内, 不能混用上面的预算 ——
+// 冷启第一次进图就可能先把 24 条普通失败额度烧完, 再去找 bundle 锁就看不见了。
+std::atomic<long> g_bundle_retries{0};
+std::atomic<long> g_bundle_recovered{0};
+std::atomic<int> g_bundle_log_budget{16};
 
 // ---------- 真实函数 ----------
 
@@ -180,6 +192,39 @@ void note_failure(const char* api, const std::wstring& path, DWORD error)
              to_utf8(path.c_str(), path.size()));
 }
 
+// AssetBundles 的 bundle 文件统一以 __data 结尾(LocalLow 缓存与 _Data 内嵌
+// 缓存都是 …\AssetBundles\<hash>\<bundleHash>\__data)。用后缀判断比扫全路径
+// 更划算, 且热路径开销只是一次 wcslen + 6 个字符比较。
+bool is_bundle_data_path(const wchar_t* p)
+{
+    if (!p || !*p) return false;
+    const size_t len = std::wcslen(p);
+    if (len < 6) return false;
+    const wchar_t* tail = p + len - 6;
+    if (norm_lower(tail[0]) != L'_' || norm_lower(tail[1]) != L'_' ||
+        norm_lower(tail[2]) != L'd' || norm_lower(tail[3]) != L'a' ||
+        norm_lower(tail[4]) != L't' || norm_lower(tail[5]) != L'a')
+        return false;
+    if (len > 6)
+    {
+        const wchar_t prev = p[len - 7];
+        if (prev != L'\\' && prev != L'/') return false;
+    }
+    return true;
+}
+
+void note_bundle(const std::string& detail, const std::wstring& path)
+{
+    if (g_bundle_log_budget.load(std::memory_order_relaxed) <= 0) return;
+    if (g_bundle_log_budget.fetch_sub(1, std::memory_order_relaxed) <= 0)
+    {
+        g_bundle_log_budget.fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
+    log_line(std::string("[fsredir] bundle CreateFileW ") + detail + " -> " +
+             to_utf8(path.c_str(), path.size()));
+}
+
 // 写打开时补建父目录(只补 target 之下的层级)
 void ensure_parent_dir(const std::wstring& path)
 {
@@ -218,19 +263,77 @@ HANDLE WINAPI Hook_CreateFileW(LPCWSTR name, DWORD access, DWORD share, LPSECURI
                                DWORD disposition, DWORD flags, HANDLE tmpl)
 {
     std::wstring path;
-    if (!rewrite_path(name, path))
+    const bool rewritten = rewrite_path(name, path);
+    const wchar_t* target = rewritten ? path.c_str() : name;
+    const bool bundle = is_bundle_data_path(target);
+
+    // 不在重定向范围、也不是 bundle 的: 像以前一样直接放行, 热路径不加日志。
+    if (!rewritten && !bundle)
         return Real_CreateFileW(name, access, share, sa, disposition, flags, tmpl);
 
-    if (wants_write(access, disposition)) ensure_parent_dir(path);
+    const std::wstring shown = rewritten ? path : std::wstring(name ? name : L"");
 
-    const HANDLE h = Real_CreateFileW(path.c_str(), access, share, sa, disposition, flags, tmpl);
+    if (rewritten && wants_write(access, disposition)) ensure_parent_dir(path);
+
+    HANDLE h = Real_CreateFileW(target, access, share, sa, disposition, flags, tmpl);
+    DWORD err = (h == INVALID_HANDLE_VALUE) ? GetLastError() : 0;
+
+    // bundle 瞬时锁重试: SHARING/ACCESS_DENIED 是多实例/多线程同时开同一
+    // __data 时的典型错误。只重试这两码, 其它错误(不存在、路径无效等)重试
+    // 也没用, 直接交回游戏处理。阻塞在 hook 的是调用方所在线程, 最坏多睡
+    // 约 1 秒, 换成加载条继续走, 不让它一次失败就永久停在 90%。
+    if (h == INVALID_HANDLE_VALUE && bundle &&
+        (err == ERROR_SHARING_VIOLATION || err == ERROR_ACCESS_DENIED))
+    {
+        constexpr int kMaxRetries = 5;
+        int attempt = 0;
+        while (h == INVALID_HANDLE_VALUE && attempt < kMaxRetries)
+        {
+            Sleep(static_cast<DWORD>(80 + attempt * 40));   // 80/120/160/200/240 ms
+            h = Real_CreateFileW(target, access, share, sa, disposition, flags, tmpl);
+            err = (h == INVALID_HANDLE_VALUE) ? GetLastError() : 0;
+            ++attempt;
+            g_bundle_retries.fetch_add(1, std::memory_order_relaxed);
+            if (h != INVALID_HANDLE_VALUE) break;
+            if (err != ERROR_SHARING_VIOLATION && err != ERROR_ACCESS_DENIED) break;
+        }
+        if (h == INVALID_HANDLE_VALUE)
+        {
+            g_open_failures.fetch_add(1, std::memory_order_relaxed);
+            std::string detail = "failed (error " + std::to_string(err) + ", attempts " +
+                                 std::to_string(attempt + 1) + ")";
+            note_bundle(detail, shown);
+            // bundle 最终失败也走普通失败通道一条(单独计数由 bundle 日志覆盖,
+            // 这里让汇总计数保持一致, 但不再重复打公开日志避免刷屏)。
+            g_failures.fetch_add(1, std::memory_order_relaxed);
+        }
+        else
+        {
+            g_bundle_recovered.fetch_add(1, std::memory_order_relaxed);
+            std::string detail = "recovered (attempts " + std::to_string(attempt + 1) + ")";
+            note_bundle(detail, shown);
+            if (rewritten) note("CreateFileW", path);
+        }
+        return h;
+    }
+
     if (h == INVALID_HANDLE_VALUE)
     {
-        const DWORD err = GetLastError();
-        g_open_failures.fetch_add(1, std::memory_order_relaxed);
-        note_failure("CreateFileW", path, err);
+        if (rewritten)
+        {
+            g_open_failures.fetch_add(1, std::memory_order_relaxed);
+            note_failure("CreateFileW", path, err);
+        }
+        else if (bundle)
+        {
+            // 非锁类失败(比如文件真不存在): 不重试, 但记专项打点 —— 没有这条,
+            // 冷启的只报错 Unable 就永远分不清锁与坏文件。
+            g_open_failures.fetch_add(1, std::memory_order_relaxed);
+            std::string detail = "failed (error " + std::to_string(err) + ", attempts 1)";
+            note_bundle(detail, shown);
+        }
     }
-    else
+    else if (rewritten)
     {
         note("CreateFileW", path);
     }
