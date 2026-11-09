@@ -2,6 +2,24 @@
 
 本文件按版本记录 `CesiumLoader` 的功能变更。版本号与 GitHub 发布 tag 一一对应（如 `modloader-3.3.2`，版本号为 `3.3.2`），发布产物由 [release-modloader.yml](.github/workflows/release-modloader.yml) 在打 tag 时自动构建。
 
+## [Unreleased]
+
+### 移除音效替换
+
+- 移除 AudioSkinMod，不再随包提供音效与 BGM 替换功能。
+- 移除 SDK 音频子系统（`AudioService`、`AudioEvents`、`AudioReplacementRule`、`WavUtility` 等）与音频路径 API（`AudioDirectory`、`AudioSchemesDirectory`、`GetAudioPath` 等）。
+- 加载器不再提供原生音频通道，`doorstop_config.json` 的 `audioControlEnabled` 与 `CESIUM_AUDIO_*` 环境变量一并移除。游戏本体的音乐与音效不受影响。
+
+## [3.5.2] - 2026-11-09
+
+### 多开
+
+- **修复多开共图冷启时地图加载偶发停在 90%**：多个实例共用同一份地图资源、冷启第一次进图时同一缓存文件会被同时打开，打开失败会让加载直接停在 90% 且需重启进程才好。加载器现在对这类瞬时占用自动重试，加载过程可继续进行；失败与恢复状态会写入加载器日志（`bundle CreateFileW`），便于排查。设置与用法不变。
+
+### 内置模组
+
+- **`CombatOddsMod` 2.8.4**：梅加斯理论伤害读数与玩家头顶攻防标签新增位置/字号微调（`MegasDamageOffsetX/Y`、`MegasDamageFontSize`、`PlayerAttrOffsetX/Y`、`PlayerAttrFontSize`），在 Toys 配置中调整后热重载生效；默认与旧版位置、字号一致。
+
 ## [3.5.1] - 2026-11-08
 
 ### 变速引擎：修复高频时钟调用下的无响应

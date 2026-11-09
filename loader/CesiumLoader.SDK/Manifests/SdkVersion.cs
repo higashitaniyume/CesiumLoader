@@ -11,13 +11,13 @@ namespace CesiumLoader.SDK.Manifests
     public static class SdkVersion
     {
         /// <summary>当前 SDK 版本 (SemVer)。与 CesiumLoader.SDK.csproj 的 Version 保持一致。</summary>
-        public const string Current = "3.5.1";
+        public const string Current = "3.5.2";
 
         /// <summary>
         /// 加载器原生层版本(与 version.dll 构建对应)。与 <see cref="Current"/> 独立递增:
         /// 只更新 SDK 而不重建原生层时, 这个值保持不变。
         /// </summary>
-        public const string LoaderVersion = "3.5.1";
+        public const string LoaderVersion = "3.5.2";
 
         /// <summary>最小可接受的 mod 声明的 SDK 版本。</summary>
         public static bool Accepts(string modSdkVersion)
