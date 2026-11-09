@@ -117,6 +117,11 @@ namespace CesiumLoader.SDK.Speed
         public static string Directory => System.IO.Path.GetTempPath();
         public static string UnavailableReason => "fixture unavailable";
         public static string Describe() => "fixture engine";
+        public static void Reset()
+        {
+            IsAvailable = true; StateReadable = true; AcceptRequest = true;
+            Actual = 4; Reads = 0; Requested = 0; Requests.Clear();
+        }
         public static double ClampSpeed(double speed, double min, double max) => Math.Clamp(speed, min, max);
         public static double StepSpeed(double speed, int dir, double step, double min, double max) => ClampSpeed(speed + dir * step, min, max);
         public static bool SetSpeed(double speed) { Requested = speed; Requests.Add(speed); return AcceptRequest; }

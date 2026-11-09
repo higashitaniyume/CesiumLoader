@@ -83,7 +83,7 @@ fixedDeltaTime = min(原始固定步长 × 目标倍率, maximumDeltaTime)
 
 ```powershell
 dotnet build mods/SpeedHackMod/SpeedHackMod.csproj -c Release -p:NuGetAudit=false
-dotnet run --project tests/SpeedHackMod.Tests -c Release -p:NuGetAudit=false
+dotnet test tests/SpeedHackMod.Tests/SpeedHackMod.Tests.csproj -c Release -p:NuGetAudit=false
 ```
 
 构建产物位于 `mods/SpeedHackMod/bin/Release/netstandard2.0/`。
