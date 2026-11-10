@@ -2,19 +2,21 @@
 
 本文件按版本记录 `CesiumLoader` 的功能变更。版本号与 GitHub 发布 tag 一一对应（如 `modloader-3.3.2`，版本号为 `3.3.2`），发布产物由 [release-modloader.yml](.github/workflows/release-modloader.yml) 在打 tag 时自动构建。
 
-## [Unreleased]
+## [3.6.0] - 2026-11-10
+
+### Unity 加速与回合时钟
+
+- SpeedHackMod 新增 `accelerationMode=unity`，通过 Unity 时间缩放加速，原有 `native` 模式继续保留；缺少该配置项时仍使用 `native`。
+- Unity 模式同步 FairyGUI 界面、独立计时动画、镜头切换与可适配的静音 UI 视频；静音视频最高 3 倍，带音轨或音轨信息未知的视频不强行改速。
+- 新增固定更新步长优化，可通过 `optimizeFixedUpdates` 关闭；切换模式、恢复 1 倍或卸载时释放本模组仍持有的动画与时间设置，不主动解除游戏暂停。
+- TurnClockMod 适配 Unity 与原生组合倍率，按计时器使用的时间来源补偿自己的操作倒计时、选人、结算、房间等待与剧情自动播放。
 
 ### 变速与控制台
 
 - 变速控制改用每进程独立的本机 UDP 端口，设置请求与实际倍率回执均不再使用共享通信文件；多开时互不串号。
 - SDK 新增 `SpeedHack.TryGetSpeed`，区分已确认倍率与未知状态；SpeedHackMod 和 TurnClockMod 使用 UDP 状态确认，兼容倍率切换、请求重试及回执过期。
 - 控制台标题显示加载器版本与构建时的 Git 短哈希，进入或退出 Debug Shell 时保留版本标识；包含未提交源码更改的构建附带 `-dirty` 标记。
-
-### 移除音效替换
-
-- 移除 AudioSkinMod，不再随包提供音效与 BGM 替换功能。
-- 移除 SDK 音频子系统（`AudioService`、`AudioEvents`、`AudioReplacementRule`、`WavUtility` 等）与音频路径 API（`AudioDirectory`、`AudioSchemesDirectory`、`GetAudioPath` 等）。
-- 加载器不再提供原生音频通道，`doorstop_config.json` 的 `audioControlEnabled` 与 `CESIUM_AUDIO_*` 环境变量一并移除。游戏本体的音乐与音效不受影响。
+- 升级时需同时更新原生加载器、SDK、SpeedHackMod 与 TurnClockMod；旧文件通道不再作为备用通道，现有倍率与热键配置保留。
 
 ## [3.5.2] - 2026-11-09
 

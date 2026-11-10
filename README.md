@@ -167,7 +167,7 @@ SDK 提供生命周期、游戏事件、玩家数据、相机、输入、UI、�
 
 ## 构建与发布
 
-加载器控制台标题包含版本与 Git 短哈希，例如 `CesiumLoader v3.5.2 (a1b2c3d4) Console`；Debug Shell 使用相同版本标识。源码有未提交更改时哈希附带 `-dirty`，无 Git 元数据的源码包构建显示 `unknown`。
+加载器控制台标题包含版本与 Git 短哈希，例如 `CesiumLoader v3.6.0 (a1b2c3d4) Console`；Debug Shell 使用相同版本标识。源码有未提交更改时哈希附带 `-dirty`，无 Git 元数据的源码包构建显示 `unknown`。
 
 需要 Visual Studio 2026（MSVC v145 工具链）、Windows 10/11 SDK 与 .NET SDK 8 或更高版本。在本仓库根目录、VS 2026 开发者终端中执行：
 

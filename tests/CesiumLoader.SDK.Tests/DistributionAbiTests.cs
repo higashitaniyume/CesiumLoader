@@ -111,7 +111,9 @@ namespace CesiumLoader.SDK.Tests
             using var pe = new PEReader(stream);
             var md = pe.GetMetadataReader();
             var type = md.TypeDefinitions.Select(md.GetTypeDefinition).Single(t => md.GetString(t.Name) == typeName);
-            var method = type.GetMethods().Select(md.GetMethodDefinition).Single(m => md.GetString(m.Name) == methodName);
+            // Relic/Skill now have forwarding one-argument overloads; inspect the implementation.
+            var method = type.GetMethods().Select(md.GetMethodDefinition).Single(m => md.GetString(m.Name) == methodName &&
+                (methodName is not ("Relic" or "Skill") || m.GetParameters().Count(p => md.GetParameter(p).SequenceNumber > 0) == 2));
             var il = pe.GetMethodBody(method.RelativeVirtualAddress).GetILBytes();
             var actual = new List<int>();
             int? previousConstant = null;
