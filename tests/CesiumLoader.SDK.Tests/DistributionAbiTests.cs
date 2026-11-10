@@ -83,9 +83,9 @@ namespace CesiumLoader.SDK.Tests
 
         [Theory]
         [InlineData("sdk/CesiumLoader.SDK.dll", "Names", "ResolveCard", "GetLocal", "Card,Skill")]
-        [InlineData("sdk/CesiumLoader.SDK.dll", "Names", "Relic", "GetLocal", "Relic")]
+        [InlineData("sdk/CesiumLoader.SDK.dll", "Names", "ResolveRelic", "GetLocal", "Relic")]
         [InlineData("sdk/CesiumLoader.SDK.dll", "Names", "Divination", "GetLocal", "Divination")]
-        [InlineData("sdk/CesiumLoader.SDK.dll", "Names", "Skill", "GetLocal", "Skill")]
+        [InlineData("sdk/CesiumLoader.SDK.dll", "Names", "ResolveSkill", "GetLocal", "Skill")]
         [InlineData("mods/CardSkinMod/CardSkinMod.dll", "CardSkinApplier", "InjectTextureManager", "GetName", "Card,Event,Destiny,MapEvent")]
         [InlineData("mods/CardSkinMod/CardSkinMod.dll", "CardSkinApplier", "ApplyToGallery", "GetName", "Card,Event")]
         [InlineData("mods/CardSkinMod/CardSkinMod.dll", "CardSkinApplier", "ApplyToCardButton", "GetName", "Card")]
@@ -111,9 +111,7 @@ namespace CesiumLoader.SDK.Tests
             using var pe = new PEReader(stream);
             var md = pe.GetMetadataReader();
             var type = md.TypeDefinitions.Select(md.GetTypeDefinition).Single(t => md.GetString(t.Name) == typeName);
-            // Relic/Skill now have forwarding one-argument overloads; inspect the implementation.
-            var method = type.GetMethods().Select(md.GetMethodDefinition).Single(m => md.GetString(m.Name) == methodName &&
-                (methodName is not ("Relic" or "Skill") || m.GetParameters().Count(p => md.GetParameter(p).SequenceNumber > 0) == 2));
+            var method = type.GetMethods().Select(md.GetMethodDefinition).Single(m => md.GetString(m.Name) == methodName);
             var il = pe.GetMethodBody(method.RelativeVirtualAddress).GetILBytes();
             var actual = new List<int>();
             int? previousConstant = null;
