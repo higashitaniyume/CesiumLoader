@@ -220,7 +220,7 @@ static DWORD WINAPI boot_thread(LPVOID)
     // (游戏启动即变速, 无需等 mod 初始化)。
     if (cfg.speedhackBaseSpeed > 0.0 && cfg.speedhackBaseSpeed != 1.0)
     {
-        if (speedhack_set_speed(cfg.speedhackBaseSpeed))
+        if (speedctl_set_speed(cfg.speedhackBaseSpeed))
             log_line("[loader] base speed " + speed_text(cfg.speedhackBaseSpeed) + " (kept for the whole session)");
         else
             log_line("[loader] failed to apply base speed: " + speed_text(cfg.speedhackBaseSpeed));

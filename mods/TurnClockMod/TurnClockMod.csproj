@@ -10,6 +10,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\..\shared\Speed\NativeSpeedState.cs" Link="NativeSpeedState.cs" />
     <!-- 只需要 SDK: 倍率走 SpeedHack（读加载器状态文件），生命周期/配置/日志走 ModBase -->
     <ProjectReference Include="..\..\loader\CesiumLoader.SDK\CesiumLoader.SDK.csproj" />
   </ItemGroup>
@@ -20,7 +21,7 @@
       <HintPath>$(GameRefsDir)AstralParty.Runtime.dll</HintPath>
       <Private>false</Private>
     </Reference>
-    <!-- 只为 ModBase 的 Scene 签名: 本 mod 不调用任何 Unity API -->
+    <!-- Scene 签名及按计时器时钟类型读取 Time.timeScale -->
     <Reference Include="UnityEngine.CoreModule">
       <HintPath>$(GameRefsDir)UnityEngine.CoreModule.dll</HintPath>
       <Private>false</Private>
@@ -29,6 +30,9 @@
 
   <ItemGroup>
     <None Update="TurnClockMod.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="config.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

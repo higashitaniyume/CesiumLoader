@@ -171,7 +171,7 @@ namespace CesiumLoader.SDK.Tests
         {
             // 下限必须是 1.0: "不允许减速"是产品规则, 不是建议值
             Assert.Equal(1.0, SpeedHack.MinSpeed, Eps);
-            Assert.Equal(10.0, SpeedHack.MaxSpeed, Eps);
+            Assert.Equal(3.0, SpeedHack.MaxSpeed, Eps);
             Assert.Equal(0.5, SpeedHack.DefaultSpeedStep, Eps);
 
             // 热键范围必须落在控制文件协议/引擎接受的 [1, 100] 之内

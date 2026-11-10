@@ -176,6 +176,7 @@ namespace TurnClockMod
         {
             into.Clear();
             _extraSlots.Clear();
+            _panelHosts.Clear();
 
             if (!AnyClockEnabled()) return 0;
 
@@ -196,7 +197,6 @@ namespace TurnClockMod
                 object dict = _panelDictField.GetValue(ui);
                 if (dict != null)
                 {
-                    _panelHosts.Clear();
                     string path, error;
                     if (TimerDictionaryReader.TryCollect(dict, _panelHosts, out path, out error))
                     {
@@ -326,6 +326,7 @@ namespace TurnClockMod
         private void ResetExtraClocks()
         {
             _extraBuffer.Clear();
+            _panelHosts.Clear();
             _extraSlots.Clear();
             _traces.Clear();
             _finishedTraces.Clear();

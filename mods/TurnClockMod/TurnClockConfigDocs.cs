@@ -50,10 +50,10 @@ namespace TurnClockMod
                 "Write per-window compensation results to the log (default on).",
                 "各カウントダウンの補正結果をログへ出力します（既定オン）。"));
             changed |= config.Describe("speedRefreshSeconds", D(
-                "读取速度字段的刷新间隔（秒），范围 0.05–5，默认 0.2。",
-                "讀取速度欄位的重新整理間隔（秒），範圍 0.05–5，預設 0.2。",
-                "Refresh interval for reading speed fields in seconds (0.05–5, default 0.2).",
-                "速度項目を読み取る更新間隔（秒、0.05～5、既定 0.2）。"));
+                "原生倍率的常规读取间隔（秒），范围 0.05–5，默认 0.2；异常时可提前刷新，但至少间隔 0.05 秒。Unity 帧倍率单独采样。",
+                "原生倍率的例行讀取間隔（秒），範圍 0.05–5，預設 0.2；異常時可提前重新整理，但至少間隔 0.05 秒。Unity 影格倍率另行取樣。",
+                "Regular native-speed polling interval in seconds (0.05–5, default 0.2). Anomalies may refresh sooner, but never more than once per 0.05 seconds. Unity frame rate is sampled separately.",
+                "ネイティブ倍率の通常読取間隔（秒、0.05～5、既定 0.2）。異常時は早めに再読取しますが、間隔は最低 0.05 秒です。Unity のフレーム倍率は別途取得します。"));
             changed |= config.Describe("elapsedMember", D(
                 "手动指定已用时间字段名；留空时自动探测。",
                 "手動指定已用時間欄位名稱；留空時自動探測。",

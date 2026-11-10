@@ -11,11 +11,16 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\..\shared\Speed\NativeSpeedState.cs" Link="NativeSpeedState.cs" />
     <!-- 只需要 SDK: 变速走 SDK 的 SpeedHack(P/Invoke 加载器 ap_speed_* 导出) -->
     <ProjectReference Include="..\..\loader\CesiumLoader.SDK\CesiumLoader.SDK.csproj" />
   </ItemGroup>
 
   <ItemGroup>
+    <Reference Include="AstralParty.Runtime">
+      <HintPath>$(GameRefsDir)AstralParty.Runtime.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="UnityEngine.CoreModule">
       <HintPath>$(GameRefsDir)UnityEngine.CoreModule.dll</HintPath>
       <Private>false</Private>
