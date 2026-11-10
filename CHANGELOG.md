@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+### 变速与控制台
+
+- 变速控制改用每进程独立的本机 UDP 端口，设置请求与实际倍率回执均不再使用共享通信文件；多开时互不串号。
+- SDK 新增 `SpeedHack.TryGetSpeed`，区分已确认倍率与未知状态；SpeedHackMod 和 TurnClockMod 使用 UDP 状态确认，兼容倍率切换、请求重试及回执过期。
+- 控制台标题显示加载器版本与构建时的 Git 短哈希，进入或退出 Debug Shell 时保留版本标识；包含未提交源码更改的构建附带 `-dirty` 标记。
+
 ### 移除音效替换
 
 - 移除 AudioSkinMod，不再随包提供音效与 BGM 替换功能。

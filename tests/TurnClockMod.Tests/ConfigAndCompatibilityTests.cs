@@ -68,7 +68,8 @@ namespace TurnClockMod.Tests
             foreach (string forbidden in new[] { "FileStream", "StreamReader", "StreamWriter", "FileInfo", "DirectoryInfo", ".Flush(",
                 "DllImport", "File.ReadAllLines", "AppDomain.CurrentDomain.BaseDirectory", "Assembly.Location" })
                 Assert.DoesNotContain(forbidden, code);
-            Assert.Contains("File.ReadAllText", code);
+            Assert.DoesNotContain("File.ReadAllText", code);
+            Assert.Contains("SpeedHack.TryGetSpeed", code);
         }
     }
 }

@@ -167,6 +167,8 @@ SDK 提供生命周期、游戏事件、玩家数据、相机、输入、UI、�
 
 ## 构建与发布
 
+加载器控制台标题包含版本与 Git 短哈希，例如 `CesiumLoader v3.5.2 (a1b2c3d4) Console`；Debug Shell 使用相同版本标识。源码有未提交更改时哈希附带 `-dirty`，无 Git 元数据的源码包构建显示 `unknown`。
+
 需要 Visual Studio 2026（MSVC v145 工具链）、Windows 10/11 SDK 与 .NET SDK 8 或更高版本。在本仓库根目录、VS 2026 开发者终端中执行：
 
 ```powershell
@@ -174,7 +176,6 @@ dotnet restore CesiumLoader.sln
 MSBuild CesiumLoader.sln /p:Configuration=Release /p:Platform=x64
 dotnet test tests/CesiumLoader.SDK.Tests/CesiumLoader.SDK.Tests.csproj -c Release
 dotnet test tests/TurnFocusMod.Tests/TurnFocusMod.Tests.csproj -c Release
-pwsh -NoProfile -File tools/smoke-speedctl.ps1
 pwsh -NoProfile -File tools/package-modloader.ps1
 ```
 
@@ -184,7 +185,7 @@ pwsh -NoProfile -File tools/package-modloader.ps1
 | `mods/` | 内置模组与可选实验组件 |
 | `mcp/` | 游戏内桥接模组与 MCP server |
 | `tools/` | CLI、打包与部署脚本 |
-| `tests/` / `smoke/` | 单元测试与变速冒烟测试 |
+| `tests/` | 单元测试与原生控制通道测试 |
 | `refs/game/` | 编译期引用的游戏程序集（随仓库提供，见 [说明](refs/game/README.md)） |
 | `dist/modloader/` | 打包时生成的分发布局；其中的程序集不入库 |
 | `third_party/` | 随仓库提供的第三方依赖 |

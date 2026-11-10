@@ -1,18 +1,17 @@
 using System;
-using System.IO;
 using CesiumLoader.SDK.Speed;
 
 namespace CesiumLoader.Shared.Speed
 {
     /// <summary>
     /// Read an explicit acknowledgement without SpeedHack.Speed's 1x error fallback.
-    /// Source-linked into mods so existing SDK installations remain compatible.
+    /// Source-linked into mods; reads the SDK's correlated UDP acknowledgement.
     /// </summary>
     internal static class NativeSpeedState
     {
         internal static double? Read()
         {
-            try { return Parse(File.ReadAllText(Path.Combine(SpeedHack.Directory, "state.txt"))); }
+            try { double speed; return SpeedHack.TryGetSpeed(out speed) ? (double?)speed : null; }
             catch { return null; }
         }
 

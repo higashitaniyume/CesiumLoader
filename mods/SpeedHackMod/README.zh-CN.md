@@ -47,6 +47,7 @@ fixedDeltaTime = min(原始固定步长 × 目标倍率, maximumDeltaTime)
 
 ## 控制开销
 
+- 原生倍率请求和状态确认使用 `CESIUM_SPEED_PORT` 指定的本进程回环 UDP 端口，不再读写共享通信文件；SDK 负责有界收包、丢包重试、回执去重及过期检查。
 - 运行中不每帧反复设置 timeScale 或固定步长。
 - 类型和反射成员缓存；尚未加载的可选动画类型每 5 秒重试一次。场景组件查询按类型错开，只查场景对象，包含已实例化的非激活对象以覆盖对象池。
 - 每帧最多执行一次到期的组件类型查询，随后最多处理 512 个结果；不同通道使用 0.25–1 秒的巡检间隔。
@@ -91,7 +92,7 @@ dotnet test tests/SpeedHackMod.Tests/SpeedHackMod.Tests.csproj -c Release -p:NuG
 
 构建产物位于 `mods/SpeedHackMod/bin/Release/netstandard2.0/`。
 退出游戏后将生成的 `SpeedHackMod.dll`、PDB 和清单替换到 mod 目录，保留自己的 `config.json`。
-基础 Unity 加速可沿用原 SDK。控制台及导出 API 的原生倍率状态同步需要搭配包含对应修正的加载器；Unity 模式的倒计时补偿需要搭配更新后的 TurnClockMod。
+本版本应同时更新配套原生加载器与 SDK；旧文件通道不作为 UDP 的备用通道。Unity 模式的倒计时补偿需要搭配更新后的 TurnClockMod。模组及加载器配置无需替换。
 
 将 `accelerationMode` 设为 `unity` 启用新模式；设为 `native` 返回原有机制，支持配置热重载。
 原有倍率、按键和存档配置保持不变。可以直接回退到旧版 mod，无数据格式迁移。

@@ -406,7 +406,6 @@ void build_corpus(const std::string& root)
 {
     // ---- A. 全部真实配置文件(都带 // 注释) ----
     load_real(root, "\\dist\\modloader\\AstralParty_ModLoader\\doorstop_config.json", true, "real:dist/doorstop_config");
-    load_real(root, "\\smoke\\SpeedCtlSmoke\\bin\\Release\\net8.0\\AstralParty_ModLoader\\doorstop_config.json", true, "real:smoke/doorstop_config");
     load_real(root, "\\staging\\AstralParty_ModLoader\\doorstop_config.json", true, "real:staging/doorstop_config");
     load_real(root, "\\tools\\smoke\\speedtest\\env\\AstralParty_ModLoader\\doorstop_config.json", true, "real:tools-smoke/doorstop_config");
 

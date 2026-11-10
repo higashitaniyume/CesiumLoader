@@ -17,6 +17,7 @@
 #include "shell/shell_internal.h"
 
 #include "platform/loader.h"
+#include "platform/build_info.h"
 #include "shell/lineedit.h"
 
 #include <windows.h>
@@ -89,7 +90,7 @@ DWORD WINAPI thread_proc(LPVOID)
     }
 
     enter_raw_mode();
-    SetConsoleTitleW(L"CesiumLoader Debug Shell");
+    SetConsoleTitleW(cesium::console_title(true).c_str());
     SetConsoleCtrlHandler(ctrl_handler, TRUE);
     term::install_write_hooks();
 
@@ -115,7 +116,7 @@ DWORD WINAPI thread_proc(LPVOID)
     term::erase_prompt_before_exit();
 
     term::uninstall_write_hooks();
-    SetConsoleTitleW(L"CesiumLoader Console");
+    SetConsoleTitleW(cesium::console_title().c_str());
     restore_console_mode();
     SetConsoleCtrlHandler(ctrl_handler, FALSE);
     term::raw_write_locked(L"\r\n");

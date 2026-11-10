@@ -12,7 +12,7 @@
 
   <ItemGroup>
     <Compile Include="..\..\shared\Speed\NativeSpeedState.cs" Link="NativeSpeedState.cs" />
-    <!-- 只需要 SDK: 变速走 SDK 的 SpeedHack(P/Invoke 加载器 ap_speed_* 导出) -->
+    <!-- 变速走 SDK 的进程独立 UDP 控制通道。 -->
     <ProjectReference Include="..\..\loader\CesiumLoader.SDK\CesiumLoader.SDK.csproj" />
   </ItemGroup>
 

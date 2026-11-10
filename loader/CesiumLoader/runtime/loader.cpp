@@ -226,13 +226,14 @@ static DWORD WINAPI boot_thread(LPVOID)
             log_line("[loader] failed to apply base speed: " + speed_text(cfg.speedhackBaseSpeed));
     }
 
-    // 3.7 变速控制文件通道(见 speedctl.h): 热更程序集无法 P/Invoke, mod 只能通过文件请求倍率。
+    // 3.7 变速控制 UDP 通道(见 speedctl.h)，每进程独立回环端口。
     //     放在这里(=引擎就绪后立刻)而不是等 GameAssembly: 通道越早就绪越好, 且与加载流程解耦。
-    //     必须在加载 mod 之前 —— mod 初始化时会读 state.txt 判断引擎是否可用。
+    //     必须在加载 mod 之前发布端口；清除可能从父进程继承的旧端口。
+    SetEnvironmentVariableW(L"CESIUM_SPEED_PORT", nullptr);
     if (cfg.speedControlEnabled)
         speedctl_start(speedctl_dir(), cfg.speedhackBaseSpeed);
     else
-        log_line("[loader] speedControlEnabled=false, skipping speed control file channel");
+        log_line("[loader] speedControlEnabled=false, skipping speed control UDP channel");
 
     // 3.7.1 窗口置前控制通道(见 windowctl.h): 同样因为热更程序集无法 P/Invoke,
     //       mod 通过本进程本地 UDP(127.0.0.1 动态端口)发请求, 由原生侧调用 SetForegroundWindow。

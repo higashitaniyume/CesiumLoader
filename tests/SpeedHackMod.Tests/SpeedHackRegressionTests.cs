@@ -197,6 +197,30 @@ public sealed partial class SpeedHackControllerTests
     }
 
     [Fact]
+    public void NativeResetWithoutUdpAckKeepsPendingTargetAndReleasesPhysicsOwnership()
+    {
+        var mod = Create(); mod.OnInitialize(); Assert.Equal(.08f, Time.Step, 5);
+        Press(mod); Assert.Equal(1, SpeedHack.Requested);
+        SpeedHack.StateReadable = false;
+        Advance(mod, 20, .1f); Assert.Equal(.02f, Time.Step, 5);
+        // Do not interpret an absent acknowledgement as the requested 1x reset.
+        Press(mod); Assert.Equal(4, SpeedHack.Requested);
+        SpeedHack.StateReadable = true; SpeedHack.Speed = 4;
+        Advance(mod, 20, .1f); Assert.Equal(.08f, Time.Step, 5);
+        mod.OnUnload();
+    }
+
+    [Fact]
+    public void NativeConfigReloadWithUnknownStateDoesNotAssumeOneX()
+    {
+        var mod = Create(); mod.OnInitialize(); SpeedHack.StateReadable = false;
+        mod.OnConfigChanged(); Assert.Equal(.02f, Time.Step, 5);
+        InputService.Held.Add(KeyCode.LeftAlt); InputService.Held.Add(KeyCode.Equals);
+        mod.OnUpdate(); Assert.Equal(4.5, SpeedHack.Requested);
+        mod.OnUnload();
+    }
+
+    [Fact]
     public void LostAcknowledgement_RestoresOwnershipUntilRecovery()
     {
         var mod = StartUnity();

@@ -120,6 +120,7 @@ namespace CesiumLoader.SDK.Speed
         public static readonly List<double> Requests = new();
         public static int Reads;
         public static string Directory => System.IO.Path.GetTempPath();
+        public static bool TryGetSpeed(out double speed) { speed = Actual; return StateReadable && IsAvailable; }
         public static string UnavailableReason => "fixture unavailable";
         public static string Describe() => "fixture engine";
         public static void Reset()

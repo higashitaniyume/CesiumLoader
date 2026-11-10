@@ -13,6 +13,7 @@
 //   - 文件那一半仍由 spdlog 负责(见 logging.cpp): 句柄常开、线程安全、带时间戳、每行落盘。
 
 #include "platform/loader.h"
+#include "platform/build_info.h"
 
 #include "logging/logging.h"
 
@@ -483,7 +484,7 @@ void console_init(bool topmost)
         // 可能已存在控制台或全屏独占模式; 记录但不致命
         log_line("[loader] AllocConsole returned 0 (console already present or exclusive fullscreen)");
     }
-    SetConsoleTitleW(L"CesiumLoader Console");
+    SetConsoleTitleW(cesium::console_title().c_str());
     g_console = GetStdHandle(STD_OUTPUT_HANDLE);
 
     // 窗口尺寸决定折行位置: 取一次缓存下来, 后续每行按它折(emit 里还会随窗口变化刷新)。

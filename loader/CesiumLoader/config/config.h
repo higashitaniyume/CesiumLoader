@@ -70,7 +70,7 @@ struct LoaderConfig
     // 设为 1.0 或 0 则不启用基础倍率(SpeedHackMod 可用热键临时变速)。
     double speedhackBaseSpeed = 1.0;
 
-    // 变速控制文件通道(<speed>\request.txt / state.txt)。默认开:
+    // 变速控制 UDP 通道(127.0.0.1 临时端口，CESIUM_SPEED_PORT)。默认开:
     // mod 侧的热更程序集无法 P/Invoke, 只能通过文件请求倍率 ——
     // 关掉它等于"游戏内热键变速"不可用(基础倍率仍然生效)。
     bool speedControlEnabled = true;

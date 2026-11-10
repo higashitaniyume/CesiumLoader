@@ -173,7 +173,7 @@ void cmd_env(const std::vector<std::string>&)
 
     static const wchar_t* kEnv[] = {
         L"CESIUM_MODS_DIR", L"CESIUM_SDK_DIR", L"CESIUM_BOOTSTRAP_DIR", L"CESIUM_LOG_DIR",
-        L"CESIUM_SPEED_DIR", L"CESIUM_WINDOW_DIR", L"CESIUM_LOG_FILE",
+        L"CESIUM_SPEED_PORT", L"CESIUM_SPEED_DIR", L"CESIUM_WINDOW_DIR", L"CESIUM_LOG_FILE",
         L"CESIUM_ACTIVITY_LOG_FILE", L"CESIUM_ERROR_LOG_FILE", nullptr
     };
     print("环境变量", LOG_CYAN);

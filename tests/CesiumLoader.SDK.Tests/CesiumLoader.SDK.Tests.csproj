@@ -25,6 +25,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="..\..\loader\CesiumLoader.SDK\Speed\*.cs" />
     <!-- 游戏热更程序集的位置由 Directory.Build.props 统一定义, 供 ABI 测试读取枚举常量 -->
     <AssemblyMetadata Include="GameRuntimeAssemblyPath" Value="$(GameRefsDir)AstralParty.Runtime.dll" />
   </ItemGroup>

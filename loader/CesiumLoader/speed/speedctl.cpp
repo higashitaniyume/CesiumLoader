@@ -1,362 +1,154 @@
-// speedctl.cpp - 变速控制文件通道实现(见 speedctl.h 的协议说明)
-//
-// 线程模型: 一个常驻线程(Sleep(100) 轮询 request.txt), 随进程退出结束 ——
-// 与 forward_activity_log 同款做法(加载器里已有先例, 不需要清理逻辑)。
-// 安全性: 只用 kernel32 文件 API + strtod, 所有失败路径都只记日志;
-// 线程里不分配窗口/不碰 loader lock(由 boot 线程在 loader lock 释放后启动)。
-//
-// 双目录: 状态文件同时写 <加载器>\speed 和 %LocalAppData%\AstralParty_ModLoader\speed,
-// 并同时监听两处的 request.txt。原因是 mod 侧(热更程序集)定位目录只能靠环境变量和
-// 路径推导, 任何一环出问题就"按了没反应"; 两个位置都摆一份, 只要 mod 命中其中一个
-// 通道就是通的。两处的请求都能生效, 谁变了就用谁(各自记 last_seen)。
-
+// Process-local UDP control plane. Clock hook readers never take this mutex.
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #include "speed/speedctl.h"
-
 #include "config/config.h"
 #include "platform/loader.h"
 #include "speed/speedhack.h"
-
-#include <cctype>
-#include <cstdlib>
-#include <cstdio>
-#include <string>
-#include <mutex>
-
 #include <fmt/format.h>
+#include <mutex>
+#include <map>
+#include <cstdint>
+#include <cmath>
+#include <charconv>
 
-namespace
-{
+#pragma comment(lib, "ws2_32.lib")
 
-const wchar_t* kRequestName = L"request.txt";
-const wchar_t* kStateName = L"state.txt";
-
-// 轮询间隔(ms)。100ms 在"按键手感"和"CPU 开销"之间取平衡: 人眼基本感知不到延迟,
-// 一次 stat+read 的代价可以忽略(而且只在文件变化时才真正读+应用)。
-const DWORD kPollMs = 100;
-
-// 请求文件上限: 正常内容只有几个字节, 超过这个长度的一律当垃圾(避免读到奇怪文件)。
-const long long kMaxBytes = 4096;
-
-// 控制目录(至少 1 个, 最多 2 个): 主目录 + LocalAppData 镜像。
-const int kMaxDirs = 2;
-std::wstring g_dirs[kMaxDirs];
-int g_dir_count = 0;
-
-double g_base = 1.0;
+namespace {
+constexpr size_t kMaxPacket = 512;
+SOCKET g_socket = INVALID_SOCKET;
 volatile LONG g_started = 0;
-std::mutex g_control_mutex; // control plane only; the time API hooks never take it
+double g_base = 1;
+uint64_t g_revision = 0;
+std::mutex g_control_mutex;
+struct Client { uint64_t last_set = 0; ULONGLONG touched = 0; bool last_ok = false; };
+std::map<unsigned short, Client> g_clients;
 
-struct RequestStamp
+bool parse_id(const std::string& text, uint64_t& id)
 {
-    FILETIME written{};
-    DWORD index_high = 0, index_low = 0;
-    bool operator==(const RequestStamp& other) const
-    {
-        return written.dwHighDateTime == other.written.dwHighDateTime &&
-               written.dwLowDateTime == other.written.dwLowDateTime &&
-               index_high == other.index_high && index_low == other.index_low;
+    if (text.empty() || text.size() > 19) return false;
+    id = 0;
+    for (char c : text) {
+        if (c < '0' || c > '9') return false;
+        const auto next = id * 10 + c - '0';
+        if (next < id || next > INT64_MAX) return false;
+        id = next;
     }
-};
-std::string g_last_seen[kMaxDirs];
-RequestStamp g_last_stamp[kMaxDirs];
-
-// %LocalAppData%\AstralParty_ModLoader\speed —— SDK 的最后一档候选目录,
-// 与环境变量推导无关, 所以即使 mod 读不到环境变量也能命中。
-std::wstring local_appdata_mirror()
-{
-    wchar_t buf[MAX_PATH];
-    DWORD n = GetEnvironmentVariableW(L"LOCALAPPDATA", buf, MAX_PATH);
-    if (n == 0 || n >= MAX_PATH) return std::wstring();
-    return std::wstring(buf) + L"\\AstralParty_ModLoader\\speed";
+    return id != 0;
 }
 
-std::wstring path_of(const std::wstring& dir, const wchar_t* name)
+bool parse_speed(const std::string& text, double& speed)
 {
-    return dir + L"\\" + name;
-}
-
-// 逐级创建(目标是 <...>\AstralParty_ModLoader\speed, 上层目录可能还不存在 ——
-// CreateDirectoryW 不会自动建中间层)。
-bool ensure_dir(const std::wstring& dir)
-{
-    if (dir.empty()) return false;
-
-    DWORD attr = GetFileAttributesW(dir.c_str());
-    if (attr != INVALID_FILE_ATTRIBUTES) return (attr & FILE_ATTRIBUTE_DIRECTORY) != 0;
-
-    size_t slash = dir.find_last_of(L"\\/");
-    if (slash != std::wstring::npos && slash > 2)   // >2 跳过 "C:\" 这种根
-    {
-        if (!ensure_dir(dir.substr(0, slash))) return false;
+    if (text.empty() || text.size() > 16 || text.front() < '0' || text.front() > '9' || text.back() == '.') return false;
+    bool dot = false;
+    for (char c : text) {
+        if (c == '.' && !dot) { dot = true; continue; }
+        if (c < '0' || c > '9') return false;
     }
-    return CreateDirectoryW(dir.c_str(), nullptr) != 0;
+    const auto result = std::from_chars(text.data(), text.data() + text.size(), speed);
+    return result.ec == std::errc() && result.ptr == text.data() + text.size() && speed >= kSpeedMin && speed <= kSpeedMax;
 }
 
-bool read_text(const std::wstring& path, std::string& out, RequestStamp& stamp)
+// Caller holds the control-plane mutex, so a response cannot mix different setters.
+std::string state(uint64_t id, bool ok)
 {
-    HANDLE h = CreateFileW(path.c_str(), GENERIC_READ,
-                           FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                           nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return false;
-
-    BY_HANDLE_FILE_INFORMATION info{};
-    if (!GetFileInformationByHandle(h, &info)) { CloseHandle(h); return false; }
-
-    LARGE_INTEGER size{};
-    if (!GetFileSizeEx(h, &size) || size.QuadPart > kMaxBytes) { CloseHandle(h); return false; }
-
-    std::string buf((size_t)size.QuadPart, '\0');
-    DWORD read = 0;
-    BOOL ok = TRUE;
-    if (!buf.empty())
-        ok = ReadFile(h, &buf[0], (DWORD)buf.size(), &read, nullptr);
-    CloseHandle(h);
-    if (!ok) return false;
-
-    buf.resize(read);
-    out.swap(buf);
-    stamp = { info.ftLastWriteTime, info.nFileIndexHigh, info.nFileIndexLow };
-    return true;
+    return fmt::format("protocol=1\nid={}\nrevision={}\nok={}\nversion={}\nspeed={:.3f}\nbase={:.3f}\nactive={}\nhooks={}\n",
+        id, g_revision, ok ? 1 : 0, cesium::config::LoaderConfig::loaderVersion,
+        speedhack_get_speed(), g_base, speedhack_active() ? 1 : 0, speedhack_hook_count());
 }
 
-// 原子写: 先写 .tmp 再 MoveFileEx 覆盖 —— 避免 mod 侧读到"写了一半"的内容。
-bool write_text(const std::wstring& path, const std::string& text)
+DWORD WINAPI listen_thread(LPVOID)
 {
-    std::wstring tmp = path + L".tmp";
-    HANDLE h = CreateFileW(tmp.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
-                           FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return false;
-
-    DWORD written = 0;
-    BOOL ok = TRUE;
-    if (!text.empty()) ok = WriteFile(h, text.data(), (DWORD)text.size(), &written, nullptr);
-    if (ok && !text.empty()) ok = (written == text.size());
-    if (ok) ok = FlushFileBuffers(h);
-    CloseHandle(h);
-
-    if (!ok) { DeleteFileW(tmp.c_str()); return false; }
-    if (!MoveFileExW(tmp.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING))
-    {
-        DeleteFileW(tmp.c_str());
-        return false;
-    }
-    return true;
-}
-
-// 倍率文本: 固定 3 位小数 + 点号(与 mod 侧 InvariantCulture 一致, 与系统区域无关)。
-std::string fmt_speed(double v)
-{
-    // fmt 的格式化与系统区域无关(小数点固定为 '.'), 行为与原来的 _snprintf_s 一致。
-    return fmt::format("{:.3f}", v);
-}
-
-// 严格解析: 只接受 [+-]?数字[.数字] 形式的十进制, 范围 [kSpeedMin, kSpeedMax] = [1, 100]。
-// 注意不能直接丢给 strtod: 它还会接受 0x2(十六进制浮点)/1e5(指数) 这类写法,
-// 手改或损坏的文件就会变成意料之外的倍率。NaN 由 "!(v >= kSpeedMin && v <= kSpeedMax)" 挡掉。
-// 低于 1 倍的请求(0.5、0.999…)在这里就被拦掉, 绝不落到引擎上 —— 这是"禁止减速"的第一道闸。
-bool parse_speed(const std::string& text, double& out)
-{
-    size_t i = 0, n = text.size();
-    while (i < n && std::isspace((unsigned char)text[i])) i++;
-    size_t start = i;
-
-    if (i < n && (text[i] == '+' || text[i] == '-')) i++;
-
-    int digits = 0, dots = 0;
-    while (i < n && (std::isdigit((unsigned char)text[i]) || text[i] == '.'))
-    {
-        if (text[i] == '.') dots++;
-        else digits++;
-        i++;
-    }
-    if (digits == 0 || dots > 1) return false;
-
-    while (i < n && std::isspace((unsigned char)text[i])) i++;
-    if (i != n) return false;   // 还有多余的字符(x / e / 第二个小数点等) -> 一律拒绝
-
-    double v = std::strtod(text.c_str() + start, nullptr);
-    if (!(v >= kSpeedMin && v <= kSpeedMax)) return false;
-    out = v;
-    return true;
-}
-
-void write_state()
-{
-    bool active = speedhack_active();
-    int hooks = speedhack_hook_count();
-    double speed = speedhack_get_speed();
-
-    std::string s;
-    s += "version="; s += cesium::config::LoaderConfig::loaderVersion; s += "\r\n";
-    s += "speed=";   s += fmt_speed(speed);            s += "\r\n";
-    s += "base=";    s += fmt_speed(g_base);           s += "\r\n";
-    s += "active=";  s += active ? "1" : "0";          s += "\r\n";
-    s += "hooks=";   s += std::to_string(hooks);       s += "\r\n";
-
-    for (int i = 0; i < g_dir_count; i++)
-    {
-        if (!write_text(path_of(g_dirs[i], kStateName), s))
-            log_line(L"[speedctl] failed to write state file: " + path_of(g_dirs[i], kStateName));
-    }
-}
-
-// 初始状态(在 boot 线程里**同步**写, 不能只靠监听线程抢跑):
-//   - request.txt 重置成"当前引擎倍率"(加载器已应用基础倍率), 这样上一次会话残留的
-//     请求不会被误当成新请求;
-//   - 立刻写出 state.txt, 保证 mod 初始化时一定能读到"引擎可用 + 当前倍率"。
-void write_initial_files()
-{
-    std::string init = fmt_speed(speedhack_get_speed()) + "\r\n";
-    for (int i = 0; i < g_dir_count; i++)
-    {
-        if (!write_text(path_of(g_dirs[i], kRequestName), init))
-            log_line(L"[speedctl] failed to write initial request.txt; later writes still take effect: " +
-                     path_of(g_dirs[i], kRequestName));
-        // Capture on the boot thread, before mods can issue the first request.
-        // Capturing in the watch thread can swallow a request made during startup.
-        read_text(path_of(g_dirs[i], kRequestName), g_last_seen[i], g_last_stamp[i]);
-    }
-    write_state();
-}
-
-DWORD WINAPI watch_thread(LPVOID)
-{
-    // 两个目录内容相同、只差路径; 旧实现每个目录各打一行全路径(约 150 列),
-    // 控制台里看着像同一条日志打印了两次。这里合并成一行, 路径压成 <loader>\ / %LOCALAPPDATA%\。
-    std::wstring dirs;
-    for (int i = 0; i < g_dir_count; i++)
-    {
-        if (i > 0) dirs += L" · ";
-        dirs += short_path(g_dirs[i]);
-    }
-    log_line(L"[speedctl] file channel ready · " + std::to_wstring(g_dir_count) + L" dir(s): " + dirs);
-
-    for (;;)
-    {
-        Sleep(kPollMs);
-
-        for (int i = 0; i < g_dir_count; i++)
-        {
-            std::string text;
-            RequestStamp stamp;
-            if (!read_text(path_of(g_dirs[i], kRequestName), text, stamp)) continue;
-            if (text == g_last_seen[i] && stamp == g_last_stamp[i]) continue;
-            g_last_seen[i] = text;
-            g_last_stamp[i] = stamp;
-
-            double want = 0.0;
-            if (!parse_speed(text, want))
-            {
-                // 非法请求: 保持当前倍率(不 crash、不改变游戏状态), 只记日志。
-                std::string brief = text.substr(0, 32);
-                for (size_t k = 0; k < brief.size(); k++)
-                    if (brief[k] == '\r' || brief[k] == '\n') brief[k] = ' ';
-                log_line("[speedctl] ignoring invalid speed request: '" + brief + "' (single number in [1,100]; below 1x is rejected)");
-                continue;
-            }
-
-            // 成功时由 speedhack 打一行"倍率 -> 2.0x", 这里不再重复同一条事实。
-            if (!speedctl_set_speed(want))
-                log_line("[speedctl] failed to apply speed (speedhack unavailable): " + fmt_speed(want) + "x");
+    char buffer[kMaxPacket];
+    for (;;) {
+        sockaddr_in client{};
+        int length = sizeof(client);
+        const int n = recvfrom(g_socket, buffer, sizeof(buffer), 0, reinterpret_cast<sockaddr*>(&client), &length);
+        if (n <= 0 || n >= static_cast<int>(sizeof(buffer)) || client.sin_addr.s_addr != htonl(INADDR_LOOPBACK)) continue;
+        const std::string text(buffer, n);
+        const bool set = text.compare(0, 4, "set ") == 0;
+        if (!set && text.compare(0, 4, "get ") != 0) continue;
+        const auto split = text.find(' ', 4);
+        uint64_t id;
+        if (!parse_id(text.substr(4, set ? split - 4 : std::string::npos), id)) continue;
+        uint64_t reply_id = id;
+        double speed = 0;
+        if (set) {
+            if (split == std::string::npos) continue;
+            const auto attempt_split = text.find(' ', split + 1);
+            if (!parse_speed(text.substr(split + 1, attempt_split == std::string::npos ? std::string::npos : attempt_split - split - 1), speed)) continue;
+            if (attempt_split != std::string::npos && !parse_id(text.substr(attempt_split + 1), reply_id)) continue;
         }
-    }
-    return 0;
-}
 
+        std::string response;
+        {
+            std::lock_guard<std::mutex> guard(g_control_mutex);
+            bool ok = true;
+            if (set) {
+                // Bounded endpoint history: retries are idempotent and reordered
+                // setters from the same SDK socket cannot restore an older speed.
+                if (g_clients.find(client.sin_port) == g_clients.end() && g_clients.size() >= 64) {
+                    auto oldest = g_clients.begin();
+                    for (auto it = g_clients.begin(); it != g_clients.end(); ++it)
+                        if (it->second.touched < oldest->second.touched) oldest = it;
+                    g_clients.erase(oldest);
+                }
+                auto& history = g_clients[client.sin_port];
+                history.touched = GetTickCount64();
+                if (id > history.last_set) {
+                    history.last_set = id;
+                    ok = speedhack_set_speed(speed);
+                    history.last_ok = ok;
+                    if (ok) ++g_revision;
+                } else ok = id == history.last_set && history.last_ok;
+            }
+            response = state(reply_id, ok);
+        }
+        sendto(g_socket, response.data(), static_cast<int>(response.size()), 0, reinterpret_cast<sockaddr*>(&client), length);
+    }
+}
 } // namespace
 
 bool speedctl_set_speed(double speed)
 {
     std::lock_guard<std::mutex> guard(g_control_mutex);
-    // Invalidate old acknowledgements before changing the engine. If republishing
-    // fails, readers must see missing state rather than a valid but obsolete 1x.
-    for (int i = 0; i < g_dir_count; i++)
-    {
-        if (DeleteFileW(path_of(g_dirs[i], kStateName).c_str())) continue;
-        const DWORD error = GetLastError();
-        if (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND) continue;
-        write_state(); // restore any earlier invalidated copies; engine is unchanged
-        return false;
-    }
     const bool applied = speedhack_set_speed(speed);
-    write_state();
+    if (applied) ++g_revision;
     return applied;
 }
 
-std::wstring speedctl_dir()
-{
-    return loader_root() + L"\\speed";
-}
+std::wstring speedctl_dir() { return loader_root() + L"\\speed"; } // Legacy API only; no files.
 
 void speedctl_start(const std::wstring& dir, double base_speed)
 {
-    // 幂等: boot 线程只会启动一次, 但用 InterlockedExchange 保证重复调用安全。
+    (void)dir;
     if (InterlockedExchange(&g_started, 1) != 0) return;
-    std::lock_guard<std::mutex> guard(g_control_mutex);
-
-    // 基准倍率同样受硬下限约束: doorstop/Toys 里配了 <1 的值也一律抬到 1.0(不允许减速)。
-    if (base_speed >= kSpeedMin && base_speed <= kSpeedMax)
-    {
-        g_base = base_speed;
+    SetEnvironmentVariableW(L"CESIUM_SPEED_PORT", nullptr);
+    g_base = std::isfinite(base_speed) && base_speed >= kSpeedMin && base_speed <= kSpeedMax ? base_speed : 1;
+    WSADATA data{};
+    if (WSAStartup(MAKEWORD(2, 2), &data) != 0) { log_line("[speedctl] WSAStartup failed"); return; }
+    g_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (g_socket != INVALID_SOCKET) {
+        sockaddr_in address{};
+        address.sin_family = AF_INET;
+        address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        address.sin_port = 0;
+        if (bind(g_socket, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == 0) {
+            int length = sizeof(address);
+            if (getsockname(g_socket, reinterpret_cast<sockaddr*>(&address), &length) == 0) {
+                HANDLE thread = CreateThread(nullptr, 0, listen_thread, nullptr, 0, nullptr);
+                if (thread) {
+                    CloseHandle(thread);
+                    const auto port = std::to_wstring(ntohs(address.sin_port));
+                    SetEnvironmentVariableW(L"CESIUM_SPEED_PORT", port.c_str());
+                    log_line(L"[speedctl] UDP channel ready · 127.0.0.1:" + port);
+                    return;
+                }
+            }
+        }
+        closesocket(g_socket);
+        g_socket = INVALID_SOCKET;
     }
-    else
-    {
-        g_base = 1.0;
-        if (base_speed > 0.0 && base_speed < kSpeedMin)
-            log_line("[speedctl] speedhackBaseSpeed=" + fmt_speed(base_speed) +
-                     " is below the 1.0 floor, clamped to 1.0 (slowdown is rejected)");
-        else
-            log_line("[speedctl] speedhackBaseSpeed invalid, using 1.0");
-    }
-
-    // 主目录 + LocalAppData 镜像(后者失败不影响前者)。
-    g_dir_count = 0;
-    if (!dir.empty()) g_dirs[g_dir_count++] = dir;
-
-    std::wstring mirror = local_appdata_mirror();
-    if (!mirror.empty())
-    {
-        if (mirror == dir)
-            log_line("[speedctl] mirror dir equals primary dir, using a single copy");
-        else
-            g_dirs[g_dir_count++] = mirror;
-    }
-    else
-    {
-        log_line("[speedctl] %LOCALAPPDATA% unavailable, using primary dir only");
-    }
-
-    // 逐目录创建, 丢掉创建失败的(至少一个可用, 通道才算可用)。
-    std::wstring kept[kMaxDirs];
-    int keptCount = 0;
-    for (int i = 0; i < g_dir_count; i++)
-    {
-        if (ensure_dir(g_dirs[i])) { kept[keptCount++] = g_dirs[i]; }
-        else log_line(L"[speedctl] failed to create control dir, unusable: " + g_dirs[i]);
-    }
-    for (int i = 0; i < keptCount; i++) g_dirs[i] = kept[i];
-    g_dir_count = keptCount;
-
-    if (g_dir_count == 0)
-    {
-        log_line("[speedctl] no usable control dir, speed control file channel unavailable");
-        return;
-    }
-
-    // 同步写初始文件: mod 在 boot 线程后续阶段加载, 此时 state.txt 必须已存在,
-    // 否则 mod 会误判"引擎不可用"(见 write_initial_files 的说明)。
-    write_initial_files();
-
-    HANDLE h = CreateThread(nullptr, 0, watch_thread, nullptr, 0, nullptr);
-    if (h)
-    {
-        CloseHandle(h);
-        return;
-    }
-
-    // 线程起不来的话, request.txt 没人听 —— 必须让 mod 判定为"不可用"(而不是按了没反应):
-    // 删掉状态文件, SDK 的 IsAvailable 就会因为"读不到状态文件"而返回 false。
-    log_line("[speedctl] watch thread creation failed, speed control file channel unavailable");
-    for (int i = 0; i < g_dir_count; i++)
-        DeleteFileW(path_of(g_dirs[i], kStateName).c_str());
+    WSACleanup();
+    log_line("[speedctl] UDP startup failed, speed control unavailable");
 }

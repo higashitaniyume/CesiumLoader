@@ -54,6 +54,10 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
+  <Target Name="GenerateCesiumBuildInfo" BeforeTargets="ClCompile">
+    <MakeDir Directories="$(IntDir)" />
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)..\..\tools\generate-build-info.ps1&quot; -Output &quot;$(IntDir)build_info.generated.h&quot; -Repo &quot;$(ProjectDir)..\..&quot;" />
+  </Target>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
     <OutDir>$(SolutionDir)bin\$(Configuration)\</OutDir>
@@ -75,7 +79,7 @@
       <LanguageStandard>stdcpp17</LanguageStandard>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalIncludeDirectories>$(ProjectDir);..\..\third_party\fmt\include;..\..\third_party\nlohmann_json\include;..\..\third_party\spdlog\include;..\..\third_party\minhook\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(IntDir);$(ProjectDir);..\..\third_party\fmt\include;..\..\third_party\nlohmann_json\include;..\..\third_party\spdlog\include;..\..\third_party\minhook\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -98,7 +102,7 @@
       <Optimization>MaxSpeed</Optimization>
       <SpectreMitigation>Spectre</SpectreMitigation>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalIncludeDirectories>$(ProjectDir);..\..\third_party\fmt\include;..\..\third_party\nlohmann_json\include;..\..\third_party\spdlog\include;..\..\third_party\minhook\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(IntDir);$(ProjectDir);..\..\third_party\fmt\include;..\..\third_party\nlohmann_json\include;..\..\third_party\spdlog\include;..\..\third_party\minhook\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -152,6 +156,7 @@
     <ClInclude Include="profile\profile.h" />
     <ClInclude Include="fsredir\fsredir.h" />
     <ClInclude Include="platform\loader.h" />
+    <ClInclude Include="platform\build_info.h" />
     <ClInclude Include="logging\logging.h" />
     <ClInclude Include="mods\modmeta.h" />
     <ClInclude Include="runtime\loader_internal.h" />

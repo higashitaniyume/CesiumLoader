@@ -55,6 +55,7 @@ namespace CesiumLoader.SDK.Speed
         public const double MinSpeed = 1, HardMaxSpeed = 100;
         public static bool IsAvailable => true;
         public static string Directory => System.IO.Path.GetTempPath();
+        public static bool TryGetSpeed(out double speed) { speed = 1; return true; }
     }
 }
 namespace UnityEngine

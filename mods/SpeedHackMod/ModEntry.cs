@@ -27,10 +27,9 @@ namespace SpeedHackMod
         public static void Main()
         {
             // 变速引擎由加载器在进程启动时安装(inline hook 4 个时间 API), 并与 mod 之间
-            // 通过"控制文件通道"通信(request.txt / state.txt)。本游戏的热更程序集无法
-            // P/Invoke, 所以走文件(详见 CesiumLoader.SDK 的 SpeedHack 类注释)。
+            // 通过本进程的回环 UDP 通道通信；热更侧不调用原生 P/Invoke。
             //
-            // 引擎此刻不可用也不放弃: 控制器照常跑, 每秒重试一次, 一旦读到加载器状态文件
+            // 引擎此刻不可用也不放弃: 控制器照常跑, 每秒重试一次, 一旦收到加载器状态回执
             // 就自动就绪。这样"加载器/ mod 初始化先后顺序"再怎么变, 热键都能用上。
             if (!SpeedHack.IsAvailable)
                 SdkLog.Warn("SpeedHack", "引擎暂不可用(会每秒重试): " + SpeedHack.UnavailableReason +
@@ -142,7 +141,7 @@ namespace SpeedHackMod
             if (SpeedHack.IsAvailable) MarkReady();
             else
             {
-                // 引擎还没就绪(加载器刚起来 / state.txt 还没写出来): 每秒重试, 不做变速
+                // 引擎还没就绪或尚未收到 UDP 回执: 每秒重试, 不做变速
                 _nextProbeAt = UnityTime.RealtimeSinceStartup + 1.0f;
                 Log.Warn("变速引擎暂不可用, 每秒重试; 期间热键不起作用");
                 Log.Warn("引擎诊断: " + SpeedHack.UnavailableReason);
@@ -246,7 +245,8 @@ namespace SpeedHackMod
             if (!_optimizeFixedUpdates) RestoreFixedSteps();
             if (_ready)
             {
-                double current = SpeedHack.Speed;
+                double? nativeConfirmed = ReadNativeSpeed();
+                double current = nativeConfirmed ?? previousSpeed;
                 if (previousUnity != _useUnitySpeed)
                 {
                     RestoreUnityScale();
@@ -266,7 +266,8 @@ namespace SpeedHackMod
                     double target = _awaitingSpeedConfirmation ? _pendingSpeed : current;
                     _activeSpeed = SpeedHack.ClampSpeed(target, _minSpeed, _maxSpeed);
                     if (target > 1.0001 && Math.Abs(target - _activeSpeed) > 0.0005) Apply(_activeSpeed);
-                    SynchronizePerformance(current);
+                    if (nativeConfirmed.HasValue) SynchronizePerformance(current);
+                    else RestoreFixedSteps();
                 }
             }
             Log.Info("配置已热重载: " + Describe());
@@ -401,12 +402,12 @@ namespace SpeedHackMod
         private double CurrentEngineSpeed()
         {
             if (_useUnitySpeed) return _unityTargetSpeed;
-            // state.txt acknowledges asynchronously. Until acknowledgement, another
+            // UDP acknowledges asynchronously. Until acknowledgement, another
             // key press must continue from the latest requested target, otherwise a
             // delayed/stuck 4x snapshot keeps requesting 1x forever and cannot resume.
             if (_awaitingSpeedConfirmation)
                 return SpeedHack.ClampSpeed(_pendingSpeed, _minSpeed, _maxSpeed);
-            double real = SpeedHack.IsAvailable ? SpeedHack.Speed : 1.0;
+            double real = ReadNativeSpeed() ?? _activeSpeed;
             if (!(real > 0.0) || real > _maxSpeed)
                 real = SpeedHack.ClampSpeed(_activeSpeed, _minSpeed, _maxSpeed);
             return SpeedHack.ClampSpeed(real, _minSpeed, _maxSpeed);
@@ -451,7 +452,17 @@ namespace SpeedHackMod
             if ((!_optimizeFixedUpdates || _fixedStepUnavailable) && !_awaitingSpeedConfirmation) return;
             float now = UnityTime.RealtimeSinceStartup;
             if (now < _nextPerformanceSyncAt) return;
-            double actual = SpeedHack.Speed;
+            double? confirmed = ReadNativeSpeed();
+            if (!confirmed.HasValue)
+            {
+                // Missing UDP acknowledgement is not a confirmed reset to 1x.
+                // Keep the pending target, but release physics ownership until the
+                // actual native clock can be sampled again.
+                RestoreFixedSteps();
+                _nextPerformanceSyncAt = now + (float)(0.1 * Math.Max(1.0, _activeSpeed));
+                return;
+            }
+            double actual = confirmed.Value;
             // Unity realtime is also accelerated by the native QPC hook. Scale the
             // interval so idle polling remains about twice per real second at any speed.
             bool awaitingConfirmation = _awaitingSpeedConfirmation && Math.Abs(actual - _pendingSpeed) > 0.0005;
@@ -466,7 +477,7 @@ namespace SpeedHackMod
                 }
                 else if (awaitingConfirmation && _pendingSpeedPolls == 10)
                 {
-                    Log.Warn("变速请求 " + F(_pendingSpeed) + "x 已写入，但加载器状态仍为 " + F(actual) +
+                    Log.Warn("变速请求 " + F(_pendingSpeed) + "x 已发送，但加载器状态仍为 " + F(actual) +
                              "x；尚未确认生效，继续等待。再次按切换键可以撤销/恢复请求。");
                     Notify("变速: 加载器尚未确认 " + F(_pendingSpeed) + "x", UiNotificationLevel.Warning);
                 }
