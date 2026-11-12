@@ -48,6 +48,14 @@ namespace CesiumLoader.SDK.Manifests
         /// <summary>调用者程序集(一般就是 mod 自己的程序集)。</summary>
         public static Assembly CallingAssembly()
         {
+            // 风险调用放在单独的方法里(理由同 MainThread.SafeStackTrace): 热更环境里
+            // 这些 API 可能被裁剪, 失败发生在"调用它"的那一刻, 只有外层 try/catch 接得住。
+            try { return CallingAssemblyCore(); }
+            catch { return null; }
+        }
+
+        private static Assembly CallingAssemblyCore()
+        {
             // 优先 GetCallingAssembly()(轻量, 不受解释器栈遍历影响);
             // 兜底: 找第一个非 SDK 程序集(可能包含 SDK 自身帧, 用 StackTrace 补充)
             try

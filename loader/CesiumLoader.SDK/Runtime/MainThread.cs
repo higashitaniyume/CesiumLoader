@@ -375,8 +375,16 @@ namespace CesiumLoader.SDK.Runtime
 
         private static string SafeStackTrace()
         {
-            try { return new System.Diagnostics.StackTrace(1, false).ToString(); }
+            // 风险调用必须放在**单独的方法**里: 若该 API 在热更环境被裁剪, 失败发生在
+            // "调用它"的那一刻(那个方法根本 JIT 不出来), 只有外层的 try/catch 接得住 ——
+            // 写在同一个方法里的 try/catch 是无效的(3.7.2 的教训)。
+            try { return BuildStackTrace(); }
             catch { return "(不可用)"; }
+        }
+
+        private static string BuildStackTrace()
+        {
+            return new System.Diagnostics.StackTrace(1, false).ToString();
         }
     }
 }

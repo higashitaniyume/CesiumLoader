@@ -64,6 +64,9 @@ if ($declaredMvid -ne $gameMvid.ToLowerInvariant())
 }
 Write-Host "游戏程序集闸门: $gameMvid"
 
+# 热更侧 BCL 扫描: 拦截"可能被 AOT 裁剪"的成员(3.7.2 事故的直接原因)。
+& (Join-Path $PSScriptRoot 'check-hotupdate-apis.ps1')
+
 function Copy-WithSymbols([string] $fromBinary, [string] $toBinary, [switch] $Optional, [switch] $WithDocs)
 {
     if (-not (Test-Path -LiteralPath $fromBinary))
