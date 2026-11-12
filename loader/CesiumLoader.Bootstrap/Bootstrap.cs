@@ -163,28 +163,39 @@ namespace CesiumLoader.Bootstrap
             catch (Exception e) { Log("入口类型 GetType(1参) 失败: " + e.GetType().Name + ": " + e.Message); }
 
             // 2. 遍历 GetTypes() —— HomeBackgroundMod 验证过的 fallback
+            //    GetTypes() 单独成方法: 它在热更环境可能被裁剪, 裁剪后调用它的那個方法
+            //    根本编译不出来, 异常在调用点抛出 —— 只有这里的 try/catch 接得住。
             try
             {
-                foreach (Type t in asm.GetTypes())
+                Type found = FindByTypeScan(asm, fullName);
+                if (found != null)
                 {
-                    if (t.FullName == fullName)
-                    {
-                        Log("入口类型: GetTypes() 命中 " + fullName);
-                        return t;
-                    }
+                    Log("入口类型: GetTypes() 命中 " + fullName);
+                    return found;
                 }
                 Log("入口类型: GetTypes() 未找到 " + fullName);
             }
             catch (Exception e) { Log("入口类型 GetTypes() 失败: " + e.GetType().Name + ": " + e.Message); }
 
             // 3. Type.GetType(带程序集名) —— static 形式
+            //    只用单参重载: 带 bool 的两参重载在 HybridCLR 会被 AOT 裁剪(SDK 里明确记着)。
             try
             {
-                Type t = Type.GetType(fullName + ", " + asm.GetName().Name, false);
+                Type t = Type.GetType(fullName + ", " + asm.GetName().Name);
                 if (t != null) { Log("入口类型: Type.GetType 命中 " + fullName); return t; }
             }
             catch (Exception e) { Log("入口类型 Type.GetType 失败: " + e.GetType().Name + ": " + e.Message); }
 
+            return null;
+        }
+
+        /// <summary>遍历程序集找入口类型(单独成方法, 理由见调用处注释)。</summary>
+        private static Type FindByTypeScan(Assembly asm, string fullName)
+        {
+            foreach (Type t in asm.GetTypes())
+            {
+                if (t.FullName == fullName) return t;
+            }
             return null;
         }
 

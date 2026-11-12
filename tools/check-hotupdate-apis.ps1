@@ -30,7 +30,7 @@ $forbidden = @(
     @{ Pattern = '\.CodeBase\b';                         Why = 'Assembly.CodeBase 在热更环境被裁剪' },
     @{ Pattern = '\.GlobalAssemblyCache';                Why = 'Assembly.GlobalAssemblyCache 在热更环境被裁剪' },
     @{ Pattern = '\.Location\b';                         Why = 'Assembly.Location 在热更环境为空, 不能用来推路径' },
-    @{ Pattern = 'GetType\(\s*[^,()]+,\s*(true|false)\s*\)'; Why = 'Type.GetType/Assembly.GetType 的两参重载会被 AOT 裁剪' },
+    @{ Pattern = 'GetType\([^;]*,\s*(true|false)\s*\)'; Why = 'Type.GetType/Assembly.GetType 的两参重载会被 AOT 裁剪(SDK 与 Bootstrap 里都记着)' },
     @{ Pattern = 'CurrentDomain\.BaseDirectory';          Why = 'AppDomain.CurrentDomain.BaseDirectory 在 HybridCLR 里不支持' },
     @{ Pattern = 'AppContext\.BaseDirectory';              Why = 'AppContext.BaseDirectory 在热更环境不可靠' },
     @{ Pattern = '\.GetExportedTypes\(';                  Why = 'Assembly.GetExportedTypes 会被裁剪' },

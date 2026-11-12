@@ -33,16 +33,31 @@ namespace CesiumLoader.SDK.Manifests
                 // ② 类级(兼容旧 mod; 遍历失败时回退)
                 try
                 {
-                    foreach (var t in assembly.GetTypes())
-                    {
-                        var a = t.GetCustomAttribute<ModManifestAttribute>(false);
-                        if (a != null) return a;
-                    }
+                    var attr = ManifestFromTypes(assembly);
+                    if (attr != null) return attr;
                 }
                 catch { }
             }
             var name = assembly?.GetName().Name ?? "Unknown";
             return new ModManifestAttribute(name);
+        }
+
+        /// <summary>
+        /// 遍历程序集里的类型找类级声明。
+        ///
+        /// <c>Assembly.GetTypes()</c> 是"游戏自己没用过"的成员, 热更环境里可能被裁剪:
+        /// 一旦被裁剪, <b>调用它的那个方法根本编译不出来</b>, 异常在调用点抛出 ——
+        /// 所以它必须单独成一个方法, 由调用方的 try/catch 包住"调用"这一步
+        /// (写在同一个方法里的 try/catch 接不住, 见 3.7.2 的事故)。
+        /// </summary>
+        private static ModManifestAttribute ManifestFromTypes(Assembly assembly)
+        {
+            foreach (var t in assembly.GetTypes())
+            {
+                var a = t.GetCustomAttribute<ModManifestAttribute>(false);
+                if (a != null) return a;
+            }
+            return null;
         }
 
         /// <summary>调用者程序集(一般就是 mod 自己的程序集)。</summary>

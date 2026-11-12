@@ -233,6 +233,17 @@ namespace CesiumLoader.SDK.Runtime
             return result;
         }
 
+        /// <summary>
+        /// 读程序集的全部类型。
+        ///
+        /// <c>Assembly.GetTypes()</c> 单独成一个方法: 它在热更环境里可能被裁剪, 一旦被裁剪
+        /// 调用它的方法根本编译不出来, 异常在**调用点**抛出 —— 只有调用方的 try/catch 接得住。
+        /// </summary>
+        private static Type[] ReadTypes(Assembly assembly)
+        {
+            return assembly.GetTypes();
+        }
+
         private static Dictionary<string, Type> GetTypeIndex(Assembly assembly)
         {
             if (assembly == null) return null;
@@ -247,7 +258,7 @@ namespace CesiumLoader.SDK.Runtime
             try
             {
                 Type[] types;
-                try { types = assembly.GetTypes(); }
+                try { types = ReadTypes(assembly); }
                 catch (Exception e)
                 {
                     // 不要单独 catch ReflectionTypeLoadException 再读 e.Types:
