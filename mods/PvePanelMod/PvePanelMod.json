@@ -1,0 +1,1 @@
+{"id":"PvePanelMod","name":"PVE 面板","version":"0.1.0","author":"hajimi","description":"PVE 对局左侧信息栏：头像、血量、星币、手牌数、星级、技能冷却、buff。只读，不发送对局操作。","permissions":1,"sdkVersion":"3.7.0","dependencies":[]}
