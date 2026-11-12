@@ -3,7 +3,7 @@
   "baseline": "3.3.0 / hotfix 1.0.0 / Unity 2022",
   "updatedAt": "2026-11-12",
   "assemblies": {
-    "AstralParty.Runtime.dll": "5461c7314725956965be1f671ef9e0e8252b38f9e2b5dc05d4e241a3953dfcc8",
+    "AstralParty.Runtime.dll": "68b848c08562c9f90c18576a33114c29edd6112e2e5da41f329997cb7ca3cde4",
     "Google.Protobuf.Runtime.dll": "54ea0f7e7afa73beeb1c70cf867f70cfe26fcbf1095d70a440a6188f20c1af43",
     "UniTask.dll": "01d900c18b4d8c639260a339b15e92fb4c6848c1b48627619f372bbf06a67823",
     "Unity.Addressables.dll": "70fd4438f534e4ffb22aa82e6941ebcb7ff44ff23e522e73870d6ab251811634",

@@ -21,7 +21,7 @@ namespace CesiumLoader.SDK.Manifests
     public static class GameVersion
     {
         /// <summary>编译时 <c>refs/game/AstralParty.Runtime.dll</c> 的 MVID(小写, 带连字符)。</summary>
-        public const string CompiledGameAssemblyMvid = "eb27445a-329c-4c13-9f2d-563cc6cff756";
+        public const string CompiledGameAssemblyMvid = "590fc02c-b32c-4f19-bd0d-9057778e9825";
 
         private static readonly object Gate = new object();
         private static string _running;
