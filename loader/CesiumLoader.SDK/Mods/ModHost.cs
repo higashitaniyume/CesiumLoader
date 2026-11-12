@@ -2,7 +2,6 @@ using System;
 using System.Reflection;
 using Cysharp.Threading.Tasks;
 using CesiumLoader.SDK.Logging;
-using CesiumLoader.SDK.Manifests;
 using CesiumLoader.SDK.Runtime;
 using CesiumLoader.SDK.Scenes;
 using CesiumLoader.SDK.Scheduling;
@@ -47,13 +46,10 @@ namespace CesiumLoader.SDK.Mods
                 catch (Exception e) { SdkLog.Error(label, "创建 mod 上下文失败: " + e.Message); }
             }
 
-            // 游戏热更换了热更程序集(版本号可能没变)时, 带着旧协议假设的 mod 会在
-            // 游戏的 RPC 回调链里抛异常, 把整局游戏卡死。这种时候宁可一个 mod 都不启动。
-            if (!GameVersion.Matches)
-            {
-                SdkLog.Warn(label, "已跳过: " + GameVersion.Describe());
-                return;
-            }
+            // 注: 这里**不做**运行期的游戏程序集比对 —— 热更环境里读不到程序集身份
+            // (HybridCLR 裁剪了 Assembly.ManifestModule), 一旦去读就是 JIT 期抛
+            // MissingMethodException, 异常从模组入口逃出去, 模组全部起不来(3.7.2 的教训)。
+            // 真正的兜底是回调护栏(ModCallbackGuard) + 每次热更重编译全部模组。
 
             SdkLog.Info(label, "生命周期开始: " + (mod.Name ?? type.Name) +
                               " v" + mod.Version + " (启动上限 " + delayMs + "ms)");

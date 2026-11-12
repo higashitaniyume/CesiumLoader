@@ -2,6 +2,15 @@
 
 本文件按版本记录 `CesiumLoader` 的功能变更。版本号与 GitHub 发布 tag 一一对应（如 `modloader-3.3.2`，版本号为 `3.3.2`），发布产物由 [release-modloader.yml](.github/workflows/release-modloader.yml) 在打 tag 时自动构建。
 
+## [3.7.3] - 2026-11-12
+
+### 修复：3.7.2 的模组全部起不来
+
+- 3.7.2 加的"游戏程序集版本闸门"在**热更环境里读不到程序集身份**（HybridCLR 裁剪了 `Assembly.ManifestModule`），一读就是 JIT 期抛 `MissingMethodException`，异常从模组入口逃出去，结果 25 个模组里 23 个直接起不来（`entry failed: run_entry: MissingMethodException: MethodNotFind System.Reflection.Assembly::get_ManifestModule`）。
+- 3.7.3 **移除了这个运行期闸门**：热更环境里不做程序集比对，模组照常启动。
+- 换来的是三层兜底：① **回调护栏**——模组自己的 RPC 回调抛异常只记一次日志，绝不逃进游戏的回调链（不会把整局卡死）；② **打包期校验**——换了游戏程序集却忘了同步标记，直接拒绝出包；③ 每次游戏热更都要**重编译全部模组**。
+- 3.7.2 里另外那些有效的东西（回调护栏、SDK 事件回调的首次异常日志、20:30 热更的适配）都保留。
+
 ## [3.7.2] - 2026-11-12
 
 ### 适配 20:30 的第二次热更

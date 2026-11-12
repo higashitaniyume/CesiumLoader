@@ -42,12 +42,13 @@ public sealed class GameVersionTests
     }
 
     [Fact]
-    public void RunningMvid_IsReadableOrUnknown()
+    public void Marker_IsOnlyUsedForBuildTimeChecks()
     {
-        // 读不到时必须是 null(不拦截), 不能抛异常把 mod 启动带崩。
-        string running = GameVersion.RunningGameAssemblyMvid;
-        Assert.True(running == null || running.Length > 0);
-        Assert.False(string.IsNullOrEmpty(GameVersion.Describe()));
+        // 运行期不能读程序集身份(HybridCLR 裁剪了 Assembly.ManifestModule), 所以 SDK 里
+        // 只保留构建期标记, 不得再出现任何运行期探测入口。
+        Assert.False(string.IsNullOrEmpty(GameVersion.CompiledGameAssemblyMvid));
+        Assert.Null(typeof(GameVersion).GetProperty("RunningGameAssemblyMvid"));
+        Assert.Null(typeof(GameVersion).GetProperty("Matches"));
     }
 
     private static string GameAssemblyPath()
