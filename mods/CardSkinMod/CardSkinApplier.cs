@@ -283,21 +283,22 @@ namespace CardSkinMod
             for (int i = 0; i < list.numChildren; i++)
             {
                 var item = list.GetChildAt(i) as UINewGameLibrary_Button_Card;
-                if (item == null || !(item.data is int index) || !(item.com_card is UICom_Card card) || !IsVisibleCard(card)) continue;
+                if (item == null || !(item.com_card is UICom_Card card) || !IsVisibleCard(card)) continue;
+                // 2.5 起图鉴改由 GameLibraryShowData 驱动，格子自己带 CurrentCardId，不再有窗口级 CardInfos/EventInfos 列表。
+                int cardId = item.CurrentCardId;
+                if (cardId <= 0) continue;
                 string file = null;
-                if (ui.label.selectedIndex == 1 && index >= 0 && index < window.CardInfos.Count)
+                if (ui.label.selectedIndex == 1 && StaticConfigure.Card.InfoDict.TryGetValue(cardId, out var config))
                 {
-                    var config = window.CardInfos[index];
                     var view = config.GetMainPlayerCardView();
                     if (TryApplyAnimation(card, view.Key, view.IsAltArtCard)) continue;
                     if (view.IsAltArtCard || view.IsVideo) continue;
                     if (!_catalog.TryGetFile(view.Key, out file))
                         _model.TryGetSkinForCard(config.Id, GetName(config.NameID, UIStringType.Card), config.GetImage(), out file);
                 }
-                else if (ui.label.selectedIndex == 5 && index >= 0 && index < window.EventInfos.Count)
+                else if (ui.label.selectedIndex == 5 && StaticConfigure.Event.InfoDict.TryGetValue(cardId, out var eventConfig))
                 {
-                    var config = window.EventInfos[index];
-                    _model.TryGetSkinForCard(config.Id, GetName(config.NameID, UIStringType.Event), config.GetImage(), out file);
+                    _model.TryGetSkinForCard(eventConfig.Id, GetName(eventConfig.NameID, UIStringType.Event), eventConfig.GetImage(), out file);
                 }
                 ApplyFile(card, file);
             }

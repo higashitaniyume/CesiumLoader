@@ -41,12 +41,8 @@ namespace CombatOddsMod
             public int LastAtk;
             public int LastDef;
             public int LastHp;
-            public int LastShownMove;
             public string LastNick;
             public string FallbackNick;
-            /// <summary>缓存的移速加成与刷新时间(预测要遍历 Buff, 不能每帧算)。</summary>
-            public int MoveBonus;
-            public float MoveBonusAt;
         }
 
         private readonly Dictionary<long, Entry> _entries = new Dictionary<long, Entry>();
@@ -61,8 +57,6 @@ namespace CombatOddsMod
         private bool _polling;
         /// <summary>配置开关(ShowBoardPlayerAttrs)的当前值 —— 每帧回调必须尊重它, 否则会把开关关掉的标签又摆回来。</summary>
         private bool _enabled = true;
-        /// <summary>是否在头顶标签上附带移速加成(ShowMoveBonus)。</summary>
-        private bool _showMove;
         private double _offsetX;
         private double _offsetY;
         private double _fontSize = DefaultFontSize;
@@ -145,17 +139,6 @@ namespace CombatOddsMod
             if (!enabled) { HideEntries(); HideTip(); }
         }
 
-        /// <summary>配置开关(ShowMoveBonus): 头顶标签是否附带各玩家的移速加成。</summary>
-        public void SetShowMove(bool enabled)
-        {
-            _showMove = enabled;
-            if (!enabled)
-            {
-                // 关掉后下一次刷新会把"速 +N"从文本里去掉。
-                foreach (var entry in _entries.Values) entry.MoveBonusAt = 0f;
-            }
-        }
-
         public void Update(bool enabled = true)
         {
             _enabled = enabled;
@@ -236,17 +219,6 @@ namespace CombatOddsMod
                         var bonuses = entry.Bonuses;
                         int finalAtk = atk + RelicAtkBonus.Total(bonuses);
 
-                        if (_showMove)
-                        {
-                            float now = Time.realtimeSinceStartup;
-                            if (now - entry.MoveBonusAt >= 0.5f || entry.MoveBonusAt <= 0f)
-                            {
-                                entry.MoveBonusAt = now;
-                                entry.MoveBonus = ModEntry.MoveBonusPredicted(id);
-                            }
-                        }
-
-                        int shownMove = _showMove ? entry.MoveBonus : 0;
                         string nick = Players.SafeNick(player);
                         if (nick == null)
                         {
@@ -254,22 +226,19 @@ namespace CombatOddsMod
                             nick = entry.FallbackNick;
                         }
                         if (entry.LastText == null || inputChanged || entry.LastAtk != atk ||
-                            entry.LastDef != def || entry.LastHp != hp || entry.LastShownMove != shownMove || entry.LastNick != nick)
+                            entry.LastDef != def || entry.LastHp != hp || entry.LastNick != nick)
                         {
                             string text = "[color=#5AA9FF]攻 " + finalAtk + "[/color]   [color=#6DE0A2]防 " + def + "[/color]";
-                            if (shownMove != 0)
-                                text += "   [color=#FFD24A]速 " + (shownMove > 0 ? "+" : "") + shownMove + "[/color]";
                             entry.LastText = text;
                             entry.LastAtk = atk;
                             entry.LastDef = def;
                             entry.LastHp = hp;
-                            entry.LastShownMove = shownMove;
                             entry.LastNick = nick;
                             entry.Text.text = text;
                             entry.Box.SetSize(Math.Max(90f, entry.Text.textWidth + 14f), Math.Max(30f, entry.Text.textHeight + 8f));
 
                             entry.Data = player;
-                            entry.Box.data = BuildTip(nick, atk, finalAtk, def, hp, bonuses, shownMove);
+                            entry.Box.data = BuildTip(nick, atk, finalAtk, def, hp, bonuses);
 
                         }
                     }
@@ -338,7 +307,7 @@ namespace CombatOddsMod
         }
 
         private static string BuildTip(string name, int baseAtk, int finalAtk, int def, int hp,
-            List<RelicAtkBonus.Bonus> bonuses, int moveBonus)
+            List<RelicAtkBonus.Bonus> bonuses)
         {
             var text = "[b]" + name + "[/b]\n[color=#5AA9FF]攻击 " + finalAtk + "[/color]";
             if (bonuses != null && bonuses.Count > 0)
@@ -352,11 +321,6 @@ namespace CombatOddsMod
                 }
             }
             text += "\n[color=#6DE0A2]防御 " + def + "[/color]   [color=#FFCF66]生命 " + hp + "[/color]";
-            if (moveBonus != 0)
-            {
-                string sign = moveBonus > 0 ? "+" : "";
-                text += "\n[color=#FFD24A]移速加成 " + sign + moveBonus + "[/color]";
-            }
             return text;
         }
 

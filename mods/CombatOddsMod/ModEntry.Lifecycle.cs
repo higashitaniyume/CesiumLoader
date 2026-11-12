@@ -7,7 +7,6 @@ namespace CombatOddsMod
     public static partial class ModEntry
     {
         private static bool _featuresStarted;
-        private static bool _moveTracking;
         private static bool _uiRegistered;
         private static volatile bool _disposed;
         private static volatile bool _configApplyPending;
@@ -17,32 +16,6 @@ namespace CombatOddsMod
             // File watchers can notify off-thread; the existing main tick owns
             // configuration application, Unity access and feature disposal.
             if (!_disposed) _configApplyPending = true;
-        }
-
-        private static void UpdateMoveTracking()
-        {
-            if (!_featuresStarted || _cfg == null || !_cfg.Enabled || !_cfg.ShowMoveBonus)
-            {
-                if (_moveTracking) StopMoveTracking();
-                return;
-            }
-            _moveTracking = true;
-            ThrowDiceProbe.BasePredictor = PredictedBaseOf;
-            ThrowDiceProbe.EnsureHooked();
-            MoveBuffTracker.EnsureHooked();
-        }
-
-        private static void StopMoveTracking()
-        {
-            ThrowDiceProbe.Unhook();
-            MoveBuffTracker.Unhook();
-            UnbindMove();
-            ThrowDiceProbe.BasePredictor = null;
-            ThrowDiceProbe.Reset();
-            MoveBuffTracker.Reset();
-            MoveResidual.Reset();
-            _moveTracking = false;
-            _lastMoveBonusLog = null;
         }
 
         private static void StopFeatures()
@@ -60,7 +33,6 @@ namespace CombatOddsMod
             _featuresStarted = false;
             // A disposed game window must not prevent the remaining owners
             // from releasing their timers, handlers and cached player data.
-            try { StopMoveTracking(); } catch { }
             try { UnbindAtk(); } catch { }
             try { _overlay?.Hide(); } catch { }
             try { _hudBonus?.Dispose(); } catch { }
@@ -70,7 +42,6 @@ namespace CombatOddsMod
             try { _handOdds?.Dispose(); } catch { }
             try { _megasDamage?.Dispose(); } catch { }
             try { _playerAttrOverlay?.Dispose(); } catch { }
-            try { _moveBonus?.Reset(); } catch { }
             _overlay = null;
             _hudBonus = null;
             _skillCooldown = null;
@@ -79,7 +50,6 @@ namespace CombatOddsMod
             _handOdds = null;
             _megasDamage = null;
             _playerAttrOverlay = null;
-            _moveBonus = null;
             _hud = null;
             _lastBattle = null;
             _lastLogged = null;

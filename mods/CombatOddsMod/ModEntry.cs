@@ -63,9 +63,6 @@ namespace CombatOddsMod
 
         // 主 HUD(左下角)攻击力后面的"筹码加成"追加显示。
         private static HudAtkBonusOverlay _hudBonus;
-        // 自己角色卡上的移速加成(查看筹码按钮正上方)。
-        private static MoveBonusOverlay _moveBonus;
-        private static string _lastMoveBonusLog;     // 移速日志去重
         private static SkillCooldownOverlay _skillCooldown;
         private static MonsterCooldownOverlay _monsterCooldown;
         private static HandCountOverlay _handCount;
@@ -149,11 +146,6 @@ namespace CombatOddsMod
                     _cfg.ShowMonsterCdForAllMonsters = c.GetBool("ShowMonsterCdForAllMonsters", d.ShowMonsterCdForAllMonsters);
                     _cfg.MonsterCdOffsetX      = c.GetDouble("MonsterCdOffsetX", d.MonsterCdOffsetX);
                     _cfg.MonsterCdOffsetY      = c.GetDouble("MonsterCdOffsetY", d.MonsterCdOffsetY);
-                    _cfg.ShowMoveBonus         = c.GetBool("ShowMoveBonus", d.ShowMoveBonus);
-                    _cfg.MoveBonusFontSize     = c.GetDouble("MoveBonusFontSize", d.MoveBonusFontSize);
-                    _cfg.MoveBonusOffsetX      = c.GetDouble("MoveBonusOffsetX", d.MoveBonusOffsetX);
-                    _cfg.MoveBonusOffsetY      = c.GetDouble("MoveBonusOffsetY", d.MoveBonusOffsetY);
-                    _cfg.LogMoveBonusDetail    = c.GetBool("LogMoveBonusDetail", d.LogMoveBonusDetail);
                     // Debug 构建(deploy-combatodds.ps1 部署的那份)默认打开 CD 明细日志, 免去改配置。
 #if COMBATODDS_DEBUG_PROBES
                     _cfg.LogCdDetail       = c.GetBool("LogCdDetail", true);
@@ -165,7 +157,6 @@ namespace CombatOddsMod
                     // 已有配置也补: 新版本新增的显示项(如 ShowHandCount)要在 Toys 配置页里能看到。
                     if (isInitial && (!c.Has("Enabled") || !c.Has("ShowHandCount") || !c.Has("LogHandDetail") ||
                         !c.Has("ShowMegasDamage") || !c.Has("MegasDamageOffsetX") || !c.Has("PlayerAttrOffsetX") ||
-                        !c.Has("ShowMoveBonus") ||
                         !c.Has("ShowMonsterSkillCooldown") || !c.Has("ShowMonsterCdForAllMonsters")))
                     {
                         c.Set("Enabled", _cfg.Enabled);
@@ -198,11 +189,6 @@ namespace CombatOddsMod
                         c.Set("ShowMonsterCdForAllMonsters", _cfg.ShowMonsterCdForAllMonsters);
                         c.Set("MonsterCdOffsetX", _cfg.MonsterCdOffsetX);
                         c.Set("MonsterCdOffsetY", _cfg.MonsterCdOffsetY);
-                        c.Set("ShowMoveBonus", _cfg.ShowMoveBonus);
-                        c.Set("MoveBonusFontSize", _cfg.MoveBonusFontSize);
-                        c.Set("MoveBonusOffsetX", _cfg.MoveBonusOffsetX);
-                        c.Set("MoveBonusOffsetY", _cfg.MoveBonusOffsetY);
-                        c.Set("LogMoveBonusDetail", _cfg.LogMoveBonusDetail);
                         c.Set("LogCdDetail", _cfg.LogCdDetail);
                         if (!c.SaveIfDirty()) SdkLog.Warn("CombatOdds", "配置未能保存，请检查 mod 目录写入权限。");
                     }
@@ -243,7 +229,6 @@ namespace CombatOddsMod
             if (_playerAttrOverlay != null)
             {
                 _playerAttrOverlay.SetEnabled(_cfg.ShowBoardPlayerAttrs);
-                _playerAttrOverlay.SetShowMove(_cfg.ShowMoveBonus);
                 _playerAttrOverlay.SetLayout(_cfg.PlayerAttrFontSize, _cfg.PlayerAttrOffsetX, _cfg.PlayerAttrOffsetY);
             }
             if (_handCount != null)
@@ -260,12 +245,6 @@ namespace CombatOddsMod
             {
                 RefreshHudAtkBonus();
             }
-            if (_moveBonus != null)
-            {
-                _moveBonus.SetLayout(_cfg.MoveBonusFontSize, _cfg.MoveBonusOffsetX, _cfg.MoveBonusOffsetY);
-                RefreshHudMoveBonus();
-            }
-            UpdateMoveTracking();
             SdkLog.Info("CombatOdds", "配置已热重载");
         }
 
@@ -348,16 +327,6 @@ namespace CombatOddsMod
             }
             catch (Exception e) { SdkLog.Warn("CombatOdds", "HUD 攻击力加成初始化失败(仅不显示加成): " + e.Message); }
 
-            // 自己角色卡上的移速加成(查看筹码按钮正上方): 加速/减速来自服务器下发的 AddMove。
-            try
-            {
-                _moveBonus = new MoveBonusOverlay();
-                _moveBonus.SetLayout(_cfg.MoveBonusFontSize, _cfg.MoveBonusOffsetX, _cfg.MoveBonusOffsetY);
-                // 投骰差值(服务器实际加的移速) = 唯一包含筹码常驻加成的来源; 游戏每场会重置 RPC, 由 tick 重挂。
-                UpdateMoveTracking();
-            }
-            catch (Exception e) { SdkLog.Warn("CombatOdds", "移速加成覆盖层初始化失败(仅不显示移速): " + e.Message); }
-
             // 玩梅加斯时, 右下角发动技能按钮上方显示轨道轰炸理论伤害(回放同样显示)。
             try
             {
@@ -372,7 +341,6 @@ namespace CombatOddsMod
             {
                 _playerAttrOverlay = new PlayerAttrOverlay();
                 _playerAttrOverlay.SetEnabled(_cfg.ShowBoardPlayerAttrs);
-                _playerAttrOverlay.SetShowMove(_cfg.ShowMoveBonus);
                 _playerAttrOverlay.SetLayout(_cfg.PlayerAttrFontSize, _cfg.PlayerAttrOffsetX, _cfg.PlayerAttrOffsetY);
                 _playerAttrOverlay.Start();
             }
@@ -403,8 +371,6 @@ namespace CombatOddsMod
             if (_lastBattle != null)
                 RefreshSyncedCardOdds();
             RefreshHudAtkBonus();
-            UpdateMoveTracking();
-            RefreshHudMoveBonus();
             // 棋盘头顶攻防: 位置/数值的实时刷新已由 PlayerAttrOverlay 自己的每帧回调负责,
             // 这里每 2s 同步一次配置开关即可, 无需每秒重复赋值。
             float now = UnityEngine.Time.realtimeSinceStartup;
@@ -412,7 +378,6 @@ namespace CombatOddsMod
             {
                 _lastOverlaySyncAt = now;
                 _playerAttrOverlay.SetEnabled(_cfg.ShowBoardPlayerAttrs);
-                _playerAttrOverlay.SetShowMove(_cfg.ShowMoveBonus);
                 _playerAttrOverlay.SetLayout(_cfg.PlayerAttrFontSize, _cfg.PlayerAttrOffsetX, _cfg.PlayerAttrOffsetY);
             }
         }

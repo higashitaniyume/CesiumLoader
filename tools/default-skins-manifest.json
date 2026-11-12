@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "gameVersion": "3.3.0",
   "unityVersion": "2022.3.62f3",
-  "catalogSha256": "ea8d6f32787f0c04916dc312b30ac5b7cff2847b029575e2caa8a6b2d32a82a7",
+  "catalogSha256": "2f85cae2c599aa2212d58015cd69f1c1bfa231913364caf3e2a188e81ea24906",
   "images": [
     {
       "file": "UT_Destiny_40001.png",
@@ -715,6 +715,18 @@
     {
       "file": "UT_HandCard_21029.png",
       "sha256": "65601c4c61b21d0f6d1e0b012737d2b6e15c27181d359a716883a05371584f2c",
+      "width": 404,
+      "height": 400
+    },
+    {
+      "file": "UT_HandCard_21030.png",
+      "sha256": "8ddece52b9aff5213bcaef105fa10f93a4568eeaf836d735b8358320f96f3a29",
+      "width": 404,
+      "height": 400
+    },
+    {
+      "file": "UT_HandCard_21031.png",
+      "sha256": "b7d040d2342421167c7c315c95b0443a4c76847f20ba35c3e41cca32ca176e34",
       "width": 404,
       "height": 400
     },

@@ -56,9 +56,14 @@ namespace CardSkinMod.Tests
             string path=Create(); string frame=Path.Combine(Path.ChangeExtension(path,"frames"),"000001.png");
             File.Move(frame, Path.Combine(Path.GetDirectoryName(frame),"1.png"));
             Assert.False(CardAnimation.TryLoad(path,out _));
-            Create(); byte[] bytes=File.ReadAllBytes(frame); bytes[23]=4; File.WriteAllBytes(frame,bytes);
-            Assert.False(CardAnimation.TryLoad(path,out _));
-            Create(); File.WriteAllText(frame,"broken"); Assert.False(CardAnimation.TryLoad(path,out _));
+            // 加载时只做帧文件的存在性检查(避免主线程全量读 PNG), 头部与尺寸在解码前校验。
+            Create();
+            byte[] bytes=File.ReadAllBytes(frame);
+            Assert.True(CardAnimation.ValidPngHeader(bytes,2,3));
+            bytes[23]=4; File.WriteAllBytes(frame,bytes);
+            Assert.False(CardAnimation.ValidPngHeader(bytes,2,3));
+            Create(); File.WriteAllText(frame,"broken");
+            Assert.False(CardAnimation.ValidPngHeader(File.ReadAllBytes(frame),2,3));
         }
         [Fact]
         public void ModelKeepsFrameDirectoryOutOfStaticIndexAndFallsBack()
