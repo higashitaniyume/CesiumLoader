@@ -579,15 +579,16 @@ jobs:
           prerelease: ${{ github.ref_name == 'modloader-3.5.1' || github.ref_name == 'modloader-3.5.2' || github.ref_name == 'modloader-3.6.0' }}
           make_latest: ${{ github.ref_name == 'modloader-3.6.0' && 'false' || 'legacy' }}
 
+      # 候选版本不推 NuGet: apcsm 的稳定通道只发正式版, 候选版留给手动安装。
       - name: NuGet login (OIDC Trusted Publishing)
-        if: github.ref_name != 'modloader-3.6.0'
+        if: github.ref_name != 'modloader-3.6.0' && github.ref_name != 'modloader-3.7.1'
         uses: NuGet/login@v1
         id: nuget-login
         with:
           user: ${{ secrets.NUGET_USER }}
 
       - name: Publish apcsm to NuGet.org
-        if: github.ref_name != 'modloader-3.6.0'
+        if: github.ref_name != 'modloader-3.6.0' && github.ref_name != 'modloader-3.7.1'
         shell: bash
         run: |
           dotnet nuget push artifacts/apcsm.*.nupkg \
