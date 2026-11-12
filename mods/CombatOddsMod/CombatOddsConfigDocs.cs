@@ -94,6 +94,16 @@ namespace CombatOddsMod
                 "在主 HUD 的攻擊力後顯示籌碼提供的攻擊加成。",
                 "Append the attack bonus from chips after the main HUD attack value.",
                 "メイン HUD の攻撃力の後ろにチップによる攻撃ボーナスを表示します。"));
+            changed |= config.Describe("AtkBonusIcons", D(
+                "主界面攻击力旁边，每个加攻筹码显示一个图标，右下角写 +N；关闭则只显示加成后的总攻击。",
+                "主介面攻擊力旁邊，每個加攻籌碼顯示一個圖示，右下角寫 +N；關閉則只顯示加成後的總攻擊。",
+                "Next to the main HUD attack, show one icon per attack-boosting chip with +N in its corner; when off, show only the boosted total.",
+                "メイン HUD の攻撃力の横に、攻撃力を上げるチップごとにアイコンを表示し右下に +N を書きます。オフなら加算後の合計のみ表示します。"));
+            changed |= config.Describe("LabelBackground", D(
+                "棋盘上的头顶攻防、怪物技能 CD 后面垫一块深色底，压在地图上也看得清。",
+                "棋盤上的頭頂攻防、怪物技能 CD 後面墊一塊深色底，壓在地圖上也看得清。",
+                "Draw a dark backdrop behind the on-board attack/defense and monster skill cooldown labels so they stay readable over the map.",
+                "盤面上の頭上の攻防・モンスターのスキル CD の後ろに暗い下地を敷き、マップ上でも読みやすくします。"));
             changed |= config.Describe("ShowBoardPlayerAttrs", D(
                 "在棋盘上每个玩家头顶显示实时攻击/防御。",
                 "在棋盤上每個玩家頭頂顯示即時攻擊/防禦。",

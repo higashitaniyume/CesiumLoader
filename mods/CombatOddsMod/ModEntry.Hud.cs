@@ -58,7 +58,8 @@ namespace CombatOddsMod
                 else
                 {
                     int total = atk + RelicAtkBonus.Total(bonuses);
-                    _hudBonus.Apply(total.ToString(), FinalAtkColor, BuildTip(atk, total, bonuses, input));
+                    if (_cfg.AtkBonusIcons) _hudBonus.ApplyIcons(bonuses, BuildTip(atk, total, bonuses, input));
+                    else _hudBonus.Apply(total.ToString(), FinalAtkColor, BuildTip(atk, total, bonuses, input));
                 }
                 LogAtkBonusIfChanged(atk, input, bonuses, pd);
             }

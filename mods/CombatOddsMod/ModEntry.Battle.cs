@@ -50,6 +50,13 @@ namespace CombatOddsMod
                 var sb = new StringBuilder();
                 string atkName = SafeName(atk);
                 string defName = SafeName(def);
+                // 结构化结果（给外部面板，见 BattleOddsFeed）：和下面拼文字用的是同一批数
+                var feed = new BattleOddsSnapshot
+                {
+                    BattleId = b.BattleId, AttackerName = atkName, DefenderName = defName,
+                    SelfIsAttacker = iAmAttacker, SelfIsDefender = iAmDefender,
+                    ShowDefender = showDefender, ShowAttacker = showAttacker,
+                };
 
                 // 观战(非自己参战): 顶部一行小字标注谁打谁。
                 if (!involved) sb.Append(Dim("👁 " + atkName + " ⚔ " + defName)).Append('\n');
@@ -110,6 +117,8 @@ namespace CombatOddsMod
                             mosesLine = "🔫 精密技巧×0（无闪避加成）";
                     }
                     int dodgeMinPoint = mosesStacks > 0 ? mosesStacks + 1 : 0;
+                    feed.DefenderHp = hp;
+                    if (mosesLine != null) feed.Notes.Add(mosesLine);
 
                     // 防御 = MinDef..MaxDef 的范围随机值 + 一颗判定骰。
                     int flat; int[] dice;
@@ -124,6 +133,13 @@ namespace CombatOddsMod
 
                         bool defBetter = d.KnockdownProb < dodge.KnockdownProb - 1e-4;
                         bool dodgeBetter = d.KnockdownProb > dodge.KnockdownProb + 1e-4;
+                        feed.AttackerRolled = true;
+                        feed.AttackerFinalAtk = finalAtk;
+                        feed.DefendKnockProb = d.KnockdownProb;
+                        feed.DodgeKnockProb = dodge.KnockdownProb;
+                        feed.DefendBetter = defBetter;
+                        feed.DodgeBetter = dodgeBetter;
+                        feed.DodgeSure = dodgeSure;
 
                         // 第 1 行: 一眼看懂的大字结论(带颜色)。
                         if (defBetter) sb.Append(Big(C("🛡 该防御", Blue)));
@@ -149,11 +165,12 @@ namespace CombatOddsMod
                         if (CardPointHelper.HasPlayedCard(atk, CombatMath.PowerfulAttackCardId))
                             atkMax += (int)Math.Ceiling(atkMax * (50 / 100.0));
                         var d = CombatMath.Defend(atkMax, hp, flat, dice, 1, dmgAdjust, targetImmune, dmgCap);
+                        feed.WorstKnockProb = d.KnockdownProb;
                         sb.Append(Big(C("⏳ 等对方投骰", Gray)));
                         sb.Append('\n').Append(Dim(defName + " " + hp + "血, 最坏被击倒 " + PctPlain(d.KnockdownProb)));
                         if (mosesLine != null) sb.Append('\n').Append(C(mosesLine, Yellow));
                     }
-                    if (SafeBool(() => def.CanNotFightBack)) sb.Append('\n').Append(Dim("(本场无法反击)"));
+                    if (SafeBool(() => def.CanNotFightBack)) { feed.CannotFightBack = true; sb.Append('\n').Append(Dim("(本场无法反击)")); }
                 }
 
                 // --------- 攻击方视角: 头行=击杀率(我方攻击 / 观战他人打怪都显示) ---------
@@ -181,8 +198,12 @@ namespace CombatOddsMod
                     bool powerfulActive = !attackerThrew && CardPointHelper.HasPlayedCard(atk, CombatMath.PowerfulAttackCardId);
                     int powerfulBonus = powerfulActive ? 50 : 0;
                     var r = CombatMath.Attack(aFlat, aDice, dFlat, dDice, targetHp, 1, dmgAdjust, targetImmune, dmgCap, powerfulBonus);
-                    if (bonnieBonus > 0) sb.Append('\n').Append(C("邦妮标记目标攻击+3", Orange));
-                    if (powerfulActive) sb.Append('\n').Append(C("蓄力一击 最终攻击+50%", Orange));
+                    feed.KillProb = r.KillProb;
+                    feed.TargetHp = targetHp;
+                    feed.TypicalDamage = r.TypicalDamage;
+                    if (SafeBool(() => def.CanNotFightBack)) feed.CannotFightBack = true;
+                    if (bonnieBonus > 0) { feed.Notes.Add("邦妮标记目标攻击+3"); sb.Append('\n').Append(C("邦妮标记目标攻击+3", Orange)); }
+                    if (powerfulActive) { feed.Notes.Add("蓄力一击 最终攻击+50%"); sb.Append('\n').Append(C("蓄力一击 最终攻击+50%", Orange)); }
                     if (showDefender) sb.Append('\n');
                     sb.Append(Big("🎯 击杀 " + C(PctPlain(r.KillProb), KillColor(r.KillProb))));
                     sb.Append(Dim("（目标防御）"));
@@ -193,6 +214,10 @@ namespace CombatOddsMod
                 // --------- buff: 一行短句说清"目标更容易/更难被打死"(数值已计入上面) ---------
                 if (_cfg.ShowBuffBreakdown)
                 {
+                    if (targetImmune) feed.Notes.Add("目标免疫这一击");
+                    else if (dmgAdjust > 0) feed.Notes.Add("目标易伤 受伤+" + dmgAdjust + StripUbb(BuffTail(badj.Applied)));
+                    else if (dmgAdjust < 0) feed.Notes.Add("目标减伤 受伤" + dmgAdjust + StripUbb(BuffTail(badj.Applied)));
+                    if (!targetImmune && dmgCap > 0) feed.Notes.Add("目标每击最多受伤" + dmgCap + StripUbb(BuffTail(badj.Applied)));
                     if (targetImmune)
                         sb.Append('\n').Append(C("🛡 目标免疫这一击", Green));
                     else if (dmgAdjust > 0)
@@ -203,7 +228,8 @@ namespace CombatOddsMod
                         sb.Append('\n').Append(C("🛡 目标每击最多受伤" + dmgCap, Green)).Append(Dim(BuffTail(badj.Applied)));
                 }
 
-                if (lockedAttackCards || lockedDefenseCards) sb.Append("\n").Append(Dim("已计入实际牌点"));
+                if (lockedAttackCards || lockedDefenseCards) { feed.Notes.Add("已计入实际牌点"); sb.Append("\n").Append(Dim("已计入实际牌点")); }
+                BattleOddsFeed.Publish(feed);
                 Publish(sb.ToString());
             }
             catch (Exception e)
@@ -237,12 +263,14 @@ namespace CombatOddsMod
             // FightWindow 内嵌覆盖层(带颜色的富文本; 反射失败自动降级, 不影响上面的控制台/通知输出)。
             if (_cfg.InGameOverlay && _overlay != null)
             {
-                try { _overlay.Update(true, text); } catch { }
+                if (BattleOddsFeed.ExternallyDisplayed) { try { _overlay.Hide(); } catch { } }
+                else { try { _overlay.Update(true, text); } catch { } }
             }
         }
 
         private static void Clear()
         {
+            BattleOddsFeed.Clear();
             _hud = null;
             _lastLogged = null;
             if (_overlay != null) { try { _overlay.Hide(); } catch { } }

@@ -59,6 +59,8 @@ namespace CombatOddsMod
         {
             public GComponent Box;
             public GTextField Text;
+            public GGraph Bg;            // 图标模式：图标后面的深色圆底
+            public UI.TextureLoader Icon; // 图标模式：筹码图标（游戏里的 UT_Relic_*）
         }
 
         private UI.UIBattleInfoPanel _panel;
@@ -133,6 +135,8 @@ namespace CombatOddsMod
                 if (item == null) return false;
 
                 // 先上色再设文字(GTextField.color 的 setter 会立即重绘, 顺序反了颜色不生效)
+                if (item.Icon != null) item.Icon.visible = false;
+                if (item.Bg != null) item.Bg.visible = false;
                 item.Text.color = color;
                 item.Text.text = text;
                 item.Box.data = tip;
@@ -140,6 +144,7 @@ namespace CombatOddsMod
 
                 float w = item.Text.textWidth > 0f ? item.Text.textWidth : item.Text.width;
                 float h = item.Text.textHeight > 0f ? item.Text.textHeight : atkH;
+                item.Text.SetXY(0f, 0f);
                 item.Box.SetSize(w, h);
                 item.Box.SetXY(_txtAtk.x + atkW + GapX, _txtAtk.y + (atkH - h) * 0.5f);
 
@@ -154,6 +159,75 @@ namespace CombatOddsMod
                 SdkLog.Warn("CombatOdds", "[hud] 画加成失败: " + e.Message);
                 return false;
             }
+        }
+
+        /// <summary>
+        /// 图标模式：攻击力右边每个加攻筹码一个图标（深色圆底 + 筹码图），右下角写 +N（黄/绿和明细浮框同色）。
+        /// 悬浮任何一个图标都弹出同一份明细。bonuses 为空时隐藏。
+        /// </summary>
+        public bool ApplyIcons(List<RelicAtkBonus.Bonus> bonuses, string tip)
+        {
+            if (!EnsureTarget()) return false;
+            try
+            {
+                if (bonuses == null || bonuses.Count == 0 || !PanelShowing()) { HideAll(); return false; }
+                var parent = _txtAtk.parent;
+                float atkW = _txtAtk.textWidth > 0f ? _txtAtk.textWidth : _txtAtk.width;
+                float atkH = _txtAtk.height;
+                float size = atkH * 0.8f, gap = atkH * 0.12f;
+                float x = _txtAtk.x + atkW + GapX, y = _txtAtk.y + (atkH - size) * 0.5f;
+                int used = 0;
+                for (int i = 0; i < bonuses.Count; i++)
+                {
+                    var bonus = bonuses[i];
+                    var item = EnsureBox(i, parent);
+                    if (item == null) break;
+                    used = i + 1;
+                    item.Box.data = tip;
+                    item.Box.visible = true;
+                    item.Box.SetSize(size, size);
+                    item.Box.SetXY(x, y);
+
+                    item.Bg.visible = true;
+                    item.Bg.SetXY(0f, 0f);
+                    item.Bg.DrawEllipse(size, size, new Color(0.051f, 0.059f, 0.094f, 0.88f));
+
+                    string url = RelicIconUrl(bonus.RelicId);
+                    item.Icon.visible = true;
+                    item.Icon.SetSize(size * 0.86f, size * 0.86f);
+                    item.Icon.SetXY(size * 0.07f, size * 0.07f);
+                    if (item.Icon.url != url) item.Icon.url = url;
+
+                    var format = item.Text.textFormat;
+                    int small = Math.Max(12, (int)Math.Round(size * 0.42f));
+                    if (format.size != small) { format.size = small; item.Text.textFormat = format; }
+                    item.Text.color = bonus.Color == RelicAtkBonus.Tint.Green ? new Color(0.427f, 0.878f, 0.635f) : new Color(1f, 0.824f, 0.29f);
+                    item.Text.text = "+" + bonus.Value;
+                    item.Text.SetXY(size - item.Text.textWidth * 0.75f, size - item.Text.textHeight * 0.8f);
+
+                    x += size + gap;
+                }
+                for (int i = used; i < _boxes.Count; i++) _boxes[i].Box.visible = false;
+                RaiseWithinParent(parent, used);
+                return true;
+            }
+            catch (Exception e)
+            {
+                SdkLog.Warn("CombatOdds", "[hud] 画加成图标失败: " + e.Message);
+                return false;
+            }
+        }
+
+        private static string RelicIconUrl(int relicId)
+        {
+            try
+            {
+                RelicInfoConfigure cfg;
+                if (StaticConfigure.Relic != null && StaticConfigure.Relic.InfoDict.TryGetValue(relicId, out cfg) && cfg != null && !string.IsNullOrEmpty(cfg.Icon))
+                    return cfg.Icon;
+            }
+            catch { }
+            return "UT_Relic_" + relicId;
         }
 
         /// <summary>面板消失/离开战斗时清缓存, 下次重新定位(把我们建的元素一并丢弃)。</summary>
@@ -255,6 +329,10 @@ namespace CombatOddsMod
                 box.onRollOver.Add(OnBoxRollOver);
                 box.onRollOut.Add(OnBoxRollOut);
 
+                var bg = new GGraph { touchable = false, visible = false };
+                box.AddChild(bg);
+                var icon = new UI.TextureLoader { touchable = false, fill = FillType.ScaleFree, visible = false };
+                box.AddChild(icon);
                 var text = new GTextField();
                 text.touchable = false;     // 让事件落到容器上
                 text.autoSize = AutoSizeType.Both;
@@ -264,7 +342,7 @@ namespace CombatOddsMod
                 // 挂在 txt_ATK 的同一个父容器下 —— 坐标同系, 位置才和攻击力数字严丝合缝。
                 parent.AddChild(box);
                 box.visible = false;
-                return new BonusBox { Box = box, Text = text };
+                return new BonusBox { Box = box, Text = text, Bg = bg, Icon = icon };
             }
             catch (Exception e)
             {
