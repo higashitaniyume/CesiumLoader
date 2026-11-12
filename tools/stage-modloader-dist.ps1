@@ -41,6 +41,29 @@ $builtInMods = @(
 )
 if ($builtInMods.Count -eq 0) { throw 'tools\builtin-mods.json 里没有内置 mod' }
 
+# 游戏程序集闸门: SDK 里记着"编译时游戏程序集的 MVID"。
+# 换了 refs/game\AstralParty.Runtime.dll 却忘了改这个常量 → 内置 mod 会被整体跳过,
+# 或者更糟: 带着旧协议假设的 mod 在游戏里把整局卡死。打包时直接失败, 不让这种包发出去。
+$gameAssembly = 'refs\game\AstralParty.Runtime.dll'
+if (-not (Test-Path -LiteralPath $gameAssembly)) { throw "缺少游戏热更程序集: $gameAssembly" }
+try
+{
+    $gameMvid = [Reflection.Assembly]::LoadFile((Resolve-Path -LiteralPath $gameAssembly).Path).ManifestModule.ModuleVersionId.ToString('D')
+}
+catch
+{
+    throw "读不到游戏程序集版本: $gameAssembly ($($_.Exception.Message))"
+}
+$versionSource = Get-Content 'loader\CesiumLoader.SDK\Manifests\GameVersion.cs' -Raw
+$versionMatch = [regex]::Match($versionSource, 'CompiledGameAssemblyMvid\s*=\s*"([0-9a-fA-F\-]+)"')
+if (-not $versionMatch.Success) { throw 'loader\CesiumLoader.SDK\Manifests\GameVersion.cs 里找不到 CompiledGameAssemblyMvid' }
+$declaredMvid = $versionMatch.Groups[1].Value.ToLowerInvariant()
+if ($declaredMvid -ne $gameMvid.ToLowerInvariant())
+{
+    throw "游戏程序集版本闸门不一致: refs/game 的 MVID 是 $gameMvid, 但 SDK 里写的是 $declaredMvid —— 换游戏程序集后必须同步更新 GameVersion.CompiledGameAssemblyMvid"
+}
+Write-Host "游戏程序集闸门: $gameMvid"
+
 function Copy-WithSymbols([string] $fromBinary, [string] $toBinary, [switch] $Optional, [switch] $WithDocs)
 {
     if (-not (Test-Path -LiteralPath $fromBinary))

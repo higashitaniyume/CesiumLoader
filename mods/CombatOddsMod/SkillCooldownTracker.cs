@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Core.Net;
 using CesiumLoader.SDK.Gameplay;
 using CesiumLoader.SDK.Logging;
+using CesiumLoader.SDK.Mods;
 using GameLogic;
 using party.protocol;
 using Tools;
@@ -218,7 +219,13 @@ namespace CombatOddsMod
                 {
                     GetHeroInfoS2CRPC.OnGetHeroInfoS2CServerDelegate hook = (model, errId, isDispatch) =>
                     {
-                        if (errId == 0 && model != null) EnqueueServerCd(model.PlayerId, model.Cd);
+                        // 自己包的回调必须兜住异常: 这里跑在游戏的 RPC 回调链里,
+                        // 抛出去会顺着 UniTask 链把整局游戏卡死(今天热更就因为
+                        // MovePointBuffS2C.Attrs 被删, 让旧 mod 把掷骰/回合链打断了)。
+                        ModCallbackGuard.Run("CombatOdds/技能CD", () =>
+                        {
+                            if (errId == 0 && model != null) EnqueueServerCd(model.PlayerId, model.Cd);
+                        });
                         return original(model, errId, isDispatch);
                     };
                     return hook;

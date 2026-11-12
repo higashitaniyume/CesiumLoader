@@ -510,7 +510,7 @@ namespace CesiumLoader.SDK.Gameplay
             var original = _predictHook.Original;
             Core.Net.PredictActionS2CRPC.OnPredictActionS2CServerDelegate wrapped = (model, errId, isDispatch) =>
             {
-                try { OnPredictActions(model?.Actions); } catch { }
+                ModCallbackGuard.Run("EVENTS/" + nameof(OnPredictActions), () => OnPredictActions(model?.Actions));
                 if (original != null) return original(model, errId, isDispatch);
                 return UniTask.CompletedTask;
             };
@@ -531,7 +531,7 @@ namespace CesiumLoader.SDK.Gameplay
             var original = _battleUseCardHook.Original;
             Core.Net.BattleUseCardS2CRPC.OnBattleUseCardS2CServerDelegate wrapped = (model, errId, isDispatch) =>
             {
-                try { OnBattleUseCard(model, errId, isDispatch); } catch { }
+                ModCallbackGuard.Run("EVENTS/" + nameof(OnBattleUseCard), () => OnBattleUseCard(model, errId, isDispatch));
                 if (original != null) return original(model, errId, isDispatch);
                 return UniTask.CompletedTask;
             };
@@ -552,7 +552,7 @@ namespace CesiumLoader.SDK.Gameplay
             var original = _effectCardHook.Original;
             Core.Net.UseEffectCardS2CRPC.OnUseEffectCardS2CServerDelegate wrapped = (model, errId, isDispatch) =>
             {
-                try { OnEffectCardUsed(model, errId, isDispatch); } catch { }
+                ModCallbackGuard.Run("EVENTS/" + nameof(OnEffectCardUsed), () => OnEffectCardUsed(model, errId, isDispatch));
                 if (original != null) return original(model, errId, isDispatch);
                 return UniTask.CompletedTask;
             };
@@ -572,7 +572,7 @@ namespace CesiumLoader.SDK.Gameplay
             var original = _quickCardHook.Original;
             Core.Net.UseQuickCardS2CRPC.OnUseQuickCardS2CServerDelegate wrapped = (model, errId, isDispatch) =>
             {
-                try { OnQuickCardUsed(model, errId, isDispatch); } catch { }
+                ModCallbackGuard.Run("EVENTS/" + nameof(OnQuickCardUsed), () => OnQuickCardUsed(model, errId, isDispatch));
                 if (original != null) return original(model, errId, isDispatch);
                 return UniTask.CompletedTask;
             };
@@ -593,7 +593,7 @@ namespace CesiumLoader.SDK.Gameplay
             var original = _relicHook.Original;
             Core.Net.SelectRelicS2CRPC.OnSelectRelicS2CServerDelegate wrapped = (model, errId, isDispatch) =>
             {
-                try { OnRelicSelected(model, errId, isDispatch); } catch { }
+                ModCallbackGuard.Run("EVENTS/" + nameof(OnRelicSelected), () => OnRelicSelected(model, errId, isDispatch));
                 if (original != null) return original(model, errId, isDispatch);
                 return UniTask.CompletedTask;
             };
@@ -613,7 +613,7 @@ namespace CesiumLoader.SDK.Gameplay
             var original = _cardChangeHook.Original;
             Core.Net.RoomHeroCardChangeS2CRPC.OnRoomHeroCardChangeS2CServerDelegate wrapped = (model, errId, isDispatch) =>
             {
-                try { OnHeroCardChange(model, errId, isDispatch); } catch { }
+                ModCallbackGuard.Run("EVENTS/" + nameof(OnHeroCardChange), () => OnHeroCardChange(model, errId, isDispatch));
                 if (original != null) return original(model, errId, isDispatch);
                 return UniTask.CompletedTask;
             };
@@ -633,7 +633,7 @@ namespace CesiumLoader.SDK.Gameplay
             var original = _diceHook.Original;
             Core.Net.ThrowDiceResultS2CRPC.OnThrowDiceResultS2CServerDelegate wrapped = (model, errId, isDispatch) =>
             {
-                try { OnDiceResult(model, errId, isDispatch); } catch { }
+                ModCallbackGuard.Run("EVENTS/" + nameof(OnDiceResult), () => OnDiceResult(model, errId, isDispatch));
                 if (original != null) return original(model, errId, isDispatch);
                 return UniTask.CompletedTask;
             };
@@ -653,7 +653,7 @@ namespace CesiumLoader.SDK.Gameplay
             var original = _rewardCardHook.Original;
             Core.Net.SelectRewardCardS2CRPC.OnSelectRewardCardS2CServerDelegate wrapped = (model, errId, isDispatch) =>
             {
-                try { OnRewardCard(model, errId, isDispatch); } catch { }
+                ModCallbackGuard.Run("EVENTS/" + nameof(OnRewardCard), () => OnRewardCard(model, errId, isDispatch));
                 if (original != null) return original(model, errId, isDispatch);
                 return UniTask.CompletedTask;
             };
@@ -673,7 +673,7 @@ namespace CesiumLoader.SDK.Gameplay
             var original = _syncRelicsHook.Original;
             Core.Net.SyncRelicsS2CRPC.OnSyncRelicsS2CServerDelegate wrapped = (model, errId, isDispatch) =>
             {
-                try { OnSyncRelics(model, errId, isDispatch); } catch { }
+                ModCallbackGuard.Run("EVENTS/" + nameof(OnSyncRelics), () => OnSyncRelics(model, errId, isDispatch));
                 if (original != null) return original(model, errId, isDispatch);
                 return UniTask.CompletedTask;
             };
@@ -694,7 +694,7 @@ namespace CesiumLoader.SDK.Gameplay
             var original = _attrHook.Original;
             Core.Net.UpdateHeroAttrS2CRPC.OnUpdateHeroAttrS2CServerDelegate wrapped = (model, errId, isDispatch) =>
             {
-                try { OnHeroAttr(model, errId); } catch { }
+                ModCallbackGuard.Run("EVENTS/" + nameof(OnHeroAttr), () => OnHeroAttr(model, errId));
                 if (original != null) return original(model, errId, isDispatch);
                 return UniTask.CompletedTask;
             };
@@ -715,7 +715,7 @@ namespace CesiumLoader.SDK.Gameplay
             var original = _battleHook.Original;
             Core.Net.BattleS2CRPC.OnBattleS2CServerDelegate wrapped = (model, errId, isDispatch) =>
             {
-                try { OnBattle(model, errId, isDispatch); } catch { }
+                ModCallbackGuard.Run("EVENTS/" + nameof(OnBattle), () => OnBattle(model, errId, isDispatch));
                 if (original != null) return original(model, errId, isDispatch);
                 return UniTask.CompletedTask;
             };
@@ -736,7 +736,7 @@ namespace CesiumLoader.SDK.Gameplay
             var original = _battleDiceHook.Original;
             Core.Net.BattleThrowDiceS2CRPC.OnBattleThrowDiceS2CServerDelegate wrapped = (model, errId, isDispatch) =>
             {
-                try { OnBattleDice(model, errId, isDispatch); } catch { }
+                ModCallbackGuard.Run("EVENTS/" + nameof(OnBattleDice), () => OnBattleDice(model, errId, isDispatch));
                 if (original != null) return original(model, errId, isDispatch);
                 return UniTask.CompletedTask;
             };
@@ -756,7 +756,7 @@ namespace CesiumLoader.SDK.Gameplay
             var original = _moveHook.Original;
             Core.Net.MoveS2CRPC.OnMoveS2CServerDelegate wrapped = (model, errId, isDispatch) =>
             {
-                try { OnMove(model, errId, isDispatch); } catch { }
+                ModCallbackGuard.Run("EVENTS/" + nameof(OnMove), () => OnMove(model, errId, isDispatch));
                 if (original != null) return original(model, errId, isDispatch);
                 return UniTask.CompletedTask;
             };
@@ -956,7 +956,7 @@ namespace CesiumLoader.SDK.Gameplay
             var original = _gameFinishHook.Original;
             Core.Net.GameFinishS2CRPC.OnGameFinishS2CServerDelegate wrapped = (model, errId, isDispatch) =>
             {
-                try { OnGameFinish(model, errId); } catch { }
+                ModCallbackGuard.Run("EVENTS/" + nameof(OnGameFinish), () => OnGameFinish(model, errId));
                 if (original != null) return original(model, errId, isDispatch);
                 return UniTask.CompletedTask;
             };

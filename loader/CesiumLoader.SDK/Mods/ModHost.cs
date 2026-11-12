@@ -2,6 +2,7 @@ using System;
 using System.Reflection;
 using Cysharp.Threading.Tasks;
 using CesiumLoader.SDK.Logging;
+using CesiumLoader.SDK.Manifests;
 using CesiumLoader.SDK.Runtime;
 using CesiumLoader.SDK.Scenes;
 using CesiumLoader.SDK.Scheduling;
@@ -44,6 +45,14 @@ namespace CesiumLoader.SDK.Mods
             {
                 try { ctx = ModRegistry.Register(type.Name, mod.Version, mod.Author, mod.Description, type.Assembly); }
                 catch (Exception e) { SdkLog.Error(label, "创建 mod 上下文失败: " + e.Message); }
+            }
+
+            // 游戏热更换了热更程序集(版本号可能没变)时, 带着旧协议假设的 mod 会在
+            // 游戏的 RPC 回调链里抛异常, 把整局游戏卡死。这种时候宁可一个 mod 都不启动。
+            if (!GameVersion.Matches)
+            {
+                SdkLog.Warn(label, "已跳过: " + GameVersion.Describe());
+                return;
             }
 
             SdkLog.Info(label, "生命周期开始: " + (mod.Name ?? type.Name) +

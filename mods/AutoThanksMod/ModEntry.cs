@@ -43,7 +43,7 @@ namespace AutoThanksMod
         private int _likeInterval = LikePolicy.DefaultIntervalMilliseconds;
 
         public override string Name { get { return "自动感谢"; } }
-        public override string Version { get { return "1.2.0"; } }
+        public override string Version { get { return "1.2.1"; } }
         public override string Author { get { return "CesiumLoader"; } }
         public override string Description { get { return "队友帮助后延迟发送感谢，游戏结束后按间隔自动点赞其他真人玩家。"; } }
 
@@ -194,7 +194,8 @@ namespace AutoThanksMod
             lock (_gate) { generation = ++_generation; _acceptNotices = true; }
             SayPhraseNotifyS2CRPC.OnSayPhraseNotifyS2CServerDelegate wrapped = (model, errId, isDispatch) =>
             {
-                try { Enqueue(model, errId, generation); } catch { }
+                // 自己包的回调必须兜住异常: 这里跑在游戏的 RPC 回调链里, 抛出去会打断整条链。
+                ModCallbackGuard.Run("AutoThanks", () => Enqueue(model, errId, generation));
                 return original(model, errId, isDispatch);
             };
             _rpc = rpc;
