@@ -7,6 +7,8 @@
   "clearKey": "T",
   // 玩家名字前是否显示楼层标签（如【一楼】）
   "showFloorTag": true,
+  // 玩家名字后是否显示所选角色名（如（芬妮）），方便一眼认人
+  "showCharacterName": true,
 
   // ---- 商店独立看板 ----
   // 是否显示有人走到商店时遇到的货架卡牌
@@ -19,6 +21,8 @@
   "shopOffsetY": 70.0,
   // 离开商店后卡牌保持显示的秒数，默认 20 秒
   "shopDisplayDurationSeconds": 20,
+  // 商店看板每条信息是否显示相对时间（刚刚 / Xs前），默认 false
+  "showShopAge": false,
 
   // ---- 筹码独立看板 ----
   // 是否显示选筹码时的候选筹码、刷新历史及最终选定
@@ -33,6 +37,8 @@
   "relicDisplayDurationSeconds": 20,
   // 筹码名称是否按品质着色（普通蓝/稀有紫/传说橙）
   "colorRelicByQuality": true,
+  // 筹码看板每条信息是否显示相对时间（刚刚 / Xs前），默认 false
+  "showRelicAge": false,
 
   "_comments": {
     "enabled": {
@@ -58,6 +64,12 @@
       "zh-Hant": "玩家暱稱前是否顯示一樓至四樓的座位標籤（如【一樓】）。",
       "en": "Whether to prefix player names with seat floor tags (e.g. 1st Floor).",
       "ja": "プレイヤー名の前に座席階層タグ（1階～4階）を表示するかどうか。"
+    },
+    "showCharacterName": {
+      "zh-Hans": "玩家昵称后是否显示所选角色名（如（芬妮）），方便一眼认人。",
+      "zh-Hant": "玩家暱稱後是否顯示所選角色名（如（芬妮）），方便一眼認人。",
+      "en": "Whether to append the selected character name after the player name, e.g. （Fanny）.",
+      "ja": "プレイヤー名の後に選択したキャラクター名（例（ファニー））を表示するかどうか。"
     },
     "showShopCards": {
       "zh-Hans": "是否开启商店独立看板（展示玩家进入商店遇到的卡牌）。",
@@ -124,6 +136,18 @@
       "zh-Hant": "候選籌碼名稱是否按品質著色（普通藍、稀有紫、傳說橙）。",
       "en": "Whether to color relic names by quality (common blue, rare purple, legendary orange).",
       "ja": "チップの名前を品質別（ノーマル青、レア紫、レジェンド橙）に着色するかどうか。"
+    },
+    "showShopAge": {
+      "zh-Hans": "商店看板每条信息是否显示相对时间（刚刚 / Xs前），默认 false。",
+      "zh-Hant": "商店看板每條資訊是否顯示相對時間（剛剛 / Xs前），預設 false。",
+      "en": "Whether shop entries show their relative age (just now / Xs ago, default false).",
+      "ja": "ショップ看板の各項目に相対時間（たった今 / Xs前）を表示するかどうか（既定 false）。"
+    },
+    "showRelicAge": {
+      "zh-Hans": "筹码看板每条信息是否显示相对时间（刚刚 / Xs前），默认 false。",
+      "zh-Hant": "籌碼看板每條資訊是否顯示相對時間（剛剛 / Xs前），預設 false。",
+      "en": "Whether relic entries show their relative age (just now / Xs ago, default false).",
+      "ja": "チップ看板の各項目に相対時間（たった今 / Xs前）を表示するかどうか（既定 false）。"
     }
   }
 }
