@@ -20,10 +20,10 @@ namespace PvePanelMod
             if (config == null) return false;
             bool changed = false;
             changed |= config.Describe(Enabled, D(
-                "是否显示 PVE 面板。默认关；改成 true 立即生效（不用重启游戏），面板只在 PVE 对局里出现。",
-                "是否顯示 PVE 面板。預設關；改成 true 立即生效（不用重啟遊戲），面板只在 PVE 對局裡出現。",
-                "Whether to show the PVE panel. Off by default; setting it to true takes effect immediately (no restart needed), and the panel only appears in PVE matches.",
-                "PVE パネルを表示するかどうか。既定はオフ。true にすると即座に反映され（再起動不要）、PVE の対局でのみ表示されます。"));
+                "是否显示 PVE 面板。默认关；本 mod 被加载器加载后，改这里立即生效（不用重启游戏），面板只在 PVE 对局里出现。",
+                "是否顯示 PVE 面板。預設關；本 mod 被載入器載入後，改這裡立即生效（不用重啟遊戲），面板只在 PVE 對局裡出現。",
+                "Whether to show the PVE panel. Off by default; once the loader has loaded this mod, changing it takes effect immediately (no restart), and the panel only appears in PVE matches.",
+                "PVE パネルを表示するかどうか。既定はオフ。ローダーがこの mod を読み込んだ後は、変更が即座に反映されます（再起動不要）。PVE の対局でのみ表示されます。"));
             changed |= config.Describe(UiScale, D(
                 "面板整体缩放（左栏、右栏、战斗面板、手牌抽屉、悬停小字一起变），范围 0.8–1.5，默认 1.0。游戏里点左栏底部的「－」「＋」按钮也能调，会自动记下。",
                 "面板整體縮放（左欄、右欄、戰鬥面板、手牌抽屜、懸停小字一起變），範圍 0.8–1.5，預設 1.0。遊戲裡點左欄底部的「－」「＋」按鈕也能調，會自動記下。",
