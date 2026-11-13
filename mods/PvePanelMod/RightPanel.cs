@@ -39,6 +39,9 @@ namespace PvePanelMod
         private Countdown _mon, _rew;
         private readonly List<WaveLine> _waves = new List<WaveLine>();
         private readonly List<RowView> _rows = new List<RowView>();
+        // 每 0.25 秒都要用，放字段里复用，免得每帧刷新都 new 两个 List
+        private readonly List<WaveInfo> _upcoming = new List<WaveInfo>();
+        private readonly List<int> _monsterRounds = new List<int>();
         private float _k, _right;
         private int _waveLines = -1;
         private string _lastHeader;
@@ -57,13 +60,13 @@ namespace PvePanelMod
             if (root == null || players == null || players.Count == 0) { Hide(); return; }
             float k = PanelScale.K(root);
 
-            var upcoming = new List<WaveInfo>();
+            _upcoming.Clear();
             if (waves != null)
-                foreach (var w in waves) if (w.Progress > round && upcoming.Count < MaxWaves) upcoming.Add(w);
+                foreach (var w in waves) if (w.Progress > round && _upcoming.Count < MaxWaves) _upcoming.Add(w);
 
             if (_layer == null || _layer.isDisposed || _layer.parent != root || Math.Abs(k - _k) > 0.001f
-                || _rows.Count != players.Count || _waveLines != upcoming.Count)
-                Build(root, k, players.Count, upcoming.Count);
+                || _rows.Count != players.Count || _waveLines != _upcoming.Count)
+                Build(root, k, players.Count, _upcoming.Count);
             if (Math.Abs(rightEdge - _right) > 0.5f)
             {
                 _right = rightEdge;
@@ -71,9 +74,9 @@ namespace PvePanelMod
             }
 
             // 第一排：刷怪和轮次奖励都在回合开头结算，所以只看以后的（没有「本回合」）
-            var monsterRounds = new List<int>();
-            if (waves != null) foreach (var w in waves) if (w.SpawnsMonsters) monsterRounds.Add(w.Progress);
-            int mon = RoundMath.MonsterIn(round, monsterRounds);
+            _monsterRounds.Clear();
+            if (waves != null) foreach (var w in waves) if (w.SpawnsMonsters) _monsterRounds.Add(w.Progress);
+            int mon = RoundMath.MonsterIn(round, _monsterRounds);
             int rew = RoundMath.RewardIn(round);
             string header = round + "|" + mon + "|" + rew;
             if (header != _lastHeader)
@@ -85,7 +88,7 @@ namespace PvePanelMod
                 _rew.Set(rew, x);
             }
 
-            for (int i = 0; i < upcoming.Count; i++) _waves[i].Set(upcoming[i]);
+            for (int i = 0; i < _upcoming.Count; i++) _waves[i].Set(_upcoming[i]);
 
             var now = DateTime.UtcNow;
             for (int i = 0; i < players.Count; i++)

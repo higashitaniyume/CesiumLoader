@@ -10,6 +10,7 @@ namespace PvePanelMod
         public const string DefaultServiceUrl = "https://astralpartycards.hiynet.com/";
         public const string LeftToggleKey = "LeftToggleKey", HandToggleKey = "HandToggleKey", RightToggleKey = "RightToggleKey";
         public const string RightPanelHidden = "RightPanelHidden";
+        public const string LeftPanelCollapsed = "LeftPanelCollapsed";
         public const string UiScale = "UiScale";
         public const string DefaultLeftKey = "F3", DefaultHandKey = "F4", DefaultRightKey = "F5";
 
@@ -42,6 +43,11 @@ namespace PvePanelMod
                 "右側情報欄是否隱藏。按快捷鍵切換時會自動記下，下一局、重啟遊戲後保持。",
                 "Whether the right intel bar is hidden. Saved automatically when toggled by hotkey and kept across matches and restarts.",
                 "右側インテルバーを隠すかどうか。ショートカットで切り替えると自動で保存され、次の対局や再起動後も維持されます。"));
+            changed |= config.Describe(LeftPanelCollapsed, D(
+                "左侧信息栏是否收起。按快捷键或点把手切换时会自动记下，下一局、重启游戏后保持。",
+                "左側資訊欄是否收合。按快捷鍵或點把手切換時會自動記下，下一局、重啟遊戲後保持。",
+                "Whether the left info bar is collapsed. Saved automatically when toggled by hotkey or handle and kept across matches and restarts.",
+                "左側情報バーを折りたたむかどうか。ショートカットやハンドルで切り替えると自動で保存され、次の対局や再起動後も維持されます。"));
             changed |= config.Describe(HandService, D(
                 "手牌抽屉查询真人队友的手牌：会把本局观战码发给第三方观战服务（HandServiceUrl）。默认关；自己和 Bot 的手牌不需要它，本地就能看到。",
                 "手牌抽屜查詢真人隊友的手牌：會把本局觀戰碼發給第三方觀戰服務（HandServiceUrl）。預設關；自己和 Bot 的手牌不需要它，本機就能看到。",

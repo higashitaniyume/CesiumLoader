@@ -120,6 +120,8 @@ namespace PvePanelMod.Hands
         IHandRequest request;
         string room, code;
         bool dirty, viewing, serviceEnabled = true;
+        /// <summary>非空 = 配置层面就不能查询（比如服务地址写错），状态直接显示这句，直到下次配置。</summary>
+        string blocked;
         long due, retryAt;
         int failures;
         public HandSnapshot Snapshot { get; private set; }
@@ -128,6 +130,31 @@ namespace PvePanelMod.Hands
         public bool Running => request != null;
         public bool IsStale { get; private set; }
         public HandQueryController(Func<string, IHandRequest> start) { this.start = start; }
+
+        /// <summary>能不能查：服务开着、配置也没有问题。</summary>
+        bool Active => serviceEnabled && blocked == null;
+        /// <summary>不能查时该显示的话（服务关着 / 配置有问题）。</summary>
+        string IdleStatus => !serviceEnabled ? ServiceOffStatus : blocked;
+
+        /// <summary>
+        /// 配置层面的问题（比如第三方服务地址非法）：不查询、状态直接显示原因。
+        /// 传 null 表示恢复正常；地址改好后下一次 Configure 会自动清掉。
+        /// </summary>
+        public void SetBlocked(string reason, long now)
+        {
+            reason = string.IsNullOrEmpty(reason) ? null : reason;
+            if (blocked == reason) return;
+            blocked = reason;
+            DisposeRequest();
+            dirty = false;
+            if (!serviceEnabled) return;
+            if (blocked != null) { Status = blocked; Revision++; return; }
+            Status = viewing
+                ? (string.IsNullOrEmpty(room) || string.IsNullOrEmpty(code) ? WaitingRoomStatus : WaitingRefreshStatus)
+                : CollapsedStatus;
+            Revision++;
+            if (viewing) Refresh(now);
+        }
 
         /// <summary>
         /// 配置里开关第三方手牌服务。关掉后一律不查询、不再对外报「等待对局观战码」（那是服务开着、只是还没拿到观战码时说的话）。
@@ -145,6 +172,11 @@ namespace PvePanelMod.Hands
             }
             if (serviceEnabled) return;
             serviceEnabled = true;
+            if (blocked != null)
+            {
+                if (Status != blocked) { Status = blocked; Revision++; }
+                return;
+            }
             Status = viewing ? (string.IsNullOrEmpty(room) || string.IsNullOrEmpty(code) ? WaitingRoomStatus : WaitingRefreshStatus) : CollapsedStatus;
             Revision++;
             if (viewing) Refresh(now);
@@ -155,9 +187,9 @@ namespace PvePanelMod.Hands
             if (room == id && code == watchCode) return;
             DisposeRequest();
             room = id; code = watchCode; Snapshot = null; IsStale = false; failures = 0; retryAt = 0;
-            dirty = serviceEnabled && viewing && !string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(watchCode);
+            dirty = Active && viewing && !string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(watchCode);
             due = now;
-            Status = !serviceEnabled ? ServiceOffStatus : !viewing ? CollapsedStatus : dirty ? WaitingRefreshStatus : WaitingRoomStatus;
+            Status = !Active ? IdleStatus : !viewing ? CollapsedStatus : dirty ? WaitingRefreshStatus : WaitingRoomStatus;
             Revision++;
         }
         public void SetViewing(bool visible, long now)
@@ -167,7 +199,7 @@ namespace PvePanelMod.Hands
             if (visible)
             {
                 // 改动 3：重新展开是一次手动刷新，但仍然遵守上一次的等待（成功后的最短间隔或服务器的 Retry-After）
-                Status = !serviceEnabled ? ServiceOffStatus
+                Status = !Active ? IdleStatus
                        : string.IsNullOrEmpty(room) || string.IsNullOrEmpty(code) ? WaitingRoomStatus : WaitingRefreshStatus;
                 Revision++;
                 Refresh(now);
@@ -176,12 +208,12 @@ namespace PvePanelMod.Hands
             {
                 DisposeRequest(); dirty = false;
                 IsStale = Snapshot != null;
-                Status = serviceEnabled ? CollapsedStatus : ServiceOffStatus; Revision++;
+                Status = !Active ? IdleStatus : CollapsedStatus; Revision++;
             }
         }
         public void MarkDirty(long now)
         {
-            if (!serviceEnabled || !viewing) return;
+            if (!Active || !viewing) return;
             if (string.IsNullOrEmpty(room) || string.IsNullOrEmpty(code))
             {
                 if (Status != WaitingRoomStatus) { Status = WaitingRoomStatus; Revision++; }
@@ -194,7 +226,7 @@ namespace PvePanelMod.Hands
         public void Refresh(long now) { MarkDirty(now); due = now; }
         public void Tick(long now)
         {
-            if (!serviceEnabled || !viewing) return;
+            if (!Active || !viewing) return;
             if (request != null)
             {
                 bool completed = false;

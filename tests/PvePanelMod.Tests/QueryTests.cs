@@ -138,6 +138,21 @@ namespace PvePanelMod.Tests
                 controller.Tick(S); Assert.Equal(2, calls);
             }
         }
+        // 配置里地址写错时：不查询、状态直接显示原因，改好配置后自动恢复（以前是每 2 秒抛一次、只报「网络或响应数据不可用」）
+        [Fact]
+        public void InvalidEndpointBlocksQueriesUntilFixed()
+        {
+            int calls = 0;
+            using var controller = new HandQueryController(_ => { calls++; return new Request(); });
+            controller.SetBlocked(ServiceAddress.Validate("not a URL"), 0);
+            controller.SetViewing(true, 0); controller.SetRoom(Room, "test", 0); controller.Tick(0); controller.Tick(1);
+            Assert.Equal(0, calls);
+            Assert.Equal(ServiceAddress.Validate("not a URL"), controller.Status);
+
+            controller.SetBlocked(null, 10);
+            controller.Tick(10);
+            Assert.Equal(1, calls);
+        }
         // 关掉第三方服务时状态必须是「手牌服务已关闭」，否则日志会一直报「等待对局观战码」（服务根本没开）。
         [Fact]
         public void DisabledServiceReportsItsOwnStatusWithoutExtraRevisions()

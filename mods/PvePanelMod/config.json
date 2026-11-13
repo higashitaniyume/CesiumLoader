@@ -9,6 +9,8 @@
   "RightToggleKey": "F5",
   // 右侧情报栏是否隐藏。按快捷键切换时会自动记下，下一局、重启游戏后保持。
   "RightPanelHidden": false,
+  // 左侧信息栏是否收起。按快捷键或点把手切换时会自动记下，下一局、重启游戏后保持。
+  "LeftPanelCollapsed": false,
   // 手牌抽屉查询真人队友的手牌：会把本局观战码发给第三方观战服务（HandServiceUrl）。默认关；自己和 Bot 的手牌不需要它，本地就能看到。
   "HandService": false,
   // 第三方观战服务地址（来自 HandViewerMod），只在 HandService 打开时使用。
@@ -39,6 +41,12 @@
       "zh-Hant": "右側情報欄是否隱藏。按快捷鍵切換時會自動記下，下一局、重啟遊戲後保持。",
       "en": "Whether the right intel bar is hidden. Saved automatically when toggled by hotkey and kept across matches and restarts.",
       "ja": "右側インテルバーを隠すかどうか。ショートカットで切り替えると自動で保存され、次の対局や再起動後も維持されます。"
+    },
+    "LeftPanelCollapsed": {
+      "zh-Hans": "左侧信息栏是否收起。按快捷键或点把手切换时会自动记下，下一局、重启游戏后保持。",
+      "zh-Hant": "左側資訊欄是否收合。按快捷鍵或點把手切換時會自動記下，下一局、重啟遊戲後保持。",
+      "en": "Whether the left info bar is collapsed. Saved automatically when toggled by hotkey or handle and kept across matches and restarts.",
+      "ja": "左側情報バーを折りたたむかどうか。ショートカットやハンドルで切り替えると自動で保存され、次の対局や再起動後も維持されます。"
     },
     "HandService": {
       "zh-Hans": "手牌抽屉查询真人队友的手牌：会把本局观战码发给第三方观战服务（HandServiceUrl）。默认关；自己和 Bot 的手牌不需要它，本地就能看到。",

@@ -35,7 +35,7 @@ namespace PvePanelMod
         private GObject _hover;
         private float _hoverSince;
         private bool _shown;
-        private static MethodInfo _mouseGetter;
+        private static Func<Vector3> _mouseGetter;
         private static bool _mouseProbed;
 
         public void Tick()
@@ -137,7 +137,7 @@ namespace PvePanelMod
             if (_box != null && !_box.isDisposed) _box.visible = false;
         }
 
-        /// <summary>鼠标位置（FairyGUI 的全局坐标 = 屏幕坐标，y 朝下）。编译期没有 Input，运行时按名字找。</summary>
+        /// <summary>鼠标位置（FairyGUI 的全局坐标 = 屏幕坐标，y 朝下）。编译期没有 Input，运行时按名字找到后缓存成委托，避免每帧反射。</summary>
         private static bool TryMouse(out Vector2 mouse)
         {
             mouse = Vector2.zero;
@@ -147,10 +147,11 @@ namespace PvePanelMod
                 {
                     _mouseProbed = true;
                     var t = RuntimeAssemblyService.FindTypeBySimpleName("Input");
-                    _mouseGetter = t?.GetProperty("mousePosition", BindingFlags.Public | BindingFlags.Static)?.GetGetMethod();
+                    var get = t?.GetProperty("mousePosition", BindingFlags.Public | BindingFlags.Static)?.GetGetMethod();
+                    if (get != null) _mouseGetter = (Func<Vector3>)get.CreateDelegate(typeof(Func<Vector3>));
                 }
                 if (_mouseGetter == null) return false;
-                var v = (Vector3)_mouseGetter.Invoke(null, null);
+                var v = _mouseGetter();
                 mouse = new Vector2(v.x, Screen.height - v.y);
                 return true;
             }

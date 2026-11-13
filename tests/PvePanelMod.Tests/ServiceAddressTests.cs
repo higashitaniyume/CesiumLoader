@@ -23,5 +23,24 @@ namespace PvePanelMod.Tests
         [InlineData("not a URL")]
         public void RejectsUnsafeOrInvalidAddresses(string address)
             => Assert.Throws<ArgumentException>(() => ServiceAddress.QueryUrl(address, "test"));
+
+        // 地址写错时要能直接说清原因：以前只会让请求每 2 秒抛一次、日志写「网络或响应数据不可用」
+        [Theory]
+        [InlineData("file:///C:/test")]
+        [InlineData("ftp://example.com")]
+        [InlineData("http://user:password@example.com")]
+        [InlineData("http://example.com/?token=secret")]
+        [InlineData("not a URL")]
+        public void ValidationExplainsWhatIsWrong(string address)
+        {
+            string problem = ServiceAddress.Validate(address);
+            Assert.NotNull(problem);
+            Assert.StartsWith("服务地址不合法", problem);
+        }
+
+        [Theory]
+        [InlineData("http://192.168.31.2:18743/")]
+        [InlineData("https://example.com")]
+        public void ValidAddressesPassValidation(string address) => Assert.Null(ServiceAddress.Validate(address));
     }
 }

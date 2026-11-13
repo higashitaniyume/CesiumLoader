@@ -42,6 +42,7 @@ namespace PvePanelMod
         private bool _shown;
         private KeyCode _leftKey = KeyCode.F3, _handKey = KeyCode.F4, _rightKey = KeyCode.F5;
         private bool _rightHidden;
+        private bool _leftCollapsed;
         private readonly BattleFeedReader _battleFeed = new BattleFeedReader();
         private RightState _rightState;
         private List<WaveInfo> _waves = new List<WaveInfo>();
@@ -64,7 +65,13 @@ namespace PvePanelMod
             ReadConfig(true);
             _rightState = new RightState();
             // 点了把手立刻刷新，不等下一个 0.25 秒（点击要跟手）
-            _left.CollapsedChanged += () => { SetOfficialDim(!_left.Collapsed); _next = DateTime.MinValue; };
+            _left.CollapsedChanged += () =>
+            {
+                _leftCollapsed = _left.Collapsed;
+                if (Config != null) { Config.Set(PanelConfigDocs.LeftPanelCollapsed, _leftCollapsed); Config.SaveIfDirty(); }
+                SetOfficialDim(!_left.Collapsed);
+                _next = DateTime.MinValue;
+            };
             _left.HandOpenChanged += () => _next = DateTime.MinValue;
             _left.ScaleRequested += dir =>
             {
@@ -137,6 +144,7 @@ namespace PvePanelMod
                     Config.SetDefault(PanelConfigDocs.HandToggleKey, PanelConfigDocs.DefaultHandKey);
                     Config.SetDefault(PanelConfigDocs.RightToggleKey, PanelConfigDocs.DefaultRightKey);
                     Config.SetDefault(PanelConfigDocs.RightPanelHidden, false);
+                    Config.SetDefault(PanelConfigDocs.LeftPanelCollapsed, false);
                     Config.SetDefault(PanelConfigDocs.UiScale, 1.0);
                     Config.SetDefault(PanelConfigDocs.HandService, false);
                     Config.SetDefault(PanelConfigDocs.HandServiceUrl, PanelConfigDocs.DefaultServiceUrl);
@@ -148,9 +156,11 @@ namespace PvePanelMod
                 _handKey = ParseKey(Config.GetString(PanelConfigDocs.HandToggleKey, PanelConfigDocs.DefaultHandKey));
                 _rightKey = ParseKey(Config.GetString(PanelConfigDocs.RightToggleKey, PanelConfigDocs.DefaultRightKey));
                 _rightHidden = Config.GetBool(PanelConfigDocs.RightPanelHidden, false);
+                _leftCollapsed = Config.GetBool(PanelConfigDocs.LeftPanelCollapsed, false);
                 PanelScale.Value = Config.GetFloat(PanelConfigDocs.UiScale, 1f);
             }
             _left?.SetKeysLine(KeysLine());
+            _left?.SetCollapsed(_leftCollapsed);
             _hands?.Configure(service, url);
             Log.Info("PVE 面板配置: 第三方手牌服务 " + (service ? "开" : "关"));
         }

@@ -260,6 +260,15 @@ namespace PvePanelMod
             _tabBg.DrawRoundRect(TabW * _k, TabH * _k, c, new[] { 0f, 12f * _k, 0f, 12f * _k });
         }
 
+        /// <summary>直接设成收起 / 展开（启动时恢复记住的状态用：不动画、不触发 CollapsedChanged）。</summary>
+        public void SetCollapsed(bool collapsed)
+        {
+            if (_collapsed == collapsed) return;
+            _collapsed = collapsed;
+            if (_side != null && !_side.isDisposed) _side.x = collapsed ? -_side.width : 0f;
+            UpdateHandle();
+        }
+
         public void Toggle()
         {
             _collapsed = !_collapsed;

@@ -57,6 +57,9 @@ namespace PvePanelMod.Hands
                 _endpoint = endpoint;
                 _query = new HandQueryController(code => new UnityHandRequest(_endpoint, code, 20));
             }
+            // 地址不合法时不再每次请求都抛一次；状态直接说明原因，改好配置会自动恢复
+            string problem = serviceEnabled ? ServiceAddress.Validate(endpoint) : null;
+            _query.SetBlocked(problem, Now);
             _query.SetServiceEnabled(serviceEnabled, Now);
         }
 
