@@ -21,7 +21,7 @@ namespace PvePanelMod
         private const float ColRight = Width - Border - 6f;
         // buff 一行的位置：平时在第一行下面；装了「关键筹码置顶」时往下挪，中间空出来放关键筹码
         private const float BuffY = 64f, BuffYPinned = 87f;
-        // 关键筹码 30 一个、间距 2：一行正好放 5 个原大的（2026-11-13 用户试过 26 嫌小）
+        // 关键筹码 30 一个、间距 2：一行正好放 5 个原大的（26 在游戏里看不太清）
         private const float RelicY = 53f, RelicSize = 30f, RelicGap = 2f, ZoomSize = 22f;
         private const int MaxRelics = 8;
 
@@ -156,7 +156,7 @@ namespace PvePanelMod
             _side.AddChild(_hint);
             _hintKeys = Text(12f * k, Muted, false);
             // 「－」「＋」按钮比这一行字高，以这行的中线为中心上下各伸出一截：
-            // 往下多空一点，按钮上沿才不会压到上面那行黄字（2026-11-13 截图里压住了「更新」两个字）
+            // 往下多空一点，按钮上沿才不会压到上面那行黄字
             float keysGap = Math.Max(4f * k, (ZoomSize * k - _hintKeys.textHeight) / 2f + 5f * k);
             _hintKeys.SetXY(16f * k, _hint.y + _hint.textHeight + keysGap);
             _side.AddChild(_hintKeys);

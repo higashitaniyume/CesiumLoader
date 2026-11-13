@@ -27,7 +27,7 @@ namespace PvePanelMod
     public sealed class PanelController : ModBase
     {
         public override string Name => "PVE 面板";
-        public override string Version => "0.1.0";
+        public override string Version => "0.2.0";
         public override string Author => "hajimi";
 
         private const float OfficialDimAlpha = 0f;   // 展开时直接隐藏官方左栏（两套信息叠在一起太乱）
