@@ -93,6 +93,8 @@ namespace PvePanelMod.Hands
             if (viewing) ReadRoom(out roomId, out code);
             if (_query != null)
             {
+                // 抽屉开着、服务也开着，但本地都能看全 → 明确报出来，免得"拉开了却没请求"看不出原因
+                _query.SetNothingToQuery(_serviceEnabled && drawerOpen && !anyMasked, now);
                 // 只在真的要查询时才同步房间：收起抽屉时 roomId/code 都是 null，若照旧调用
                 // SetRoom(null, null) 会把服务器要求的等待（Retry-After）和成功后的最短间隔一起清掉，
                 // 重新展开就等于绕过了限流。收起状态交给 SetViewing(false) 处理。
@@ -116,7 +118,12 @@ namespace PvePanelMod.Hands
             return _views;
         }
 
-        /// <summary>本地手牌：所有牌都有真实 CardId 才算已知；有被遮住的（CardId = 0）返回 null。</summary>
+        /// <summary>
+        /// 本地手牌：所有牌都有真实 CardId 才算已知；读不到就返回 null（= 被遮住，需要问服务）。
+        /// 注意「卡面列表为空」≠「手里 0 张」：游戏对被遮住的队友只更新张数不更新卡面
+        /// （CardLogic.OnCardChanged 里 attrCards[0].CardId &lt; 0 时直接跳过 UpdateHandCards），
+        /// 所以列表是空的、但游戏说这个人有牌 → 同样是看不到。
+        /// </summary>
         private static HandView ReadLocal(long playerId)
         {
             try
@@ -124,6 +131,7 @@ namespace PvePanelMod.Hands
                 var pd = Players.Get(playerId);
                 var cards = pd?.cardContainer?._HandCards;
                 if (cards == null) return null;
+                if (cards.Count == 0) return Players.HandCount(playerId) > 0 ? null : new HandView { Known = true };
                 var v = new HandView { Known = true };
                 foreach (var c in cards)
                 {

@@ -72,7 +72,11 @@ namespace PvePanelMod
                 SetOfficialDim(!_left.Collapsed);
                 _next = DateTime.MinValue;
             };
-            _left.HandOpenChanged += () => _next = DateTime.MinValue;
+            _left.HandOpenChanged += () =>
+            {
+                Log.Info("PVE 面板手牌抽屉: " + (_left.HandOpen ? "打开" : "收起"));
+                _next = DateTime.MinValue;
+            };
             _left.ScaleRequested += dir =>
             {
                 PanelScale.Value = PanelScale.Value + dir * PanelScale.Step;
