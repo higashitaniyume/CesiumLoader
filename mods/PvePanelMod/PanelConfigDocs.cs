@@ -12,6 +12,7 @@ namespace PvePanelMod
         public const string LeftToggleKey = "LeftToggleKey", HandToggleKey = "HandToggleKey", RightToggleKey = "RightToggleKey";
         public const string RightPanelHidden = "RightPanelHidden";
         public const string LeftPanelCollapsed = "LeftPanelCollapsed";
+        public const string AutoCollapse = "AutoCollapse";
         public const string UiScale = "UiScale";
         public const string DefaultLeftKey = "F3", DefaultHandKey = "F4", DefaultRightKey = "F5";
 
@@ -54,6 +55,11 @@ namespace PvePanelMod
                 "左側資訊欄是否收合。按快捷鍵或點把手切換時會自動記下，下一局、重啟遊戲後保持。",
                 "Whether the left info bar is collapsed. Saved automatically when toggled by hotkey or handle and kept across matches and restarts.",
                 "左側情報バーを折りたたむかどうか。ショートカットやハンドルで切り替えると自動で保存され、次の対局や再起動後も維持されます。"));
+            changed |= config.Describe(AutoCollapse, D(
+                "打开商店、转账、进入战斗时（只算自己的）自动收起左侧信息栏，关掉后自动展开（原本就收起的不会被展开）；窗口里手动展开过就不再收。战斗面板不跟着收起。默认开。",
+                "打開商店、轉帳、進入戰鬥時（只算自己的）自動收合左側資訊欄，關掉後自動展開（原本就收合的不會被展開）；視窗裡手動展開過就不再收。戰鬥面板不跟著收合。預設開。",
+                "Collapse the left info bar automatically while your own shop, transfer (ATM) or battle window is open, and expand it again afterwards (a bar you had collapsed stays collapsed). Expanding it by hand inside the window keeps it open. The battle panel stays visible. On by default.",
+                "自分のショップ・送金（ATM）・戦闘のウィンドウが開いている間は左側情報バーを自動で折りたたみ、閉じたら自動で展開します（もともと折りたたんでいた場合は展開しません）。ウィンドウ内で手動で展開すると、そのウィンドウでは再び折りたたみません。戦闘パネルは折りたたまれません。既定はオン。"));
             changed |= config.Describe(HandService, D(
                 "手牌抽屉打开时查询手牌：只要拿到本局观战码就会发给第三方观战服务（HandServiceUrl），全 Bot 局也照查。默认开；自己和 Bot 的手牌本地就能看到，服务只补看不到的队友。",
                 "手牌抽屜打開時查詢手牌：只要拿到本局觀戰碼就會發給第三方觀戰服務（HandServiceUrl），全 Bot 局也照查。預設開；自己和 Bot 的手牌本機就能看到，服務只補看不到的隊友。",

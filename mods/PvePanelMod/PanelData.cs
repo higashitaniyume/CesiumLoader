@@ -21,6 +21,8 @@ namespace PvePanelMod
         public bool Knocked;          // 被击倒：头像变灰
         public bool Away;             // 离线 / 挂机：buff 栏前加电脑标记
         public readonly List<BuffIcon> Buffs = new List<BuffIcon>();
+        /// <summary>「关键筹码置顶」正在显示的筹码（按它的顺序）；null = 没有。</summary>
+        public List<int> Pinned;
 
         /// <summary>用来判断「有没有变化」：没变就不重画。</summary>
         public string Key()
@@ -30,6 +32,8 @@ namespace PvePanelMod
               .Append('|').Append(Gold).Append('|').Append(Hand).Append('|').Append(Star).Append('|').Append(SkillCd)
               .Append('|').Append(Knocked).Append('|').Append(Away);
             foreach (var b in Buffs) sb.Append('|').Append(b.Icon).Append('x').Append(b.Layers).Append('r').Append(b.KeepRound);
+            sb.Append("|p");
+            if (Pinned != null) foreach (var id in Pinned) sb.Append(',').Append(id);
             return sb.ToString();
         }
     }

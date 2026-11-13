@@ -15,8 +15,15 @@ namespace PvePanelMod
         // ---- 草图里的尺寸（画布单位）----
         private const float Top = 96f, Width = 284f, RowH = 116f, RowGap = 6f, Pad = 8f, Border = 3f;
         private const float PlateW = 104f, PlateH = 78f, HeadSize = 98f, StarSize = 20f, StarStep = 11f, SkillSize = 26f;
-        private const float ColX = 116f, BuffSize = 28f, BuffGap = 4f, TabW = 32f, HandleH = 84f, TabH = 58f, HitPadX = 16f, HitPadY = 6f, HintH = 50f;
+        private const float ColX = 116f, BuffSize = 28f, BuffGap = 4f, TabW = 32f, HandleH = 84f, TabH = 58f, HitPadX = 16f, HitPadY = 6f, HintH = 60f;
         private const int MaxBuffs = 4;
+        // 右边一列的右边界：第一行（血量 星币 手牌）和关键筹码都不能超过它
+        private const float ColRight = Width - Border - 6f;
+        // buff 一行的位置：平时在第一行下面；装了「关键筹码置顶」时往下挪，中间空出来放关键筹码
+        private const float BuffY = 64f, BuffYPinned = 87f;
+        // 关键筹码 30 一个、间距 2：一行正好放 5 个原大的（2026-11-13 用户试过 26 嫌小）
+        private const float RelicY = 53f, RelicSize = 30f, RelicGap = 2f, ZoomSize = 22f;
+        private const int MaxRelics = 8;
 
         // ---- 配色（取启动器 v2，和草图一致）----
         private static readonly Color PanelColor = new Color(0.086f, 0.098f, 0.157f, 0.94f);
@@ -46,6 +53,7 @@ namespace PvePanelMod
         private readonly List<RowView> _rows = new List<RowView>();
         private float _k;
         private bool _collapsed;
+        private bool _pinnedLayout;
 
         public bool Collapsed => _collapsed;
         /// <summary>左栏下边缘（界面坐标），战斗面板挂在它下面。</summary>
@@ -78,23 +86,26 @@ namespace PvePanelMod
             if (_layer != null && !_layer.isDisposed) _layer.visible = false;
         }
 
-        public void Render(List<PlayerRow> data)
+        /// <param name="pinnedLayout">装了「关键筹码置顶」：buff 往下挪一行，给关键筹码留位置。</param>
+        public void Render(List<PlayerRow> data, bool pinnedLayout)
         {
             var root = GRoot.inst;
             if (root == null || data == null || data.Count == 0) { Hide(); return; }
             float k = PanelScale.K(root);
-            if (_layer == null || _layer.isDisposed || _layer.parent != root || Math.Abs(k - _k) > 0.001f || _rows.Count != data.Count)
-                Build(root, k, data.Count);
+            if (_layer == null || _layer.isDisposed || _layer.parent != root || Math.Abs(k - _k) > 0.001f || _rows.Count != data.Count
+                || pinnedLayout != _pinnedLayout)
+                Build(root, k, data.Count, pinnedLayout);
             for (int i = 0; i < data.Count; i++) _rows[i].Update(data[i]);
             if (!_layer.visible) _layer.visible = true;
         }
 
         // ---------------- 搭骨架 ----------------
 
-        private void Build(GRoot root, float k, int count)
+        private void Build(GRoot root, float k, int count, bool pinnedLayout)
         {
             Dispose();
             _k = k;
+            _pinnedLayout = pinnedLayout;
             _layer = new GComponent { name = "PvePanelLeft", sortingOrder = 25010 };
             root.AddChild(_layer);
 
@@ -121,7 +132,7 @@ namespace PvePanelMod
 
             for (int i = 0; i < count; i++)
             {
-                var row = new RowView(_icons, k);
+                var row = new RowView(_icons, k, pinnedLayout);
                 row.Root.SetXY(0f, (Pad + i * (RowH + RowGap)) * k);
                 _side.AddChild(row.Root);
                 _rows.Add(row);
@@ -144,9 +155,12 @@ namespace PvePanelMod
             _side.AddChild(bar);
             _side.AddChild(_hint);
             _hintKeys = Text(12f * k, Muted, false);
-            _hintKeys.SetXY(16f * k, _hint.y + _hint.textHeight + 4f * k);
+            // 「－」「＋」按钮比这一行字高，以这行的中线为中心上下各伸出一截：
+            // 往下多空一点，按钮上沿才不会压到上面那行黄字（2026-11-13 截图里压住了「更新」两个字）
+            float keysGap = Math.Max(4f * k, (ZoomSize * k - _hintKeys.textHeight) / 2f + 5f * k);
+            _hintKeys.SetXY(16f * k, _hint.y + _hint.textHeight + keysGap);
             _side.AddChild(_hintKeys);
-            // 同一排最右边：[－] 100% [＋]。白色细框 = 按钮（和左边只是提示的快捷键区分开）；整排只有这两个按钮接点击
+            // 同一排最右边：[－] [＋]。白色细框 = 按钮（和左边只是提示的快捷键区分开）；整排只有这两个按钮接点击
             _zoomLeft = ZoomControl(w - b - 12f * k, _hintKeys.y + _hintKeys.textHeight / 2f, k);
             UpdateKeysLine();
 
@@ -196,7 +210,7 @@ namespace PvePanelMod
         /// </summary>
         private float ZoomControl(float right, float midY, float k)
         {
-            float size = 22f * k, gap = 6f * k, hit = 4f * k;
+            float size = ZoomSize * k, gap = 6f * k, hit = 4f * k;
             float x = right - size;
             ZoomButton("+", x, midY, size, hit, 1, k);
             x -= gap + size;
@@ -319,7 +333,10 @@ namespace PvePanelMod
             private readonly GGraph _cdBg;
             private readonly GTextField _cd;
             private readonly GLoader _heart, _coin, _card;
-            private readonly GTextField _hp, _gold, _hand;
+            private readonly GTextField _hp, _hpMax, _gold, _hand;
+            // 关键筹码（装了「关键筹码置顶」才有）：品质底图 + 筹码图标
+            private readonly GLoader[] _relicBase;
+            private readonly UI.TextureLoader[] _relicImg;
             private readonly GGraph[] _buffBg = new GGraph[MaxBuffs];
             private readonly UI.TextureLoader[] _buff = new UI.TextureLoader[MaxBuffs];
             private readonly GLoader[] _buffLocal = new GLoader[MaxBuffs];
@@ -327,7 +344,7 @@ namespace PvePanelMod
             private readonly GTextField[] _layer = new GTextField[MaxBuffs];
             private string _lastKey;
 
-            public RowView(Icons icons, float k)
+            public RowView(Icons icons, float k, bool pinnedLayout)
             {
                 _icons = icons;
                 _k = k;
@@ -365,12 +382,25 @@ namespace PvePanelMod
                 float lineY = 26f * k;
                 _heart = Img(icons.Get("heart"), ColX, 0f, 20f, 20f, lineY + 3f * k);
                 _hp = Text(21f * k, Color.white, true); Root.AddChild(_hp);
+                _hpMax = Text(14f * k, Muted, true); Root.AddChild(_hpMax);   // 「/上限」：小一号、灰色，紧跟在血量后面
                 _coin = Img(icons.Get("coin"), 0f, 0f, 20f, 20f, lineY + 3f * k);
                 _gold = Text(21f * k, Color.white, true); Root.AddChild(_gold);
                 _card = Img(icons.Get("card"), 0f, 0f, 20f, 20f, lineY + 3f * k);
                 _hand = Text(21f * k, Color.white, true); Root.AddChild(_hand);
 
-                float buffY = lineY + 38f * k;
+                // 关键筹码一行：在第一行和 buff 之间（只有装了「关键筹码置顶」才建）
+                int relics = pinnedLayout ? MaxRelics : 0;
+                _relicBase = new GLoader[relics];
+                _relicImg = new UI.TextureLoader[relics];
+                for (int i = 0; i < relics; i++)
+                {
+                    _relicBase[i] = new GLoader { touchable = false, fill = FillType.ScaleFree, visible = false };
+                    Root.AddChild(_relicBase[i]);
+                    _relicImg[i] = new UI.TextureLoader { touchable = false, fill = FillType.ScaleFree, visible = false };
+                    Root.AddChild(_relicImg[i]);
+                }
+
+                float buffY = (pinnedLayout ? BuffYPinned : BuffY) * k;
                 for (int i = 0; i < MaxBuffs; i++)
                 {
                     float x = (ColX + i * (BuffSize + BuffGap)) * k;
@@ -422,16 +452,21 @@ namespace PvePanelMod
                     _cdBg.DrawRoundRect(_cd.textWidth + 4f * k, _cd.textHeight, WellColor, Corners(5f * k));
                 }
 
-                // 第一行：♥ 血量  星币  手牌（数字排在图标后面，按文字宽度往后挪）
+                // 第一行：♥ 血量/上限  星币  手牌（数字排在图标后面，按文字宽度往后挪）
                 bool low = d.MaxHp > 0 && d.Hp * 10 <= d.MaxHp * 3;
                 _hp.text = d.Hp.ToString();
                 _hp.color = d.Knocked ? Muted : (low ? Danger : Color.white);
+                _hpMax.visible = d.MaxHp > 0;
+                _hpMax.text = d.MaxHp > 0 ? "/" + d.MaxHp : "";
                 _gold.text = d.Gold.ToString();
                 _hand.text = d.Hand.ToString();
-                float x = ColX * k, y = 24f * k;
-                x = Place(_heart, _hp, x, y) + 9f * k;
-                x = Place(_coin, _gold, x, y) + 9f * k;
-                Place(_card, _hand, x, y);
+                // 加了血量上限后，星币三位数时一行可能放不下：放不下就把这一行的数字一起缩小，最小 15
+                int size = Mathf.RoundToInt(21f * k), min = Mathf.RoundToInt(15f * k);
+                SetSize(size);
+                while (LayoutLine() > ColRight * k && size > min) SetSize(--size);
+
+                // 关键筹码
+                ShowRelics(d.Pinned);
 
                 // 第二行：离线/挂机标记 + buff，放不下的不显示
                 int slot = 0;
@@ -440,11 +475,67 @@ namespace PvePanelMod
                 for (; slot < MaxBuffs; slot++) HideBuff(slot);
             }
 
+            private void SetSize(int size)
+            {
+                foreach (var t in new[] { _hp, _gold, _hand })
+                {
+                    if (t.textFormat.size == size) continue;
+                    var tf = t.textFormat; tf.size = size; t.textFormat = tf;
+                }
+            }
+
+            /// <summary>摆第一行，返回最右边的位置。</summary>
+            private float LayoutLine()
+            {
+                float k = _k, x = ColX * k, y = 24f * k;
+                float end = Place(_heart, _hp, x, y);
+                if (_hpMax.visible)
+                {
+                    // 和血量数字底边对齐
+                    _hpMax.SetXY(end + 1f * k, _hp.y + _hp.textHeight - _hpMax.textHeight - 2f * k);
+                    end = _hpMax.x + _hpMax.textWidth;
+                }
+                x = Place(_coin, _gold, end + 9f * k, y) + 9f * k;
+                return Place(_card, _hand, x, y);
+            }
+
             private float Place(GLoader icon, GTextField text, float x, float y)
             {
                 icon.SetXY(x, y + 3f * _k);
                 text.SetXY(x + 22f * _k, y + (24f * _k - text.textHeight) / 2f);
                 return text.x + text.textWidth;
+            }
+
+            /// <summary>
+            /// 关键筹码排成一行（顺序照「关键筹码置顶」）。默认 26 一个，放不下就一起缩小到刚好放下（和它自己的做法一样）。
+            /// 底图用右栏那套品质底图（data/relicbase_*.png），悬停显示筹码名字和说明。
+            /// </summary>
+            private void ShowRelics(List<int> ids)
+            {
+                int count = ids == null ? 0 : Math.Min(ids.Count, _relicBase.Length);
+                float k = _k, size = RelicSize * k, gap = RelicGap * k;
+                float room = (ColRight - ColX) * k;
+                float width = count * size + Math.Max(0, count - 1) * gap;
+                float scale = width > room && width > 0f ? room / width : 1f;
+                float s = size * scale, g = gap * scale, inner = s * 0.83f;
+                float y = RelicY * k + (size - s) / 2f;
+                for (int i = 0; i < _relicBase.Length; i++)
+                {
+                    bool show = i < count;
+                    _relicBase[i].visible = _relicImg[i].visible = show;
+                    _relicBase[i].data = null;
+                    if (!show) continue;
+                    string icon, quality;
+                    RelicLook.Info(ids[i], out icon, out quality);
+                    float x = ColX * k + i * (s + g);
+                    _relicBase[i].texture = _icons.Get("relicbase_" + quality);
+                    _relicBase[i].SetSize(s, s);
+                    _relicBase[i].SetXY(x, y);
+                    _relicBase[i].data = TipText.Relic(ids[i]);   // 悬停小字挂在整枚筹码上
+                    _relicImg[i].SetSize(inner, inner);
+                    _relicImg[i].SetXY(x + (s - inner) / 2f, y + (s - inner) / 2f);
+                    if (_relicImg[i].url != icon) _relicImg[i].url = icon;
+                }
             }
 
             private void ShowBuff(int i, string url, NTexture local, int layers, Tip tip)

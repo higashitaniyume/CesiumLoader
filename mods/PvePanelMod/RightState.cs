@@ -37,6 +37,10 @@ namespace PvePanelMod
         private readonly object _lock = new object();
         private readonly Dictionary<long, RightEntry> _byPlayer = new Dictionary<long, RightEntry>();
         private string _matchKey;
+        private long _lastShopper;
+
+        /// <summary>最近一次进店（收到进店消息）的玩家 ID；0 = 本局还没人进过店。自动收起左栏时用来分辨是不是自己的商店。</summary>
+        public long LastShopper { get { lock (_lock) return _lastShopper; } }
 
         public RightState()
         {
@@ -58,6 +62,7 @@ namespace PvePanelMod
                 if (key == _matchKey) return;
                 _matchKey = key;
                 _byPlayer.Clear();
+                _lastShopper = 0;
             }
         }
 
@@ -82,6 +87,7 @@ namespace PvePanelMod
             if (o == null || !o.IsPve || o.CardIds == null) return;
             lock (_lock)
             {
+                if (!o.IsClose) _lastShopper = o.PlayerId;
                 RightEntry e;
                 bool same = _byPlayer.TryGetValue(o.PlayerId, out e) && e.IsShop && !e.Done;
                 if (same && o.Sn != 0 && o.Sn == e.Sn) return;

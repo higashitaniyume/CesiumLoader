@@ -496,22 +496,28 @@ namespace PvePanelMod
                 return "UT_HandCard_" + id;
             }
 
-            private static void RelicInfo(int id, out string icon, out string quality)
+            private static void RelicInfo(int id, out string icon, out string quality) { RelicLook.Info(id, out icon, out quality); }
+        }
+    }
+
+    /// <summary>筹码的图标地址和品质（Blue / Purple / Orange），右栏和左栏的关键筹码共用。读不到给默认值。</summary>
+    internal static class RelicLook
+    {
+        public static void Info(int id, out string icon, out string quality)
+        {
+            icon = "UT_Relic_" + id;
+            quality = "Blue";
+            try
             {
-                icon = "UT_Relic_" + id;
-                quality = "Blue";
-                try
+                RelicInfoConfigure cfg;
+                if (StaticConfigure.Relic != null && StaticConfigure.Relic.InfoDict.TryGetValue(id, out cfg) && cfg != null)
                 {
-                    RelicInfoConfigure cfg;
-                    if (StaticConfigure.Relic != null && StaticConfigure.Relic.InfoDict.TryGetValue(id, out cfg) && cfg != null)
-                    {
-                        if (!string.IsNullOrEmpty(cfg.Icon)) icon = cfg.Icon;
-                        string q = cfg.RelicQualityType.ToString();
-                        if (q == "Blue" || q == "Purple" || q == "Orange") quality = q;
-                    }
+                    if (!string.IsNullOrEmpty(cfg.Icon)) icon = cfg.Icon;
+                    string q = cfg.RelicQualityType.ToString();
+                    if (q == "Blue" || q == "Purple" || q == "Orange") quality = q;
                 }
-                catch { }
             }
+            catch { }
         }
     }
 }
