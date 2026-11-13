@@ -82,6 +82,8 @@ winget install Hiynet.AstralParty.Toys
 | [ShopRelicPeekMod](mods/ShopRelicPeekMod/README.md) | 在游戏右上角展示玩家进店卡牌与选筹码候选历史，显示角色名与刚刚/X秒前，按一至四楼红绿蓝黄排列 |
 | [MapPeekMod](mods/MapPeekMod/README.md) | 选人阶段左上角显示本局地图名、模式、难度与人数，开赛后自动隐藏 |
 | [PinnedRelicsMod](mods/PinnedRelicsMod/README.md) | 持有指定筹码后，在左侧玩家星币下方横排显示游戏原生图标，支持中文名自定义名单、大小与位置 |
+| [PvePanelMod](mods/PvePanelMod/README.md) | PVE 对局合并面板：左栏头像/血量/星币/星级/技能冷却/buff，右栏波次与商店筹码，手牌抽屉与战斗胜率读数 |
+| [AngelModeUnlockMod](mods/AngelModeUnlockMod/README.md) | 解除审核渠道对「天使模式」开关的封锁，恢复设置页开关并可固定开关状态 |
 
 内置模组的 `config.json` 带简中、繁中、英文、日文配置说明，Toys 会按界面语言显示；第三方模组可按 [配置与元数据](docs/SDK-ConfigAndMetadata.md) 用 `ConfigDoc` 提供说明。
 

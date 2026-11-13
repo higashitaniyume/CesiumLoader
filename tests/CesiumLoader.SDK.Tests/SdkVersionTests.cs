@@ -12,8 +12,8 @@ namespace CesiumLoader.SDK.Tests
         {
             // SDK 与原生加载器使用同一发布版本。
             // 改版本时这两处要与 CesiumLoader.SDK.csproj 的 <Version> / <FileVersion> 对齐。
-            Assert.Equal("3.7.4", SdkVersion.Current);
-            Assert.Equal("3.7.4", SdkVersion.LoaderVersion);
+            Assert.Equal("3.7.5", SdkVersion.Current);
+            Assert.Equal("3.7.5", SdkVersion.LoaderVersion);
         }
 
         [Theory]
