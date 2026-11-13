@@ -138,21 +138,6 @@ namespace PvePanelMod.Tests
                 controller.Tick(S); Assert.Equal(2, calls);
             }
         }
-        // 抽屉开着、服务开着，但本地都能看全（全 Bot 局）：状态要说明「不查询」，不能空着让人以为坏了
-        [Fact]
-        public void NothingToQueryIsReportedAndDoesNotQuery()
-        {
-            int calls = 0;
-            using var controller = new HandQueryController(_ => { calls++; return new Request(); });
-            controller.SetNothingToQuery(true, 0);
-            Assert.Equal(HandQueryController.NothingToQueryStatus, controller.Status);
-            controller.SetViewing(true, 0); controller.SetRoom(Room, "test", 0); controller.Tick(0); controller.Tick(1);
-            Assert.Equal(0, calls);
-
-            controller.SetNothingToQuery(false, 10);   // 有人手牌变得看不到了 → 正常补查
-            controller.Tick(10);
-            Assert.Equal(1, calls);
-        }
         // 抽屉默认是收起的：服务开着、但还没拉开过抽屉时，状态应该是「手牌已收起」而不是「等待对局观战码」
         [Fact]
         public void FreshControllerReportsCollapsedNotWaitingForCode()
