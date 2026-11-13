@@ -138,6 +138,15 @@ namespace PvePanelMod.Tests
                 controller.Tick(S); Assert.Equal(2, calls);
             }
         }
+        // 抽屉默认是收起的：服务开着、但还没拉开过抽屉时，状态应该是「手牌已收起」而不是「等待对局观战码」
+        [Fact]
+        public void FreshControllerReportsCollapsedNotWaitingForCode()
+        {
+            using var controller = new HandQueryController(_ => new Request());
+            Assert.Equal(HandQueryController.CollapsedStatus, controller.Status);
+            controller.SetServiceEnabled(true, 0);
+            Assert.Equal(HandQueryController.CollapsedStatus, controller.Status);
+        }
         // 配置里地址写错时：不查询、状态直接显示原因，改好配置后自动恢复（以前是每 2 秒抛一次、只报「网络或响应数据不可用」）
         [Fact]
         public void InvalidEndpointBlocksQueriesUntilFixed()

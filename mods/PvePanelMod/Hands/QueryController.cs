@@ -125,7 +125,8 @@ namespace PvePanelMod.Hands
         long due, retryAt;
         int failures;
         public HandSnapshot Snapshot { get; private set; }
-        public string Status { get; private set; } = WaitingRoomStatus;
+        /// <summary>初始就是「收起」：抽屉默认不开，别一上来就报「等待对局观战码」让人以为服务没收到码。</summary>
+        public string Status { get; private set; } = CollapsedStatus;
         public int Revision { get; private set; }
         public bool Running => request != null;
         public bool IsStale { get; private set; }
