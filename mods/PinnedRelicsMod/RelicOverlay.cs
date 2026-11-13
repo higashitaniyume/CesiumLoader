@@ -9,8 +9,6 @@ namespace PinnedRelicsMod
     {
         /// <summary>Single HUD search node cap.</summary>
         private const int SearchLimit = 4096;
-        /// <summary>HUD searches allowed after each scene load; stops the idle 1 Hz full-tree walk.</summary>
-        private const int SearchBudget = 12;
         /// <summary>Icons built per tick, so a fresh scene never builds every row in one frame.</summary>
         private const int IconsPerTick = 2;
         /// <summary>Give up on a relic whose icon keeps failing (the game may have changed its config).</summary>
@@ -31,10 +29,12 @@ namespace PinnedRelicsMod
 
         private readonly Slot[] _slots = new Slot[4];
         private readonly List<GComponent> _search = new List<GComponent>();
+        /// <summary>Last logged diagnostic state per slot, so a steady frame logs nothing.</summary>
+        private readonly long[] _diag = new long[4];
         private UIBattleInfoPanel _panel;
-        private float _nextSearch, _nextProblem;
-        private int _searchBudget = SearchBudget;
-        private int _iconBudget;
+        private float _nextSearch, _nextProblem, _nextPanelDiag;
+        private int _iconBudget, _searches, _visited;
+        private long _panelDiag = -1;
         private bool _reportedDetail;
         private bool _cleared;
         private RelicIcon[] _selection;
@@ -42,6 +42,7 @@ namespace PinnedRelicsMod
         private int[] _iconFailures;
         internal Action<string> OnShown;
         internal Action<string> OnProblem;
+        internal Action<string> OnDiag;
 
 
         internal void Tick(float now, Settings settings)
@@ -49,7 +50,6 @@ namespace PinnedRelicsMod
             if (!ReferenceEquals(_selection, settings.Selection))
             {
                 Reset();
-                _searchBudget = SearchBudget;
                 _selection = settings.Selection;
                 _owned = new bool[_selection.Length];
                 _iconFailures = new int[_selection.Length];
@@ -57,16 +57,49 @@ namespace PinnedRelicsMod
             if (!settings.Enabled) { HideAll(); return; }
             if (_panel == null || _panel.isDisposed || _panel.parent == null)
             {
-                // Searching is a full GRoot walk: only right after a scene load, never forever.
-                if (now < _nextSearch || _searchBudget <= 0) return;
+                // The HUD appears a moment after the scene load and is rebuilt on re-entry:
+                // keep looking at 1 Hz while it is missing (a full GRoot walk is cheap).
+                if (now < _nextSearch) return;
                 _nextSearch = now + 1;
-                _searchBudget--;
-                Reset();
+                _searches++;
+                _visited = 0;
                 _panel = FindPanel();
+                if (_panel != null)
+                {
+                    if (_panelDiag != 1)
+                    {
+                        _panelDiag = 1;
+                        OnDiag?.Invoke("已定位战斗 HUD（第 " + _searches + " 次搜索，访问 " + _visited + " 个节点）");
+                    }
+                }
+                else if (_panelDiag != 0 || now >= _nextPanelDiag)
+                {
+                    // One line when it goes missing, then every 30 s so the lobby stays quiet.
+                    _panelDiag = 0;
+                    _nextPanelDiag = now + 30;
+                    OnDiag?.Invoke("未定位战斗 HUD（第 " + _searches + " 次搜索，访问 " + _visited + " 个节点）");
+                }
             }
             var players = _panel?.com_BattlePlayer;
             var container = players?.com_Container;
-            if (container == null || !Visible(_panel) || !Visible(players)) { HideAll(); return; }
+            if (container == null)
+            {
+                HideAll();
+                for (int i = 0; i < _slots.Length; i++) Diag(i, 2, now);
+                return;
+            }
+            if (!Visible(_panel))
+            {
+                HideAll();
+                for (int i = 0; i < _slots.Length; i++) Diag(i, 3, now);
+                return;
+            }
+            if (!Visible(players))
+            {
+                HideAll();
+                for (int i = 0; i < _slots.Length; i++) Diag(i, 4, now);
+                return;
+            }
             // One slot must never take the other three (and the whole row set) down with it.
             _iconBudget = IconsPerTick;
             RefreshSlot(0, container.com_Player_1, settings, now);
@@ -90,16 +123,18 @@ namespace PinnedRelicsMod
             var player = button?.PlayerData;
             var info = button?.com_player as UICom_PlayerInfo;
             var gold = info?.txt_Gold;
-            if (player?.player == null || player.player.Id == 0 || gold == null || gold.isDisposed ||
-                !Visible(button) || !Visible(info) || !Visible(gold))
-            {
-                Hide(index);
-                return;
-            }
+            if (player == null) { Hide(index); Diag(index, 10, now); return; }
+            if (player.player == null) { Hide(index); Diag(index, 11, now); return; }
+            if (player.player.Id == 0) { Hide(index); Diag(index, 12, now); return; }
+            if (gold == null) { Hide(index); Diag(index, 13, now); return; }
+            if (gold.isDisposed) { Hide(index); Diag(index, 14, now); return; }
+            if (!Visible(button)) { Hide(index); Diag(index, 15, now); return; }
+            if (!Visible(info)) { Hide(index); Diag(index, 16, now); return; }
+            if (!Visible(gold)) { Hide(index); Diag(index, 17, now); return; }
 
             // Same public inventory used by the game's own relic information window.
             int count = RelicCatalog.FillOwned(_selection, player.GetRelicIds(), _owned);
-            if (count == 0) { Hide(index); return; }
+            if (count == 0) { Hide(index); Diag(index, 18, now); return; }
             var slot = _slots[index];
             if (slot == null || slot.Row.isDisposed || slot.Row.parent != info ||
                 !ReferenceEquals(slot.Info, info) || slot.PlayerId != player.player.Id)
@@ -123,7 +158,7 @@ namespace PinnedRelicsMod
             slot.Row.SetSize(count * settings.Size + (count - 1) * settings.Gap, settings.Size);
             _cleared = false;
             // Nothing fits: no point building icons that would render at zero size.
-            if (scale <= 0f) { slot.Row.visible = false; return; }
+            if (scale <= 0f) { slot.Row.visible = false; DiagRow(index, slot, now, count, 0, false, scale, available, false); return; }
 
             int column = 0;
             bool loaded = true;
@@ -145,6 +180,7 @@ namespace PinnedRelicsMod
                 if (!slot.Icons[i].IsLoaded) loaded = false;
             }
             slot.Row.visible = true;
+            DiagRow(index, slot, now, count, column, loaded, scale, available, true);
             if (column > 0 && loaded && !slot.ReportedShown)
             {
                 slot.ReportedShown = true;
@@ -183,6 +219,48 @@ namespace PinnedRelicsMod
             }
         }
 
+        /// <summary>Row state, logged only when it changes.</summary>
+        private void DiagRow(int index, Slot slot, float now, int owned, int shown, bool loaded, float scale, float available, bool visible)
+        {
+            long state = 17;
+            state = state * 31 + owned;
+            state = state * 31 + shown;
+            state = state * 31 + (loaded ? 1 : 0);
+            state = state * 31 + (visible ? 1 : 0);
+            state = state * 31 + (int)(scale * 1000);
+            state = state * 31 + (int)available;
+            if (state == _diag[index]) return;
+            _diag[index] = state;
+            OnDiag?.Invoke("玩家栏 " + (index + 1) + "：匹配 " + owned + "，图标 " + shown + "，" +
+                (loaded ? "纹理就绪" : "纹理未就绪") + "，行缩放 " + scale.ToString("F2") +
+                "，可用宽 " + available.ToString("F0") + "，行可见 " + (visible ? "是" : "否"));
+        }
+
+        /// <summary>Hidden-slot reason, logged only when it changes.</summary>
+        private void Diag(int index, long code, float now)
+        {
+            if (_diag[index] == code) return;
+            _diag[index] = code;
+            string reason;
+            switch (code)
+            {
+                case 2: reason = "未取到玩家栏容器"; break;
+                case 3: reason = "HUD 面板不可见"; break;
+                case 4: reason = "玩家栏容器不可见"; break;
+                case 10: reason = "没有玩家数据"; break;
+                case 11: reason = "玩家对象为空"; break;
+                case 12: reason = "玩家 Id 为 0"; break;
+                case 13: reason = "星币文本为空"; break;
+                case 14: reason = "星币文本已销毁"; break;
+                case 15: reason = "玩家栏按钮不可见"; break;
+                case 16: reason = "玩家信息组件不可见"; break;
+                case 17: reason = "星币文本不可见"; break;
+                case 18: reason = "持有筹码中没有名单内的项"; break;
+                default: reason = "跳过(" + code + ")"; break;
+            }
+            OnDiag?.Invoke("玩家栏 " + (index + 1) + "：" + reason);
+        }
+
         private void Report(float now, string what, Exception exception)
         {
             if (now < _nextProblem) return;
@@ -207,7 +285,7 @@ namespace PinnedRelicsMod
                 _search.RemoveAt(last);
                 if (node == null || node.isDisposed) continue;
                 var panel = node as UIBattleInfoPanel;
-                if (panel != null) { _search.Clear(); return panel; }
+                if (panel != null) { _visited = visited; _search.Clear(); return panel; }
                 int remaining = SearchLimit - visited - _search.Count;
                 for (int i = node.numChildren - 1; i >= 0 && remaining-- > 0; i--)
                 {
@@ -215,6 +293,7 @@ namespace PinnedRelicsMod
                     if (child != null) _search.Add(child);
                 }
             }
+            _visited = visited;
             _search.Clear();
             return null;
         }
@@ -248,17 +327,20 @@ namespace PinnedRelicsMod
             if (slot != null && !slot.Row.isDisposed) slot.Row.Dispose();
         }
 
-        /// <summary>A new scene gets a fresh search budget and clears the give-up flags.</summary>
+        /// <summary>A new scene gets a fresh search budget and drops per-scene state.</summary>
         internal void OnSceneChanged()
         {
             Reset();
-            _searchBudget = SearchBudget;
             _nextSearch = 0f;
+            _nextPanelDiag = 0f;
+            _searches = 0;
+            _panelDiag = -1;
         }
 
         internal void Reset()
         {
             for (int i = 0; i < _slots.Length; i++) Remove(i);
+            for (int i = 0; i < _diag.Length; i++) _diag[i] = -1;
             if (_iconFailures != null)
                 for (int i = 0; i < _iconFailures.Length; i++) _iconFailures[i] = 0;
             _panel = null;

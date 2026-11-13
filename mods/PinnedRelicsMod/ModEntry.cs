@@ -18,7 +18,7 @@ namespace PinnedRelicsMod
         private bool _reset, _reportedDetail;
 
         public override string Name => "关键筹码置顶";
-        public override string Version => "1.2.1";
+        public override string Version => "1.2.2";
         public override string Author => "Aperfish";
         public override string Description => "在左侧对应玩家的星币下方横排显示指定筹码图标。";
 
@@ -29,7 +29,8 @@ namespace PinnedRelicsMod
             _overlay = new RelicOverlay();
             _overlay.OnShown = message => Log.Info(message);
             _overlay.OnProblem = message => Log.Warn(message);
-            Log.Info("关键筹码置顶 1.2.1：使用游戏原生筹码图案和品质 UI，无外置图片；保留原有大小和位置配置。");
+            _overlay.OnDiag = message => Log.Info(message);
+            Log.Info("关键筹码置顶 1.2.2：使用游戏原生筹码图案和品质 UI，无外置图片；保留原有大小和位置配置。");
         }
 
         public override void OnConfigChanged() { LoadSettings(); }
