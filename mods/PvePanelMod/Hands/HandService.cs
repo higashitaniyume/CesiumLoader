@@ -33,7 +33,7 @@ namespace PvePanelMod.Hands
     /// </summary>
     internal sealed class HandService : IDisposable
     {
-        public const string UserAgent = "AstralParty.Toys Mod/0.1.0 (PvePanelMod; based on HandViewerMod)";
+        public const string UserAgent = "CesiumLoader PvePanelMod/0.1.0 (HandViewerMod-derived)";
         private HandQueryController _query;
         private string _endpoint;
         private bool _serviceEnabled;
@@ -89,7 +89,10 @@ namespace PvePanelMod.Hands
             if (viewing) ReadRoom(out roomId, out code);
             if (_query != null)
             {
-                _query.SetRoom(roomId, code, now);
+                // 只在真的要查询时才同步房间：收起抽屉时 roomId/code 都是 null，若照旧调用
+                // SetRoom(null, null) 会把服务器要求的等待（Retry-After）和成功后的最短间隔一起清掉，
+                // 重新展开就等于绕过了限流。收起状态交给 SetViewing(false) 处理。
+                if (viewing) _query.SetRoom(roomId, code, now);
                 _query.SetViewing(viewing, now);
                 _query.Tick(now);
                 var snap = _query.Snapshot;

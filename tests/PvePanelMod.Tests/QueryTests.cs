@@ -106,6 +106,38 @@ namespace PvePanelMod.Tests
                 controller.Tick(10001); Assert.Equal(2, calls);
             }
         }
+        // 改动 3 的集成路径：HandService.Tick 收起抽屉时不再调用 SetRoom(null, null)，
+        // 所以这两条用例按「收起 → 重新展开」的真实顺序调用，等待必须继续有效。
+        [Fact]
+        public void RetryAfterSurvivesCollapseAndReopen()
+        {
+            int calls = 0;
+            using (var controller = new HandQueryController(_ => { calls++; return new Request { Done = true, Code = 503, RetryAfter = "60" }; }))
+            {
+                controller.SetViewing(true, 0); controller.SetRoom(Room, "test", 0); controller.Tick(0); controller.Tick(1);
+                Assert.Equal(1, calls);
+                controller.SetViewing(false, 2);                       // 收起抽屉：不同步房间
+                controller.SetViewing(true, 3); controller.Tick(3);     // 重新展开
+                Assert.Equal(1, calls);
+                controller.Tick(60000); Assert.Equal(1, calls);         // Retry-After 60 秒内不重查
+                controller.Tick(60001); Assert.Equal(2, calls);
+            }
+        }
+        [Fact]
+        public void MinIntervalSurvivesCollapseAndReopen()
+        {
+            int calls = 0;
+            using (var controller = new HandQueryController(_ => { calls++; return new Request { Done = true }; }))
+            {
+                controller.SetViewing(true, 0); controller.SetRoom(Room, "test", 0); controller.Tick(0); controller.Tick(1);
+                Assert.Equal(1, calls);
+                controller.SetViewing(false, 2);
+                controller.SetViewing(true, 3); controller.Tick(3);
+                Assert.Equal(1, calls);
+                controller.Tick(Min); Assert.Equal(1, calls);           // 成功后的最短间隔内不重查
+                controller.Tick(S); Assert.Equal(2, calls);
+            }
+        }
         [Theory]
         [InlineData("你没有权限获得卡牌信息", "你没有权限获得卡牌信息")]
         [InlineData("{\"message\":\"你没有权限获得卡牌信息\",\"error\":\"forbidden\"}", "你没有权限获得卡牌信息")]
