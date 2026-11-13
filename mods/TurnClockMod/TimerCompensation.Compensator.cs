@@ -143,15 +143,16 @@ namespace TurnClockMod
 
         /// <summary>丢掉已经不在场上的计时器; 返回清掉的条数。</summary>
         /// <param name="alive">本帧在场的计时器(操作计时器)。</param>
-        /// <param name="moreAlive">本帧在场的另一组计时器(界面倒计时); 可省略。</param>
-        internal int Prune(IList<object> alive, IList<object> moreAlive = null)
+        /// <param name="moreAlive">本帧在场的另一组计时器(别人回合的倒计时显示); 可省略。</param>
+        /// <param name="alsoAlive">本帧在场的第三组计时器(界面倒计时); 可省略。</param>
+        internal int Prune(IList<object> alive, IList<object> moreAlive = null, IList<object> alsoAlive = null)
         {
             if (_entries.Count == 0) return 0;
 
             List<object> dead = null;
             foreach (object key in _entries.Keys)
             {
-                bool found = Contains(alive, key) || Contains(moreAlive, key);
+                bool found = Contains(alive, key) || Contains(moreAlive, key) || Contains(alsoAlive, key);
                 if (found) continue;
                 if (dead == null) dead = new List<object>();
                 dead.Add(key);

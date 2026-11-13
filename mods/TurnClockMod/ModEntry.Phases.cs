@@ -52,6 +52,7 @@ namespace TurnClockMod
             if (_windowOpen) CloseWindow(now);
             _compensator.Clear();
             _buffer.Clear();
+            _showBuffer.Clear();
             _ticked.Clear();
             ResetExtraClocks();
             _autoPicker.Reset();

@@ -66,10 +66,19 @@ namespace TurnClockMod
             return true;
         }
 
-        /// <summary>当前在场的计时器: 我的操作窗口(timerDict) + 别人回合的倒计时(ShowPlayerTimer)。</summary>
-        private int CollectTimers(List<object> into)
+        /// <summary>
+        /// 当前在场的计时器: 自己的操作窗口(<c>timerDict</c>)放进 <paramref name="own"/>,
+        /// 别人回合的倒计时显示(<c>ShowPlayerTimer</c>)放进 <paramref name="other"/>; 返回
+        /// <paramref name="own"/> 的数量。
+        ///
+        /// 两边都过滤掉"已完成/已取消"的计时器: 游戏 <c>Cancel()</c>/<c>Dispose()</c> 之后仍会
+        /// 留着对象(<c>ShowPlayerTimer</c> 从不置空, <c>timerDict</c> 里也可能残留), 不筛掉的话
+        /// 残留计时器会一直被当成"在场": 我的窗口关不上, 空闲时也还会去采样倍率。
+        /// </summary>
+        private int CollectTimers(List<object> own, List<object> other)
         {
-            into.Clear();
+            own.Clear();
+            other.Clear();
             if (_dictField == null) return 0;
 
             try
@@ -78,7 +87,7 @@ namespace TurnClockMod
                 if (dict != null)
                 {
                     string path, error;
-                    if (TimerDictionaryReader.TryCollect(dict, into, out path, out error))
+                    if (TimerDictionaryReader.TryCollect(dict, own, out path, out error))
                     {
                         if (_collectPath != path)
                         {
@@ -98,17 +107,26 @@ namespace TurnClockMod
                 Log.Warn("读取 timerDict 失败: " + Describe(e));
             }
 
+            DropFinished(own);
+
             if (_otherTimers && _showField != null)
             {
                 try
                 {
                     object show = _showField.GetValue(null);
-                    if (show != null) into.Add(show);
+                    if (show != null && !IsTimerFinished(show)) other.Add(show);
                 }
                 catch { }
             }
 
-            return into.Count;
+            return own.Count;
+        }
+
+        /// <summary>去掉已经完成/取消的计时器(游戏可能还没来得及从集合里移除它们)。</summary>
+        private void DropFinished(List<object> timers)
+        {
+            for (int i = timers.Count - 1; i >= 0; i--)
+                if (IsTimerFinished(timers[i])) timers.RemoveAt(i);
         }
 
         /// <summary>第一次拿到计时器实例时探测成员, 并把成员清单打进日志(每种类型一次)。</summary>

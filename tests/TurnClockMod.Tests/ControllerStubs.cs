@@ -91,6 +91,7 @@ namespace GameLogic
         private static readonly Dictionary<long, object> timerDict = new Dictionary<long, object>();
         private static object ShowPlayerTimer;
         public static void Set(long key, object timer) { timerDict[key] = timer; }
+        public static void Clear() { timerDict.Clear(); }
         public static void Show(object timer) { ShowPlayerTimer = timer; }
         public static void Reset() { timerDict.Clear(); ShowPlayerTimer = null; }
     }

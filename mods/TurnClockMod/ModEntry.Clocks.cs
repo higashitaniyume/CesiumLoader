@@ -40,8 +40,9 @@ namespace TurnClockMod
         private string _panelReadError;
         private bool _storyFieldWarned;
 
-        private readonly List<TimerFlag> _finishFlags = new List<TimerFlag>();
-        private bool _doneProbeAttempted;
+        /// <summary>按计时器类型缓存的结束标记(isDone / isCompleted / isCancelled)。</summary>
+        private readonly Dictionary<Type, List<TimerFlag>> _finishFlagsByType =
+            new Dictionary<Type, List<TimerFlag>>();
         /// <summary>
         /// 计时器上的一个 bool 成员(isDone / isCompleted / isCancelled):
         /// 游戏自己也可能把结束状态做成字段, 所以字段与属性都试。
@@ -330,53 +331,74 @@ namespace TurnClockMod
             _extraSlots.Clear();
             _traces.Clear();
             _finishedTraces.Clear();
+            _finishFlagsByType.Clear();
             _fallbackLogged.Clear();
         }
 
-        /// <summary>计时器是不是已经完成/取消(都读不到时当作"还没结束", 只影响日志)。</summary>
+        /// <summary>
+        /// 计时器是不是已经完成/取消(读不到任何结束标记时当作"还没结束")。
+        /// 按类型缓存标记: 每帧、每个计时器都要读, 不能每帧重新反射查找。
+        /// </summary>
         private bool IsTimerFinished(object timer)
         {
             if (timer == null) return true;
 
-            if (!_doneProbeAttempted)
+            Type type = timer.GetType();
+            List<TimerFlag> flags;
+            if (!_finishFlagsByType.TryGetValue(type, out flags))
             {
-                _doneProbeAttempted = true;
-                ProbeFinishFlags(timer.GetType());
+                flags = ProbeFinishFlags(type);
+                _finishFlagsByType[type] = flags;
             }
 
-            for (int i = 0; i < _finishFlags.Count; i++)
-                if (_finishFlags[i].Read(timer)) return true;
+            for (int i = 0; i < flags.Count; i++)
+                if (flags[i].Read(timer)) return true;
             return false;
         }
 
-        private void ProbeFinishFlags(Type timerType)
+        /// <summary>按类型找结束标记; 一个标记都没找到时不筛任何计时器(只是少一层过滤)。</summary>
+        private static List<TimerFlag> ProbeFinishFlags(Type timerType)
         {
+            var flags = new List<TimerFlag>();
             string[] names = { "isDone", "isCompleted", "isCancelled" };
             for (int i = 0; i < names.Length; i++)
             {
+                string name = names[i];
                 try
                 {
-                    PropertyInfo property = timerType.GetProperty(names[i],
+                    PropertyInfo property = timerType.GetProperty(name,
                         BindingFlags.Instance | BindingFlags.Public);
                     if (property != null && property.PropertyType == typeof(bool))
                     {
-                        var flag = new TimerFlag();
-                        flag.Property = property;
-                        _finishFlags.Add(flag);
+                        flags.Add(new TimerFlag { Property = property });
                         continue;
                     }
 
-                    FieldInfo field = timerType.GetField(names[i],
+                    FieldInfo field = timerType.GetField(name,
                         BindingFlags.Instance | BindingFlags.Public);
                     if (field != null && field.FieldType == typeof(bool))
                     {
-                        var flag = new TimerFlag();
-                        flag.Field = field;
-                        _finishFlags.Add(flag);
+                        flags.Add(new TimerFlag { Field = field });
+                        continue;
                     }
+
+                    // 少数实现把结束标记做成 internal: 公开成员一个都没对上时再试非公开成员。
+                    property = timerType.GetProperty(name,
+                        BindingFlags.Instance | BindingFlags.NonPublic);
+                    if (property != null && property.PropertyType == typeof(bool))
+                    {
+                        flags.Add(new TimerFlag { Property = property });
+                        continue;
+                    }
+
+                    field = timerType.GetField(name,
+                        BindingFlags.Instance | BindingFlags.NonPublic);
+                    if (field != null && field.FieldType == typeof(bool))
+                        flags.Add(new TimerFlag { Field = field });
                 }
                 catch { }
             }
+            return flags;
         }
     }
 }

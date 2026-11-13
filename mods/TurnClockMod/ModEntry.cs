@@ -108,7 +108,10 @@ namespace TurnClockMod
         // 运行态
         // =====================================================================
         private readonly TimerCompensator _compensator = new TimerCompensator();
+        /// <summary>我自己的操作窗口(<c>OperationTimer.timerDict</c>)。只有这一组决定"操作窗口"开关。</summary>
         private readonly List<object> _buffer = new List<object>();
+        /// <summary>别人回合的倒计时显示(<c>OperationTimer.ShowPlayerTimer</c>): 只补偿, 不算我的窗口。</summary>
+        private readonly List<object> _showBuffer = new List<object>();
         private readonly HashSet<object> _ticked = new HashSet<object>(TimerReferenceComparer.Instance);
         private readonly NativeSpeedSampler _nativeSpeedSampler = new NativeSpeedSampler();
         internal Func<double?> ReadNativeSpeed = NativeSpeedState.Read;
@@ -128,7 +131,7 @@ namespace TurnClockMod
         private int _errors;
 
         public override string Name { get { return "回合时钟"; } }
-        public override string Version { get { return "1.4.1"; } }
+        public override string Version { get { return "1.4.2"; } }
         public override string Author { get { return "CesiumLoader"; } }
 
         public override string Description
@@ -179,6 +182,7 @@ namespace TurnClockMod
             ResetMembers();
             ResetExtraClocks();
             _buffer.Clear();
+            _showBuffer.Clear();
             _ticked.Clear();
             _nativeSpeedSampler.Reset();
             _hasTimers = false;
@@ -193,6 +197,7 @@ namespace TurnClockMod
         {
             _compensator.Clear();
             _buffer.Clear();
+            _showBuffer.Clear();
             _ticked.Clear();
             ResetExtraClocks();
             Log.Info("回合时钟已卸载");
@@ -222,10 +227,11 @@ namespace TurnClockMod
                 }
                 ResumeFromLoading();
 
-                int operationCount = CollectTimers(_buffer);
+                int operationCount = CollectTimers(_buffer, _showBuffer);
+                int otherCount = _showBuffer.Count;
                 int extraCount = CollectExtraClocks(_extraBuffer);
 
-                if (operationCount == 0 && extraCount == 0)
+                if (operationCount == 0 && otherCount == 0 && extraCount == 0)
                 {
                     _hasTimers = false;
                     if (_windowOpen) CloseWindow(now);
@@ -239,7 +245,9 @@ namespace TurnClockMod
                     return;
                 }
 
-                object probe = operationCount > 0 ? _buffer[0] : _extraBuffer[0];
+                object probe = operationCount > 0
+                    ? _buffer[0]
+                    : (otherCount > 0 ? _showBuffer[0] : _extraBuffer[0]);
                 EnsureMembers(probe);
                 if (!IsReady())
                 {
@@ -247,6 +255,9 @@ namespace TurnClockMod
                     if (!IsReady()) return;
                 }
 
+                // "操作窗口"只按我自己的倒计时(timerDict)计: ShowPlayerTimer 是游戏里
+                // 那个一直挂着的静态字段(别人回合也在用, Cancel 后也不清空), 拿它开关
+                // 窗口会让窗口从第一局起就一直开着, 再也打不出一回合一行。
                 if (operationCount > 0)
                 {
                     if (!_windowOpen)
@@ -269,13 +280,15 @@ namespace TurnClockMod
                 _ticked.Clear();
                 for (int i = 0; i < operationCount; i++)
                     if (_ticked.Add(_buffer[i])) TickTimer(_buffer[i], speed, frameScale, realDt, true);
+                for (int i = 0; i < otherCount; i++)
+                    if (_ticked.Add(_showBuffer[i])) TickTimer(_showBuffer[i], speed, frameScale, realDt, false);
                 for (int i = 0; i < extraCount; i++)
                     if (_ticked.Add(_extraBuffer[i])) TickTimer(_extraBuffer[i], speed, frameScale, realDt, false);
                 _ticked.Clear();
 
                 FinishTraces();
 
-                _compensator.Prune(_buffer, _extraBuffer);
+                _compensator.Prune(_buffer, _showBuffer, _extraBuffer);
             }
             catch (Exception e)
             {
@@ -296,7 +309,8 @@ namespace TurnClockMod
 
         /// <summary>
         /// 处理一个计时器: 读当前进度 → 按真实时间回退/推后 → 记录窗口统计。
-        /// <paramref name="windowStats"/> 只给操作计时器用: 界面倒计时不进"操作窗口"的统计。
+        /// <paramref name="windowStats"/> 只给我自己的操作倒计时(timerDict)用:
+        /// 别人头顶的倒计时和界面倒计时都只补偿, 不进"操作窗口"的统计。
         /// </summary>
         private void TickTimer(object timer, double? nativeSpeed, double frameScale, double realDt, bool windowStats)
         {

@@ -35,10 +35,10 @@ namespace TurnClockMod.Tests
             SimpleSingletonProvider<UI.UIManager>.inst = null;
             SimpleSingletonProvider<GameLogicManager>.inst = null;
         }
-        private TurnClock Create()
+        private TurnClock Create(bool logWindow = false)
         {
             var mod = new TurnClock();
-            mod.Config.Set("enabled", true); mod.Config.Set("logWindow", false);
+            mod.Config.Set("enabled", true); mod.Config.Set("logWindow", logWindow);
             mod.ReadWallSeconds = () => _now;
             mod.ReadNativeSpeed = () => { _nativeReads++; return _native; };
             mod.OnInitialize();
@@ -199,6 +199,92 @@ namespace TurnClockMod.Tests
             OperationTimer.Set(1, timer); OperationTimer.Set(2, timer); OperationTimer.Show(timer);
             var mod = Create(); mod.OnLateUpdate();
             Assert.Equal(1, timer.RateReads);
+            mod.OnUnload();
+        }
+
+        /// <summary>没有结束标记的计时器类型不能让别的类型也失去"已结束"过滤。</summary>
+        private sealed class PlainTimer
+        {
+            public float _startTime = 0f;
+            public float _lastUpdateTime = .1f;
+            public float duration = 30f;
+        }
+
+        [Fact]
+        public void FinishedShowPlayerTimerDoesNotKeepTheWindowOpen()
+        {
+            var mine = new Timer();
+            OperationTimer.Set(1, mine);
+            // 游戏 Cancel 之后 ShowPlayerTimer 仍指向那个对象(字段从不置空)
+            OperationTimer.Show(new Timer { isDone = true });
+
+            var mod = Create(logWindow: true);
+            mod.OnLateUpdate();
+            for (int i = 0; i < 20; i++) Tick(mod, new[] { mine });
+
+            OperationTimer.Clear();               // 我这一回合结束
+            _now += .02; mod.OnLateUpdate();
+
+            Assert.Contains(mod.Log.Messages, message => message.Contains("操作窗口结束"));
+
+            // 只剩下"已结束"的 ShowPlayerTimer: 应当完全空闲, 不再采样倍率/读帧时钟
+            int readsAfterIdle = _nativeReads;
+            for (int i = 0; i < 50; i++) { _now += .02; mod.OnLateUpdate(); }
+            Assert.Equal(readsAfterIdle, _nativeReads);
+            mod.OnUnload();
+        }
+
+        [Fact]
+        public void OtherPlayersCountdownIsCompensatedButDoesNotHoldMyWindowOpen()
+        {
+            var mine = new Timer();
+            var other = new Timer();
+            OperationTimer.Set(1, mine);
+            OperationTimer.Show(other);
+
+            var mod = Create(logWindow: true);
+            mod.OnLateUpdate();
+            for (int i = 0; i < 50; i++) Tick(mod, new[] { mine, other });
+
+            OperationTimer.Clear();
+            _now += .02; mod.OnLateUpdate();
+
+            Assert.Contains(mod.Log.Messages, message => message.Contains("操作窗口结束"));
+            // 别人回合的倒计时仍然按真实时间走(.1 起始 + 50 帧 × .02s 真实)
+            Assert.InRange(other.Used, 1.099f, 1.102f);
+            mod.OnUnload();
+        }
+
+        [Fact]
+        public void FinishedOperationTimerStopsCountingAsTheWindow()
+        {
+            var mine = new Timer();
+            OperationTimer.Set(1, mine);
+
+            var mod = Create(logWindow: true);
+            mod.OnLateUpdate();
+            for (int i = 0; i < 20; i++) Tick(mod, new[] { mine });
+
+            mine.isDone = true;                   // 已完成, 但游戏还没从字典里删掉
+            _now += .02; mod.OnLateUpdate();
+
+            Assert.Contains(mod.Log.Messages, message => message.Contains("操作窗口结束"));
+            mod.OnUnload();
+        }
+
+        [Fact]
+        public void FinishFlagsAreProbedPerTimerType()
+        {
+            OperationTimer.Set(1, new PlainTimer());
+
+            var mod = Create(logWindow: true);
+            mod.OnLateUpdate();                   // 先探到"没有结束标记"的类型
+
+            OperationTimer.Clear();
+            OperationTimer.Set(2, new Timer { isDone = true });   // 已完成但残留在字典里
+            _now += .02; mod.OnLateUpdate();
+
+            Assert.Contains(mod.Log.Messages, message => message.Contains("操作窗口结束"));
             mod.OnUnload();
         }
     }

@@ -338,6 +338,32 @@ namespace TurnClockMod.Tests
             Assert.Equal(0, compensator.Count);
         }
 
+        [Fact]
+        public void Prune_KeepsTheOtherPlayersDisplayTimer()
+        {
+            // 别人回合的倒计时显示是第三组列表: 漏传会被当成已离场, 逐帧重建基准后不再补偿
+            var operationTimer = new FakeTimer { duration = 30f };
+            var displayTimer = new FakeTimer { duration = 30f };
+            var screenTimer = new FakeTimer { duration = 20f };
+            TimerMember member = Elapsed(typeof(FakeTimer));
+            var compensator = new TimerCompensator();
+
+            compensator.TickElapsed(operationTimer, 0f, 30f, 2.0, member);
+            compensator.TickElapsed(displayTimer, 0f, 30f, 2.0, member);
+            compensator.TickElapsed(screenTimer, 0f, 20f, 2.0, member);
+
+            var operation = new List<object> { operationTimer };
+            var display = new List<object> { displayTimer };
+            var screens = new List<object> { screenTimer };
+
+            Assert.Equal(0, compensator.Prune(operation, display, screens));
+            Assert.Equal(3, compensator.Count);
+
+            display.Clear();
+            Assert.Equal(1, compensator.Prune(operation, display, screens));
+            Assert.Equal(2, compensator.Count);
+        }
+
         // ---------- start 模式: 与游戏实际用的 Unity Timer 一致(已用时长 = 时钟 - 起点) ----------
 
         /// <summary>成员名照抄真机日志里的 UnityTimer.Timer。</summary>
