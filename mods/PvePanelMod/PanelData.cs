@@ -20,7 +20,6 @@ namespace PvePanelMod
         public int Hp, MaxHp, Gold, Hand, Star, SkillCd;
         public bool Knocked;          // 被击倒：头像变灰
         public bool Away;             // 离线 / 挂机：buff 栏前加电脑标记
-        public string StateDebug;     // 击倒 / 离线判断用到的原始字段，状态变化时写进日志核对
         public readonly List<BuffIcon> Buffs = new List<BuffIcon>();
 
         /// <summary>用来判断「有没有变化」：没变就不重画。</summary>
@@ -44,7 +43,7 @@ namespace PvePanelMod
     }
 
     /// <summary>
-    /// 从游戏里读左栏数据。数据来源都在 2026-11-12 用探针实测过（见 pve-panel/信息收集.md「探针实测结果」）：
+    /// 从游戏里读左栏数据。数据来源都在 2026-11-12 用探针在游戏里实测过：
     ///   星级 = Property.level，技能 CD = BattlePlayerData.SkillCD，血量/星币 = Property.HP/maxHP/gold，
     ///   buff 名字图标 = StaticConfigure.Buff（只取 IsShow 的），头像 = 官方左栏 loader_Icon 的 url。
     /// 所有读取都兜底：读不到就给默认值，绝不抛异常。
@@ -89,11 +88,6 @@ namespace PvePanelMod
                     // 只看实时字段：Player.OffLine、Property.Online。Hero.OfflineType 是「曾经掉过线」的历史记录，
                     // 重连回来也不清（2026-11-12 实测：重连后 OfflineType=WithReconnect，但 Online=True、OffLine=False），不能用。
                     row.Away = SafeBool(() => p.OffLine) || SafeBool(() => !prop.Online.Value);
-                    row.StateDebug = "Hp=" + row.Hp + "/" + row.MaxHp + " HealthState=" + SafeStr(() => prop.HealthState.ToString())
-                        + " Online=" + SafeStr(() => prop.Online.ToString()) + " Player.OffLine=" + SafeStr(() => p.OffLine.ToString())
-                        + " OfflineType=" + SafeStr(() => p.Hero.OfflineType.ToString()) + " TimeOutNum=" + SafeStr(() => p.Hero.TimeOutNum.ToString())
-                        + " ReviveRoundNum=" + SafeStr(() => p.Hero.ReviveRoundNum.ToString())
-                        + " TotalDie=" + SafeStr(() => pd.TotalDie.ToString());
                     string head;
                     if (headBySlot != null && headBySlot.TryGetValue(row.Slot, out head)) row.HeadUrl = head;
                     else row.HeadUrl = "UT_Hero_ProfilePhoto_" + SafeInt(() => p.Hero.HeroId);
@@ -190,6 +184,5 @@ namespace PvePanelMod
 
         private static int SafeInt(Func<int> f) { try { return f(); } catch { return 0; } }
         private static bool SafeBool(Func<bool> f) { try { return f(); } catch { return false; } }
-        private static string SafeStr(Func<string> f) { try { return f(); } catch { return "?"; } }
     }
 }

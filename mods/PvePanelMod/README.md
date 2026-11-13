@@ -54,4 +54,4 @@ PVE 对局里的合并信息面板：左侧信息栏、右侧情报栏、战斗�
 ## 说明
 
 - 字段都在游戏里实测过（星级 `Property.level`、技能 CD `BattlePlayerData.SkillCD`、回合 `RoomInfo.Round` 等）。`Hero.Lv`、`Hero.Hp`、`Hero.OfflineType` 是快照或历史记录，不能当实时状态用。
-- 「挂机」状态还没在游戏里碰到过，目前只判断离线。
+- 「离线」只看 `Player.OffLine` / `Property.Online`；挂机和掉线走的是同一套在线状态字段。

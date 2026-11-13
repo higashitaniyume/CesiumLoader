@@ -1,1 +1,1 @@
-{"id":"PvePanelMod","name":"PVE 面板","version":"0.1.0","author":"hajimi","description":"PVE 对局左侧信息栏：头像、血量、星币、手牌数、星级、技能冷却、buff。只读，不发送对局操作。","permissions":1,"sdkVersion":"3.7.0","dependencies":[]}
+{"id":"PvePanelMod","name":"PVE 面板","version":"0.1.0","author":"hajimi","description":"PVE 对局信息面板：头像、血量、星币、手牌数、星级、技能冷却、buff，右栏波次与商店筹码，手牌抽屉。只读，不发送对局操作。打开 HandService 后会把本局观战码发给配置里的第三方观战地址。","permissions":1,"sdkVersion":"3.7.0","dependencies":[]}

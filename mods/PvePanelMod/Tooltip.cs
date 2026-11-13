@@ -146,7 +146,7 @@ namespace PvePanelMod
                 if (!_mouseProbed)
                 {
                     _mouseProbed = true;
-                    var t = RuntimeAssemblyService.FindType("UnityEngine.Input") ?? RuntimeAssemblyService.FindTypeBySimpleName("Input");
+                    var t = RuntimeAssemblyService.FindTypeBySimpleName("Input");
                     _mouseGetter = t?.GetProperty("mousePosition", BindingFlags.Public | BindingFlags.Static)?.GetGetMethod();
                 }
                 if (_mouseGetter == null) return false;

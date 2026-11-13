@@ -172,7 +172,6 @@ namespace PvePanelMod
                 if (rows.Count == 0) { HideAll(); return; }
                 _left.Render(rows);
                 _shown = true;
-                LogStateChanges(rows);
                 RenderBattle();
                 RenderHands(rows);
                 RenderRight(rows);
@@ -233,60 +232,6 @@ namespace PvePanelMod
                 catch { _waves = new List<WaveInfo>(); }
             }
             _right.Render(RightEdge(), round, _waves, rows, _rightState.Snapshot());
-        }
-
-        private readonly Dictionary<long, string> _lastState = new Dictionary<long, string>();
-
-        /// <summary>谁的「击倒 / 离线」判断一变就记一行（附原始字段），方便核对判断准不准。</summary>
-        private void LogStateChanges(List<PlayerRow> rows)
-        {
-            var coma = OfficialComa();
-            foreach (var r in rows)
-            {
-                string c;
-                coma.TryGetValue(r.Slot, out c);
-                // 只在「击倒 / 离线」的判断真正变化时记一行，附上判断用到的原始字段，方便以后核对（挂机还没实测过）
-                string s = (r.Knocked ? "击倒" : "正常") + "/" + (r.Away ? "离线" : "在线");
-                string last;
-                if (_lastState.TryGetValue(r.Id, out last) && last == s) continue;
-                _lastState[r.Id] = s;
-                if (last == null && !r.Knocked && !r.Away) continue;   // 开局正常的不记
-                Log.Info("PVE 面板状态: " + r.Nick + " " + (last ?? "开局") + " → " + s + " | " + r.StateDebug + " 官方昏迷字样=" + c);
-            }
-        }
-
-        /// <summary>官方左栏每行「昏迷」两个字是否真的看得见（自己和所有上层都 visible、alpha 不为 0）。按楼层编号。</summary>
-        private static Dictionary<int, string> OfficialComa()
-        {
-            var map = new Dictionary<int, string>();
-            foreach (var row in PanelData.FindOfficialRows())
-            {
-                try
-                {
-                    var slotText = (row.GetChild("txt_Slot") as GTextField)?.text;
-                    if (string.IsNullOrEmpty(slotText) || slotText[0] < 1 || slotText[0] > 4) continue;
-                    GObject t = Find(row, o => o is GTextField f && f.text == "昏迷");
-                    string v = "无";
-                    if (t != null)
-                    {
-                        bool vis = true; float a = 1f;
-                        for (var x = t; x != null && x != row; x = x.parent)   // 不算整行：整行被我们调暗了 { vis &= x.visible; a *= x.alpha; }
-                        v = (vis && a > 0.01f ? "显示" : "隐藏") + "(alpha=" + a.ToString("0.00") + ")";
-                    }
-                    map[slotText[0] - 1] = v;
-                }
-                catch { }
-            }
-            return map;
-        }
-
-        private static GObject Find(GObject o, Func<GObject, bool> pred, int depth = 0)
-        {
-            if (o == null || depth > 6) return null;
-            if (pred(o)) return o;
-            if (o is GComponent c)
-                for (int i = 0; i < c.numChildren; i++) { var r = Find(c.GetChildAt(i), pred, depth + 1); if (r != null) return r; }
-            return null;
         }
 
         /// <summary>

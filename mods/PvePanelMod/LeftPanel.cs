@@ -6,9 +6,9 @@ using UnityEngine;
 namespace PvePanelMod
 {
     /// <summary>
-    /// 左侧信息栏。所有尺寸照草图 panel.html（2000×1125 的画布）写，再乘 k = 屏幕高 / 1125，
+    /// 左侧信息栏。所有尺寸照设计草图（2000×1125 的画布）写，再乘 k = 屏幕高 / 1125，
     /// 这样跟着游戏自己的界面缩放走（设计决定 11）。
-    /// 面板底板挡住点击（决定 12）：点在面板上不会穿到下面的地图。
+    /// 面板整块不挡鼠标：除了把手和缩放按钮，其余元素都是 touchable = false，下面的地图照常能点。
     /// </summary>
     internal sealed class LeftPanel : IDisposable
     {
@@ -130,7 +130,7 @@ namespace PvePanelMod
             // 底部小字：操作提示 + 快捷键提示（快捷键那行按配置生成）
             // 操作提示要醒目：黄色加粗、字稍大，左边一条黄色竖条
             _hint = Text(14f * k, Soon, true);
-            _hint.text = "重掷筹码、给角色上 buff 时不用收起信息栏";
+            _hint.text = "重掷筹码、上 buff 后不用收起，面板会跟着更新";
             _hint.SetXY(16f * k, (rowsBottom + 4f) * k);
             // 游戏字体比草图宽：放不下就把字号往小调，直到这一行不超出面板
             float room = w - b - 26f * k;
