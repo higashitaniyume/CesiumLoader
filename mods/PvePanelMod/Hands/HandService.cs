@@ -26,9 +26,9 @@ namespace PvePanelMod.Hands
     /// <summary>
     /// 手牌从哪来（PVE 面板对 HandViewerMod 的主要改动）：
     ///   1. 先读本地：自己的牌、Bot 的牌游戏本地就有（BattlePlayerData.cardContainer 里 CardId &gt; 0），不联网；
-    ///   2. 只有真人队友的牌被游戏遮住（CardId = 0），这时才问第三方观战服务 aspac.hiynet.com，
-    ///      而且要在配置里手动打开 HandService（默认关：CesiumLoader 内置 mod 约定只读、不联网）；
-    ///   3. 只在手牌抽屉打开时查询；全是 Bot 的对局一次请求都不发。
+    ///   2. 真人队友的牌被游戏遮住（卡面是负数、或卡面数量和张数对不上），这时靠第三方观战服务 aspac.hiynet.com；
+    ///      要在配置里手动打开 HandService（默认关：CesiumLoader 内置 mod 约定只读、不联网）；
+    ///   3. 手牌抽屉打开、并且拿到本局观战码就查（全 Bot 局也照查）；本地能读到的行仍然优先用本地数据。
     /// 查询、限流、响应校验沿用 HandViewerMod 的 HandQueryController（见 QueryController.cs 的「改动」注释）。
     /// </summary>
     internal sealed class HandService : IDisposable
@@ -79,22 +79,16 @@ namespace PvePanelMod.Hands
         {
             long now = Now;
             _views.Clear();
-            bool anyMasked = false;
             foreach (var r in players)
-            {
-                var v = ReadLocal(r.Id);
-                if (v == null) { anyMasked = true; v = new HandView(); }
-                _views[r.Id] = v;
-            }
+                _views[r.Id] = ReadLocal(r.Id) ?? new HandView();
 
-            // 第三方服务：开关打开、抽屉打开、确实有人的牌被遮住，才查询
-            bool viewing = _serviceEnabled && drawerOpen && anyMasked;
+            // 第三方服务：只要开关打开、抽屉打开就查（拿到观战码就发请求，全 Bot 局也照查）；
+            // 本地能读到的牌仍然优先用本地数据，服务只补看不到的那几行。
+            bool viewing = _serviceEnabled && drawerOpen;
             string roomId = null, code = null;
             if (viewing) ReadRoom(out roomId, out code);
             if (_query != null)
             {
-                // 抽屉开着、服务也开着，但本地都能看全 → 明确报出来，免得"拉开了却没请求"看不出原因
-                _query.SetNothingToQuery(_serviceEnabled && drawerOpen && !anyMasked, now);
                 // 只在真的要查询时才同步房间：收起抽屉时 roomId/code 都是 null，若照旧调用
                 // SetRoom(null, null) 会把服务器要求的等待（Retry-After）和成功后的最短间隔一起清掉，
                 // 重新展开就等于绕过了限流。收起状态交给 SetViewing(false) 处理。

@@ -114,14 +114,12 @@ namespace PvePanelMod.Hands
         public const string CollapsedStatus = "手牌已收起，暂停查询";
         /// <summary>配置里把第三方手牌服务关掉时的状态（不然会一直报「等待对局观战码」）。</summary>
         public const string ServiceOffStatus = "手牌服务已关闭";
-        /// <summary>抽屉开着、服务也开着，但本地每张手牌都读得到（比如全 Bot 局），不需要查询。</summary>
-        public const string NothingToQueryStatus = "本地手牌已可见，不查询";
         const string WaitingRoomStatus = "等待对局观战码";
         const string WaitingRefreshStatus = "等待查询";
         readonly Func<string, IHandRequest> start;
         IHandRequest request;
         string room, code;
-        bool dirty, viewing, serviceEnabled = true, nothingToQuery;
+        bool dirty, viewing, serviceEnabled = true;
         /// <summary>非空 = 配置层面就不能查询（比如服务地址写错），状态直接显示这句，直到下次配置。</summary>
         string blocked;
         long due, retryAt;
@@ -134,32 +132,10 @@ namespace PvePanelMod.Hands
         public bool IsStale { get; private set; }
         public HandQueryController(Func<string, IHandRequest> start) { this.start = start; }
 
-        /// <summary>能不能查：服务开着、配置没有问题、也确实有看不到的手牌。</summary>
-        bool Active => serviceEnabled && blocked == null && !nothingToQuery;
-        /// <summary>不能查时该显示的话（服务关着 / 配置有问题 / 本地都看得到）。</summary>
-        string IdleStatus => !serviceEnabled ? ServiceOffStatus : blocked ?? NothingToQueryStatus;
-
-        /// <summary>
-        /// 抽屉开着、服务开着，但本地每张手牌都读得到：不查询，状态说明原因。
-        /// 这个文案也顺带回答「为什么拉开了却没有请求」。
-        /// </summary>
-        public void SetNothingToQuery(bool nothing, long now)
-        {
-            if (nothingToQuery == nothing) return;
-            nothingToQuery = nothing;
-            if (!serviceEnabled) return;
-            if (blocked != null)
-            {
-                if (Status != blocked) { Status = blocked; Revision++; }
-                return;
-            }
-            if (nothing) { DisposeRequest(); dirty = false; Status = NothingToQueryStatus; Revision++; return; }
-            Status = viewing
-                ? (string.IsNullOrEmpty(room) || string.IsNullOrEmpty(code) ? WaitingRoomStatus : WaitingRefreshStatus)
-                : CollapsedStatus;
-            Revision++;
-            if (viewing) Refresh(now);
-        }
+        /// <summary>能不能查：服务开着、配置也没有问题。</summary>
+        bool Active => serviceEnabled && blocked == null;
+        /// <summary>不能查时该显示的话（服务关着 / 配置有问题）。</summary>
+        string IdleStatus => !serviceEnabled ? ServiceOffStatus : blocked;
 
         /// <summary>
         /// 配置层面的问题（比如第三方服务地址非法）：不查询、状态直接显示原因。
