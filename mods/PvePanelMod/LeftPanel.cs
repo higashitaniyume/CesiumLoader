@@ -460,10 +460,18 @@ namespace PvePanelMod
                 _hpMax.text = d.MaxHp > 0 ? "/" + d.MaxHp : "";
                 _gold.text = d.Gold.ToString();
                 _hand.text = d.Hand.ToString();
-                // 加了血量上限后，星币三位数时一行可能放不下：放不下就把这一行的数字一起缩小，最小 15
-                int size = Mathf.RoundToInt(21f * k), min = Mathf.RoundToInt(15f * k);
-                SetSize(size);
-                while (LayoutLine() > ColRight * k && size > min) SetSize(--size);
+                // 加了血量上限后一行可能放不下：放不下就把整行（数字、「/上限」、图标、间距）按同一比例缩小，最小一半。
+                // 以前只缩三个数字、最小 15，「/上限」和图标间距不缩，血量和上限都是三位数时还是会超出去。
+                float s = 1f;
+                ScaleLine(s);
+                float end = LayoutLine(s);
+                if (end > ColRight * k)
+                {
+                    s = Mathf.Max(0.5f, (ColRight - ColX) / (end / k - ColX));
+                    ScaleLine(s);
+                    end = LayoutLine(s);
+                    while (end > ColRight * k && s > 0.5f) { s = Mathf.Max(0.5f, s - 0.04f); ScaleLine(s); end = LayoutLine(s); }
+                }
 
                 // 关键筹码
                 ShowRelics(d.Pinned);
@@ -475,34 +483,41 @@ namespace PvePanelMod
                 for (; slot < MaxBuffs; slot++) HideBuff(slot);
             }
 
-            private void SetSize(int size)
+            /// <summary>第一行按比例 s 缩放：数字 21、「/上限」14、图标 20（都再乘界面缩放 k）。</summary>
+            private void ScaleLine(float s)
             {
-                foreach (var t in new[] { _hp, _gold, _hand })
-                {
-                    if (t.textFormat.size == size) continue;
-                    var tf = t.textFormat; tf.size = size; t.textFormat = tf;
-                }
+                SetFont(_hp, 21f * _k * s); SetFont(_gold, 21f * _k * s); SetFont(_hand, 21f * _k * s);
+                SetFont(_hpMax, 14f * _k * s);
+                foreach (var g in new[] { _heart, _coin, _card }) g.SetSize(20f * _k * s, 20f * _k * s);
             }
 
-            /// <summary>摆第一行，返回最右边的位置。</summary>
-            private float LayoutLine()
+            private static void SetFont(GTextField t, float size)
+            {
+                int v = Mathf.Max(8, Mathf.RoundToInt(size));
+                if (t.textFormat.size == v) return;
+                var tf = t.textFormat; tf.size = v; t.textFormat = tf;
+            }
+
+            /// <summary>摆第一行，返回最右边的位置。s 和 <see cref="ScaleLine"/> 用同一个比例，间距跟着缩。</summary>
+            private float LayoutLine(float s)
             {
                 float k = _k, x = ColX * k, y = 24f * k;
-                float end = Place(_heart, _hp, x, y);
+                float end = Place(_heart, _hp, x, y, s);
                 if (_hpMax.visible)
                 {
                     // 和血量数字底边对齐
-                    _hpMax.SetXY(end + 1f * k, _hp.y + _hp.textHeight - _hpMax.textHeight - 2f * k);
+                    _hpMax.SetXY(end + 1f * k * s, _hp.y + _hp.textHeight - _hpMax.textHeight - 2f * k * s);
                     end = _hpMax.x + _hpMax.textWidth;
                 }
-                x = Place(_coin, _gold, end + 9f * k, y) + 9f * k;
-                return Place(_card, _hand, x, y);
+                x = Place(_coin, _gold, end + 9f * k * s, y, s) + 9f * k * s;
+                return Place(_card, _hand, x, y, s);
             }
 
-            private float Place(GLoader icon, GTextField text, float x, float y)
+            private float Place(GLoader icon, GTextField text, float x, float y, float s)
             {
-                icon.SetXY(x, y + 3f * _k);
-                text.SetXY(x + 22f * _k, y + (24f * _k - text.textHeight) / 2f);
+                // 行高 24：图标、数字都在这一行里竖直居中（不缩时和以前位置一样）
+                icon.SetXY(x, y + (24f * _k - icon.height) / 2f + 1f * _k);
+                text.SetXY(x + 22f * _k * s, y + (24f * _k - text.textHeight) / 2f);
                 return text.x + text.textWidth;
             }
 

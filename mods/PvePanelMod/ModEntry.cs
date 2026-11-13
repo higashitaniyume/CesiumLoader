@@ -310,8 +310,11 @@ namespace PvePanelMod
             var room = gm?.room?.curRoomInfo;
             if (room == null || _rightHidden) { _right.Hide(); return; }
             int round = room.Round;
-            // 波次表只在换图、换难度、换回合时重算（另外每 10 秒兜底刷新一次）
-            string key = room.MapId + "|" + room.Difficulty + "|" + round;
+            // 波次是按「游戏进度」触发的，不是按回合：平时每回合进度 +1，和回合一样；但玩家被击倒也会推进进度，
+            // 之后进度就比回合大了（作者的 PveWaveForecastMod 一直用的是 GameProgress）。
+            int progress = room.GameProgress;
+            // 波次表只在换图、换难度、换回合或进度变了时重算（另外每 10 秒兜底刷新一次）
+            string key = room.MapId + "|" + room.Difficulty + "|" + round + "|" + progress;
             if (key != _wavesKey || DateTime.UtcNow >= _wavesNext)
             {
                 _wavesKey = key;
@@ -319,7 +322,7 @@ namespace PvePanelMod
                 try { _waves = WaveSchedule.Build(room, SimpleSingletonProvider<LandManager>.inst, 20); }
                 catch { _waves = new List<WaveInfo>(); }
             }
-            _right.Render(RightEdge(), round, _waves, rows, _rightState.Snapshot());
+            _right.Render(RightEdge(), round, progress, _waves, rows, _rightState.Snapshot());
         }
 
         /// <summary>

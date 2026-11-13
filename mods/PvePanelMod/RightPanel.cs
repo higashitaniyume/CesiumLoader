@@ -54,7 +54,9 @@ namespace PvePanelMod
         }
 
         /// <param name="rightEdge">屏幕右边在界面坐标里的位置。窄屏（如 1028×720）时界面根节点比屏幕窄，要用官方面板的右边界。</param>
-        public void Render(float rightEdge, int round, List<WaveInfo> waves, List<PlayerRow> players, Dictionary<long, RightEntry> entries)
+        /// <param name="round">第几回合：标题和轮次奖励倒计时用。</param>
+        /// <param name="progress">游戏进度（GameProgress）：波次按它触发。平时等于回合，玩家被击倒会让它多推进。</param>
+        public void Render(float rightEdge, int round, int progress, List<WaveInfo> waves, List<PlayerRow> players, Dictionary<long, RightEntry> entries)
         {
             var root = GRoot.inst;
             if (root == null || players == null || players.Count == 0) { Hide(); return; }
@@ -62,7 +64,7 @@ namespace PvePanelMod
 
             _upcoming.Clear();
             if (waves != null)
-                foreach (var w in waves) if (w.Progress > round && _upcoming.Count < MaxWaves) _upcoming.Add(w);
+                foreach (var w in waves) if (w.Progress > progress && _upcoming.Count < MaxWaves) _upcoming.Add(w);
 
             if (_layer == null || _layer.isDisposed || _layer.parent != root || Math.Abs(k - _k) > 0.001f
                 || _rows.Count != players.Count || _waveLines != _upcoming.Count)
@@ -76,9 +78,9 @@ namespace PvePanelMod
             // 第一排：刷怪和轮次奖励都在回合开头结算，所以只看以后的（没有「本回合」）
             _monsterRounds.Clear();
             if (waves != null) foreach (var w in waves) if (w.SpawnsMonsters) _monsterRounds.Add(w.Progress);
-            int mon = RoundMath.MonsterIn(round, _monsterRounds);
+            int mon = RoundMath.MonsterIn(progress, _monsterRounds);
             int rew = RoundMath.RewardIn(round);
-            string header = round + "|" + mon + "|" + rew;
+            string header = round + "|" + progress + "|" + mon + "|" + rew;
             if (header != _lastHeader)
             {
                 _lastHeader = header;
