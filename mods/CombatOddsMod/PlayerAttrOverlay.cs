@@ -137,7 +137,10 @@ namespace CombatOddsMod
         public void SetEnabled(bool enabled)
         {
             _enabled = enabled;
-            if (!enabled) { HideEntries(); HideTip(); }
+            if (!enabled) { HideEntries(); HideTip(); return; }
+            // LabelBackdrop.Enabled 是全局开关，改它不会让文字变化；这里主动让下一次 Update 重排一遍，
+            // 否则关掉底块后旧底块会一直留在屏幕上（Fit 只在文字变化的分支里调用）。
+            foreach (var entry in _entries.Values) entry.LastText = null;
         }
 
         public void Update(bool enabled = true)
