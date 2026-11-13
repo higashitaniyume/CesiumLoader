@@ -27,7 +27,7 @@ namespace PvePanelMod
     public sealed class PanelController : ModBase
     {
         public override string Name => "PVE 面板";
-        public override string Version => "0.1.0";
+        public override string Version => "0.2.0";
         public override string Author => "hajimi";
 
         private const float OfficialDimAlpha = 0f;   // 展开时直接隐藏官方左栏（两套信息叠在一起太乱）
@@ -44,6 +44,15 @@ namespace PvePanelMod
         private bool _rightHidden;
         private bool _leftCollapsed;
         private readonly BattleFeedReader _battleFeed = new BattleFeedReader();
+        private readonly PinnedRelics _pinned = new PinnedRelics();
+        /// <summary>商店、战斗窗口打开时自动收起左栏，关掉后再展开（配置 AutoCollapse，默认开）。</summary>
+        private bool _autoCollapse = true;
+        /// <summary>左栏是被「自动收起」收起来的（窗口关掉后要展开回来）；玩家自己点过就交给玩家，不再自动展开。</summary>
+        private bool _autoCollapsed;
+        /// <summary>这一次窗口打开已经处理过了（玩家手动展开后，不会在同一个窗口里又被收起）。</summary>
+        private bool _busyHandled;
+        private DateTime _idleSince = DateTime.MinValue;
+        private bool _autoToggling;
         private RightState _rightState;
         private List<WaveInfo> _waves = new List<WaveInfo>();
         private string _wavesKey;
@@ -71,8 +80,13 @@ namespace PvePanelMod
             // 点了把手立刻刷新，不等下一个 0.25 秒（点击要跟手）
             _left.CollapsedChanged += () =>
             {
-                _leftCollapsed = _left.Collapsed;
-                if (Config != null) { Config.Set(PanelConfigDocs.LeftPanelCollapsed, _leftCollapsed); Config.SaveIfDirty(); }
+                // 自动收起 / 展开不写进配置：配置只记玩家自己选的状态
+                if (!_autoToggling)
+                {
+                    _autoCollapsed = false;
+                    _leftCollapsed = _left.Collapsed;
+                    if (Config != null) { Config.Set(PanelConfigDocs.LeftPanelCollapsed, _leftCollapsed); Config.SaveIfDirty(); }
+                }
                 SetOfficialDim(!_left.Collapsed);
                 _next = DateTime.MinValue;
             };
@@ -157,6 +171,7 @@ namespace PvePanelMod
                     Config.SetDefault(PanelConfigDocs.RightToggleKey, PanelConfigDocs.DefaultRightKey);
                     Config.SetDefault(PanelConfigDocs.RightPanelHidden, false);
                     Config.SetDefault(PanelConfigDocs.LeftPanelCollapsed, false);
+                    Config.SetDefault(PanelConfigDocs.AutoCollapse, true);
                     Config.SetDefault(PanelConfigDocs.UiScale, 1.0);
                     Config.SetDefault(PanelConfigDocs.HandService, true);
                     Config.SetDefault(PanelConfigDocs.HandServiceUrl, PanelConfigDocs.DefaultServiceUrl);
@@ -170,9 +185,11 @@ namespace PvePanelMod
                 _rightKey = ParseKey(Config.GetString(PanelConfigDocs.RightToggleKey, PanelConfigDocs.DefaultRightKey));
                 _rightHidden = Config.GetBool(PanelConfigDocs.RightPanelHidden, false);
                 _leftCollapsed = Config.GetBool(PanelConfigDocs.LeftPanelCollapsed, false);
+                _autoCollapse = Config.GetBool(PanelConfigDocs.AutoCollapse, true);
                 PanelScale.Value = Config.GetFloat(PanelConfigDocs.UiScale, 1f);
             }
             _left?.SetKeysLine(KeysLine());
+            _autoCollapsed = false;   // 配置一改就以配置为准
             _left?.SetCollapsed(_leftCollapsed);
             // 面板总开关关着时连查询器都不用建：不联网、不订阅请求逻辑
             _hands?.Configure(_enabled && service, url);
@@ -202,8 +219,15 @@ namespace PvePanelMod
                 var rows = PanelData.Read(PanelData.ReadOfficialHeads(official));
                 _rows = rows;
                 if (rows.Count == 0) { HideAll(); return; }
-                _left.Render(rows);
+                bool pinned = _pinned.Installed;
+                if (pinned)
+                {
+                    var shown = _pinned.Read(PanelData.FindPanel());
+                    foreach (var r in rows) { List<int> ids; if (shown.TryGetValue(r.Id, out ids)) r.Pinned = ids; }
+                }
+                _left.Render(rows, pinned);
                 _shown = true;
+                AutoCollapse();
                 RenderBattle();
                 RenderHands(rows);
                 RenderRight(rows);
@@ -221,13 +245,45 @@ namespace PvePanelMod
         }
 
         /// <summary>
+        /// 商店、战斗窗口打开 → 收起左栏（它挡住窗口）；关掉 → 展开回来。
+        /// 只在窗口刚打开那一下收一次：玩家在窗口里自己又展开了，就不再收。
+        /// 原本就是收起的，窗口关掉后也不会被展开。商店和战斗连着开时中间可能有一瞬间都没开，等 0.6 秒再展开，免得闪一下。
+        /// </summary>
+        private void AutoCollapse()
+        {
+            // 只管自己的：别人进店、别人打架时官方也会弹出同一个窗口，那时不收
+            // 转账也算：从商店点转账时商店窗口先关、转账窗口再开，中间不能把左栏展开回来
+            bool busy = _autoCollapse && (GameWindows.ShopOpen(_rightState.LastShopper) || GameWindows.AtmOpen() || GameWindows.FightOpen());
+            var now = DateTime.UtcNow;
+            if (!busy)
+            {
+                if (_idleSince == DateTime.MinValue) _idleSince = now;
+                if ((now - _idleSince).TotalSeconds < 0.6) return;
+                _busyHandled = false;
+                if (_autoCollapsed && _left.Collapsed) AutoToggle();
+                _autoCollapsed = false;
+                return;
+            }
+            _idleSince = DateTime.MinValue;
+            if (_busyHandled) return;
+            _busyHandled = true;
+            if (!_left.Collapsed) { AutoToggle(); _autoCollapsed = true; }
+        }
+
+        private void AutoToggle()
+        {
+            _autoToggling = true;
+            try { _left.Toggle(); } finally { _autoToggling = false; }
+        }
+
+        /// <summary>
         /// 战斗面板：读战斗胜率助手的结果（没装就什么都没有），挂在左栏下面。
-        /// 左栏收起时不显示，也不声明「我来显示」，战斗胜率助手会照常画它自己的框，信息不会丢。
+        /// 左栏收起时照样显示（战斗时左栏会自动收起，这时最需要看胜率），位置不变。
         /// </summary>
         private void RenderBattle()
         {
             var odds = _battleFeed.Read();
-            if (odds == null || _left.Collapsed) { _battle.Hide(); return; }
+            if (odds == null) { _battle.Hide(); return; }
             _battle.Render(odds, _left.BottomY + 10f * PanelScale.K());
             _battleFeed.Claim();
         }
