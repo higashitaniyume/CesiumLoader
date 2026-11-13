@@ -38,16 +38,17 @@ namespace PvePanelMod.Tests
             return File.ReadAllText(path);
         }
 
-        /// <summary>从测试程序集所在目录往上找到仓库根（以 CesiumLoader.sln 为标志）。</summary>
+        /// <summary>从测试程序集所在目录往上找到仓库根（以 CesiumLoader.slnx 为标志）。</summary>
         private static string RepoRoot()
         {
             var dir = new DirectoryInfo(AppContext.BaseDirectory);
             while (dir != null)
             {
-                if (File.Exists(Path.Combine(dir.FullName, "CesiumLoader.sln"))) return dir.FullName;
+                if (File.Exists(Path.Combine(dir.FullName, "CesiumLoader.slnx"))) return dir.FullName;
                 dir = dir.Parent;
             }
-            throw new DirectoryNotFoundException("从 " + AppContext.BaseDirectory + " 往上没找到 CesiumLoader.sln");
+            throw new DirectoryNotFoundException("从 " + AppContext.BaseDirectory + " 往上没找到 CesiumLoader.slnx");
         }
     }
 }
+

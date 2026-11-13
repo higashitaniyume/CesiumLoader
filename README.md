@@ -173,8 +173,8 @@ SDK 提供生命周期、游戏事件、玩家数据、相机、输入、UI、�
 需要 Visual Studio 2026（MSVC v145 工具链）、Windows 10/11 SDK 与 .NET SDK 8 或更高版本。在本仓库根目录、VS 2026 开发者终端中执行：
 
 ```powershell
-dotnet restore CesiumLoader.sln
-MSBuild CesiumLoader.sln /p:Configuration=Release /p:Platform=x64
+dotnet restore CesiumLoader.slnx
+MSBuild CesiumLoader.slnx /p:Configuration=Release /p:Platform=x64
 dotnet test tests/CesiumLoader.SDK.Tests/CesiumLoader.SDK.Tests.csproj -c Release
 dotnet test tests/TurnFocusMod.Tests/TurnFocusMod.Tests.csproj -c Release
 pwsh -NoProfile -File tools/package-modloader.ps1

@@ -125,7 +125,7 @@ if ($Build)
     if (-not $msbuild) { throw '未找到 MSBuild.exe, 请手动构建后再部署。' }
 
     Write-Host "构建中   : $msbuild"
-    & $msbuild (Join-Path $repo 'CesiumLoader.sln') /p:Configuration=$Configuration /p:Platform=x64 /m /v:m /nologo
+    & $msbuild (Join-Path $repo 'CesiumLoader.slnx') /p:Configuration=$Configuration /p:Platform=x64 /m /v:m /nologo
     if ($LASTEXITCODE -ne 0) { throw "构建失败 (exit $LASTEXITCODE)" }
 }
 

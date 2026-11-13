@@ -12,7 +12,7 @@
       pwsh -File tools/fetch-game-refs.ps1 -Source <提取目录>
     或临时指定目录(结尾有无分隔符都可以):
       $env:CESIUM_GAME_REFS = 'D:\extract\extracted_dlls'
-      MSBuild CesiumLoader.sln /p:GameRefsDir=D:\extract\extracted_dlls\
+      MSBuild CesiumLoader.slnx /p:GameRefsDir=D:\extract\extracted_dlls\
   -->
   <PropertyGroup>
     <GameRefsDir Condition="'$(GameRefsDir)' == '' and '$(CESIUM_GAME_REFS)' != ''">$([MSBuild]::EnsureTrailingSlash('$(CESIUM_GAME_REFS)'))</GameRefsDir>

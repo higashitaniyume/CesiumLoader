@@ -17,7 +17,7 @@ permissions:
   id-token: write
 
 env:
-  SOLUTION: CesiumLoader.sln
+  SOLUTION: CesiumLoader.slnx
   APP_NAME: cesium-loader
   # AI agent 接管(AstralParty.AgentMod + AstralParty.Mcp.exe)是实验性、真机没验完的可选能力,
   # 默认不产出 cesium-agent-mcp*.zip；Release 必需资产为加载器、默认皮肤与 SDK 工具包。

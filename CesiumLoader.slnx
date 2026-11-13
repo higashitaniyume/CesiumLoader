@@ -1,0 +1,61 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/loader/">
+    <Project Path="loader/CesiumLoader.Bootstrap/CesiumLoader.Bootstrap.csproj" />
+    <Project Path="loader/CesiumLoader.SDK/CesiumLoader.SDK.csproj" />
+    <Project Path="loader/CesiumLoader/CesiumLoader.vcxproj" Id="a7b3e5d1-9c2f-4e8b-8d4a-1f3c9b7e5a22" />
+  </Folder>
+  <Folder Name="/mcp/">
+    <Project Path="mcp/AstralParty.AgentMod/AstralParty.AgentMod.csproj" />
+    <Project Path="mcp/AstralParty.Mcp.Core/AstralParty.Mcp.Core.csproj" />
+    <Project Path="mcp/AstralParty.Mcp/AstralParty.Mcp.csproj" />
+  </Folder>
+  <Folder Name="/mods/">
+    <Project Path="mods/ActivityLogMod/ActivityLogMod.csproj" />
+    <Project Path="mods/CameraProbeMod/CameraProbeMod.csproj" />
+    <Project Path="mods/CardSkinMod/CardSkinMod.csproj" />
+    <Project Path="mods/CharacterSkinMod/CharacterSkinMod.csproj" />
+    <Project Path="mods/CombatOddsMod/CombatOddsMod.csproj" />
+    <Project Path="mods/DiagnosticsMod/DiagnosticsMod.csproj" />
+    <Project Path="mods/ExtremeDifficultyMod/ExtremeDifficultyMod.csproj" />
+    <Project Path="mods/FacingHighlightMod/FacingHighlightMod.csproj" />
+    <Project Path="mods/ForkDirectionMod/ForkDirectionMod.csproj" />
+    <Project Path="mods/FreeCameraMod/FreeCameraMod.csproj" />
+    <Project Path="mods/HideHudMod/HideHudMod.csproj" />
+    <Project Path="mods/LanguageUnlockMod/LanguageUnlockMod.csproj" />
+    <Project Path="mods/MapPeekMod/MapPeekMod.csproj" />
+    <Project Path="mods/PinnedRelicsMod/PinnedRelicsMod.csproj" />
+    <Project Path="mods/PvePanelMod/PvePanelMod.csproj" />
+    <Project Path="mods/PveWaveForecastMod/PveWaveForecastMod.csproj" />
+    <Project Path="mods/QuickChatPlusMod/QuickChatPlusMod.csproj" />
+    <Project Path="mods/SpeedHackMod/SpeedHackMod.csproj" />
+    <Project Path="mods/TurnClockMod/TurnClockMod.csproj" />
+    <Project Path="mods/TurnFocusMod/TurnFocusMod.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AstralParty.AgentMod.Tests/AstralParty.AgentMod.Tests.csproj" />
+    <Project Path="tests/AstralParty.Mcp.Tests/AstralParty.Mcp.Tests.csproj" />
+    <Project Path="tests/CardSkinMod.Tests/CardSkinMod.Tests.csproj" />
+    <Project Path="tests/CharacterTransparencyMod.Tests/CharacterTransparencyMod.Tests.csproj" />
+    <Project Path="tests/CombatOddsMod.Tests/CombatOddsMod.Tests.csproj" />
+    <Project Path="tests/ForkDirectionMod.Tests/ForkDirectionMod.Tests.csproj" />
+    <Project Path="tests/HideHudMod.Tests/HideHudMod.Tests.csproj" />
+    <Project Path="tests/LanguageUnlockMod.Tests/LanguageUnlockMod.Tests.csproj" />
+    <Project Path="tests/PinnedRelicsMod.Tests/PinnedRelicsMod.Tests.csproj" />
+    <Project Path="tests/PvePanelMod.Tests/PvePanelMod.Tests.csproj" />
+    <Project Path="tests/PveWaveForecastMod.Tests/PveWaveForecastMod.Tests.csproj" />
+    <Project Path="tests/QuickChatPlusMod.Tests/QuickChatPlusMod.Tests.csproj" />
+    <Project Path="tests/ShopRelicPeekMod.Tests/ShopRelicPeekMod.Tests.csproj" />
+    <Project Path="tests/SpeedHackMod.Tests/SpeedHackMod.Tests.csproj" />
+    <Project Path="tests/StarCoinShopMod.Tests/StarCoinShopMod.Tests.csproj" />
+    <Project Path="tests/TurnClockMod.Tests/TurnClockMod.Tests.csproj" />
+    <Project Path="tests/TurnFocusMod.Tests/TurnFocusMod.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/cesium/CesiumCli.csproj" />
+  </Folder>
+</Solution>
