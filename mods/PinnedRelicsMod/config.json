@@ -1,8 +1,53 @@
 {
-  "Enabled": true,
-  "PinnedRelicNames": "肾上腺素-高效,磨刀石,友情徽章,安全气囊,紫色飞星,金色飞星,美工刀-初级,美工刀-锋利",
-  "IconSize": 30,
-  "IconGap": 3,
-  "OffsetX": 0,
-  "OffsetY": 3
+  // 总开关：玩家持有名单内筹码时，在对应玩家星币下方显示图标
+  "enabled": true,
+  // 置顶筹码中文名，按输入顺序显示；用逗号、顿号、分号或换行分隔，留空全部不显示
+  "pinnedRelicNames": "肾上腺素-高效,磨刀石,友情徽章,安全气囊,紫色飞星,金色飞星,美工刀-初级,美工刀-锋利",
+  // 图标边长，默认 30，范围 16～64；一行空间不足时自动缩小
+  "iconSize": 30,
+  // 图标间距，默认 3，范围 0～20
+  "iconGap": 3,
+  // 相对星币数字左边缘的水平偏移，正数向右
+  "offsetX": 0,
+  // 相对星币数字下边缘的垂直偏移，默认 3，正数向下
+  "offsetY": 3,
+
+  "_comments": {
+    "enabled": {
+      "zh-Hans": "总开关。仅在玩家持有指定筹码时显示图标。",
+      "zh-Hant": "總開關。僅在玩家持有指定籌碼時顯示圖示。",
+      "en": "Show icons only for selected relics currently owned.",
+      "ja": "対象チップを所持している間だけアイコンを表示。"
+    },
+    "pinnedRelicNames": {
+      "zh-Hans": "置顶筹码中文名，按输入顺序显示，用逗号、顿号、分号或换行分隔。追加名字可新增，删掉名字可取消；留空全部不显示。仅显示玩家已持有的筹码。完整名称见随包《支持的筹码.md》。",
+      "zh-Hant": "置頂籌碼中文名，依輸入順序顯示，以逗號、頓號、分號或換行分隔。可新增、刪除；留空不顯示。僅顯示已持有的籌碼。",
+      "en": "Pinned relic Chinese names in display order, separated by commas, semicolons or newlines. Empty hides all. Only owned relics appear. See the supported names file.",
+      "ja": "中国語のチップ名を表示順に入力し、カンマや改行で区切ります。空欄で非表示。所持中のみ表示。"
+    },
+    "iconSize": {
+      "zh-Hans": "图标边长，默认 30，范围 16～64；一行空间不足时自动缩小。",
+      "zh-Hant": "圖示邊長，預設 30，範圍 16～64；一行空間不足時自動縮小。",
+      "en": "Icon size, 16–64. Shrinks to keep all icons on one row.",
+      "ja": "アイコンサイズ（16～64）。一列に収まるよう自動縮小。"
+    },
+    "iconGap": {
+      "zh-Hans": "图标间距，默认 3，范围 0～20。",
+      "zh-Hant": "圖示間距，預設 3，範圍 0～20。",
+      "en": "Spacing between icons, 0–20.",
+      "ja": "アイコン間隔（0～20）。"
+    },
+    "offsetX": {
+      "zh-Hans": "相对星币数字左边缘的水平偏移，正数向右。",
+      "zh-Hant": "相對星幣數字左緣的水平偏移，正數向右。",
+      "en": "Horizontal offset from the coin number; positive moves right.",
+      "ja": "星コイン数字からの横位置。正数は右。"
+    },
+    "offsetY": {
+      "zh-Hans": "相对星币数字下边缘的垂直偏移，默认 3，正数向下。",
+      "zh-Hant": "相對星幣數字下緣的垂直偏移，預設 3，正數向下。",
+      "en": "Vertical gap below the coin number; positive moves down.",
+      "ja": "星コイン数字の下端からの縦位置。正数は下。"
+    }
+  }
 }

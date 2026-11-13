@@ -15,10 +15,10 @@ namespace PinnedRelicsMod
         private volatile Settings _settings;
         private RelicOverlay _overlay;
         private float _nextRefresh, _nextWarning;
-        private bool _reset;
+        private bool _reset, _reportedDetail;
 
         public override string Name => "关键筹码置顶";
-        public override string Version => "1.2.0";
+        public override string Version => "1.2.1";
         public override string Author => "Aperfish";
         public override string Description => "在左侧对应玩家的星币下方横排显示指定筹码图标。";
 
@@ -28,7 +28,8 @@ namespace PinnedRelicsMod
             LoadSettings();
             _overlay = new RelicOverlay();
             _overlay.OnShown = message => Log.Info(message);
-            Log.Info("关键筹码置顶 1.2.0：使用游戏原生筹码图案和品质 UI，无外置图片；保留原有大小和位置配置。");
+            _overlay.OnProblem = message => Log.Warn(message);
+            Log.Info("关键筹码置顶 1.2.1：使用游戏原生筹码图案和品质 UI，无外置图片；保留原有大小和位置配置。");
         }
 
         public override void OnConfigChanged() { LoadSettings(); }
@@ -56,7 +57,7 @@ namespace PinnedRelicsMod
             _nextRefresh = now + 0.2f;
             try
             {
-                if (_reset) { _reset = false; _overlay.Reset(); }
+                if (_reset) { _reset = false; _overlay.OnSceneChanged(); }
                 _overlay.Tick(now, _settings);
             }
             catch (Exception exception)
@@ -65,7 +66,9 @@ namespace PinnedRelicsMod
                 if (now >= _nextWarning)
                 {
                     _nextWarning = now + 15;
-                    Log.Warn("筹码图标暂时无法刷新：" + exception.GetBaseException().Message);
+                    var error = exception.GetBaseException();
+                    Log.Warn("筹码图标暂时无法刷新：" + (_reportedDetail ? error.Message : error.ToString()));
+                    _reportedDetail = true;
                 }
             }
         }

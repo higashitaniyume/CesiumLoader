@@ -12,5 +12,7 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
     <Compile Include="../../mods/PinnedRelicsMod/RelicCatalog.cs" Link="RelicCatalog.cs" />
     <Compile Include="../../mods/PinnedRelicsMod/RelicCatalogData.cs" Link="RelicCatalogData.cs" />
+    <Compile Include="../../mods/PinnedRelicsMod/Settings.cs" Link="Settings.cs" />
+    <ProjectReference Include="../../loader/CesiumLoader.SDK/CesiumLoader.SDK.csproj" />
   </ItemGroup>
 </Project>

@@ -24,10 +24,14 @@ namespace PinnedRelicsMod
             // Plain C# data also avoids StreamReader and numeric parsing during startup.
             foreach (var relic in RelicCatalogData.Create())
             {
-                result.Add(Normalize(relic.Name), relic);
+                // Indexer, not Add: a duplicated name after a game hot update must not
+                // break the static initializer (that would take the whole mod down).
+                result[Normalize(relic.Name)] = relic;
             }
             // BWIKI spells this entry 微章; the game calls it 徽章.
-            result[Normalize("友情微章")] = result[Normalize("友情徽章")];
+            RelicIcon badge;
+            if (result.TryGetValue(Normalize("友情徽章"), out badge))
+                result[Normalize("友情微章")] = badge;
             return result;
         }
 

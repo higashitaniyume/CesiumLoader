@@ -1,7 +1,7 @@
 {
   "id": "PinnedRelicsMod",
   "name": "关键筹码置顶",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "author": "Aperfish",
   "description": "输入筹码中文名自定义置顶名单，持有后在左侧对应玩家星币下方显示游戏原生图标和品质底圈，无需外置图片。",
   "permissions": 129,
