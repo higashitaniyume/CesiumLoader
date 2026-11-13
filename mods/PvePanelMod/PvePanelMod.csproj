@@ -13,6 +13,6 @@
     <Reference Include="Google.Protobuf.Runtime"><HintPath>$(GameRefsDir)Google.Protobuf.Runtime.dll</HintPath><Private>false</Private></Reference>
     <None Update="PvePanelMod.json" CopyToOutputDirectory="PreserveNewest" />
     <None Update="config.json" CopyToOutputDirectory="PreserveNewest" />
-    <None Update="assets\*.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="data\*.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

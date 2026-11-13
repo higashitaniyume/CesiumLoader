@@ -49,7 +49,7 @@ PVE 对局里的合并信息面板：左侧信息栏、右侧情报栏、战斗�
 
 - `Hands/QueryController.cs`、`ServiceAddress.cs`、`UnityHandRequest.cs` 基于 [hpenguins/HandViewerMod](https://github.com/hpenguins/HandViewerMod)（AGPL-3.0，作者 hpenguins）改写。改动：成功后至少隔 5 秒再查（原 1.5 秒），手牌变动后攒 1.5 秒再查（原 0.6 秒），重新展开时遵守服务器的 `Retry-After`（原版会清掉等待，是「连接失败」= HTTP 429 的来源之一）。对应测试也来自原仓库，改动处有注释。
 - `WaveModels.cs`、`WaveScheduleCore.cs`、`WaveSchedule.cs` 复制自本仓库的 `PveWaveForecastMod`，只改了命名空间。
-- `assets/relicbase_*.png`（筹码品质底图）来自游戏资源 `UT_RelicBase_*`：游戏里按这个名字加载不到，所以随 mod 附带。其余小图标为本 mod 自绘。
+- `data/relicbase_*.png`（筹码品质底图）来自游戏资源 `UT_RelicBase_*`：游戏里按这个名字加载不到，所以随 mod 附带。其余小图标为本 mod 自绘，同样放在 `data/` 随包分发。
 
 ## 说明
 

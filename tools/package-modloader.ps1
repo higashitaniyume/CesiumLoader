@@ -203,6 +203,16 @@ foreach ($mod in $BuiltInMods)
             $manifestFiles += "staging/AstralParty_ModLoader/mods/$mod/sounds/$($file.Name)"
         }
     }
+    # 数据包(多语言文字、图标素材等): 与 CI 的 release-modloader.yml 保持一致, 要进包并进 SHA256 清单
+    # (清单会被 Toys 用来校验安装, 漏掉的文件等于没发)。
+    if (Test-Path -LiteralPath "$from\data") {
+        $toData = "$to\data"
+        if (Test-Path -LiteralPath $toData) { Remove-Item -LiteralPath $toData -Recurse -Force }
+        Copy-Item "$from\data" $toData -Recurse -Force
+        foreach ($file in Get-ChildItem $toData -File) {
+            $manifestFiles += "staging/AstralParty_ModLoader/mods/$mod/data/$($file.Name)"
+        }
+    }
 }
 
 # 只把真正落盘的文件写进清单。两个理由:

@@ -9,7 +9,7 @@ using UnityEngine;
 namespace PvePanelMod
 {
     /// <summary>
-    /// 面板自己的小图标（assets/*.png）。写法照 CardSkinMod.CardTextureLoader：
+    /// 面板自己的小图标（data/*.png，随包数据目录）。写法照 CardSkinMod.CardTextureLoader：
     /// 编译期拿不到 ImageConversion，运行时按名字找到 ImageConversion.LoadImage 再调用。
     /// 读不到的图标返回 null，界面那一格就空着，不会报错。
     /// </summary>
@@ -22,7 +22,7 @@ namespace PvePanelMod
 
         public Icons(string modDirectory)
         {
-            _dir = Path.Combine(modDirectory ?? "", "assets");
+            _dir = Path.Combine(modDirectory ?? "", "data");
         }
 
         public NTexture Get(string name)

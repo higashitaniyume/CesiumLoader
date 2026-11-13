@@ -381,7 +381,7 @@ namespace PvePanelMod
         /// 结束后的样子（卡牌和筹码用同一套规则）：
         ///   被拿走的（买了的卡 / 选中的筹码）= 盖一层深色 + ✓；
         ///   没拿的卡 = 保持原色；没选的筹码 = 图标连同品质底图一起变黑白。
-        /// 筹码品质底图是 wiki 上的 UT_RelicBase_*（游戏里按这个名字加载不出来），随模组放在 assets/relicbase_*.png。
+        /// 筹码品质底图是 wiki 上的 UT_RelicBase_*（游戏里按这个名字加载不出来），随模组放在 data/relicbase_*.png。
         /// </summary>
         private sealed class Item
         {
