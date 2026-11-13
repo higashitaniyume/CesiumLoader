@@ -52,6 +52,8 @@ namespace PvePanelMod
         private DateTime _nextError = DateTime.MinValue;
         /// <summary>最近一次渲染的玩家行（诊断日志用，只存引用）。</summary>
         private List<PlayerRow> _rows;
+        /// <summary>配置里的总开关。默认关：mod 装了也不显示，改配置立即生效（热重载），不用重启游戏。</summary>
+        private bool _enabled;
         private readonly List<GComponent> _dimmed = new List<GComponent>();
         private readonly Dictionary<GComponent, bool> _dimTouchable = new Dictionary<GComponent, bool>();
 
@@ -88,7 +90,9 @@ namespace PvePanelMod
                 _next = DateTime.MinValue;
             };
             Context?.RegisterCleanup(Stop);
-            Log.Info("PVE 面板已启用：只在 PVE 对局里显示左右两栏");
+            Log.Info(_enabled
+                ? "PVE 面板已启用：只在 PVE 对局里显示左右两栏"
+                : "PVE 面板已加载：配置里 Enabled=false，暂不显示（改成 true 立即生效）");
         }
 
         public override void OnUnload() { Stop(); }
@@ -147,6 +151,7 @@ namespace PvePanelMod
                 if (initial)
                 {
                     PanelConfigDocs.Apply(Config);
+                    Config.SetDefault(PanelConfigDocs.Enabled, false);
                     Config.SetDefault(PanelConfigDocs.LeftToggleKey, PanelConfigDocs.DefaultLeftKey);
                     Config.SetDefault(PanelConfigDocs.HandToggleKey, PanelConfigDocs.DefaultHandKey);
                     Config.SetDefault(PanelConfigDocs.RightToggleKey, PanelConfigDocs.DefaultRightKey);
@@ -157,6 +162,7 @@ namespace PvePanelMod
                     Config.SetDefault(PanelConfigDocs.HandServiceUrl, PanelConfigDocs.DefaultServiceUrl);
                     Config.SaveIfDirty();
                 }
+                _enabled = Config.GetBool(PanelConfigDocs.Enabled, false);
                 service = Config.GetBool(PanelConfigDocs.HandService, false);
                 url = Config.GetString(PanelConfigDocs.HandServiceUrl, PanelConfigDocs.DefaultServiceUrl);
                 _leftKey = ParseKey(Config.GetString(PanelConfigDocs.LeftToggleKey, PanelConfigDocs.DefaultLeftKey));
@@ -168,12 +174,19 @@ namespace PvePanelMod
             }
             _left?.SetKeysLine(KeysLine());
             _left?.SetCollapsed(_leftCollapsed);
-            _hands?.Configure(service, url);
-            Log.Info("PVE 面板配置: 第三方手牌服务 " + (service ? "开" : "关"));
+            // 面板总开关关着时连查询器都不用建：不联网、不订阅请求逻辑
+            _hands?.Configure(_enabled && service, url);
+            Log.Info("PVE 面板配置: 面板 " + (_enabled ? "开" : "关") + "，第三方手牌服务 " + (service ? "开" : "关"));
         }
 
         public override void OnUpdate()
         {
+            if (!_enabled)
+            {
+                // 关着：把已经画出来的东西收掉就好，别继续每帧读游戏数据
+                if (_shown || _dimmed.Count > 0) HideAll();
+                return;
+            }
             // 每帧：手牌抽屉跟着左栏的滑动动画挪位置（只改坐标，很省）
             if (_drawer != null && _drawer.Visible && _left != null)
                 _drawer.SetX(Math.Max(0f, _left.TabsRight) + 10f * PanelScale.K());

@@ -5,6 +5,7 @@ namespace PvePanelMod
     /// <summary>config.json 里各字段的多语言说明（照 CesiumLoader 内置 mod 的规矩：简中、繁中、英文、日文）。</summary>
     internal static class PanelConfigDocs
     {
+        public const string Enabled = "Enabled";
         public const string HandService = "HandService";
         public const string HandServiceUrl = "HandServiceUrl";
         public const string DefaultServiceUrl = "https://aspac.hiynet.com/";
@@ -18,6 +19,11 @@ namespace PvePanelMod
         {
             if (config == null) return false;
             bool changed = false;
+            changed |= config.Describe(Enabled, D(
+                "是否显示 PVE 面板。默认关；改成 true 立即生效（不用重启游戏），面板只在 PVE 对局里出现。",
+                "是否顯示 PVE 面板。預設關；改成 true 立即生效（不用重啟遊戲），面板只在 PVE 對局裡出現。",
+                "Whether to show the PVE panel. Off by default; setting it to true takes effect immediately (no restart needed), and the panel only appears in PVE matches.",
+                "PVE パネルを表示するかどうか。既定はオフ。true にすると即座に反映され（再起動不要）、PVE の対局でのみ表示されます。"));
             changed |= config.Describe(UiScale, D(
                 "面板整体缩放（左栏、右栏、战斗面板、手牌抽屉、悬停小字一起变），范围 0.8–1.5，默认 1.0。游戏里点左栏底部的「－」「＋」按钮也能调，会自动记下。",
                 "面板整體縮放（左欄、右欄、戰鬥面板、手牌抽屜、懸停小字一起變），範圍 0.8–1.5，預設 1.0。遊戲裡點左欄底部的「－」「＋」按鈕也能調，會自動記下。",
