@@ -28,6 +28,7 @@ namespace CombatOddsMod
         {
             public long PlayerId;
             public GObject Parent;
+            public GGraph Bg;
             public GTextField Text;
             public int LastRemaining = int.MinValue;
             public int LastCap = int.MinValue;
@@ -247,8 +248,10 @@ namespace CombatOddsMod
             var badge = EnsureBadge(id, info);
             if (badge == null) return;
 
+            LabelBackdrop.ApplyOutline(badge.Text, 2f);
             badge.Text.text = SkillCooldownText.Format(remaining, cap);
             badge.Text.visible = true;
+            LabelBackdrop.Fit(badge.Bg, badge.Text, 6f, 2f);
             Position(badge, info);
 
             if (badge.LastRemaining != remaining || badge.LastCap != cap)
@@ -294,10 +297,12 @@ namespace CombatOddsMod
                 format.outline = 2;
                 format.outlineColor = Color.black;
                 text.textFormat = format;
+                var bg = new GGraph { name = "cesium-monster-cd-bg", touchable = false, visible = false };
+                info.AddChild(bg);
                 info.AddChild(text);
                 text.SetXY(0f, 0f);
 
-                badge = new Badge { PlayerId = id, Parent = info, Text = text };
+                badge = new Badge { PlayerId = id, Parent = info, Bg = bg, Text = text };
                 _badges[id] = badge;
                 return badge;
             }
@@ -317,6 +322,7 @@ namespace CombatOddsMod
                 float x = right + Gap + _offsetX;
                 float y = top + (bottom - top - badge.Text.height) * 0.5f + _offsetY;
                 badge.Text.SetXY(x, y);
+                LabelBackdrop.Fit(badge.Bg, badge.Text, 6f, 2f);
                 LogGeometry(badge, info, left, top, right, bottom);
             }
             catch { }
@@ -415,7 +421,10 @@ namespace CombatOddsMod
         private void HideAll()
         {
             foreach (var badge in _badges.Values)
+            {
                 if (badge.Text != null && !badge.Text.isDisposed) badge.Text.visible = false;
+                if (badge.Bg != null && !badge.Bg.isDisposed) badge.Bg.visible = false;
+            }
         }
 
         private void ClearBadges()
@@ -426,7 +435,15 @@ namespace CombatOddsMod
 
         private static void DisposeBadge(Badge badge)
         {
-            if (badge == null || badge.Text == null) return;
+            if (badge == null) return;
+            try
+            {
+                if (badge.Bg != null && badge.Bg.parent != null) badge.Bg.parent.RemoveChild(badge.Bg, true);
+                else if (badge.Bg != null && !badge.Bg.isDisposed) badge.Bg.Dispose();
+            }
+            catch { }
+            badge.Bg = null;
+            if (badge.Text == null) return;
             try
             {
                 if (badge.Text.parent != null) badge.Text.parent.RemoveChild(badge.Text, true);

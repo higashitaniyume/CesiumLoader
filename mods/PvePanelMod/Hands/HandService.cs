@@ -1,0 +1,202 @@
+using System;
+using System.Collections.Generic;
+using CesiumLoader.SDK.Gameplay;
+using GameLogic;
+using party.model;
+using party.protocol;
+using Tools;
+
+namespace PvePanelMod.Hands
+{
+    /// <summary>抽屉里一种牌：同一张牌（同 id、同是否临时）合成一格，Count 是张数。</summary>
+    internal sealed class CardGroup
+    {
+        public int CardId;
+        public bool IsTemp;
+        public int Count;
+    }
+
+    /// <summary>一个玩家的手牌：Known=false 表示看不到（真人队友且没开第三方服务，或服务还没返回）。</summary>
+    internal sealed class HandView
+    {
+        public bool Known;
+        public readonly List<CardGroup> Groups = new List<CardGroup>();
+    }
+
+    /// <summary>
+    /// 手牌从哪来（PVE 面板对 HandViewerMod 的主要改动）：
+    ///   1. 先读本地：自己的牌、Bot 的牌游戏本地就有（BattlePlayerData.cardContainer 里 CardId &gt; 0），不联网；
+    ///   2. 真人队友的牌被游戏遮住（卡面是负数、或卡面数量和张数对不上），这时靠第三方观战服务 aspac.hiynet.com；
+    ///      手牌服务默认打开，可在配置里关掉（关掉后完全不联网）；
+    ///   3. 手牌抽屉打开、并且拿到本局观战码就查（全 Bot 局也照查）；本地能读到的行仍然优先用本地数据。
+    /// 查询、限流、响应校验沿用 HandViewerMod 的 HandQueryController（见 QueryController.cs 的「改动」注释）。
+    /// </summary>
+    internal sealed class HandService : IDisposable
+    {
+        public const string UserAgent = "CesiumLoader PvePanelMod/0.1.0 (HandViewerMod-derived)";
+        private HandQueryController _query;
+        private string _endpoint;
+        private bool _serviceEnabled;
+        private readonly Dictionary<long, HandView> _views = new Dictionary<long, HandView>();
+
+        public string LastStatus => _query?.Status;
+        public int Revision => _query?.Revision ?? 0;
+
+        public HandService()
+        {
+            GameEvents.HandChanged += OnHandChanged;
+            GameEvents.HeroAttrUpdated += OnAttrChanged;
+        }
+
+        public void Configure(bool serviceEnabled, string endpoint)
+        {
+            _serviceEnabled = serviceEnabled;
+            if (_query == null || endpoint != _endpoint)
+            {
+                _query?.Dispose();
+                _endpoint = endpoint;
+                _query = new HandQueryController(code => new UnityHandRequest(_endpoint, code, 20));
+            }
+            // 地址不合法时不再每次请求都抛一次；状态直接说明原因，改好配置会自动恢复
+            string problem = serviceEnabled ? ServiceAddress.Validate(endpoint) : null;
+            _query.SetBlocked(problem, Now);
+            _query.SetServiceEnabled(serviceEnabled, Now);
+        }
+
+        private static long Now => DateTime.UtcNow.Ticks / 10000;
+
+        private void OnHandChanged(long id, IReadOnlyList<CardInfo> cards) { _query?.MarkDirty(Now); }
+
+        private void OnAttrChanged(UpdateHeroAttrS2C model)
+        {
+            if (model == null) return;
+            foreach (var effect in model.EffectDatas)
+                if (effect.Card != null || effect.ConvertCard != null) { _query?.MarkDirty(Now); break; }
+        }
+
+        /// <summary>每帧（或每 0.25 秒）调用一次：读本地手牌，必要时推动第三方查询。返回按玩家 id 的手牌。</summary>
+        public Dictionary<long, HandView> Tick(IList<PlayerRow> players, bool drawerOpen)
+        {
+            long now = Now;
+            _views.Clear();
+            foreach (var r in players)
+                _views[r.Id] = ReadLocal(r.Id) ?? new HandView();
+
+            // 第三方服务：只要开关打开、抽屉打开就查（拿到观战码就发请求，全 Bot 局也照查）；
+            // 本地能读到的牌仍然优先用本地数据，服务只补看不到的那几行。
+            bool viewing = _serviceEnabled && drawerOpen;
+            string roomId = null, code = null;
+            if (viewing) ReadRoom(out roomId, out code);
+            if (_query != null)
+            {
+                // 只在真的要查询时才同步房间：收起抽屉时 roomId/code 都是 null，若照旧调用
+                // SetRoom(null, null) 会把服务器要求的等待（Retry-After）和成功后的最短间隔一起清掉，
+                // 重新展开就等于绕过了限流。收起状态交给 SetViewing(false) 处理。
+                if (viewing) _query.SetRoom(roomId, code, now);
+                _query.SetViewing(viewing, now);
+                _query.Tick(now);
+                var snap = _query.Snapshot;
+                if (snap != null && snap.roomId == roomId)
+                {
+                    foreach (var ph in snap.players)
+                    {
+                        long id;
+                        if (!long.TryParse(ph.playerId, out id) || !ph.handKnown) continue;
+                        HandView v;
+                        if (!_views.TryGetValue(id, out v) || v.Known) continue;   // 本地已知的不用服务的结果
+                        v.Known = true;
+                        foreach (var c in ph.cards) Add(v, c.cardId, c.isTemp);
+                    }
+                }
+            }
+            return _views;
+        }
+
+        /// <summary>
+        /// 诊断用：把每个人「本地读到几张牌 / 游戏说的张数 / 本地算不算看得到」写成一行。
+        /// 只在拉开抽屉时打一次，用来回答"为什么没有发起查询"。
+        /// </summary>
+        public static string Describe(IList<PlayerRow> players)
+        {
+            var sb = new System.Text.StringBuilder();
+            if (players == null) return "";
+            foreach (var r in players)
+            {
+                if (sb.Length > 0) sb.Append(" | ");
+                sb.Append(r.Id);
+                try
+                {
+                    var pd = Players.Get(r.Id);
+                    int faces = pd?.cardContainer?._HandCards?.Count ?? -1;
+                    sb.Append(": 本地卡面=").Append(faces).Append(" 手牌数=").Append(Players.HandCount(r.Id))
+                      .Append(' ').Append(ReadLocal(r.Id) == null ? "看不到" : "本地可见");
+                }
+                catch { sb.Append(": 读取失败"); }
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// 本地手牌：卡面必须齐、且张数和游戏说的手牌数一致，才算已知；否则返回 null（= 看不到，需要问服务）。
+        /// 两点容易搞错：
+        ///   1. 队友的卡面会被填成负数（服务器遮罩），读到负数就不能用；
+        ///   2. 游戏对被遮住的手牌只更新张数、不更新卡面（CardLogic.OnCardChanged 里
+        ///      第一张 CardId &lt; 0 时直接跳过 UpdateHandCards），所以卡面会落后于张数。
+        /// </summary>
+        private static HandView ReadLocal(long playerId)
+        {
+            try
+            {
+                var pd = Players.Get(playerId);
+                var cards = pd?.cardContainer?._HandCards;
+                if (cards == null) return null;
+                var v = new HandView { Known = true };
+                int faces = 0;
+                foreach (var c in cards)
+                {
+                    if (c == null) continue;
+                    faces++;
+                    if (c.CardId <= 0) return null;
+                    Add(v, c.CardId, c.IsTemp);
+                }
+                if (faces != Players.HandCount(playerId)) return null;
+                return v;
+            }
+            catch { return null; }
+        }
+
+        private static void Add(HandView v, int cardId, bool isTemp)
+        {
+            foreach (var g in v.Groups)
+                if (g.CardId == cardId && g.IsTemp == isTemp) { g.Count++; return; }
+            v.Groups.Add(new CardGroup { CardId = cardId, IsTemp = isTemp, Count = 1 });
+        }
+
+        /// <summary>房间号和观战码（照 HandViewerMod：只在运行中的 PVE 对局、模式 4/12、非回放时有）。观战码不写日志。</summary>
+        private static void ReadRoom(out string roomId, out string code)
+        {
+            roomId = null; code = null;
+            try
+            {
+                var gm = SimpleSingletonProvider<GameLogicManager>.inst;
+                var logic = gm?.room;
+                var room = logic?.curRoomInfo;
+                if (room?.info == null) return;
+                if (gm.replay?.Session?.IsReplay == true) return;
+                if (logic.roomController.roomStateType != RoomStateType.RUNNING) return;
+                if (room.MapType != 4 && room.MapType != 12) return;
+                roomId = room.info.Id.ToString();
+                code = room.watchCode;
+            }
+            catch { roomId = null; code = null; }
+        }
+
+        public void Dispose()
+        {
+            GameEvents.HandChanged -= OnHandChanged;
+            GameEvents.HeroAttrUpdated -= OnAttrChanged;
+            _query?.Dispose();
+            _query = null;
+        }
+    }
+}

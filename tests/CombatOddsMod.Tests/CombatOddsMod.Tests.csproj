@@ -39,6 +39,8 @@
     <Compile Include="..\..\mods\CombatOddsMod\HandCountRules.cs" Link="HandCountRules.cs" />
     <!-- 战斗视角判定逻辑(纯逻辑, 排除怪物防守方提示)。 -->
     <Compile Include="..\..\mods\CombatOddsMod\CombatOddsPerspective.cs" Link="CombatOddsPerspective.cs" />
+    <!-- 战斗读数「信箱」(纯 System): 版本号 / 声明显示的时间窗 -->
+    <Compile Include="..\..\mods\CombatOddsMod\BattleOddsFeed.cs" Link="BattleOddsFeed.cs" />
     <!-- Compile the real cleanup coordinator against isolated SDK/UI test owners. -->
     <Compile Include="..\..\mods\CombatOddsMod\CombatOddsConfig.cs" Link="CombatOddsConfig.cs" />
     <Compile Include="..\..\mods\CombatOddsMod\ModEntry.Lifecycle.cs" Link="ModEntry.Lifecycle.cs" />

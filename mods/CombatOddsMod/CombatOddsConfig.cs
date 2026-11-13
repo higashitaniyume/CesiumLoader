@@ -36,6 +36,10 @@ namespace CombatOddsMod
         public bool ShowRelicAtkBonus = true;
         /// <summary>是否在棋盘上每个玩家头顶显示实时攻击/防御, 悬停查看详情。</summary>
         public bool ShowBoardPlayerAttrs = true;
+        /// <summary>棋盘上的小标签（头顶攻防、怪物技能 CD）后面垫深色底，压在地图上也看得清。</summary>
+        public bool LabelBackground = true;
+        /// <summary>主 HUD 攻击力旁：每个加攻筹码显示一个图标、右下角写 +N（关掉则和原来一样只显示加成后的总攻击）。</summary>
+        public bool AtkBonusIcons = true;
         /// <summary>玩家头顶攻防标签相对角色头顶的水平微调(像素, 正=右移)。</summary>
         public double PlayerAttrOffsetX = 0;
         /// <summary>玩家头顶攻防标签相对角色头顶的垂直微调(像素, 正=下移)。</summary>

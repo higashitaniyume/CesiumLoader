@@ -28,6 +28,7 @@ namespace CombatOddsMod
         {
             public long Id;
             public GComponent Box;
+            public GGraph Bg;
             public GTextField Text;
             public BattlePlayerData Data;
             public Component SpriteOwner;
@@ -136,7 +137,10 @@ namespace CombatOddsMod
         public void SetEnabled(bool enabled)
         {
             _enabled = enabled;
-            if (!enabled) { HideEntries(); HideTip(); }
+            if (!enabled) { HideEntries(); HideTip(); return; }
+            // LabelBackdrop.Enabled 是全局开关，改它不会让文字变化；这里主动让下一次 Update 重排一遍，
+            // 否则关掉底块后旧底块会一直留在屏幕上（Fit 只在文字变化的分支里调用）。
+            foreach (var entry in _entries.Values) entry.LastText = null;
         }
 
         public void Update(bool enabled = true)
@@ -236,6 +240,10 @@ namespace CombatOddsMod
                             entry.LastNick = nick;
                             entry.Text.text = text;
                             entry.Box.SetSize(Math.Max(90f, entry.Text.textWidth + 14f), Math.Max(30f, entry.Text.textHeight + 8f));
+                            // 文字居中，底块铺满整个标签
+                            float padX = (entry.Box.width - entry.Text.textWidth) * 0.5f, padY = (entry.Box.height - entry.Text.textHeight) * 0.5f;
+                            entry.Text.SetXY(padX, padY);
+                            LabelBackdrop.Fit(entry.Bg, entry.Text, padX, padY);
 
                             entry.Data = player;
                             entry.Box.data = BuildTip(nick, atk, finalAtk, def, hp, bonuses);
@@ -334,6 +342,8 @@ namespace CombatOddsMod
                 var box = new GComponent { opaque = true, touchable = true };
                 box.onRollOver.Add(OnRollOver);
                 box.onRollOut.Add(OnRollOut);
+                var bg = new GGraph { touchable = false, visible = false };
+                box.AddChild(bg);
                 var text = new GTextField { autoSize = AutoSizeType.Both, touchable = false, UBBEnabled = true };
                 int fontSize = (int)Math.Round(_fontSize > 0 ? _fontSize : DefaultFontSize);
                 if (fontSize < 12) fontSize = 12;
@@ -341,7 +351,7 @@ namespace CombatOddsMod
                 text.textFormat = new TextFormat { size = fontSize, bold = true, color = Color.white, outline = 2f, outlineColor = Color.black };
                 box.AddChild(text);
                 _panel.com_PlayerAttrInfos.AddChild(box);
-                entry = new Entry { Id = id, Box = box, Text = text };
+                entry = new Entry { Id = id, Box = box, Bg = bg, Text = text };
                 _entries[id] = entry;
                 return entry;
             }

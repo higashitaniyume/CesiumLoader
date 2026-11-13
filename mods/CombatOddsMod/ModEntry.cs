@@ -130,6 +130,8 @@ namespace CombatOddsMod
                     _cfg.OverlayOffsetY        = c.GetDouble("OverlayOffsetY", d.OverlayOffsetY);
                     _cfg.ShowRelicAtkBonus     = c.GetBool("ShowRelicAtkBonus", d.ShowRelicAtkBonus);
                     _cfg.ShowBoardPlayerAttrs  = c.GetBool("ShowBoardPlayerAttrs", d.ShowBoardPlayerAttrs);
+                    _cfg.LabelBackground       = c.GetBool("LabelBackground", d.LabelBackground);
+                    _cfg.AtkBonusIcons         = c.GetBool("AtkBonusIcons", d.AtkBonusIcons);
                     _cfg.PlayerAttrOffsetX     = c.GetDouble("PlayerAttrOffsetX", d.PlayerAttrOffsetX);
                     _cfg.PlayerAttrOffsetY     = c.GetDouble("PlayerAttrOffsetY", d.PlayerAttrOffsetY);
                     _cfg.PlayerAttrFontSize    = c.GetDouble("PlayerAttrFontSize", d.PlayerAttrFontSize);
@@ -173,6 +175,8 @@ namespace CombatOddsMod
                         c.Set("OverlayOffsetY", _cfg.OverlayOffsetY);
                         c.Set("ShowRelicAtkBonus", _cfg.ShowRelicAtkBonus);
                         c.Set("ShowBoardPlayerAttrs", _cfg.ShowBoardPlayerAttrs);
+                        c.Set("LabelBackground", _cfg.LabelBackground);
+                        c.Set("AtkBonusIcons", _cfg.AtkBonusIcons);
                         c.Set("PlayerAttrOffsetX", _cfg.PlayerAttrOffsetX);
                         c.Set("PlayerAttrOffsetY", _cfg.PlayerAttrOffsetY);
                         c.Set("PlayerAttrFontSize", _cfg.PlayerAttrFontSize);
@@ -226,6 +230,7 @@ namespace CombatOddsMod
                 _monsterCooldown.SetOffset(_cfg.MonsterCdOffsetX, _cfg.MonsterCdOffsetY);
                 _monsterCooldown.SetLogDetail(_cfg.LogCdDetail);
             }
+            LabelBackdrop.Enabled = _cfg.LabelBackground;
             if (_playerAttrOverlay != null)
             {
                 _playerAttrOverlay.SetEnabled(_cfg.ShowBoardPlayerAttrs);
