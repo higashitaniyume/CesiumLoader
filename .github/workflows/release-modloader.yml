@@ -577,7 +577,7 @@ jobs:
           fail_on_unmatched_files: true
           # 候选版本标为 prerelease，不替换 Latest。
           prerelease: ${{ github.ref_name == 'modloader-3.5.1' || github.ref_name == 'modloader-3.5.2' || github.ref_name == 'modloader-3.6.0' || github.ref_name == 'modloader-3.7.1' }}
-          make_latest: ${{ (github.ref_name == 'modloader-3.7.2' || github.ref_name == 'modloader-3.7.3') && 'true' || ((github.ref_name == 'modloader-3.6.0' || github.ref_name == 'modloader-3.7.1') && 'false' || 'legacy') }}
+          make_latest: ${{ (github.ref_name == 'modloader-3.7.2' || github.ref_name == 'modloader-3.7.3' || github.ref_name == 'modloader-3.7.4') && 'true' || ((github.ref_name == 'modloader-3.6.0' || github.ref_name == 'modloader-3.7.1') && 'false' || 'legacy') }}
 
       # 候选版本不推 NuGet: apcsm 的稳定通道只发正式版, 候选版留给手动安装。
       - name: NuGet login (OIDC Trusted Publishing)
