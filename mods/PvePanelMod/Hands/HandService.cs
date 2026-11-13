@@ -27,7 +27,7 @@ namespace PvePanelMod.Hands
     /// 手牌从哪来（PVE 面板对 HandViewerMod 的主要改动）：
     ///   1. 先读本地：自己的牌、Bot 的牌游戏本地就有（BattlePlayerData.cardContainer 里 CardId &gt; 0），不联网；
     ///   2. 真人队友的牌被游戏遮住（卡面是负数、或卡面数量和张数对不上），这时靠第三方观战服务 aspac.hiynet.com；
-    ///      要在配置里手动打开 HandService（默认关：CesiumLoader 内置 mod 约定只读、不联网）；
+    ///      手牌服务默认打开，可在配置里关掉（关掉后完全不联网）；
     ///   3. 手牌抽屉打开、并且拿到本局观战码就查（全 Bot 局也照查）；本地能读到的行仍然优先用本地数据。
     /// 查询、限流、响应校验沿用 HandViewerMod 的 HandQueryController（见 QueryController.cs 的「改动」注释）。
     /// </summary>

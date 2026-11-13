@@ -49,10 +49,10 @@ namespace PvePanelMod
                 "Whether the left info bar is collapsed. Saved automatically when toggled by hotkey or handle and kept across matches and restarts.",
                 "左側情報バーを折りたたむかどうか。ショートカットやハンドルで切り替えると自動で保存され、次の対局や再起動後も維持されます。"));
             changed |= config.Describe(HandService, D(
-                "手牌抽屉打开时查询手牌：只要拿到本局观战码就会发给第三方观战服务（HandServiceUrl），全 Bot 局也照查。默认关；自己和 Bot 的手牌本地就能看到，服务只补看不到的队友。",
-                "手牌抽屜打開時查詢手牌：只要拿到本局觀戰碼就會發給第三方觀戰服務（HandServiceUrl），全 Bot 局也照查。預設關；自己和 Bot 的手牌本機就能看到，服務只補看不到的隊友。",
-                "Query hands while the hand drawer is open: as soon as this match's spectator code is available it is sent to a third-party spectating service (HandServiceUrl), all-bot matches included. Off by default; your own and bots' hands are read locally, the service only fills in teammates that are hidden.",
-                "手札ドロワーを開いている間、この対局の観戦コードが取得でき次第、第三者の観戦サービス（HandServiceUrl）に送信して照会します（全 Bot の対局でも同様）。既定はオフ。自分と Bot の手札はローカルで読め、サービスは見えない味方だけを補います。"));
+                "手牌抽屉打开时查询手牌：只要拿到本局观战码就会发给第三方观战服务（HandServiceUrl），全 Bot 局也照查。默认开；自己和 Bot 的手牌本地就能看到，服务只补看不到的队友。",
+                "手牌抽屜打開時查詢手牌：只要拿到本局觀戰碼就會發給第三方觀戰服務（HandServiceUrl），全 Bot 局也照查。預設開；自己和 Bot 的手牌本機就能看到，服務只補看不到的隊友。",
+                "Query hands while the hand drawer is open: as soon as this match's spectator code is available it is sent to a third-party spectating service (HandServiceUrl), all-bot matches included. On by default; your own and bots' hands are read locally, the service only fills in teammates that are hidden.",
+                "手札ドロワーを開いている間、この対局の観戦コードが取得でき次第、第三者の観戦サービス（HandServiceUrl）に送信して照会します（全 Bot の対局でも同様）。既定はオン。自分と Bot の手札はローカルで読め、サービスは見えない味方だけを補います。"));
             changed |= config.Describe(HandServiceUrl, D(
                 "第三方观战服务地址（来自 HandViewerMod），只在 HandService 打开时使用。",
                 "第三方觀戰服務位址（來自 HandViewerMod），只在 HandService 開啟時使用。",

@@ -153,7 +153,7 @@ namespace PvePanelMod
                     Config.SetDefault(PanelConfigDocs.RightPanelHidden, false);
                     Config.SetDefault(PanelConfigDocs.LeftPanelCollapsed, false);
                     Config.SetDefault(PanelConfigDocs.UiScale, 1.0);
-                    Config.SetDefault(PanelConfigDocs.HandService, false);
+                    Config.SetDefault(PanelConfigDocs.HandService, true);
                     Config.SetDefault(PanelConfigDocs.HandServiceUrl, PanelConfigDocs.DefaultServiceUrl);
                     Config.SaveIfDirty();
                 }
