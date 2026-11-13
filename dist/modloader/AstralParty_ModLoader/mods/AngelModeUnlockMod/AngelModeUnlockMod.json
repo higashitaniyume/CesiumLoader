@@ -1,0 +1,1 @@
+{"id":"AngelModeUnlockMod","name":"天使模式解锁","version":"1.0.1","author":"CesiumLoader","description":"解除审核渠道对天使模式开关的封锁：本地清除 RemoteConfig 审核标记，并把设置页被删减版 UI 包藏起来的天使模式开关恢复出来，即可自由切换；可选强制固定开或关。","permissions":25,"sdkVersion":"3.6.0","dependencies":[]}
