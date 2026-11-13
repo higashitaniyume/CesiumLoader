@@ -40,7 +40,7 @@ PVE 对局里的合并信息面板：左侧信息栏、右侧情报栏、战斗�
 | `RightPanelHidden` | 右栏是否隐藏（按快捷键切换时自动记下） | `false` |
 | `LeftPanelCollapsed` | 左栏是否收起（按快捷键或点把手切换时自动记下） | `false` |
 | `HandService` | 查询真人队友手牌：把本局观战码发给第三方观战服务 | `false` |
-| `HandServiceUrl` | 第三方观战服务地址 | `https://astralpartycards.hiynet.com/` |
+| `HandServiceUrl` | 第三方观战服务地址 | `https://aspac.hiynet.com/` |
 
 ## 与「战斗胜率助手」的配合
 

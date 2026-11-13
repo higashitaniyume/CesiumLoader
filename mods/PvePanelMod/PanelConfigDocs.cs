@@ -7,7 +7,7 @@ namespace PvePanelMod
     {
         public const string HandService = "HandService";
         public const string HandServiceUrl = "HandServiceUrl";
-        public const string DefaultServiceUrl = "https://astralpartycards.hiynet.com/";
+        public const string DefaultServiceUrl = "https://aspac.hiynet.com/";
         public const string LeftToggleKey = "LeftToggleKey", HandToggleKey = "HandToggleKey", RightToggleKey = "RightToggleKey";
         public const string RightPanelHidden = "RightPanelHidden";
         public const string LeftPanelCollapsed = "LeftPanelCollapsed";

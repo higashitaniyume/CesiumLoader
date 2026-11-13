@@ -14,7 +14,7 @@
   // 手牌抽屉查询真人队友的手牌：会把本局观战码发给第三方观战服务（HandServiceUrl）。默认关；自己和 Bot 的手牌不需要它，本地就能看到。
   "HandService": false,
   // 第三方观战服务地址（来自 HandViewerMod），只在 HandService 打开时使用。
-  "HandServiceUrl": "https://astralpartycards.hiynet.com/",
+  "HandServiceUrl": "https://aspac.hiynet.com/",
 
   "_comments": {
     "UiScale": {"zh-Hans":"面板整体缩放（左栏、右栏、战斗面板、手牌抽屉、悬停小字一起变），范围 0.8–1.5，默认 1.0。游戏里点左栏底部的「－」「＋」按钮也能调，会自动记下。","zh-Hant":"面板整體縮放（左欄、右欄、戰鬥面板、手牌抽屜、懸停小字一起變），範圍 0.8–1.5，預設 1.0。遊戲裡點左欄底部的「－」「＋」按鈕也能調，會自動記下。","en":"Overall panel scale (left bar, right bar, battle panel, hand drawer and tooltips together), 0.8–1.5, default 1.0. The - / + buttons at the bottom of the left bar adjust it in game and are saved automatically.","ja":"パネル全体の拡大率（左バー・右バー・戦闘パネル・手札ドロワー・ツールチップを一括）。範囲 0.8～1.5、既定 1.0。ゲーム内では左バー下部の「－」「＋」でも調整でき、自動で保存されます。"},
