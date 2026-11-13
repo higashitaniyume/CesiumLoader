@@ -112,12 +112,14 @@ namespace PvePanelMod.Hands
         public const long MinSampleIntervalMs = 5000, DirtyDelayMs = 1500;
         /// <summary>Only reported while no hand strip is expanded; an expanded strip never shows this.</summary>
         public const string CollapsedStatus = "手牌已收起，暂停查询";
+        /// <summary>配置里把第三方手牌服务关掉时的状态（不然会一直报「等待对局观战码」）。</summary>
+        public const string ServiceOffStatus = "手牌服务已关闭";
         const string WaitingRoomStatus = "等待对局观战码";
         const string WaitingRefreshStatus = "等待查询";
         readonly Func<string, IHandRequest> start;
         IHandRequest request;
         string room, code;
-        bool dirty, viewing;
+        bool dirty, viewing, serviceEnabled = true;
         long due, retryAt;
         int failures;
         public HandSnapshot Snapshot { get; private set; }
@@ -127,14 +129,35 @@ namespace PvePanelMod.Hands
         public bool IsStale { get; private set; }
         public HandQueryController(Func<string, IHandRequest> start) { this.start = start; }
 
+        /// <summary>
+        /// 配置里开关第三方手牌服务。关掉后一律不查询、不再对外报「等待对局观战码」（那是服务开着、只是还没拿到观战码时说的话）。
+        /// 调用方本来就只在开关打开时才 SetViewing(true)，这里再兜一层，免得以后有人绕过。
+        /// </summary>
+        public void SetServiceEnabled(bool enabled, long now)
+        {
+            if (!enabled)
+            {
+                DisposeRequest();
+                dirty = false;
+                if (serviceEnabled) { serviceEnabled = false; Revision++; }
+                if (Status != ServiceOffStatus) { Status = ServiceOffStatus; Revision++; }
+                return;
+            }
+            if (serviceEnabled) return;
+            serviceEnabled = true;
+            Status = viewing ? (string.IsNullOrEmpty(room) || string.IsNullOrEmpty(code) ? WaitingRoomStatus : WaitingRefreshStatus) : CollapsedStatus;
+            Revision++;
+            if (viewing) Refresh(now);
+        }
+
         public void SetRoom(string id, string watchCode, long now)
         {
             if (room == id && code == watchCode) return;
             DisposeRequest();
             room = id; code = watchCode; Snapshot = null; IsStale = false; failures = 0; retryAt = 0;
-            dirty = viewing && !string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(watchCode);
+            dirty = serviceEnabled && viewing && !string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(watchCode);
             due = now;
-            Status = !viewing ? CollapsedStatus : dirty ? WaitingRefreshStatus : WaitingRoomStatus;
+            Status = !serviceEnabled ? ServiceOffStatus : !viewing ? CollapsedStatus : dirty ? WaitingRefreshStatus : WaitingRoomStatus;
             Revision++;
         }
         public void SetViewing(bool visible, long now)
@@ -144,7 +167,8 @@ namespace PvePanelMod.Hands
             if (visible)
             {
                 // 改动 3：重新展开是一次手动刷新，但仍然遵守上一次的等待（成功后的最短间隔或服务器的 Retry-After）
-                Status = string.IsNullOrEmpty(room) || string.IsNullOrEmpty(code) ? WaitingRoomStatus : WaitingRefreshStatus;
+                Status = !serviceEnabled ? ServiceOffStatus
+                       : string.IsNullOrEmpty(room) || string.IsNullOrEmpty(code) ? WaitingRoomStatus : WaitingRefreshStatus;
                 Revision++;
                 Refresh(now);
             }
@@ -152,12 +176,12 @@ namespace PvePanelMod.Hands
             {
                 DisposeRequest(); dirty = false;
                 IsStale = Snapshot != null;
-                Status = CollapsedStatus; Revision++;
+                Status = serviceEnabled ? CollapsedStatus : ServiceOffStatus; Revision++;
             }
         }
         public void MarkDirty(long now)
         {
-            if (!viewing) return;
+            if (!serviceEnabled || !viewing) return;
             if (string.IsNullOrEmpty(room) || string.IsNullOrEmpty(code))
             {
                 if (Status != WaitingRoomStatus) { Status = WaitingRoomStatus; Revision++; }
@@ -170,7 +194,7 @@ namespace PvePanelMod.Hands
         public void Refresh(long now) { MarkDirty(now); due = now; }
         public void Tick(long now)
         {
-            if (!viewing) return;
+            if (!serviceEnabled || !viewing) return;
             if (request != null)
             {
                 bool completed = false;

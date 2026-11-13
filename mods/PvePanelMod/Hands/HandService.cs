@@ -57,6 +57,7 @@ namespace PvePanelMod.Hands
                 _endpoint = endpoint;
                 _query = new HandQueryController(code => new UnityHandRequest(_endpoint, code, 20));
             }
+            _query.SetServiceEnabled(serviceEnabled, Now);
         }
 
         private static long Now => DateTime.UtcNow.Ticks / 10000;

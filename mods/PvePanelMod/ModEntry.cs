@@ -50,6 +50,7 @@ namespace PvePanelMod
         private DateTime _next = DateTime.MinValue;
         private DateTime _nextError = DateTime.MinValue;
         private readonly List<GComponent> _dimmed = new List<GComponent>();
+        private readonly Dictionary<GComponent, bool> _dimTouchable = new Dictionary<GComponent, bool>();
 
         public override void OnInitialize()
         {
@@ -68,7 +69,7 @@ namespace PvePanelMod
             _left.ScaleRequested += dir =>
             {
                 PanelScale.Value = PanelScale.Value + dir * PanelScale.Step;
-                if (Config != null) { Config.Set(PanelConfigDocs.UiScale, (double)PanelScale.Value); Config.SaveIfDirty(); }
+                if (Config != null) { Config.Set(PanelConfigDocs.UiScale, Math.Round((double)PanelScale.Value, 1)); Config.SaveIfDirty(); }
                 Log.Info("PVE 面板缩放: " + Mathf.RoundToInt(PanelScale.Value * 100) + "%");
                 _next = DateTime.MinValue;
             };
@@ -252,17 +253,46 @@ namespace PvePanelMod
             foreach (var r in official)
             {
                 if (r == null || r.isDisposed) continue;
-                if (!_dimmed.Contains(r)) _dimmed.Add(r);
-                float a = dim ? OfficialDimAlpha : 1f;
-                if (Math.Abs(r.alpha - a) > 0.001f) r.alpha = a;
+                if (!_dimmed.Contains(r))
+                {
+                    _dimmed.Add(r);
+                    _dimTouchable[r] = r.touchable;   // 记原值：官方行原本也可能是不可点的
+                }
+                ApplyDim(r, dim);
             }
-            _dimmed.RemoveAll(r => r == null || r.isDisposed);
+            PruneDimmed();
         }
 
         private void SetOfficialDim(bool dim)
         {
             foreach (var r in _dimmed)
-                if (r != null && !r.isDisposed) r.alpha = dim ? OfficialDimAlpha : 1f;
+                if (r != null && !r.isDisposed) ApplyDim(r, dim);
+            PruneDimmed();
+        }
+
+        /// <summary>
+        /// 调暗 / 恢复官方左栏。透明的同时必须关掉它的点击：本面板整块 touchable=false，点击会穿到下面那些
+        /// 看不见的官方按钮上（点头像位置会弹出官方玩家信息窗）。恢复时按记下的原值还原。
+        /// </summary>
+        private void ApplyDim(GComponent r, bool dim)
+        {
+            float a = dim ? OfficialDimAlpha : 1f;
+            if (Math.Abs(r.alpha - a) > 0.001f) r.alpha = a;
+            bool touchable;
+            if (dim) touchable = false;
+            else if (!_dimTouchable.TryGetValue(r, out touchable)) touchable = true;
+            if (r.touchable != touchable) r.touchable = touchable;
+        }
+
+        private void PruneDimmed()
+        {
+            for (int i = _dimmed.Count - 1; i >= 0; i--)
+            {
+                var r = _dimmed[i];
+                if (r != null && !r.isDisposed) continue;
+                _dimmed.RemoveAt(i);
+                if (r != null) _dimTouchable.Remove(r);
+            }
         }
 
         private void HideAll()
@@ -280,6 +310,7 @@ namespace PvePanelMod
         {
             SetOfficialDim(false);
             _dimmed.Clear();
+            _dimTouchable.Clear();
             _left?.Dispose();
             _right?.Dispose();
             _battle?.Dispose();

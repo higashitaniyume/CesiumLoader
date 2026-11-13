@@ -138,6 +138,32 @@ namespace PvePanelMod.Tests
                 controller.Tick(S); Assert.Equal(2, calls);
             }
         }
+        // 关掉第三方服务时状态必须是「手牌服务已关闭」，否则日志会一直报「等待对局观战码」（服务根本没开）。
+        [Fact]
+        public void DisabledServiceReportsItsOwnStatusWithoutExtraRevisions()
+        {
+            using var controller = new HandQueryController(_ => new Request());
+            controller.SetServiceEnabled(false, 0);
+            Assert.Equal(HandQueryController.ServiceOffStatus, controller.Status);
+            int revision = controller.Revision;
+            controller.SetServiceEnabled(false, 1);
+            Assert.Equal(revision, controller.Revision);
+        }
+        // 关着的时候，就算外层照旧推房间/推展开，也必须一次请求都不发（HandService 原本就是这么闸的，这里再兜一层）。
+        [Fact]
+        public void DisabledServiceNeverStartsARequestAndResumesWhenEnabled()
+        {
+            int calls = 0;
+            using var controller = new HandQueryController(_ => { calls++; return new Request(); });
+            controller.SetServiceEnabled(false, 0);
+            controller.SetViewing(true, 0); controller.SetRoom(Room, "test", 0); controller.Tick(0); controller.Tick(1);
+            Assert.Equal(0, calls);
+            Assert.Equal(HandQueryController.ServiceOffStatus, controller.Status);
+
+            controller.SetServiceEnabled(true, 10);   // 服务打开就按正常节奏补一次查询
+            controller.Tick(10);
+            Assert.Equal(1, calls);
+        }
         [Theory]
         [InlineData("你没有权限获得卡牌信息", "你没有权限获得卡牌信息")]
         [InlineData("{\"message\":\"你没有权限获得卡牌信息\",\"error\":\"forbidden\"}", "你没有权限获得卡牌信息")]

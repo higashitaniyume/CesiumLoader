@@ -300,7 +300,7 @@ namespace PvePanelMod
             private readonly float _k;
             private readonly GGraph _flash, _strip, _live;
             private readonly GLoader _type;
-            private readonly GTextField _empty, _reroll;
+            private readonly GTextField _empty, _reroll, _more;
             private readonly Item[] _items = new Item[MaxItems];
             private string _lastKey;
 
@@ -329,6 +329,11 @@ namespace PvePanelMod
                 }
                 _reroll = LeftPanel.Text(12f * k, Soft, true);
                 Root.AddChild(_reroll);
+                // 超出一行能放下的数量时给个「+N」，免得看起来像"只有这几个"
+                _more = LeftPanel.Text(12f * k, Soft, true);
+                _more.SetXY((ItemX + MaxItems * (ItemSize + ItemGap)) * k, (RowH - 12f) / 2f * k);
+                _more.visible = false;
+                Root.AddChild(_more);
                 _live = new GGraph { touchable = false };
                 _live.DrawEllipse(7f * k, 7f * k, Live);
                 _live.SetXY(width - 16f * k, 3f * k);
@@ -350,10 +355,13 @@ namespace PvePanelMod
                 if (flashing) { var c = floor; c.a = 0.3f; _flash.color = c; }
 
                 bool has = e != null && e.Ids.Length > 0;
+                int extra = has ? e.Ids.Length - MaxItems : 0;
                 _empty.visible = !has;
                 _type.visible = has;
                 _live.visible = has && !e.Done;
-                _reroll.visible = has && !e.IsShop && e.Rerolls > 0;
+                _more.visible = extra > 0;
+                if (_more.visible) _more.text = "+" + extra;
+                _reroll.visible = has && !e.IsShop && e.Rerolls > 0 && !_more.visible;
                 if (!has) { foreach (var it in _items) it.Hide(); return; }
 
                 _type.texture = _icons.Get(e.IsShop ? "cart" : "chip");
