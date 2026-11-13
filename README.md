@@ -81,6 +81,7 @@ winget install Hiynet.AstralParty.Toys
 | [CharacterTransparencyMod](mods/CharacterTransparencyMod/README.md) | 按 H 使游戏中角色半透明化（默认 36% 不透明度），支持长按与点击切换 |
 | [ShopRelicPeekMod](mods/ShopRelicPeekMod/README.md) | 在游戏右上角展示玩家进店卡牌与选筹码候选历史，显示角色名与刚刚/X秒前，按一至四楼红绿蓝黄排列 |
 | [MapPeekMod](mods/MapPeekMod/README.md) | 选人阶段左上角显示本局地图名、模式、难度与人数，开赛后自动隐藏 |
+| [PinnedRelicsMod](mods/PinnedRelicsMod/README.md) | 持有指定筹码后，在左侧玩家星币下方横排显示游戏原生图标，支持中文名自定义名单、大小与位置 |
 
 内置模组的 `config.json` 带简中、繁中、英文、日文配置说明，Toys 会按界面语言显示；第三方模组可按 [配置与元数据](docs/SDK-ConfigAndMetadata.md) 用 `ConfigDoc` 提供说明。
 
