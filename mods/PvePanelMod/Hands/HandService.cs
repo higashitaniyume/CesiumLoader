@@ -119,10 +119,35 @@ namespace PvePanelMod.Hands
         }
 
         /// <summary>
-        /// 本地手牌：所有牌都有真实 CardId 才算已知；读不到就返回 null（= 被遮住，需要问服务）。
-        /// 注意「卡面列表为空」≠「手里 0 张」：游戏对被遮住的队友只更新张数不更新卡面
-        /// （CardLogic.OnCardChanged 里 attrCards[0].CardId &lt; 0 时直接跳过 UpdateHandCards），
-        /// 所以列表是空的、但游戏说这个人有牌 → 同样是看不到。
+        /// 诊断用：把每个人「本地读到几张牌 / 游戏说的张数 / 本地算不算看得到」写成一行。
+        /// 只在拉开抽屉时打一次，用来回答"为什么没有发起查询"。
+        /// </summary>
+        public static string Describe(IList<PlayerRow> players)
+        {
+            var sb = new System.Text.StringBuilder();
+            if (players == null) return "";
+            foreach (var r in players)
+            {
+                if (sb.Length > 0) sb.Append(" | ");
+                sb.Append(r.Id);
+                try
+                {
+                    var pd = Players.Get(r.Id);
+                    int faces = pd?.cardContainer?._HandCards?.Count ?? -1;
+                    sb.Append(": 本地卡面=").Append(faces).Append(" 手牌数=").Append(Players.HandCount(r.Id))
+                      .Append(' ').Append(ReadLocal(r.Id) == null ? "看不到" : "本地可见");
+                }
+                catch { sb.Append(": 读取失败"); }
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// 本地手牌：卡面必须齐、且张数和游戏说的手牌数一致，才算已知；否则返回 null（= 看不到，需要问服务）。
+        /// 两点容易搞错：
+        ///   1. 队友的卡面会被填成负数（服务器遮罩），读到负数就不能用；
+        ///   2. 游戏对被遮住的手牌只更新张数、不更新卡面（CardLogic.OnCardChanged 里
+        ///      第一张 CardId &lt; 0 时直接跳过 UpdateHandCards），所以卡面会落后于张数。
         /// </summary>
         private static HandView ReadLocal(long playerId)
         {
@@ -131,14 +156,16 @@ namespace PvePanelMod.Hands
                 var pd = Players.Get(playerId);
                 var cards = pd?.cardContainer?._HandCards;
                 if (cards == null) return null;
-                if (cards.Count == 0) return Players.HandCount(playerId) > 0 ? null : new HandView { Known = true };
                 var v = new HandView { Known = true };
+                int faces = 0;
                 foreach (var c in cards)
                 {
                     if (c == null) continue;
+                    faces++;
                     if (c.CardId <= 0) return null;
                     Add(v, c.CardId, c.IsTemp);
                 }
+                if (faces != Players.HandCount(playerId)) return null;
                 return v;
             }
             catch { return null; }

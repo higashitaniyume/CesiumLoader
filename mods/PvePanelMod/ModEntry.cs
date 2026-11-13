@@ -50,6 +50,8 @@ namespace PvePanelMod
         private DateTime _wavesNext = DateTime.MinValue;
         private DateTime _next = DateTime.MinValue;
         private DateTime _nextError = DateTime.MinValue;
+        /// <summary>最近一次渲染的玩家行（诊断日志用，只存引用）。</summary>
+        private List<PlayerRow> _rows;
         private readonly List<GComponent> _dimmed = new List<GComponent>();
         private readonly Dictionary<GComponent, bool> _dimTouchable = new Dictionary<GComponent, bool>();
 
@@ -74,7 +76,8 @@ namespace PvePanelMod
             };
             _left.HandOpenChanged += () =>
             {
-                Log.Info("PVE 面板手牌抽屉: " + (_left.HandOpen ? "打开" : "收起"));
+                Log.Info("PVE 面板手牌抽屉: " + (_left.HandOpen ? "打开" : "收起")
+                    + (_left.HandOpen && _rows != null ? " · " + HandService.Describe(_rows) : ""));
                 _next = DateTime.MinValue;
             };
             _left.ScaleRequested += dir =>
@@ -184,6 +187,7 @@ namespace PvePanelMod
                 if (!PanelData.ShouldShow()) { HideAll(); return; }
                 var official = PanelData.FindOfficialRows();
                 var rows = PanelData.Read(PanelData.ReadOfficialHeads(official));
+                _rows = rows;
                 if (rows.Count == 0) { HideAll(); return; }
                 _left.Render(rows);
                 _shown = true;
