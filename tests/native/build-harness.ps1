@@ -33,6 +33,7 @@ $sources = @(
     (Join-Path $loader 'config\config.cpp'),
     (Join-Path $loader 'config\jsonc_patch.cpp'),
     (Join-Path $loader 'runtime\state.cpp'),
+    (Join-Path $loader 'runtime\crashdump.cpp'),
     (Join-Path $loader 'shell\command.cpp'),
     (Join-Path $loader 'shell\schema.cpp'),
     (Join-Path $loader 'shell\shell.cpp'),

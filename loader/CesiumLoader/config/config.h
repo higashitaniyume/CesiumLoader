@@ -127,8 +127,9 @@ struct LoaderConfig
     // 本键只保留解析与读写，不再决定是否启动；改代码常量才能重新打开。
     bool audioControlEnabled = true;
 
-    // Steam 自杀门绕过(见 steamhack.h)。默认**开**。
-    bool steamBypassEnabled = true;
+    // Steam 自杀门绕过(见 steamhack.h)。默认**关** —— 正常由 Steam 启动时用不到;
+    // 需要"不开 Steam 也能进游戏"时再手动打开。
+    bool steamBypassEnabled = false;
 
     // TapTap 版(测试版)绕过(见 taptaphack.h)。默认**关** —— TapTap 是托管 async 链,
     // 只做 IsLaunchedFromTapTapPC + Restart 两个 hook, 在 Steam 版上自然不命中, 不影响原行为。
@@ -141,12 +142,12 @@ struct LoaderConfig
     // TapSDK_GetClientID / TapUser_GetOpenID 回可被调用的"空成功"值。
     bool tapTapBypassLogin = false;
 
-    // 附加保险(默认开): 让 steam_api64.dll 的 SteamAPI_RestartAppIfNecessary
+    // 附加保险(默认关): 让 steam_api64.dll 的 SteamAPI_RestartAppIfNecessary
     // 恒返回 0。它本是 Steamworks 的无害样板调用, 万一退出判断不在 Awake() 里也能兜住。
     // 仅在 steamBypassEnabled 为 true 时才有意义。
-    bool steamBypassRestartCheck = true;
+    bool steamBypassRestartCheck = false;
 
-    // Steam 大厅匹配绕过(阶段2, 默认**开**) —— 修"Steam 全关时点创建房间/加入房间毫无反应"。
+    // Steam 大厅匹配绕过(阶段2, 默认**关**) —— 修"Steam 全关时点创建房间/加入房间毫无反应"。
     // 实测异常(BnSdk 错误上报):
     //     NullReferenceException
     //     UI.UICom_CreateRoom.RequestCreateRoom ()
@@ -157,9 +158,9 @@ struct LoaderConfig
     // 游戏侧 LobbyId 保持 0(= "无 Steam 大厅", 协议合法)后正常建房/进房。
     // 只受本开关控制(与 steamBypassEnabled / steamBypassRestartCheck 互不影响)。
     // 设为 false = 恢复原版行为(创建/加入房间仍会因 async 异常而无反应)。
-    bool steamBypassMatchmaking = true;
+    bool steamBypassMatchmaking = false;
 
-    // 阶段3(默认**开**): 把 AOT 方法 System.Nullable`1<Steamworks.Data.Lobby>::get_HasValue()
+    // 阶段3(默认**关**): 把 AOT 方法 System.Nullable`1<Steamworks.Data.Lobby>::get_HasValue()
     // 换成"恒返回 false"。
     // 为什么还需要它: CreateLobbyAsync 已经返回了"已完成的空 Task<Lobby?>", 但
     // il2cpp_runtime_invoke 把 Nullable<Lobby> 参数编组进 Task<T>..ctor(T) 时 hasValue 落成了
@@ -169,7 +170,7 @@ struct LoaderConfig
     // 所以能挂原生 hook; 强制 false 后 steamLobbyId 保持 0(协议里"无 Steam 大厅"合法值),
     // RequestCreateC2S 正常发出。语义自洽: Steam 不存在时任何 Lobby? 都不该有值。
     // 仅在 steamBypassMatchmaking 为 true 时有意义。false = 不挂钩(游戏退回 SetPublic 的 NRE)。
-    bool steamBypassLobbyHasValue = true;
+    bool steamBypassLobbyHasValue = false;
 
     // 当前分发的 SDK 版本(SemVer)。加载器用它校验 mod 声明的 SdkVersion,
     // 不兼容(mod 要求更高版本)时拒绝加载该 mod 并记录警告。
@@ -215,7 +216,7 @@ struct LoaderConfig
     //   就打开。仅在 steamBypassMatchmaking 为 true 时有意义(阶段2 没装就没有空 Task 可返回)。
     bool steamBypassLobbyMethods = false;
 
-    // 阶段5(默认**开**): 把 AOT 方法 Steamworks.Data.LobbyQuery::RequestAsync() 换成
+    // 阶段5(默认**关**): 把 AOT 方法 Steamworks.Data.LobbyQuery::RequestAsync() 换成
     // "恒返回一个**预建好的、结果为长度 0 的 Lobby[] 的已完成 Task<Lobby[]>**"。
     //
     // 故障(实机实测, 6 条 NRE, 栈顶就是本方法):
@@ -245,7 +246,7 @@ struct LoaderConfig
     // 它是**独立**的一层(与 steamBypassEnabled / steamBypassRestartCheck / steamBypassMatchmaking /
     // steamBypassLobbyHasValue / steamBypassLobbyMethods 互不影响): 不依赖阶段2 的动态返回值工厂,
     // 只受本开关控制。设为 false = 恢复原版行为(退房/解散/被踢时 await 之后的代码仍会被 NRE 跳过)。
-    bool steamBypassLobbyQuery = true;
+    bool steamBypassLobbyQuery = false;
 
     std::string sdkVersion = "3.7.5";
 

@@ -18,6 +18,7 @@
 #include "config/config.h"
 #include "logging/logging.h"
 #include "platform/loader.h"
+#include "runtime/crashdump.h"
 #include "runtime/state.h"
 #include "shell/shell.h"
 
@@ -156,6 +157,9 @@ int main(int argc, char** argv)
 
     console_init(false);
 
+    // shell 的 `dump` 命令走 crashdump 的按需转储: 联调台里也装上, 目录落在 out\AstralParty_ModLoader\crash。
+    cesium::crashdump::install(cfg, false, false);
+
     // 新分配的控制台缓冲区可能只有窗口那么高, 早先的输出会被滚掉; 调高缓冲区再跑,
     // 这样抓屏能拿到完整会话(联调台专用, 加载器本身不动控制台尺寸)。
     {
@@ -217,6 +221,7 @@ int main(int argc, char** argv)
     add(L"get loader.domainTimeoutSec", text(L"get loader.domainTimeoutSec\r"), true);
     add(L"mods", text(L"mods\r"), true);
     add(L"env", text(L"env\r"), true);
+    add(L"dump harness", text(L"dump harness\r"), true);
 
     // ---- 行编辑: 每条都只靠按键完成, 期望结果写在 label 里 ----
     {

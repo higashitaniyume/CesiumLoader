@@ -600,7 +600,8 @@ void install(const LoaderConfig& cfg, bool enabled, bool full_memory)
 
     if (!enabled)
     {
-        log_line("[crash] fatal-exception dumps disabled (crashDumpEnabled=false)");
+        log_line("[crash] fatal-exception handler disabled (crashDumpEnabled=false);"
+                 " on-demand dumps (shell 'dump', watchdog) still available");
         return;
     }
     if (g_veh) return;                            // 幂等: 只装一次
@@ -690,7 +691,7 @@ std::wstring write_dump_now(const char* kind, const char* source, const char* no
 
     // 说明文件: 事件摘要 + 请求信息 + 线程列表 + 同一份环境信息(与崩溃转储一致)。
     std::string text;
-    text += "===== CesiumLoader hang dump =====\r\n";
+    text += "===== CesiumLoader " + tag + " dump =====\r\n";
     text += "time      : " + now_text() + "\r\n";
     text += "session   : " + narrow(session) + "\r\n";
     text += "dump      : " + narrow(dump_path) + "\r\n";

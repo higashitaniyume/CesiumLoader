@@ -11,7 +11,13 @@
 - 新增 `crashDumpEnabled` / `crashDumpFullMemory`：访问冲突、栈溢出、堆损坏等致命原生异常时在加载器目录的 `crash\` 下写 `<会话>.dmp` 与同名说明文件。说明文件里是异常摘要与崩溃时的加载器环境（版本、路径、命令行、`GameAssembly.dll` 指纹、完整配置、模组加载结果）；dump 可直接用 Visual Studio 打开查看线程栈，有调试器附加时不落盘。
 - 加载器与转发到控制台的模组日志同时镜像到调试器输出通道（Visual Studio 输出窗口、DebugView）。
 - 新增 `nativeWatchdogEnabled` / `nativeWatchdogTimeoutSec`：主线程指令指针连续停滞超过阈值（且游戏窗口在前台）时，自动写 `crash\hang-<会话>.dmp` 与说明文件；卡死不产生异常，这是"游戏无响应"时唯一能取到现场的原生路径。每秒采样一次、稳态开销可忽略，默认关闭。
+- 调试 Shell 新增 `dump [备注]`：立即把当前所有线程栈写一份转储到 `crash\manual-<会话>.dmp`（写入期间游戏停顿不到 1 秒），不需要崩溃，也不依赖看门狗是否开启。
 - 调试 Shell 可读写上述配置项。
+
+### 行为变更
+
+- **Steam 绕过默认全部关闭**（`steamBypassEnabled` / `steamBypassRestartCheck` / `steamBypassMatchmaking` / `steamBypassLobbyHasValue` / `steamBypassLobbyQuery` 均为 `false`）。正常由 Steam 启动时不需要任何绕过；需要"不开 Steam 也能进游戏/建房"时再逐项打开，行为与联网语义随之改变。
+- `crashDumpEnabled=false` 只是关掉致命异常的自动落盘，转储设施仍会初始化，`dump` 命令与看门狗照常可用。
 
 ## [3.7.5] - 2026-11-13
 

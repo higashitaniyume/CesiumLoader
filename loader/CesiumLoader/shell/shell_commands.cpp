@@ -8,6 +8,7 @@
 #include "config/config.h"
 #include "logging/logging.h"
 #include "platform/loader.h"
+#include "runtime/crashdump.h"
 #include "runtime/state.h"
 #include "shell/command.h"
 #include "shell/shell.h"
@@ -320,6 +321,34 @@ void cmd_log(const std::vector<std::string>& args)
     print(fmt::format("-- {} · 共 {} 行 --", narrow(short_path(path)), all.size()), LOG_DIM);
 }
 
+// 按需写一份转储: 卡顿/卡死/怀疑内存被写坏时, 不用等崩溃也能立刻留现场。
+// 复用看门狗的 write_dump_now(所有线程栈 + 同一份环境信息), 写在 <loader>\crash\manual-*.dmp。
+void cmd_dump(const std::vector<std::string>& args)
+{
+    std::string note;
+    for (const auto& arg : args)
+    {
+        if (!note.empty()) note += ' ';
+        note += arg;
+        if (note.size() >= 160) break;
+    }
+    if (note.size() > 160) note.resize(160);
+
+    print("正在写转储(写入期间游戏会短暂停顿)…", LOG_DIM);
+
+    const std::wstring path = cesium::crashdump::write_dump_now(
+        "manual", "debug-shell", note.empty() ? nullptr : note.c_str(), 0, 0, 0, 0);
+
+    if (path.empty())
+    {
+        print("转储失败: 转储设施未就绪或写盘被拒绝(看日志里的 [crash] 行)", LOG_RED);
+        return;
+    }
+
+    print("转储已写入: " + narrow(short_path(path)), LOG_GREEN);
+    print("同名 .txt 是说明文件([request]/[threads]/[environment]); dmp 可用 VS 打开看线程栈", LOG_DIM);
+}
+
 void cmd_proc(const std::vector<std::string>&)
 {
     const auto snap = cesium::runtime::snapshot();
@@ -381,6 +410,7 @@ const Command kCommands[] = {
     { "mods", "mods [--all]", "模组加载结果", "mods --all", cmd_mods },
     { "hooks", "hooks", "变速 hook 与各子系统状态", "", cmd_hooks },
     { "log", "log [行数|path]", "查看本次启动的加载器日志尾部", "log 50", cmd_log },
+    { "dump", "dump [备注]", "立即写一份线程栈转储到 <loader>\\crash(写入时游戏短暂停顿)", "dump 卡住了", cmd_dump },
     { "proc", "proc", "进程资源(内存/句柄/线程)", "", cmd_proc },
     { "ls", "ls [过滤]", "列出所有可配置项(同 set --list)", "ls TurnFocus", config::cmd_ls },
     { "get", "get <键>", "显示某个配置项的当前值", "get loader.consoleTopmost", config::cmd_get },

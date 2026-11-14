@@ -113,7 +113,7 @@ winget install Hiynet.AstralParty.Toys
 
 **变速范围为 1–100 倍，建议不超过 3 倍。** 变速影响动画、演出、回合与网络超时；切换倍率时保持虚拟时间连续。默认 `Delete` 切换正常速度与上次倍率，`Alt` + `=` / `Alt` + `-` 调整倍率，热键可在 Toys 中修改。
 
-Steam 绕过涉及多个独立开关，推荐通过 Toys 选择启动方式。
+Steam 绕过默认全部关闭（正常由 Steam 启动时不需要）；涉及多个独立开关，需要「不开 Steam 也能进游戏」时推荐通过 Toys 选择启动方式。
 
 控制台窗口由加载器通过 `AllocConsole` 分配，始终由传统控制台承载：Windows 的默认终端应用设置只作用于控制台程序启动时创建的控制台，不会接管这里后分配的控制台。`consoleTopmost` 作用于这个控制台窗口。
 
@@ -125,10 +125,11 @@ Steam 绕过涉及多个独立开关，推荐通过 Toys 选择启动方式。
 cesium> ls TurnFocus
 cesium> set TurnFocusMod.cooldownSeconds 2
 cesium> set loader.speedhackBaseSpeed 3
+cesium> dump 卡住了
 cesium> exit
 ```
 
-配置键为 `loader.<字段>` 或 `<ModId>.<键>`，`ls` 列出全部可配置项，`get` / `set` 读写单个键，`help` 查看全部命令。行编辑与常见 shell 一致：方向键移动光标、`Home` / `End`、`Delete`、`Ctrl+W`/`Ctrl+K`/`Ctrl+U` 删词删行，`Tab` 补全命令名与配置键。修改会立即写盘并保留文件原有格式。
+配置键为 `loader.<字段>` 或 `<ModId>.<键>`，`ls` 列出全部可配置项，`get` / `set` 读写单个键，`help` 查看全部命令。`dump` 会立即把当前所有线程栈写一份转储到 `crash\`（写入期间游戏停顿不到 1 秒），用于没有崩溃、也没有卡死时的现场取证。行编辑与常见 shell 一致：方向键移动光标、`Home` / `End`、`Delete`、`Ctrl+W`/`Ctrl+K`/`Ctrl+U` 删词删行，`Tab` 补全命令名与配置键。修改会立即写盘并保留文件原有格式。
 
 日志按启动会话分别保存，文件名包含时间与进程 ID；排障时保留对应会话的日志及同次构建的 DLL/PDB。
 

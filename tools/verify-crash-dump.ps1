@@ -118,14 +118,20 @@ if (-not $dmpPath)
 $dmp = Get-Item -LiteralPath $dmpPath
 # 文件名 = <kind>-<会话>；崩溃转储是 <会话>，按需转储带 hang-/manual- 前缀。
 $session = $dmp.BaseName
-$isHang = $false
+$kind = 'crash'
 if ($session -match '^(hang|manual)-(.+)$')
 {
-    $isHang = $Matches[1] -eq 'hang'
+    $kind = $Matches[1]
     $session = $Matches[2]
 }
+$isHang = $kind -eq 'hang'
 Add-Result '转储文件' $true ("{0} · {1:N0} B · {2:yyyy-MM-dd HH:mm:ss}（目录内共 {3} 个）" -f $dmp.Name, $dmp.Length, $dmp.LastWriteTime, $dmpCount)
-Write-Host ("       类型: " + $(if ($isHang) { 'hang dump（卡死，由看门狗主动落盘）' } else { 'crash dump（异常触发）' })) -ForegroundColor DarkGray
+$kindText = switch ($kind) {
+    'hang' { 'hang dump（卡死，由看门狗主动落盘）' }
+    'manual' { 'manual dump（Debug Shell 命令按需落盘）' }
+    default { 'crash dump（异常触发）' }
+}
+Write-Host ("       类型: " + $kindText) -ForegroundColor DarkGray
 
 # ---------------------------------------------------------------- 2. MDMP 签名
 $signatureOk = $false
@@ -169,10 +175,10 @@ else
 # ---------------------------------------------------------------- 4. 说明内容
 if ($noteOk)
 {
-    $sections = if ($isHang)
+    $sections = if ($kind -ne 'crash')
     {
         @(
-            @{ Name = '卡死摘要';   Pattern = 'CesiumLoader hang dump' },
+            @{ Name = '转储摘要';   Pattern = ('CesiumLoader ' + $kind + ' dump') },
             @{ Name = '请求信息';   Pattern = '\[request\]' },
             @{ Name = '线程列表';   Pattern = '\[threads\]' },
             @{ Name = '环境段';     Pattern = 'CesiumLoader environment' },
@@ -198,7 +204,7 @@ if ($noteOk)
         if ($noteText -notmatch $section.Pattern) { $missing += $section.Name }
     }
 
-    $expect = if ($isHang) { '卡死摘要 + [request]/[threads] + 环境信息' } else { '异常摘要 + [environment]/[binaries]/[config]/[mods]' }
+    $expect = if ($kind -ne 'crash') { '摘要 + [request]/[threads] + 环境信息' } else { '异常摘要 + [environment]/[binaries]/[config]/[mods]' }
     Add-Result '说明内容完整' ($missing.Count -eq 0) $(if ($missing.Count -eq 0) { $expect } else { '缺少: ' + ($missing -join ', ') })
 }
 
@@ -206,19 +212,9 @@ if ($noteOk)
 $loaderLog = Join-Path $logsDir ("cesium-loader-" + $session + ".log")
 if (Test-Path -LiteralPath $loaderLog)
 {
-    if ($isHang)
-    {
-        $hit = Select-String -LiteralPath $loaderLog -Pattern '\[watchdog\] hang dump written' | Select-Object -First 1
-        if (-not $hit) { $hit = Select-String -LiteralPath $loaderLog -Pattern '\[watchdog\] enabled' | Select-Object -First 1 }
-        $ok = $null -ne $hit
-        Add-Result '同会话加载器日志' $ok $(if ($ok) { '找到看门狗记录' } else { '日志里没有看门狗记录' })
-    }
-    else
-    {
-        $hit = Select-String -LiteralPath $loaderLog -Pattern '\[crash\] minidump handler installed' | Select-Object -First 1
-        $ok = $null -ne $hit
-        Add-Result '同会话加载器日志' $ok $(if ($ok) { '找到 "[crash] minidump handler installed"' } else { '日志里没有崩溃处理器安装记录' })
-    }
+    $hit = Select-String -LiteralPath $loaderLog -Pattern '\[crash\] (minidump handler installed|fatal-exception handler disabled)' | Select-Object -First 1
+    $ok = $null -ne $hit
+    Add-Result '同会话加载器日志' $ok $(if ($ok) { '找到转储设施日志([crash] ...)' } else { '日志里没有转储设施记录' })
 }
 else
 {
@@ -246,7 +242,7 @@ if ($noteOk)
     $head = ($noteText -split "`r?`n") | Select-Object -First 12
     foreach ($line in $head) { Write-Host ('  ' + $line) }
 
-    $envLines = ($noteText -split "`r?`n") | Where-Object { $_ -match '^(loader|game|os|exe|root|crash dir|reason|source|stall|main tid|rip)\s*:' }
+    $envLines = ($noteText -split "`r?`n") | Where-Object { $_ -match '^(loader|game|os|exe|root|crash dir|reason|source|stall|main tid|rip|note)\s*:' }
     if ($envLines)
     {
         Write-Host ''
@@ -254,7 +250,7 @@ if ($noteOk)
         foreach ($line in $envLines) { Write-Host ('  ' + $line) }
     }
 
-    if ($isHang)
+    if ($kind -ne 'crash')
     {
         $threadLines = ($noteText -split "`r?`n") | Where-Object { $_ -match '^\s+tid ' } | Select-Object -First 8
         if ($threadLines)
