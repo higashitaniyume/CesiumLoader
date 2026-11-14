@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using CesiumLoader.SDK.Configuration;
 using Xunit;
@@ -18,18 +19,22 @@ namespace CesiumLoader.SDK.Tests
         private static ModConfig NewConfig(out string dir, string modId)
         {
             dir = TestEnv.NewTempDir("config");
+            // 统一布局后配置写在 <加载器目录>/configs/<ModId>.json：把加载器目录指到本用例的临时
+            // 目录，用例之间才不会共用一份配置（上次运行留下的键或 .bak 会污染断言）。
+            Environment.SetEnvironmentVariable("CESIUM_LOADER_DIR", dir);
+            Directory.CreateDirectory(Path.Combine(dir, "configs"));
             ModConfig.ClearCache();
             return ModConfig.ForModId(modId, dir);
         }
 
         [Fact]
-        public void ForModId_ResolvesConfigInsideModDirectory()
+        public void ForModId_ResolvesConfigInUnifiedConfigsDirectory()
         {
             string dir;
             var cfg = NewConfig(out dir, "ConfigPathMod");
 
             Assert.NotNull(cfg.Path);
-            Assert.Equal(Path.Combine(dir, "config.json"), cfg.Path);
+            Assert.Equal(Path.Combine(dir, "configs", "ConfigPathMod.json"), cfg.Path);
             Assert.Equal("ConfigPathMod", cfg.ModId);
         }
 

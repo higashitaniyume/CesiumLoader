@@ -12,6 +12,9 @@ namespace CesiumLoader.SDK.Tests
         private static ModConfig NewConfig(out string dir, string modId)
         {
             dir = TestEnv.NewTempDir("configdoc");
+            // 配置落在 <加载器目录>/configs：指到本用例的临时目录，隔离用例之间的键与 .bak。
+            Environment.SetEnvironmentVariable("CESIUM_LOADER_DIR", dir);
+            Directory.CreateDirectory(Path.Combine(dir, "configs"));
             ModConfig.ClearCache();
             return ModConfig.ForModId(modId, dir);
         }
