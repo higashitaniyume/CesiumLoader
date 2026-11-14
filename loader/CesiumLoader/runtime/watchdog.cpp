@@ -120,6 +120,53 @@ bool is_foreground(DWORD pid)
     return fg_pid == pid;
 }
 
+// ---------- 后台挂起: 主线程停在消息循环里 ----------
+
+struct ModuleRange
+{
+    unsigned long long begin = 0;
+    unsigned long long end = 0;
+};
+
+bool module_range(const wchar_t* name, ModuleRange& out)
+{
+    HMODULE mod = GetModuleHandleW(name);
+    if (mod == nullptr) return false;
+
+    auto* base = reinterpret_cast<unsigned char*>(mod);
+    auto* dos = reinterpret_cast<IMAGE_DOS_HEADER*>(base);
+    if (dos->e_magic != IMAGE_DOS_SIGNATURE) return false;
+
+    auto* nt = reinterpret_cast<IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
+    if (nt->Signature != IMAGE_NT_SIGNATURE) return false;
+
+    out.begin = reinterpret_cast<unsigned long long>(mod);
+    out.end = out.begin + nt->OptionalHeader.SizeOfImage;
+    return true;
+}
+
+// 后台挂起(Unity 在窗口失焦时暂停 player loop)主线程会停在 PeekMessage/GetMessage 一类
+// 调用里 —— 那是 user32/win32u 的地址。真正的卡死(等锁/等信号量)落在 ntdll/baselib/
+// GameAssembly 里, 不会命中这两个模块, 所以可以用它把"后台暂停"和"后台卡死"分开。
+ModuleRange g_message_modules[2];
+int g_message_module_count = 0;
+
+void init_message_modules()
+{
+    g_message_module_count = 0;
+    if (module_range(L"user32.dll", g_message_modules[g_message_module_count])) ++g_message_module_count;
+    if (module_range(L"win32u.dll", g_message_modules[g_message_module_count])) ++g_message_module_count;
+}
+
+bool in_message_wait(unsigned long long rip)
+{
+    for (int i = 0; i < g_message_module_count; ++i)
+    {
+        if (rip >= g_message_modules[i].begin && rip < g_message_modules[i].end) return true;
+    }
+    return false;
+}
+
 DWORD WINAPI watch_thread(LPVOID param)
 {
     const unsigned timeout_sec = static_cast<unsigned>(reinterpret_cast<uintptr_t>(param));
@@ -146,10 +193,13 @@ DWORD WINAPI watch_thread(LPVOID param)
     bool windowed = has_visible_window(pid);
     ULONGLONG window_checked_at = 0;
 
+    init_message_modules();
+
     console_set_color(LOG_DIM);
     log_line("[watchdog] enabled: main thread " + std::to_string(main_tid) +
              " · stall threshold " + std::to_string(timeout_sec) + "s" +
-             (windowed ? " · foreground gated" : " · no visible window yet"));
+             (windowed ? " · background: up to 2x threshold, message-wait pauses ignored"
+                       : " · no visible window yet"));
     console_set_color(LOG_DEFAULT);
 
     const ULONGLONG started = now_ms();
@@ -177,27 +227,22 @@ DWORD WINAPI watch_thread(LPVOID param)
             window_checked_at = now;
         }
 
-        // 窗口不在前台: 玩家可能切出去了, 主线程停住是正常的。重置停滞起点,
-        // 避免切回来的一瞬间就被判定成卡死。但要记一次 —— 否则用户只看到"卡住却没 dump",
-        // 不知道是前台判定在起作用。
-        if (windowed && !is_foreground(pid))
+        // 窗口不在前台: 玩家切出去了。**不能一律不判定** —— 卡死的游戏往往正好在后台
+        // (用户去翻日志了), 上一版就是这样白等了一分多钟。这里分两种情况:
+        //   1) 主线程停在 user32/win32u 的消息等待里 = 后台挂起(Unity 的暂停), 忽略;
+        //   2) 其它地方(Rip 在 GameAssembly/ntdll 的锁或等待里) = 仍在按 2 倍阈值判定,
+        //      这样后台卡死也会在 timeout*2 内落盘。
+        bool foreground = true;
+        ULONGLONG threshold_ms = timeout_ms;
+        if (windowed)
         {
-            if (!noted_background)
+            foreground = is_foreground(pid);
+            if (!foreground)
             {
-                noted_background = true;
-                console_set_color(LOG_DIM);
-                log_line("[watchdog] main thread is not moving, but the game window is not in the foreground;"
-                         " stall timer keeps resetting (bring the window to front to let the watchdog fire)");
-                console_set_color(LOG_DEFAULT);
+                // 需要先采样才能判断"是不是消息等待", 采样放到下面统一做; 这里只标记。
+                threshold_ms = timeout_ms * 2;
             }
-            moved_at = now;
-            if (warned)
-            {
-                warned = false;
-            }
-            continue;
         }
-        noted_background = false;
 
         // 调试器附加时"指针不动"是断点停住了, 不是卡死 —— 重置计时, 不落盘。
         if (IsDebuggerPresent())
@@ -224,6 +269,23 @@ DWORD WINAPI watch_thread(LPVOID param)
         ResumeThread(main_thread);              // 立刻恢复, 只借用几微秒
         if (!got) continue;
 
+        if (!foreground && in_message_wait(static_cast<unsigned long long>(ctx.Rip)))
+        {
+            // 后台挂起的典型形态: 主线程停在 PeekMessage/GetMessage 一类调用里。
+            if (!noted_background)
+            {
+                noted_background = true;
+                console_set_color(LOG_DIM);
+                log_line("[watchdog] game window is in the background and the main thread waits on a message"
+                         " loop (paused); stall timer keeps resetting");
+                console_set_color(LOG_DEFAULT);
+            }
+            moved_at = now;
+            if (warned) warned = false;
+            continue;
+        }
+        noted_background = false;
+
         if (ctx.Rip != last_rip || ctx.Rsp != last_rsp)
         {
             last_rip = ctx.Rip;
@@ -238,24 +300,26 @@ DWORD WINAPI watch_thread(LPVOID param)
         }
 
         const ULONGLONG stall_ms = now - moved_at;
-        const ULONGLONG warn_ms = timeout_ms / 2;
+        const ULONGLONG warn_ms = threshold_ms / 2;
 
         if (!warned && stall_ms >= warn_ms)
         {
             warned = true;
             console_set_color(LOG_YELLOW);
             log_line("[watchdog] main thread stalled " + std::to_string(stall_ms / 1000) + "s (rip " +
-                     hex_text(ctx.Rip) + "); dump at " + std::to_string(timeout_sec) + "s");
+                     hex_text(ctx.Rip) + ", window " + (foreground ? "foreground" : "background") +
+                     "); dump at " + std::to_string(threshold_ms / 1000) + "s");
             console_set_color(LOG_DEFAULT);
         }
 
-        if (!dumped && stall_ms >= timeout_ms)
+        if (!dumped && stall_ms >= threshold_ms)
         {
             dumped = true;
 
-            char note[192] = {};
-            sprintf_s(note, "main thread rip/rsp unchanged for %.1fs (rip %s)",
-                      (double)stall_ms / 1000.0, hex_text(ctx.Rip).c_str());
+            char note[224] = {};
+            sprintf_s(note, "main thread rip/rsp unchanged for %.1fs (rip %s, window %s)",
+                      (double)stall_ms / 1000.0, hex_text(ctx.Rip).c_str(),
+                      foreground ? "foreground" : "background");
 
             const std::wstring path = cesium::crashdump::write_dump_now(
                 "hang", "native-watchdog", note, static_cast<long long>(stall_ms),
