@@ -1,0 +1,1 @@
+{"id":"CrashProbeMod","name":"崩溃探针","version":"1.0.0","author":"CesiumLoader","description":"崩溃转储验证工具：打开设置页或按热键后故意制造原生访问冲突，让游戏崩溃以验证加载器的 minidump 与日志通路。会真的让游戏退出，只用于测试环境","permissions":1024,"sdkVersion":"2.8.6","dependencies":[]}

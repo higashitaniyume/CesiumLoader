@@ -18,6 +18,7 @@
     <Project Path="mods/ActivityLogMod/ActivityLogMod.csproj" />
     <Project Path="mods/CameraProbeMod/CameraProbeMod.csproj" />
     <Project Path="mods/CardSkinMod/CardSkinMod.csproj" />
+    <Project Path="mods/CrashProbeMod/CrashProbeMod.csproj" />
     <Project Path="mods/CharacterSkinMod/CharacterSkinMod.csproj" />
     <Project Path="mods/CombatOddsMod/CombatOddsMod.csproj" />
     <Project Path="mods/DiagnosticsMod/DiagnosticsMod.csproj" />
