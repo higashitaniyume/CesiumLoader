@@ -66,6 +66,9 @@
     <ClCompile Include="runtime\crashdump.cpp">
       <Filter>runtime</Filter>
     </ClCompile>
+    <ClCompile Include="runtime\watchdog.cpp">
+      <Filter>runtime</Filter>
+    </ClCompile>
     <ClCompile Include="runtime\il2cpp_boot.cpp">
       <Filter>runtime</Filter>
     </ClCompile>
@@ -164,6 +167,9 @@
       <Filter>runtime</Filter>
     </ClInclude>
     <ClInclude Include="runtime\crashdump.h">
+      <Filter>runtime</Filter>
+    </ClInclude>
+    <ClInclude Include="runtime\watchdog.h">
       <Filter>runtime</Filter>
     </ClInclude>
     <ClInclude Include="runtime\state.h">

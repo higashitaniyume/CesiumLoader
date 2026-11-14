@@ -18,6 +18,7 @@
 
 #include <windows.h>
 #include <dbghelp.h>
+#include <tlhelp32.h>
 #include <winternl.h>
 
 #include <cstdio>
@@ -41,6 +42,7 @@ wchar_t g_note_path[kPathChars] = {};
 char g_env[kEnvBytes] = {};
 volatile LONG g_env_len = 0;             // 只有 0 或完整长度, 见 publish_environment
 volatile LONG g_dumping = 0;
+bool g_veh = false;                      // 致命异常处理器是否已装(按需转储不需要它)
 
 // ---------- 文本小工具(只在正常运行时调用, 可以用堆/标准库) ----------
 
@@ -464,50 +466,109 @@ LONG WINAPI on_exception(EXCEPTION_POINTERS* info)
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
-} // namespace
+// ---------- 按需转储的辅助(正常运行时, 可以分配内存/用标准库) ----------
 
-namespace cesium::crashdump
+std::string hex_text(unsigned long long value)
 {
+    char buf[32] = {};
+    sprintf_s(buf, "0x%016llX", value);
+    return buf;
+}
 
-void install(const LoaderConfig& cfg, const std::wstring& logs_dir, bool enabled, bool full_memory)
+// 线程列表: tid + 是否主线程。看门狗命中时主线程栈是重点, 这里先给出线程清单,
+// 分析时用 cdb 的 ~*k 逐个看(主线程那条会标 (main))。
+std::string threads_text(unsigned long main_tid)
 {
-    if (!enabled)
+    std::string out;
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+    if (snap == INVALID_HANDLE_VALUE) return "  (thread snapshot failed)\r\n";
+
+    THREADENTRY32 te{};
+    te.dwSize = sizeof(te);
+    int count = 0;
+    if (Thread32First(snap, &te))
     {
-        log_line("[crash] crash dumps disabled (crashDumpEnabled=false)");
-        return;
+        do
+        {
+            if (te.th32OwnerProcessID != GetCurrentProcessId()) continue;
+            ++count;
+            out += "  tid " + std::to_string(te.th32ThreadID);
+            if (te.th32ThreadID == main_tid) out += "  (main)";
+            out += "\r\n";
+        } while (Thread32Next(snap, &te));
     }
-    if (g_write_dump != nullptr) return;          // 幂等: 只装一次
-    if (logs_dir.empty()) { log_line("[crash] no log directory; crash dumps disabled"); return; }
+    CloseHandle(snap);
 
-    HMODULE dbghelp = LoadLibraryW(L"dbghelp.dll");
-    if (dbghelp == nullptr) { log_line("[crash] dbghelp.dll unavailable; crash dumps disabled"); return; }
-    g_write_dump = reinterpret_cast<MiniDumpWriteDumpFn>(
-        reinterpret_cast<void*>(GetProcAddress(dbghelp, "MiniDumpWriteDump")));
+    if (count == 0) out = "  (none)\r\n";
+    return out;
+}
+
+std::string sanitize_kind(const char* kind)
+{
+    std::string raw = (kind == nullptr || *kind == '\0') ? std::string("manual") : std::string(kind);
+    std::string out;
+    for (char c : raw)
+    {
+        const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+                        c == '_' || c == '-';
+        if (ok) out.push_back(c);
+        if (out.size() >= 16) break;
+    }
+    return out.empty() ? std::string("manual") : out;
+}
+
+bool write_text_file(const std::wstring& path, const std::string& text)
+{
+    HANDLE h = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
+                           FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return false;
+    DWORD written = 0;
+    const BOOL ok = WriteFile(h, text.data(), (DWORD)text.size(), &written, nullptr);
+    CloseHandle(h);
+    return ok != FALSE && written == text.size();
+}
+
+// CreateDirectoryW 不会建中间层: 逐级建(已存在视为成功)。转储目录可能在首次运行/
+// 探针里连父目录都不存在, 不能因此退回 logs 根目录。
+void create_dir_tree(const std::wstring& path)
+{
+    std::wstring partial;
+    for (size_t i = 0; i < path.size(); ++i)
+    {
+        partial.push_back(path[i]);
+        const bool separator = (path[i] == L'\\' || path[i] == L'/');
+        if (separator && partial.size() > 3) CreateDirectoryW(partial.c_str(), nullptr);
+    }
+    CreateDirectoryW(path.c_str(), nullptr);
+}
+
+// 转储目录准备好(建目录 / 加载 dbghelp / 记环境信息)。致命异常与按需转储共用。
+bool ensure_ready(const LoaderConfig& cfg, const std::wstring& logs_dir, bool full_memory)
+{
+    if (g_write_dump != nullptr && g_crash_dir[0] != L'\0') return true;
+    if (logs_dir.empty()) return false;
+
     if (g_write_dump == nullptr)
     {
-        log_line("[crash] MiniDumpWriteDump missing; crash dumps disabled");
-        return;
+        HMODULE dbghelp = LoadLibraryW(L"dbghelp.dll");
+        if (dbghelp == nullptr) return false;
+        g_write_dump = reinterpret_cast<MiniDumpWriteDumpFn>(
+            reinterpret_cast<void*>(GetProcAddress(dbghelp, "MiniDumpWriteDump")));
+        if (g_write_dump == nullptr) return false;
     }
 
-    // 转储目录: <logs>\crash。建不出来(权限/只读)就退回 <logs>, 不因为目录问题放弃转储。
-    const std::wstring crash_dir = logs_dir + L"\\crash";
-    if (crash_dir.size() < kPathChars &&
-        (CreateDirectoryW(crash_dir.c_str(), nullptr) || GetLastError() == ERROR_ALREADY_EXISTS))
-        wcscpy_s(g_crash_dir, crash_dir.c_str());
-    else
-        wcscpy_s(g_crash_dir, logs_dir.c_str());
-
-    // 路径必须在 install 时算好: 异常处理里不能拼 std::wstring(要分配内存)。
-    // 会话标识在 DllMain 打版本横幅时就已经定下, 这里拿到的与日志文件是同一个会话。
-    const std::wstring base = std::wstring(g_crash_dir) + L"\\" + cesium::log::session_id();
-    if (base.size() + 8 >= kPathChars)
+    if (g_crash_dir[0] == L'\0')
     {
-        log_line("[crash] crash path too long; crash dumps disabled");
-        g_write_dump = nullptr;
-        return;
+        // 转储目录: <logs>\crash。日志目录本身也可能还不存在(探针/首次运行), 先逐级建出来;
+        // 仍建不出来(权限/只读)才退回 <logs>, 不因为目录问题放弃转储。
+        create_dir_tree(logs_dir);
+        const std::wstring crash_dir = logs_dir + L"\\crash";
+        if (crash_dir.size() < kPathChars &&
+            (CreateDirectoryW(crash_dir.c_str(), nullptr) || GetLastError() == ERROR_ALREADY_EXISTS))
+            wcscpy_s(g_crash_dir, crash_dir.c_str());
+        else
+            wcscpy_s(g_crash_dir, logs_dir.c_str());
     }
-    wcscpy_s(g_dump_path, (base + L".dmp").c_str());
-    wcscpy_s(g_note_path, (base + L".txt").c_str());
 
     g_dump_type = full_memory
         ? static_cast<MINIDUMP_TYPE>(MiniDumpWithFullMemory | MiniDumpWithFullMemoryInfo |
@@ -517,13 +578,47 @@ void install(const LoaderConfig& cfg, const std::wstring& logs_dir, bool enabled
 
     // 环境信息先写进静态缓冲区(此时版本号还没拿到, refresh_environment 会补)。
     publish_environment(&cfg);
+    return true;
+}
+
+} // namespace
+
+namespace cesium::crashdump
+{
+
+void install(const LoaderConfig& cfg, const std::wstring& logs_dir, bool enabled, bool full_memory)
+{
+    // 即使 fatal 转储被关掉也要把目录/dbghelp 准备好 —— 看门狗的按需转储共用这套设施。
+    if (!ensure_ready(cfg, logs_dir, full_memory))
+    {
+        log_line("[crash] dumps unavailable (dbghelp.dll or log directory); fatal handler not installed");
+        return;
+    }
+
+    if (!enabled)
+    {
+        log_line("[crash] fatal-exception dumps disabled (crashDumpEnabled=false)");
+        return;
+    }
+    if (g_veh) return;                            // 幂等: 只装一次
+
+    // 路径必须在 install 时算好: 异常处理里不能拼 std::wstring(要分配内存)。
+    // 会话标识在 DllMain 打版本横幅时就已经定下, 这里拿到的与日志文件是同一个会话。
+    const std::wstring base = std::wstring(g_crash_dir) + L"\\" + cesium::log::session_id();
+    if (base.size() + 8 >= kPathChars)
+    {
+        log_line("[crash] crash path too long; fatal handler not installed");
+        return;
+    }
+    wcscpy_s(g_dump_path, (base + L".dmp").c_str());
+    wcscpy_s(g_note_path, (base + L".txt").c_str());
 
     if (AddVectoredExceptionHandler(1, on_exception) == nullptr)
     {
-        g_write_dump = nullptr;
-        log_line("[crash] AddVectoredExceptionHandler failed; crash dumps disabled");
+        log_line("[crash] AddVectoredExceptionHandler failed; fatal handler not installed");
         return;
     }
+    g_veh = true;
 
     console_set_color(LOG_DIM);
     // short_path() 返回宽字符, 与窄字面量不能直接相加 —— 整行按宽字符拼再交给宽重载。
@@ -539,6 +634,86 @@ void refresh_environment()
 {
     if (g_write_dump == nullptr) return;
     publish_environment(nullptr);
+}
+
+std::wstring crash_dir()
+{
+    return std::wstring(g_crash_dir);
+}
+
+std::wstring write_dump_now(const char* kind, const char* source, const char* note,
+                            long long stall_ms, unsigned long long rip, unsigned long long rsp,
+                            unsigned long main_tid)
+{
+    if (g_write_dump == nullptr || g_crash_dir[0] == L'\0') return std::wstring();
+
+    // 与异常路径互斥: 同一时刻只写一份(memory dump 不是一个能并行的操作)。
+    if (InterlockedCompareExchange(&g_dumping, 1, 0) != 0) return std::wstring();
+
+    const std::string tag = sanitize_kind(kind);
+    const std::wstring session = cesium::log::session_id();
+    std::wstring base = std::wstring(g_crash_dir) + L"\\" + std::wstring(tag.begin(), tag.end()) + L"-" + session;
+
+    // 同一次启动里可能被请求多次(反复卡/手动取证): 找第一个没被占用的名字。
+    std::wstring candidate = base;
+    for (int i = 2; i <= 99; ++i)
+    {
+        if (GetFileAttributesW((candidate + L".dmp").c_str()) == INVALID_FILE_ATTRIBUTES) break;
+        candidate = base + L"-" + std::to_wstring(i);
+    }
+    if (candidate.size() + 8 >= kPathChars)
+    {
+        InterlockedExchange(&g_dumping, 0);
+        return std::wstring();
+    }
+
+    const std::wstring dump_path = candidate + L".dmp";
+    const std::wstring note_path = candidate + L".txt";
+
+    bool dumped = false;
+    HANDLE file = CreateFileW(dump_path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
+                              FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file != INVALID_HANDLE_VALUE)
+    {
+        dumped = g_write_dump(GetCurrentProcess(), GetCurrentProcessId(), file, g_dump_type,
+                              nullptr, nullptr, nullptr) != FALSE;
+        CloseHandle(file);
+    }
+    if (!dumped)
+    {
+        InterlockedExchange(&g_dumping, 0);
+        return std::wstring();
+    }
+
+    // 说明文件: 事件摘要 + 请求信息 + 线程列表 + 同一份环境信息(与崩溃转储一致)。
+    std::string text;
+    text += "===== CesiumLoader hang dump =====\r\n";
+    text += "time      : " + now_text() + "\r\n";
+    text += "session   : " + narrow(session) + "\r\n";
+    text += "dump      : " + narrow(dump_path) + "\r\n";
+    text += "\r\n[request]\r\n";
+    text += "reason    : " + tag + "\r\n";
+    if (source != nullptr && *source != '\0') text += "source    : " + std::string(source) + "\r\n";
+    if (stall_ms > 0)
+    {
+        char sec[32] = {};
+        sprintf_s(sec, "%.1fs", (double)stall_ms / 1000.0);
+        text += std::string("stall     : ") + sec + "\r\n";
+    }
+    if (rip != 0) text += "rip       : " + hex_text(rip) + "\r\n";
+    if (rsp != 0) text += "rsp       : " + hex_text(rsp) + "\r\n";
+    if (main_tid != 0) text += "main tid  : " + std::to_string(main_tid) + "\r\n";
+    if (note != nullptr && *note != '\0') text += "note      : " + std::string(note) + "\r\n";
+    text += "\r\n";
+
+    text += build_environment(nullptr);
+    text += "\r\n[threads]\r\n";
+    text += threads_text(main_tid);
+
+    write_text_file(note_path, text);
+
+    InterlockedExchange(&g_dumping, 0);
+    return dump_path;
 }
 
 } // namespace cesium::crashdump

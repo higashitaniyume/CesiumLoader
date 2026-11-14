@@ -39,4 +39,21 @@ void install(const LoaderConfig& cfg, const std::wstring& logs_dir, bool enabled
 //   - mod 加载报告生成之后
 void refresh_environment();
 
+// 转储目录(<logs>\crash); 未初始化时为空。
+std::wstring crash_dir();
+
+// 按需写一份转储(不依赖异常): 看门狗发现主线程停滞、或探针手动取证时调用。
+// 写 `<crash>\<kind>-<会话>[-n].dmp` 与同名 .txt(摘要 + [request] + [threads] + 环境信息)。
+//   kind      : 文件名前缀, 只保留 [A-Za-z0-9_-], 空则用 "manual"
+//   source    : 请求来源(mod id / "native-watchdog"), 写进 .txt
+//   note      : 备注(可为 nullptr)
+//   stall_ms  : 已停滞毫秒数(0 = 不适用)
+//   rip / rsp : 采样到的现场(0 = 未知)
+//   main_tid  : 主线程 id(0 = 未知)
+// 返回写成的 .dmp 路径; 空 = 失败(未初始化 / 已有转储在写 / 写盘失败)。
+// 线程安全: 与异常转储互斥, 同一时刻只写一份。
+std::wstring write_dump_now(const char* kind, const char* source, const char* note,
+                            long long stall_ms, unsigned long long rip, unsigned long long rsp,
+                            unsigned long main_tid);
+
 } // namespace cesium::crashdump

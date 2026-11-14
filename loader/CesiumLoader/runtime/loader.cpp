@@ -28,6 +28,7 @@
 #include "mods/modmeta.h"
 #include "logging/logging.h"
 #include "runtime/crashdump.h"
+#include "runtime/watchdog.h"
 #include "runtime/loader_internal.h"
 #include "runtime/state.h"
 #include "shell/shell.h"
@@ -195,8 +196,14 @@ static DWORD WINAPI boot_thread(LPVOID)
 
     // 3.1 崩溃转储(见 runtime/crashdump.h): 越早装越好 —— 后面解析 il2cpp、装 hook、
     //     走 Steam 绕过都可能崩, 而那些崩溃在游戏侧只留一行 Player.log。
-    //     失败只记日志, 不影响启动。
-    cesium::crashdump::install(cfg, logs_dir(), cfg.crashDumpEnabled, cfg.crashDumpFullMemory);
+    //     失败只记日志, 不影响启动。看门狗共用同一套转储设施, 所以任一功能打开都要初始化。
+    if (cfg.crashDumpEnabled || cfg.nativeWatchdogEnabled)
+        cesium::crashdump::install(cfg, logs_dir(), cfg.crashDumpEnabled, cfg.crashDumpFullMemory);
+
+    // 3.1b 原生看门狗(见 runtime/watchdog.h): 主线程停滞 N 秒自动写 hang dump。
+    //      卡死不产生异常, 崩溃处理器抓不到 —— 这条路径专门用来拿"游戏无响应"的现场。
+    if (cfg.nativeWatchdogEnabled)
+        cesium::watchdog::start(cfg.nativeWatchdogTimeoutSec);
 
     // 3.2 调试闸门: 等调试器附加后再开跑(默认关, 见 config.h 的 debugWaitForDebugger)。
     //     Steam 启动的游戏不能由 VS 直接 F5, 而引导线程从 DllMain 之后 1.5s 就开跑,

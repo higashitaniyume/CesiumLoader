@@ -91,6 +91,10 @@ const Field kFields[] = {
       "致命原生异常时在 <logs>\\crash 下写 dump 与同名环境说明(可用 VS 打开)" },
     { "crashDumpFullMemory", ValueType::Bool, 0, 0, nullptr, Apply::Restart,
       "崩溃转储包含完整内存(文件可能几 GB, 默认只导线程栈)" },
+    { "nativeWatchdogEnabled", ValueType::Bool, 0, 0, nullptr, Apply::Restart,
+      "主线程停滞 N 秒时自动写 hang dump(0.5-2 MB/次; 默认关闭)" },
+    { "nativeWatchdogTimeoutSec", ValueType::Int, 10, 600, nullptr, Apply::Restart,
+      "停滞判定阈值秒数(nativeWatchdogEnabled 打开时)" },
     { "bootstrapAssembly", ValueType::String, 0, 0, nullptr, Apply::Restart,
       "托管引导程序文件名" },
     { "bootstrapType", ValueType::String, 0, 0, nullptr, Apply::Restart,
@@ -280,6 +284,8 @@ std::string field_value(const LoaderConfig& cfg, const Field& f)
     if (n == "logLevel") return cfg.logLevel;
     if (n == "crashDumpEnabled") return cfg.crashDumpEnabled ? "true" : "false";
     if (n == "crashDumpFullMemory") return cfg.crashDumpFullMemory ? "true" : "false";
+    if (n == "nativeWatchdogEnabled") return cfg.nativeWatchdogEnabled ? "true" : "false";
+    if (n == "nativeWatchdogTimeoutSec") return std::to_string(cfg.nativeWatchdogTimeoutSec);
     if (n == "bootstrapAssembly") return cfg.bootstrapAssembly;
     if (n == "bootstrapType") return cfg.bootstrapType;
     if (n == "bootstrapMethod") return cfg.bootstrapMethod;
@@ -354,6 +360,8 @@ bool field_assign(LoaderConfig& cfg, const Field& f, const std::string& text, st
     else if (n == "logLevel") cfg.logLevel = v;
     else if (n == "crashDumpEnabled") cfg.crashDumpEnabled = (v == "true");
     else if (n == "crashDumpFullMemory") cfg.crashDumpFullMemory = (v == "true");
+    else if (n == "nativeWatchdogEnabled") cfg.nativeWatchdogEnabled = (v == "true");
+    else if (n == "nativeWatchdogTimeoutSec") cfg.nativeWatchdogTimeoutSec = (unsigned)std::strtoul(v.c_str(), nullptr, 10);
     else if (n == "bootstrapAssembly") cfg.bootstrapAssembly = v;
     else if (n == "bootstrapType") cfg.bootstrapType = v;
     else if (n == "bootstrapMethod") cfg.bootstrapMethod = v;

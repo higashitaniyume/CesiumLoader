@@ -136,6 +136,9 @@ LoaderConfig load_config(const std::wstring& config_path)
     cfg.logLevel = normalize_log_level(jsonc::str(j, "logLevel", cfg.logLevel));
     cfg.crashDumpEnabled = jsonc::boolean(j, "crashDumpEnabled", cfg.crashDumpEnabled);
     cfg.crashDumpFullMemory = jsonc::boolean(j, "crashDumpFullMemory", cfg.crashDumpFullMemory);
+    // 原生看门狗: 主线程停滞时主动写 hang dump(见 runtime/watchdog.h)。
+    cfg.nativeWatchdogEnabled = jsonc::boolean(j, "nativeWatchdogEnabled", cfg.nativeWatchdogEnabled);
+    cfg.nativeWatchdogTimeoutSec = read_timeout_sec(j, "nativeWatchdogTimeoutSec", cfg.nativeWatchdogTimeoutSec);
     cfg.speedhackBaseSpeed = read_speed(j, "speedhackBaseSpeed", cfg.speedhackBaseSpeed);
     cfg.speedControlEnabled = jsonc::boolean(j, "speedControlEnabled", cfg.speedControlEnabled);
     // 窗口置前控制文件通道: 缺失/损坏走默认(启用), 关掉只影响该功能。

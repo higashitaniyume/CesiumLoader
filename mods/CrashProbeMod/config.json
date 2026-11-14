@@ -3,6 +3,9 @@
   "enabled": true,
   // 打开设置页时触发；关掉后只能用下面的热键手动触发
   "triggerOnSettings": true,
+  // 触发方式：crash=写非法指针让游戏崩溃（产生崩溃转储）；
+  //           deadlock=让主线程永久等锁、游戏无响应（靠加载器原生看门狗写 hang 转储）
+  "mode": "crash",
   // 触发延迟（毫秒，0–60000）：打开设置页后等这么久再崩，便于先看到界面与日志
   "delayMs": 1500,
   // 手动触发热键（如 F8、F9、"none" 表示不绑定）：设置页判定失效时的兜底入口
@@ -20,6 +23,12 @@
       "zh-Hant": "開啟設定頁時觸發。關閉後只能用熱鍵手動觸發。",
       "en": "Trigger when the settings window opens. When off, only the hotkey triggers it.",
       "ja": "設定画面を開いたときに発動。オフにするとホットキーのみで発動します。"
+    },
+    "mode": {
+      "zh-Hans": "触发方式：crash=写非法指针让游戏崩溃（产生崩溃转储）；deadlock=让主线程永久等锁、游戏无响应（靠加载器看门狗写 hang 转储）。",
+      "zh-Hant": "觸發方式：crash=寫非法指標讓遊戲崩潰（產生崩潰轉儲）；deadlock=讓主執行緒永久等鎖、遊戲無回應（靠載入器看門狗寫 hang 轉儲）。",
+      "en": "Trigger mode: crash = invalid pointer write (fatal dump); deadlock = block the main thread forever (the loader watchdog writes a hang dump).",
+      "ja": "発動方法：crash=不正ポインタ書き込み（クラッシュダンプ）；deadlock=メインスレッドを永久ブロック（ローダーの監視がハングダンプを書きます）。"
     },
     "delayMs": {
       "zh-Hans": "触发延迟（毫秒，0–60000）：打开设置页后等这么久再崩，便于看到界面与日志。",

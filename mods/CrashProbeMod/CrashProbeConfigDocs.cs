@@ -19,6 +19,11 @@ namespace CrashProbeMod
                 "開啟設定頁時觸發。關閉後只能用熱鍵手動觸發。",
                 "Trigger when the settings window opens. When off, only the hotkey triggers it.",
                 "設定画面を開いたときに発動。オフにするとホットキーのみで発動します。"));
+            changed |= config.Describe("mode", D(
+                "触发方式：crash=写非法指针让游戏崩溃（有崩溃转储）；deadlock=让主线程永久等锁、游戏无响应（等加载器看门狗写 hang 转储）。",
+                "觸發方式：crash=寫非法指標讓遊戲崩潰（有崩潰轉儲）；deadlock=讓主執行緒永久等鎖、遊戲無回應（等載入器看門狗寫 hang 轉儲）。",
+                "Trigger mode: crash = invalid pointer write (fatal dump); deadlock = block the main thread forever (the loader watchdog writes a hang dump).",
+                "発動方法：crash=不正ポインタ書き込み（クラッシュダンプ）；deadlock=メインスレッドを永久ブロック（ローダーの監視がハングダンプを書きます）。"));
             changed |= config.Describe("delayMs", D(
                 "触发延迟（毫秒，0–60000）：打开设置页后等这么久再崩，便于看到界面与日志。",
                 "觸發延遲（毫秒，0–60000）：開啟設定頁後等這麼久再崩，便於看到介面與日誌。",

@@ -1,5 +1,6 @@
 using System;
 using System.Reflection;
+using System.Threading;
 using CesiumLoader.SDK.Inputs;
 using CesiumLoader.SDK.Mods;
 using Tools;
@@ -55,9 +56,10 @@ namespace CrashProbeMod
             else if (!_cfg.TriggerOnSettings)
                 Log.Info("设置页触发已关闭(triggerOnSettings=false), 只用热键 " + _cfg.Hotkey);
             else
-                Log.Info("已就绪: 打开设置页(或按 " + _cfg.Hotkey + ")后 " + _cfg.DelayMs + "ms 崩溃");
+                Log.Info("已就绪: 打开设置页(或按 " + _cfg.Hotkey + ")后 " + _cfg.DelayMs + "ms 执行 " +
+                         (_cfg.Mode == CrashProbeConfig.ProbeMode.Deadlock ? "死锁" : "崩溃"));
 
-            Log.Warn("这是故意的崩溃探针: 触发后游戏会退出, 验证完请删除 mods\\CrashProbeMod");
+            Log.Warn("这是故意的探针: 触发后游戏会崩溃或卡死, 验证完请删除 mods\\CrashProbeMod");
         }
 
         public override void OnConfigChanged()
@@ -90,12 +92,21 @@ namespace CrashProbeMod
         {
             _source = source;
             _fireAt = DateTime.UtcNow.AddMilliseconds(_cfg.DelayMs);
-            Log.Warn("已武装(" + source + "): " + _cfg.DelayMs + "ms 后让游戏崩溃, 日志会先落盘");
+            Log.Warn("已武装(" + source + "): " + _cfg.DelayMs + "ms 后" +
+                     (_cfg.Mode == CrashProbeConfig.ProbeMode.Deadlock ? "让主线程永久阻塞" : "让游戏崩溃") +
+                     ", 日志会先落盘");
         }
 
         private void Crash()
         {
             _fired = true;
+
+            if (_cfg.Mode == CrashProbeConfig.ProbeMode.Deadlock)
+            {
+                EnterDeadlock();
+                return;
+            }
+
             Log.Warn("正在触发崩溃: 写空指针(预期 0xC0000005)");
 
             // 三种退化路径: 万一某种写法被 HybridCLR 拦成托管异常(会被回调护栏接住),
@@ -143,6 +154,51 @@ namespace CrashProbeMod
             return CrashStackOverflow(depth + 1) + 1;
         }
 
+        // ---------- 死锁(给加载器看门狗用) ----------
+
+        private static readonly object Gate = new object();
+        private static volatile bool GateHeld;
+
+        /// <summary>
+        /// 让主线程永久阻塞在一把永不放开的锁上: 工作线程先持锁不放, 主线程再 lock 同一把锁。
+        /// 这是真死锁(不是忙等) —— 主线程 Rip 稳定、CPU 接近 0, 加载器的原生看门狗会命中并写
+        /// hang dump; 托管侧的崩溃处理器完全不会被触发(没有异常)。
+        /// </summary>
+        private void EnterDeadlock()
+        {
+            try
+            {
+                Thread worker = new Thread(DeadlockWorker);
+                worker.IsBackground = true;
+                worker.Start();
+
+                DateTime deadline = DateTime.UtcNow.AddSeconds(5);
+                while (!GateHeld && DateTime.UtcNow < deadline) Thread.Sleep(10);
+
+                if (!GateHeld)
+                {
+                    Log.Error("死锁工作线程没能持有锁, 本次不阻塞主线程(可能是线程/锁被裁剪)");
+                    return;
+                }
+
+                Log.Warn("主线程即将永久阻塞在锁上: 预期游戏无响应, 无崩溃转储, 等加载器看门狗写 hang dump");
+                lock (Gate) { }   // 永久阻塞; worker 永不释放
+            }
+            catch (Exception e)
+            {
+                Log.Error("进入死锁失败: " + e.GetType().Name + ": " + e.Message);
+            }
+        }
+
+        private static void DeadlockWorker()
+        {
+            lock (Gate)
+            {
+                GateHeld = true;
+                for (;;) Thread.Sleep(1000);   // 持锁不放
+            }
+        }
+
         // ---------- 设置页检测 ----------
 
         private bool IsSettingsOpen()
@@ -177,12 +233,14 @@ namespace CrashProbeMod
                     CrashProbeConfigDocs.Apply(Config);
                     Config.SetDefault("enabled", true);
                     Config.SetDefault("triggerOnSettings", true);
+                    Config.SetDefault("mode", "crash");
                     Config.SetDefault("delayMs", 1500);
                     Config.SetDefault("hotkey", "F8");
                 }
 
                 _cfg.Enabled = Config.GetBool("enabled", true);
                 _cfg.TriggerOnSettings = Config.GetBool("triggerOnSettings", true);
+                _cfg.Mode = CrashProbeConfig.ParseMode(Config.GetString("mode", "crash"), Log);
                 _cfg.DelayMs = CrashProbeConfig.Clamp(Config.GetInt("delayMs", 1500), 0, 60000, 1500);
                 _cfg.Hotkey = CrashProbeConfig.ParseKey(Config.GetString("hotkey", "F8"), Log);
             }

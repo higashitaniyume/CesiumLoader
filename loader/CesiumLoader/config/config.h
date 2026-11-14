@@ -95,6 +95,15 @@ struct LoaderConfig
     // 足够看"崩在哪条调用链上"; 需要看托管堆/局部变量时才打开。
     bool crashDumpFullMemory = false;
 
+    // 原生看门狗: 主线程的 Rip/Rsp 连续 nativeWatchdogTimeoutSec 秒不变(且游戏窗口在前台)时,
+    // 自动写一份 hang dump(<logs>\crash\hang-<会话>.dmp + 同名 .txt)。
+    // 卡死不会产生异常, 崩溃处理器抓不到 —— 这是"游戏无响应"时唯一能拿到现场的原生路径。
+    // 默认关: 卡死时它会主动落盘(每段停滞 0.5–2 MB), 排障时再打开。
+    bool nativeWatchdogEnabled = false;
+
+    // 停滞判定阈值(秒), 建议 20–60。小于 10 秒容易撞上加载画面。
+    unsigned nativeWatchdogTimeoutSec = 30;
+
     // 变速引擎基础倍率: 加载器 hook 装好后立即应用, 一直保持。
     // 1.0 = 正常(默认), 2.0 = 全程 2 倍速。**低于 1 倍(减速)被硬性禁止** ——
     // 写 0.5 之类的值会被当成非法并退回 1.0(见 speedhack.h 的 kSpeedMin)。

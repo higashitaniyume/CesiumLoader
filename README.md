@@ -106,6 +106,7 @@ winget install Hiynet.AstralParty.Toys
 | `profileWindowTitle` | 多 profile 时在游戏窗口标题后追加 profile 名（默认开），便于区分多开实例 |
 | `logLevel` | SDK 与模组的日志级别：`inherit`（默认，沿用环境变量 `CESIUM_LOG_LEVEL`）、`Debug`、`Info`、`Warn`、`Error` 或 `Fatal` |
 | `crashDumpEnabled` / `crashDumpFullMemory` | 访问冲突、栈溢出等致命原生异常时在 `logs/crash/` 写 `<会话>.dmp` 与同名说明文件（含异常摘要与崩溃时的加载器环境信息），可直接用 Visual Studio 打开；后者连完整内存一起导出 |
+| `nativeWatchdogEnabled` / `nativeWatchdogTimeoutSec` | 主线程停滞（游戏无响应）超过阈值时自动写 `logs/crash/hang-<会话>.dmp`，用于没有异常可抓的卡死；默认关 |
 | `debugWaitForDebugger` / `debugWaitTimeoutSec` | 引导线程等待调试器附加后再继续（默认关），便于在游戏启动阶段下断点 |
 
 模组加载采用**启动门就绪判定**：进入主界面或可玩场景且稳定 1 秒后立刻完成初始化，告别旧版固定等待 30 秒；若特殊场景未触发判定，到达 30 秒上限后仍会兜底触发。如需恢复固定等待，可设置环境变量 `CESIUM_MOD_BOOT_GATE=0`。
