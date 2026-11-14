@@ -19,7 +19,7 @@ namespace CrashProbeMod
 
     /// <summary>
     /// 崩溃探针: 打开设置页(或按热键)后故意写非法指针, 让游戏以原生访问冲突(0xC0000005)退出,
-    /// 用来验证加载器的崩溃转储(见 <c>logs\crash\</c>)是否正常产生。
+    /// 用来验证加载器的崩溃转储(见 <loader>\crash\)是否正常产生。
     ///
     /// **它会真的让游戏崩溃** —— 只放在测试环境里, 验证完就删掉模组目录。
     ///
@@ -261,7 +261,7 @@ namespace CrashProbeMod
                     return;
                 }
 
-                Log.Info("崩溃后到 " + loaderDir + "\\logs\\crash 下找 <会话>.dmp 与同名 .txt");
+                Log.Info("崩溃后到 " + loaderDir + "\\crash 下找 <会话>.dmp 与同名 .txt");
 
                 string path = loaderDir + "\\doorstop_config.json";
                 if (!System.IO.File.Exists(path)) return;

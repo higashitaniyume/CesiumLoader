@@ -1,6 +1,6 @@
 # 崩溃探针（CrashProbeMod）
 
-验证**加载器崩溃转储通路**的测试模组：打开游戏设置页后，故意制造一次原生访问冲突，让游戏以 `0xC0000005` 退出，用来确认 `AstralParty_ModLoader\logs\crash\` 下的 `.dmp` / `.txt` 能正常产生。
+验证**加载器崩溃转储通路**的测试模组：打开游戏设置页后，故意制造一次原生访问冲突，让游戏以 `0xC0000005` 退出，用来确认 `AstralParty_ModLoader\crash\` 下的 `.dmp` / `.txt` 能正常产生。
 
 > ⚠ 它**真的会让游戏崩溃**。只在测试环境用，验证完就删掉 `mods\CrashProbeMod` 目录。
 >
@@ -12,8 +12,8 @@
 
 | `mode` | 触发后 | 产生什么 |
 |---|---|---|
-| `crash`（默认） | 写一次空指针，进程以 `0xC0000005` 退出 | `logs\crash\<会话>.dmp` + `.txt`（崩溃转储） |
-| `deadlock` | 主线程永久阻塞在一把永不放开的锁上，游戏无响应 | 无崩溃转储；加载器原生看门狗在停滞 N 秒后写 `logs\crash\hang-<会话>.dmp` + `.txt` |
+| `crash`（默认） | 写一次空指针，进程以 `0xC0000005` 退出 | `crash\<会话>.dmp` + `.txt`（崩溃转储） |
+| `deadlock` | 主线程永久阻塞在一把永不放开的锁上，游戏无响应 | 无崩溃转储；加载器原生看门狗在停滞 N 秒后写 `crash\hang-<会话>.dmp` + `.txt` |
 
 崩溃前模组会先写一行 `正在触发崩溃: 写空指针(预期 0xC0000005)`（或 `主线程即将永久阻塞在锁上`），这行在 `activity-mod-<会话>.log` 里，可用来确认"崩/卡之前模组确实跑到了"。
 
@@ -64,7 +64,7 @@ pwsh -NoProfile -File tools\verify-crash-dump.ps1
    ```
 2. 启动游戏，等模组加载完，打开设置页 —— 界面会**卡住不动**（这是预期结果）。
 3. 卡住约 20 秒后，加载器日志出现 `[watchdog] main thread stalled ...` / `[watchdog] hang dump written: ...`，
-   `logs\crash\` 下出现 `hang-<会话>.dmp` + 同名 `.txt`。
+   `crash\` 下出现 `hang-<会话>.dmp` + 同名 `.txt`。
 4. 手动结束 `AstralParty_CN.exe`（任务管理器），再跑验收脚本：
    ```powershell
    pwsh -NoProfile -File tools\verify-crash-dump.ps1
@@ -76,10 +76,10 @@ pwsh -NoProfile -File tools\verify-crash-dump.ps1
 | 现象 | 原因 / 处理 |
 |---|---|
 | 设置页打开后什么都没发生 | 看 `activity-mod-<会话>.log` 里有没有 `已武装(设置页)`；若没有，说明 `UIManager._cachedSettingWindow` 判定失效（游戏更新改了字段），用热键 `F8` 或把 `hotkey` 换成别的键 |
-| 崩了但 `logs\crash` 是空的 | `crashDumpEnabled=false`，或崩溃发生在加载器装 VEH 之前（启动最开始的 2 秒），或程序不是被访问冲突终止的 |
+| 崩了但 `crash` 是空的 | `crashDumpEnabled=false`，或崩溃发生在加载器装 VEH 之前（启动最开始的 2 秒），或程序不是被访问冲突终止的 |
 | 死锁后没有 `hang-*` 转储 | 看门狗没开（`nativeWatchdogEnabled=false`）、阈值没到、或游戏窗口不在前台（看门狗在后台不判定）；日志里应有 `[watchdog] enabled: ...` 一行 |
 | 日志里出现 `三种方式都没能让进程退出` | 三种崩法都被拦住，把日志反馈给加载器维护者 |
-| 想确认"崩溃后进程真的没了" | 任务管理器里 `AstralParty_CN.exe` 应消失；`logs\crash` 里多一对同名 dmp/txt |
+| 想确认"崩溃后进程真的没了" | 任务管理器里 `AstralParty_CN.exe` 应消失；`crash` 里多一对同名 dmp/txt |
 
 ## 卸载
 

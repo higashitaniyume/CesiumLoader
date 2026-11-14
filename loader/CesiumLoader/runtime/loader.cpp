@@ -197,8 +197,9 @@ static DWORD WINAPI boot_thread(LPVOID)
     // 3.1 崩溃转储(见 runtime/crashdump.h): 越早装越好 —— 后面解析 il2cpp、装 hook、
     //     走 Steam 绕过都可能崩, 而那些崩溃在游戏侧只留一行 Player.log。
     //     失败只记日志, 不影响启动。看门狗共用同一套转储设施, 所以任一功能打开都要初始化。
+    //     转储写在 <loader>\crash\ 下(不在 logs\ 里)。
     if (cfg.crashDumpEnabled || cfg.nativeWatchdogEnabled)
-        cesium::crashdump::install(cfg, logs_dir(), cfg.crashDumpEnabled, cfg.crashDumpFullMemory);
+        cesium::crashdump::install(cfg, cfg.crashDumpEnabled, cfg.crashDumpFullMemory);
 
     // 3.1b 原生看门狗(见 runtime/watchdog.h): 主线程停滞 N 秒自动写 hang dump。
     //      卡死不产生异常, 崩溃处理器抓不到 —— 这条路径专门用来拿"游戏无响应"的现场。

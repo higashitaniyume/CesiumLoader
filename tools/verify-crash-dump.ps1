@@ -3,7 +3,7 @@
     检查加载器的崩溃转储是否正常产生（配合 mods\CrashProbeMod 使用）。
 
 .DESCRIPTION
-    在 <游戏目录>\AstralParty_ModLoader\logs\crash\ 下找最新的 .dmp，逐项校验：
+    在 <游戏目录>\AstralParty_ModLoader\crash\ 下找最新的 .dmp（旧版本放在 logs\crash\，会自动回退），逐项校验：
       1. 目录与文件存在、大小合理
       2. 文件头是 minidump 的 MDMP 签名
       3. 有配套的同名 .txt 说明
@@ -61,7 +61,14 @@ function Resolve-GameDir
 $gameDir = Resolve-GameDir -Explicit $GameDir
 $loaderDir = Join-Path $gameDir 'AstralParty_ModLoader'
 $logsDir = Join-Path $loaderDir 'logs'
-$crashDir = Join-Path $logsDir 'crash'
+# 转储在加载器目录下的 crash\；旧版本把它放在 logs\crash\，保留回退以免旧文件找不到。
+$crashDir = Join-Path $loaderDir 'crash'
+$legacyCrashDir = Join-Path $logsDir 'crash'
+if (-not (Test-Path -LiteralPath $crashDir) -and (Test-Path -LiteralPath $legacyCrashDir))
+{
+    $crashDir = $legacyCrashDir
+    Write-Host '提示: 用的是旧版转储目录 logs\crash\' -ForegroundColor Yellow
+}
 
 Write-Host "游戏目录 : $gameDir"
 Write-Host "转储目录 : $crashDir"

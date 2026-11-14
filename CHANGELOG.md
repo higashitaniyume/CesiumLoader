@@ -8,9 +8,9 @@
 
 - 新增 `debugWaitForDebugger` / `debugWaitTimeoutSec`：引导线程在开跑前等待调试器附加，检测到后主动断下，可在继续执行前下断点（默认关闭；Steam 启动的游戏无法由调试器直接启动）。
 - 新增 `logLevel`：加载 SDK 与模组之前注入 `CESIUM_LOG_LEVEL`，可在 `doorstop_config.json` 或调试 Shell 里直接切到 `Debug`，不必改用户环境变量并重启 Steam。
-- 新增 `crashDumpEnabled` / `crashDumpFullMemory`：访问冲突、栈溢出、堆损坏等致命原生异常时在 `logs\crash\` 下写 `<会话>.dmp` 与同名说明文件。说明文件里是异常摘要与崩溃时的加载器环境（版本、路径、命令行、`GameAssembly.dll` 指纹、完整配置、模组加载结果）；dump 可直接用 Visual Studio 打开查看线程栈，有调试器附加时不落盘。
+- 新增 `crashDumpEnabled` / `crashDumpFullMemory`：访问冲突、栈溢出、堆损坏等致命原生异常时在加载器目录的 `crash\` 下写 `<会话>.dmp` 与同名说明文件。说明文件里是异常摘要与崩溃时的加载器环境（版本、路径、命令行、`GameAssembly.dll` 指纹、完整配置、模组加载结果）；dump 可直接用 Visual Studio 打开查看线程栈，有调试器附加时不落盘。
 - 加载器与转发到控制台的模组日志同时镜像到调试器输出通道（Visual Studio 输出窗口、DebugView）。
-- 新增 `nativeWatchdogEnabled` / `nativeWatchdogTimeoutSec`：主线程指令指针连续停滞超过阈值（且游戏窗口在前台）时，自动写 `logs\crash\hang-<会话>.dmp` 与说明文件；卡死不产生异常，这是"游戏无响应"时唯一能取到现场的原生路径。每秒采样一次、稳态开销可忽略，默认关闭。
+- 新增 `nativeWatchdogEnabled` / `nativeWatchdogTimeoutSec`：主线程指令指针连续停滞超过阈值（且游戏窗口在前台）时，自动写 `crash\hang-<会话>.dmp` 与说明文件；卡死不产生异常，这是"游戏无响应"时唯一能取到现场的原生路径。每秒采样一次、稳态开销可忽略，默认关闭。
 - 调试 Shell 可读写上述配置项。
 
 ## [3.7.5] - 2026-11-13

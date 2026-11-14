@@ -84,7 +84,7 @@ struct LoaderConfig
     // Debug 级别会输出 SDK 与 mod 的每帧/每事件日志, 排查完记得改回去。
     std::string logLevel = "inherit";
 
-    // 崩溃转储: 致命原生异常(访问冲突/栈溢出/堆损坏等)时在 <logs>\crash\ 下写
+    // 崩溃转储: 致命原生异常(访问冲突/栈溢出/堆损坏等)时在加载器目录的 crash\ 下写
     // <会话>.dmp 与同名 .txt(异常码、地址、线程号 + 崩溃时的加载器环境信息)。
     // 由 dbghelp.dll 的 MiniDumpWriteDump 生成, 可直接用 VS 打开看原生栈 ——
     // 游戏本体在这类崩溃上只会留一行 Player.log。
@@ -96,7 +96,7 @@ struct LoaderConfig
     bool crashDumpFullMemory = false;
 
     // 原生看门狗: 主线程的 Rip/Rsp 连续 nativeWatchdogTimeoutSec 秒不变(且游戏窗口在前台)时,
-    // 自动写一份 hang dump(<logs>\crash\hang-<会话>.dmp + 同名 .txt)。
+    // 自动写一份 hang dump(crash\hang-<会话>.dmp + 同名 .txt)。
     // 卡死不会产生异常, 崩溃处理器抓不到 —— 这是"游戏无响应"时唯一能拿到现场的原生路径。
     // 默认关: 卡死时它会主动落盘(每段停滞 0.5–2 MB), 排障时再打开。
     bool nativeWatchdogEnabled = false;

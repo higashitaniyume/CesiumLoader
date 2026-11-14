@@ -543,10 +543,13 @@ void create_dir_tree(const std::wstring& path)
 }
 
 // 转储目录准备好(建目录 / 加载 dbghelp / 记环境信息)。致命异常与按需转储共用。
-bool ensure_ready(const LoaderConfig& cfg, const std::wstring& logs_dir, bool full_memory)
+// 位置: <loader>\crash —— 转储是大文件, 和 logs\ 里的日志分开, 用户也更好找。
+bool ensure_ready(const LoaderConfig& cfg, bool full_memory)
 {
     if (g_write_dump != nullptr && g_crash_dir[0] != L'\0') return true;
-    if (logs_dir.empty()) return false;
+
+    const std::wstring root = loader_root();
+    if (root.empty()) return false;
 
     if (g_write_dump == nullptr)
     {
@@ -559,15 +562,15 @@ bool ensure_ready(const LoaderConfig& cfg, const std::wstring& logs_dir, bool fu
 
     if (g_crash_dir[0] == L'\0')
     {
-        // 转储目录: <logs>\crash。日志目录本身也可能还不存在(探针/首次运行), 先逐级建出来;
-        // 仍建不出来(权限/只读)才退回 <logs>, 不因为目录问题放弃转储。
-        create_dir_tree(logs_dir);
-        const std::wstring crash_dir = logs_dir + L"\\crash";
+        // 转储目录: <loader>\crash。加载器目录可能还不存在(探针/首次运行), 先逐级建出来;
+        // 仍建不出来(权限/只读)才退回加载器根目录, 不因为目录问题放弃转储。
+        create_dir_tree(root);
+        const std::wstring crash_dir = root + L"\\crash";
         if (crash_dir.size() < kPathChars &&
             (CreateDirectoryW(crash_dir.c_str(), nullptr) || GetLastError() == ERROR_ALREADY_EXISTS))
             wcscpy_s(g_crash_dir, crash_dir.c_str());
         else
-            wcscpy_s(g_crash_dir, logs_dir.c_str());
+            wcscpy_s(g_crash_dir, root.c_str());
     }
 
     g_dump_type = full_memory
@@ -586,12 +589,12 @@ bool ensure_ready(const LoaderConfig& cfg, const std::wstring& logs_dir, bool fu
 namespace cesium::crashdump
 {
 
-void install(const LoaderConfig& cfg, const std::wstring& logs_dir, bool enabled, bool full_memory)
+void install(const LoaderConfig& cfg, bool enabled, bool full_memory)
 {
     // 即使 fatal 转储被关掉也要把目录/dbghelp 准备好 —— 看门狗的按需转储共用这套设施。
-    if (!ensure_ready(cfg, logs_dir, full_memory))
+    if (!ensure_ready(cfg, full_memory))
     {
-        log_line("[crash] dumps unavailable (dbghelp.dll or log directory); fatal handler not installed");
+        log_line("[crash] dumps unavailable (dbghelp.dll or loader directory); fatal handler not installed");
         return;
     }
 
