@@ -615,15 +615,23 @@ jobs:
           echo "全部资产校验通过!"
 
       - name: Publish GitHub release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          files: artifacts/*
-          generate_release_notes: false
-          fail_on_unmatched_files: true
-          # 候选版本标为 prerelease，不替换 Latest。
-          prerelease: ${{ github.ref_name == 'modloader-3.5.1' || github.ref_name == 'modloader-3.5.2' || github.ref_name == 'modloader-3.6.0' || github.ref_name == 'modloader-3.7.1' }}
-          make_latest: ${{ (github.ref_name == 'modloader-3.7.2' || github.ref_name == 'modloader-3.7.3' || github.ref_name == 'modloader-3.7.4' || github.ref_name == 'modloader-3.7.5' || github.ref_name == 'modloader-3.7.6') && 'true' || ((github.ref_name == 'modloader-3.6.0' || github.ref_name == 'modloader-3.7.1') && 'false' || 'legacy') }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # 候选版本标 prerelease(不替换 Latest)，正式版直接置顶。
+          #
+          # 这里不用 action-gh-release 的 prerelease/make_latest 输入：模板表达式的结果是
+          # 字符串 "false"，而 action 内部按真值判断，等于每次都变成 prerelease。
+          case "$GITHUB_REF_NAME" in
+            modloader-3.5.1|modloader-3.5.2|modloader-3.6.0|modloader-3.7.1)
+              gh release create "$GITHUB_REF_NAME" artifacts/* \
+                --title "$GITHUB_REF_NAME" --notes "" --prerelease ;;
+            *)
+              gh release create "$GITHUB_REF_NAME" artifacts/* \
+                --title "$GITHUB_REF_NAME" --notes "" --latest ;;
+          esac
 
       # 候选版本不推 NuGet: apcsm 的稳定通道只发正式版, 候选版留给手动安装。
       - name: NuGet login (OIDC Trusted Publishing)
