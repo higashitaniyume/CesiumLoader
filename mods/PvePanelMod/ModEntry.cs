@@ -27,7 +27,7 @@ namespace PvePanelMod
     public sealed class PanelController : ModBase
     {
         public override string Name => "PVE 面板";
-        public override string Version => "0.2.0";
+        public override string Version => "0.3.0";
         public override string Author => "hajimi";
 
         private const float OfficialDimAlpha = 0f;   // 展开时直接隐藏官方左栏（两套信息叠在一起太乱）
@@ -38,6 +38,9 @@ namespace PvePanelMod
         private HandDrawer _drawer;
         private Tooltip _tooltip;
         private HandService _hands;
+        private Map.GridMap _map;
+        /// <summary>点开官方小地图时换成 wiki 式方格图（配置 GridMap，默认开）。</summary>
+        private bool _gridMap = true;
         private int _lastHandRevision = -1;
         private bool _shown;
         private KeyCode _leftKey = KeyCode.F3, _handKey = KeyCode.F4, _rightKey = KeyCode.F5;
@@ -75,6 +78,7 @@ namespace PvePanelMod
             _drawer = new HandDrawer();
             _tooltip = new Tooltip();
             _hands = new HandService();
+            _map = new Map.GridMap(msg => Log.Warn(msg));
             ReadConfig(true);
             _rightState = new RightState();
             // 点了把手立刻刷新，不等下一个 0.25 秒（点击要跟手）
@@ -173,6 +177,7 @@ namespace PvePanelMod
                     Config.SetDefault(PanelConfigDocs.LeftPanelCollapsed, false);
                     Config.SetDefault(PanelConfigDocs.AutoCollapse, true);
                     Config.SetDefault(PanelConfigDocs.UiScale, 1.0);
+                    Config.SetDefault(PanelConfigDocs.GridMap, true);
                     Config.SetDefault(PanelConfigDocs.HandService, true);
                     Config.SetDefault(PanelConfigDocs.HandServiceUrl, PanelConfigDocs.DefaultServiceUrl);
                     Config.SaveIfDirty();
@@ -186,6 +191,7 @@ namespace PvePanelMod
                 _rightHidden = Config.GetBool(PanelConfigDocs.RightPanelHidden, false);
                 _leftCollapsed = Config.GetBool(PanelConfigDocs.LeftPanelCollapsed, false);
                 _autoCollapse = Config.GetBool(PanelConfigDocs.AutoCollapse, true);
+                _gridMap = Config.GetBool(PanelConfigDocs.GridMap, true);
                 PanelScale.Value = Config.GetFloat(PanelConfigDocs.UiScale, 1f);
             }
             _left?.SetKeysLine(KeysLine());
@@ -210,6 +216,8 @@ namespace PvePanelMod
             try { HandleHotkeys(); } catch { }
             // 每帧：悬停小字（只看鼠标位置，不挡点击）
             try { if (_left != null && _shown) _tooltip?.Tick(); } catch { }
+            // 每帧：官方小地图开着时，新冒出来的官方头像也马上藏起来
+            try { _map?.Frame(_shown && _gridMap); } catch { }
             if (DateTime.UtcNow < _next) return;
             _next = DateTime.UtcNow.AddSeconds(0.25);
             try
@@ -232,6 +240,7 @@ namespace PvePanelMod
                 RenderHands(rows);
                 RenderRight(rows);
                 RefreshDimTargets(official);
+                RenderMap(rows);
             }
             catch (Exception ex)
             {
@@ -310,8 +319,11 @@ namespace PvePanelMod
             var room = gm?.room?.curRoomInfo;
             if (room == null || _rightHidden) { _right.Hide(); return; }
             int round = room.Round;
-            // 波次表只在换图、换难度、换回合时重算（另外每 10 秒兜底刷新一次）
-            string key = room.MapId + "|" + room.Difficulty + "|" + round;
+            // 波次是按「游戏进度」触发的，不是按回合：平时每回合进度 +1，和回合一样；但玩家被击倒也会推进进度，
+            // 之后进度就比回合大了（作者的 PveWaveForecastMod 一直用的是 GameProgress）。
+            int progress = room.GameProgress;
+            // 波次表只在换图、换难度、换回合或进度变了时重算（另外每 10 秒兜底刷新一次）
+            string key = room.MapId + "|" + room.Difficulty + "|" + round + "|" + progress;
             if (key != _wavesKey || DateTime.UtcNow >= _wavesNext)
             {
                 _wavesKey = key;
@@ -319,7 +331,22 @@ namespace PvePanelMod
                 try { _waves = WaveSchedule.Build(room, SimpleSingletonProvider<LandManager>.inst, 20); }
                 catch { _waves = new List<WaveInfo>(); }
             }
-            _right.Render(RightEdge(), round, _waves, rows, _rightState.Snapshot());
+            _right.Render(RightEdge(), round, progress, _waves, rows, _rightState.Snapshot());
+        }
+
+        /// <summary>方格地图出错只记日志、退回官方小地图，不连累左右两栏。</summary>
+        private void RenderMap(List<PlayerRow> rows)
+        {
+            try { _map.Tick(_gridMap, rows); }
+            catch (Exception ex)
+            {
+                try { _map.Hide(); } catch { }
+                if (DateTime.UtcNow >= _nextError)
+                {
+                    _nextError = DateTime.UtcNow.AddSeconds(15);
+                    Log.Warn("PVE 面板方格地图暂时画不出来：" + ex.GetType().Name + " " + ex.Message);
+                }
+            }
         }
 
         /// <summary>
@@ -389,6 +416,7 @@ namespace PvePanelMod
             _battle?.Hide();
             _drawer?.Hide();
             _tooltip?.Hide();
+            _map?.Hide();
             _shown = false;
             SetOfficialDim(false);
         }
@@ -403,6 +431,7 @@ namespace PvePanelMod
             _battle?.Dispose();
             _drawer?.Dispose();
             _tooltip?.Dispose();
+            _map?.Dispose();
             _hands?.Dispose();
             _rightState?.Dispose();
             _icons?.Dispose();

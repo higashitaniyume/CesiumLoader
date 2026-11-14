@@ -14,6 +14,7 @@ namespace PvePanelMod
         public const string LeftPanelCollapsed = "LeftPanelCollapsed";
         public const string AutoCollapse = "AutoCollapse";
         public const string UiScale = "UiScale";
+        public const string GridMap = "GridMap";
         public const string DefaultLeftKey = "F3", DefaultHandKey = "F4", DefaultRightKey = "F5";
 
         internal static bool Apply(ModConfig config)
@@ -60,6 +61,11 @@ namespace PvePanelMod
                 "打開商店、轉帳、進入戰鬥時（只算自己的）自動收合左側資訊欄，關掉後自動展開（原本就收合的不會被展開）；視窗裡手動展開過就不再收。戰鬥面板不跟著收合。預設開。",
                 "Collapse the left info bar automatically while your own shop, transfer (ATM) or battle window is open, and expand it again afterwards (a bar you had collapsed stays collapsed). Expanding it by hand inside the window keeps it open. The battle panel stays visible. On by default.",
                 "自分のショップ・送金（ATM）・戦闘のウィンドウが開いている間は左側情報バーを自動で折りたたみ、閉じたら自動で展開します（もともと折りたたんでいた場合は展開しません）。ウィンドウ内で手動で展開すると、そのウィンドウでは再び折りたたみません。戦闘パネルは折りたたまれません。既定はオン。"));
+            changed |= config.Describe(GridMap, D(
+                "点开顶部的官方小地图时，换成 wiki 式的方格地图：游戏自己的格子图标（对局里格子变了跟着变）、格子编号、P1～P4 出生点，玩家、怪物、Boss 的头像画在所在格子上。关掉就是官方原样。默认开。",
+                "點開頂部的官方小地圖時，換成 wiki 式的方格地圖：遊戲自己的格子圖示（對局裡格子變了跟著變）、格子編號、P1～P4 出生點，玩家、怪物、Boss 的頭像畫在所在格子上。關掉就是官方原樣。預設開。",
+                "When you open the official minimap at the top, show a wiki-style grid map instead: the game's own tile icons (updated when tiles change during the match), tile numbers, P1–P4 spawn points, and player, monster and boss portraits on their tiles. Turn it off to get the official minimap. On by default.",
+                "上部の公式ミニマップを開いたとき、wiki 風のマス目マップに置き換えます。ゲーム本来のマスアイコン（対局中にマスが変わると追従）、マス番号、P1～P4 のスタート地点、プレイヤー・モンスター・ボスの顔アイコンをいるマスに表示します。オフにすると公式のままです。既定はオン。"));
             changed |= config.Describe(HandService, D(
                 "手牌抽屉打开时查询手牌：只要拿到本局观战码就会发给第三方观战服务（HandServiceUrl），全 Bot 局也照查。默认开；自己和 Bot 的手牌本地就能看到，服务只补看不到的队友。",
                 "手牌抽屜打開時查詢手牌：只要拿到本局觀戰碼就會發給第三方觀戰服務（HandServiceUrl），全 Bot 局也照查。預設開；自己和 Bot 的手牌本機就能看到，服務只補看不到的隊友。",
