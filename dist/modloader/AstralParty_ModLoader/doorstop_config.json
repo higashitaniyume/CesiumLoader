@@ -31,6 +31,25 @@
   // 关掉只影响命令输入, 控制台照常显示日志。
   "debugShell": true,
   "forwardActivityLog": true,
+  // ---------- 调试辅助 ----------
+  // 等调试器附加后再继续引导: 游戏由 Steam 拉起时不能由 VS 直接 F5, 手动附加常常赶不上
+  // 最早的几步。设为 true 后引导线程会停住等调试器(控制台每 5 秒提示一次), 检测到就主动
+  // 断下来, 可以先下断点再继续。排查完记得改回 false —— 否则没附加调试器时会白等
+  // debugWaitTimeoutSec 秒。
+  "debugWaitForDebugger": false,
+  // 等调试器的超时(秒), 范围 1..3600。
+  "debugWaitTimeoutSec": 120,
+  // SDK / mod 日志级别: "inherit"(默认, 沿用环境变量 CESIUM_LOG_LEVEL) /
+  // "Debug" / "Info" / "Warn" / "Error" / "Fatal"。Debug 会输出 SDK 与 mod 的每帧、
+  // 每事件日志, 排查完改回 inherit。
+  "logLevel": "inherit",
+  // 崩溃转储: 访问冲突、栈溢出、堆损坏等致命原生异常时, 在 logs\crash\ 下写
+  // <会话>.dmp 与同名 .txt。dmp 可直接用 VS 打开看线程栈与模块; .txt 里是异常摘要
+  // 与崩溃时的加载器环境(版本、路径、配置、游戏程序集指纹、mod 加载结果)。
+  // 有调试器附加时不落盘(交给调试器处理)。
+  "crashDumpEnabled": true,
+  // 转储包含完整内存(文件可能几 GB); 默认只导线程栈与模块列表。
+  "crashDumpFullMemory": false,
   // 变速引擎基础倍率: 游戏启动即应用, 全程保持。1.0=正常(默认), 2.0=全程2倍速。
   // 范围 [1,100] —— 低于 1 倍(减速)被硬性禁止, 写更小的值会按 1.0 处理并记日志。
   // 设 1.0 或省略 = 不启用(可用 SpeedHackMod 热键临时变速)。

@@ -122,6 +122,7 @@
     <ClCompile Include="platform\console.cpp" />
     <ClCompile Include="platform\exports.cpp" />
     <ClCompile Include="runtime\activity_forward.cpp" />
+    <ClCompile Include="runtime\crashdump.cpp" />
     <ClCompile Include="runtime\il2cpp_boot.cpp" />
     <ClCompile Include="runtime\loader.cpp" />
     <ClCompile Include="runtime\state.cpp" />
@@ -160,6 +161,7 @@
     <ClInclude Include="logging\logging.h" />
     <ClInclude Include="mods\modmeta.h" />
     <ClInclude Include="runtime\loader_internal.h" />
+    <ClInclude Include="runtime\crashdump.h" />
     <ClInclude Include="runtime\state.h" />
     <ClInclude Include="shell\command.h" />
     <ClInclude Include="shell\lineedit.h" />

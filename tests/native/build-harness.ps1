@@ -89,7 +89,8 @@ $srcArgs = ($sources | ForEach-Object { "`"$_`"" }) -join ' '
 $lines = @(
     '@echo off'
     "call `"$($vsDevCmd.FullName)`" -arch=x64 -host_arch=x64 -no_logo >nul 2>nul"
-    "cl /nologo /utf-8 /std:c++17 /EHsc /W3 /MD /O2 $incArgs /DFMT_HEADER_ONLY /DSPDLOG_FMT_EXTERNAL /Fo:`"$out\\`" /Fe:`"$exe`" $srcArgs /link user32.lib winmm.lib"
+    # /Zi + /DEBUG: 联调台的意义就是"能单步", 没有符号就只能看反汇编。
+    "cl /nologo /utf-8 /std:c++17 /EHsc /W3 /MD /O2 /Zi /Fd:`"$out\harness_shell.pdb`" $incArgs /DFMT_HEADER_ONLY /DSPDLOG_FMT_EXTERNAL /Fo:`"$out\\`" /Fe:`"$exe`" $srcArgs /link /DEBUG user32.lib winmm.lib"
     'if errorlevel 1 exit /b 1'
 )
 Set-Content -Path $bat -Value $lines -Encoding ascii

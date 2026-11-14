@@ -14,6 +14,7 @@ namespace
 {
 
 const char* const kTaskCtorModes[] = { "auto", "direct", "invoke", nullptr };
+const char* const kLogLevels[] = { "inherit", "Debug", "Info", "Warn", "Error", "Fatal", nullptr };
 
 using cesium::shell::Apply;
 using cesium::shell::Field;
@@ -79,6 +80,17 @@ const Field kFields[] = {
 
     { "sdkVersion", ValueType::String, 0, 0, nullptr, Apply::Restart,
       "用于校验 mod 声明的 SDK 版本" },
+    // 调试辅助(见 config.h): 等调试器附加、SDK/mod 日志级别、崩溃转储。
+    { "debugWaitForDebugger", ValueType::Bool, 0, 0, nullptr, Apply::Restart,
+      "引导线程等调试器附加后再开跑(steam 启动时附加常常赶不上; 默认关闭)" },
+    { "debugWaitTimeoutSec", ValueType::Int, 1, 3600, nullptr, Apply::Restart,
+      "等调试器的超时秒数(debugWaitForDebugger 打开时)" },
+    { "logLevel", ValueType::Enum, 0, 0, kLogLevels, Apply::Restart,
+      "SDK/mod 日志级别; inherit=沿用环境变量 CESIUM_LOG_LEVEL" },
+    { "crashDumpEnabled", ValueType::Bool, 0, 0, nullptr, Apply::Restart,
+      "致命原生异常时在 <logs>\\crash 下写 dump 与同名环境说明(可用 VS 打开)" },
+    { "crashDumpFullMemory", ValueType::Bool, 0, 0, nullptr, Apply::Restart,
+      "崩溃转储包含完整内存(文件可能几 GB, 默认只导线程栈)" },
     { "bootstrapAssembly", ValueType::String, 0, 0, nullptr, Apply::Restart,
       "托管引导程序文件名" },
     { "bootstrapType", ValueType::String, 0, 0, nullptr, Apply::Restart,
@@ -263,6 +275,11 @@ std::string field_value(const LoaderConfig& cfg, const Field& f)
 
     if (n == "steamBypassTaskCtorMode") return cfg.steamBypassTaskCtorMode;
     if (n == "sdkVersion") return cfg.sdkVersion;
+    if (n == "debugWaitForDebugger") return cfg.debugWaitForDebugger ? "true" : "false";
+    if (n == "debugWaitTimeoutSec") return std::to_string(cfg.debugWaitTimeoutSec);
+    if (n == "logLevel") return cfg.logLevel;
+    if (n == "crashDumpEnabled") return cfg.crashDumpEnabled ? "true" : "false";
+    if (n == "crashDumpFullMemory") return cfg.crashDumpFullMemory ? "true" : "false";
     if (n == "bootstrapAssembly") return cfg.bootstrapAssembly;
     if (n == "bootstrapType") return cfg.bootstrapType;
     if (n == "bootstrapMethod") return cfg.bootstrapMethod;
@@ -332,6 +349,11 @@ bool field_assign(LoaderConfig& cfg, const Field& f, const std::string& text, st
     else if (n == "hybridclrTimeoutSec") cfg.hybridclrTimeoutSec = (unsigned)std::strtoul(v.c_str(), nullptr, 10);
     else if (n == "steamBypassTaskCtorMode") cfg.steamBypassTaskCtorMode = v;
     else if (n == "sdkVersion") cfg.sdkVersion = v;
+    else if (n == "debugWaitForDebugger") cfg.debugWaitForDebugger = (v == "true");
+    else if (n == "debugWaitTimeoutSec") cfg.debugWaitTimeoutSec = (unsigned)std::strtoul(v.c_str(), nullptr, 10);
+    else if (n == "logLevel") cfg.logLevel = v;
+    else if (n == "crashDumpEnabled") cfg.crashDumpEnabled = (v == "true");
+    else if (n == "crashDumpFullMemory") cfg.crashDumpFullMemory = (v == "true");
     else if (n == "bootstrapAssembly") cfg.bootstrapAssembly = v;
     else if (n == "bootstrapType") cfg.bootstrapType = v;
     else if (n == "bootstrapMethod") cfg.bootstrapMethod = v;

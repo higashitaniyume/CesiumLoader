@@ -64,6 +64,37 @@ struct LoaderConfig
     // mod 日志 -> 控制台 转发线程
     bool forwardActivityLog = true;
 
+    // ---------- 调试辅助 ----------
+
+    // 等调试器附加后再继续引导(默认关)。Steam 启动的游戏不能由 VS 直接 F5, 而引导线程
+    // 从 DllMain 之后 1.5s 就开始跑, 手动附加常常赶不上最早的几步。打开本开关后, 引导
+    // 线程会停在开跑之前等调试器(IsDebuggerPresent, 每 100ms 轮询), 一旦检测到就主动
+    // 断下来(__debugbreak), 让你在继续执行前从容下断点。
+    // 注意: 打开却没附加调试器时, 游戏会白等 debugWaitTimeoutSec 秒才继续。
+    bool debugWaitForDebugger = false;
+
+    // 等调试器的超时(秒); 超出范围 [1, 3600] 按默认值处理。
+    unsigned debugWaitTimeoutSec = 120;
+
+    // SDK / mod 日志级别, 在加载 SDK 与 mod **之前**注入环境变量 CESIUM_LOG_LEVEL
+    // (SdkLog 只读环境变量, 而 Steam 启动的游戏继承的是 Steam 进程的环境 —— 临时 setx
+    // 要连 Steam 一起重启才生效, 写在这里改完重启游戏即可)。
+    //   "inherit"(默认) = 不动环境变量, 沿用用户自己设的值
+    //   "Debug" / "Info" / "Warn" / "Error" / "Fatal" = 覆盖
+    // Debug 级别会输出 SDK 与 mod 的每帧/每事件日志, 排查完记得改回去。
+    std::string logLevel = "inherit";
+
+    // 崩溃转储: 致命原生异常(访问冲突/栈溢出/堆损坏等)时在 <logs>\crash\ 下写
+    // <会话>.dmp 与同名 .txt(异常码、地址、线程号 + 崩溃时的加载器环境信息)。
+    // 由 dbghelp.dll 的 MiniDumpWriteDump 生成, 可直接用 VS 打开看原生栈 ——
+    // 游戏本体在这类崩溃上只会留一行 Player.log。
+    // 默认开; 只在致命码、且没有调试器附加时落盘(有调试器时交给调试器, 不抢现场)。
+    bool crashDumpEnabled = true;
+
+    // true = 连完整内存一起导出(文件可能几 GB)。默认只导线程栈 + 模块列表,
+    // 足够看"崩在哪条调用链上"; 需要看托管堆/局部变量时才打开。
+    bool crashDumpFullMemory = false;
+
     // 变速引擎基础倍率: 加载器 hook 装好后立即应用, 一直保持。
     // 1.0 = 正常(默认), 2.0 = 全程 2 倍速。**低于 1 倍(减速)被硬性禁止** ——
     // 写 0.5 之类的值会被当成非法并退回 1.0(见 speedhack.h 的 kSpeedMin)。

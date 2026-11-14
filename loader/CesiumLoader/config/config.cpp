@@ -13,6 +13,7 @@
 #include "platform/loader.h"
 #include "speed/speedhack.h"   // kSpeedMin / kSpeedMax: 倍率区间与引擎共用一份定义
 
+#include <cctype>
 #include <fstream>
 
 // 本文件的 LoaderConfig / load_config 在全局作用域(config.h 未开命名空间),
@@ -63,6 +64,25 @@ std::string profile_from_env()
     return s;
 }
 
+// 日志级别: 大小写不敏感地归一到规范写法; 非法值退回 "inherit" 并记一条 ——
+// 配置写错了必须能看见, 否则"改了没效果"又要从头查。
+std::string normalize_log_level(const std::string& raw)
+{
+    if (raw.empty()) return "inherit";
+    std::string v;
+    v.reserve(raw.size());
+    for (char c : raw) v.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+    if (v == "inherit") return "inherit";
+    if (v == "debug") return "Debug";
+    if (v == "info") return "Info";
+    if (v == "warn" || v == "warning") return "Warn";
+    if (v == "error") return "Error";
+    if (v == "fatal") return "Fatal";
+    log_line("[config] warning: logLevel=\"" + raw +
+             "\" is not one of inherit/Debug/Info/Warn/Error/Fatal; using inherit");
+    return "inherit";
+}
+
 } // namespace
 
 LoaderConfig load_config(const std::wstring& config_path)
@@ -107,6 +127,15 @@ LoaderConfig load_config(const std::wstring& config_path)
     // CesiumLoader Debug Shell: 缺失/损坏走默认(开启); 关掉只影响控制台命令输入。
     cfg.debugShell = jsonc::boolean(j, "debugShell", cfg.debugShell);
     cfg.forwardActivityLog = jsonc::boolean(j, "forwardActivityLog", cfg.forwardActivityLog);
+    // 调试辅助(见 config.h 同名注释)。三类都"缺失/损坏走默认", 绝不阻止启动:
+    //   debugWaitForDebugger -> 让引导线程等调试器附加后再开跑
+    //   logLevel             -> 加载 SDK/mod 前注入 CESIUM_LOG_LEVEL
+    //   crashDump*           -> 致命原生异常时落 minidump
+    cfg.debugWaitForDebugger = jsonc::boolean(j, "debugWaitForDebugger", cfg.debugWaitForDebugger);
+    cfg.debugWaitTimeoutSec = read_timeout_sec(j, "debugWaitTimeoutSec", cfg.debugWaitTimeoutSec);
+    cfg.logLevel = normalize_log_level(jsonc::str(j, "logLevel", cfg.logLevel));
+    cfg.crashDumpEnabled = jsonc::boolean(j, "crashDumpEnabled", cfg.crashDumpEnabled);
+    cfg.crashDumpFullMemory = jsonc::boolean(j, "crashDumpFullMemory", cfg.crashDumpFullMemory);
     cfg.speedhackBaseSpeed = read_speed(j, "speedhackBaseSpeed", cfg.speedhackBaseSpeed);
     cfg.speedControlEnabled = jsonc::boolean(j, "speedControlEnabled", cfg.speedControlEnabled);
     // 窗口置前控制文件通道: 缺失/损坏走默认(启用), 关掉只影响该功能。
@@ -154,5 +183,9 @@ LoaderConfig load_config(const std::wstring& config_path)
     // 记录加载到的配置, 便于排查
     log_line("[config] enabled=" + std::string(cfg.enabled ? "true" : "false"));
     log_line("[config] bootstrap=" + cfg.bootstrapAssembly);
+    if (cfg.debugWaitForDebugger)
+        log_line("[config] debugWaitForDebugger=true (" + std::to_string(cfg.debugWaitTimeoutSec) + "s)");
+    if (cfg.logLevel != "inherit")
+        log_line("[config] logLevel=" + cfg.logLevel);
     return cfg;
 }

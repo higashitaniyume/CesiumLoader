@@ -27,6 +27,7 @@
 #include "audio/audioctl.h"
 #include "mods/modmeta.h"
 #include "logging/logging.h"
+#include "runtime/crashdump.h"
 #include "runtime/loader_internal.h"
 #include "runtime/state.h"
 #include "shell/shell.h"
@@ -78,6 +79,17 @@ static std::string utf8_from_wide(const wchar_t* w)
     std::string s(len - 1, '\0');
     WideCharToMultiByte(CP_UTF8, 0, w, -1, s.data(), len, nullptr, nullptr);
     return s;
+}
+
+// UTF-8 → 宽字符(配置里的字符串字段写进环境变量用)
+static std::wstring wide_from_utf8(const std::string& s)
+{
+    if (s.empty()) return std::wstring();
+    const int len = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int)s.size(), nullptr, 0);
+    if (len <= 0) return std::wstring();
+    std::wstring w((size_t)len, L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int)s.size(), w.data(), len);
+    return w;
 }
 
 // 耗时的展示文本: "12 ms" / "0.9s"(ms 级给整数, 秒级给一位小数)
@@ -179,6 +191,56 @@ static DWORD WINAPI boot_thread(LPVOID)
     {
         log_line("[loader] doorstop_config.json enabled=false, skipping boot");
         return 0;
+    }
+
+    // 3.1 崩溃转储(见 runtime/crashdump.h): 越早装越好 —— 后面解析 il2cpp、装 hook、
+    //     走 Steam 绕过都可能崩, 而那些崩溃在游戏侧只留一行 Player.log。
+    //     失败只记日志, 不影响启动。
+    cesium::crashdump::install(cfg, logs_dir(), cfg.crashDumpEnabled, cfg.crashDumpFullMemory);
+
+    // 3.2 调试闸门: 等调试器附加后再开跑(默认关, 见 config.h 的 debugWaitForDebugger)。
+    //     Steam 启动的游戏不能由 VS 直接 F5, 而引导线程从 DllMain 之后 1.5s 就开跑,
+    //     手动附加常常赶不上最早的几步。打开本开关后这里停住等 IsDebuggerPresent,
+    //     检测到就主动 __debugbreak() —— 于是可以先下好断点, 再继续执行。
+    if (cfg.debugWaitForDebugger)
+    {
+        const ULONGLONG t0 = GetTickCount64();
+        const ULONGLONG limit_ms = (ULONGLONG)cfg.debugWaitTimeoutSec * 1000ULL;
+        ULONGLONG next_heartbeat = 0;
+
+        console_set_color(LOG_MAGENTA);
+        log_line("[debug] debugWaitForDebugger=true: waiting up to " +
+                 std::to_string(cfg.debugWaitTimeoutSec) +
+                 "s for a debugger (Attach to Process -> AstralParty_CN.exe -> code type Native)");
+        console_set_color(LOG_DEFAULT);
+
+        for (;;)
+        {
+            if (IsDebuggerPresent())
+            {
+                console_set_color(LOG_GREEN);
+                log_line("[debug] debugger attached, breaking now (set breakpoints, then continue)");
+                console_set_color(LOG_DEFAULT);
+                // 只在确认有调试器时才会走到这里, 不会把没有调试器的游戏打断。
+                __debugbreak();
+                break;
+            }
+            const ULONGLONG waited = GetTickCount64() - t0;
+            if (waited >= limit_ms)
+            {
+                console_set_color(LOG_YELLOW);
+                log_line("[debug] no debugger after " + std::to_string(cfg.debugWaitTimeoutSec) +
+                         "s, continuing boot (turn debugWaitForDebugger off when done)");
+                console_set_color(LOG_DEFAULT);
+                break;
+            }
+            if (waited >= next_heartbeat)
+            {
+                log_line("[debug] waiting for debugger... " + std::to_string(waited / 1000) + "s");
+                next_heartbeat = waited + 5000;
+            }
+            Sleep(100);
+        }
     }
 
     // 运行期状态快照: shell 运行在另一个线程, 从这里读配置/版本/mod 列表。
@@ -354,6 +416,8 @@ static DWORD WINAPI boot_thread(LPVOID)
     if (!boot::wait_hybridclr(domain, cfg.hybridclrTimeoutSec)) { log_line("[loader] AstralParty.Runtime timed out"); return 0; }
     log_line("[loader] HybridCLR hot update ready");
     log_environment(domain);
+    // 游戏/Unity 版本到手了: 刷新崩溃说明里的环境信息(见 runtime/crashdump.h)。
+    cesium::crashdump::refresh_environment();
 
     // 5. 设置环境变量, 供托管引导程序与 mod 读取
     std::wstring mods = mods_dir();
@@ -374,6 +438,15 @@ static DWORD WINAPI boot_thread(LPVOID)
     set_env_w(L"CESIUM_AUDIO_ENABLED", kEnableAudioControl ? L"1" : L"0");
     set_env_w(L"CESIUM_LOADER_DIR", loader_root());
     set_env_w(L"CESIUM_GAME_DIR", parent_dir(loader_root()));
+
+    // mod/SDK 日志级别: SdkLog 只读环境变量 CESIUM_LOG_LEVEL, 而 Steam 启动的游戏继承的是
+    // Steam 进程的环境 —— 临时 setx 要连 Steam 一起重启才生效。所以把配置里的 logLevel
+    // 在这里注入。**必须早于下面的 SDK/mod 加载**: SdkLog 在类首次被触碰时就定下最低级别。
+    if (_stricmp(cfg.logLevel.c_str(), "inherit") != 0)
+    {
+        set_env_w(L"CESIUM_LOG_LEVEL", wide_from_utf8(cfg.logLevel));
+        log_line("[loader] CESIUM_LOG_LEVEL=" + cfg.logLevel + " (from doorstop_config.json logLevel)");
+    }
 
     // 本次启动的日志文件(**每次启动一套, 不共用**)。
     // 托管侧(SDK 的 SdkLog / SdkDiagnostics / Bootstrap)也要往"这一次"的文件里写, 而它只知道
@@ -642,6 +715,8 @@ static DWORD WINAPI boot_thread(LPVOID)
 
     // 报告已生成, 把同一份结论交给运行期快照(shell 的 mods 命令用)。
     cesium::runtime::set_mods(std::move(statuses));
+    // mod 加载结果也进崩溃说明: 崩溃发生时 .txt 里能直接看到"当时装了哪些 mod、哪些起不来"。
+    cesium::crashdump::refresh_environment();
 
     // 警告: 声明了"操作游戏"能力(GameActions=2)的 mod —— 仅提示, 不阻止。
     // 权限机制已取消: 任何 mod 都能调用 SDK 的模拟操作 API, 此处仅告知用户。

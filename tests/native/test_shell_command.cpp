@@ -210,6 +210,22 @@ void test_schema()
     const auto* sdk = find_loader_field("sdkVersion");
     check("string_ok", field_assign(cfg, *sdk, "9.9.9", err) && cfg.sdkVersion == "9.9.9");
 
+    // 调试辅助字段(见 config.h): 等调试器、日志级别、崩溃转储。
+    const auto* wait = find_loader_field("debugWaitForDebugger");
+    check("debug_wait", wait != nullptr && field_assign(cfg, *wait, "true", err) && cfg.debugWaitForDebugger);
+
+    const auto* wait_sec = find_loader_field("debugWaitTimeoutSec");
+    check("debug_wait_sec_ok", field_assign(cfg, *wait_sec, "30", err) && cfg.debugWaitTimeoutSec == 30);
+    check("debug_wait_sec_range", !field_assign(cfg, *wait_sec, "0", err));
+
+    const auto* level = find_loader_field("logLevel");
+    check("loglevel_enum", level != nullptr && field_assign(cfg, *level, "debug", err) && cfg.logLevel == "Debug");
+    check("loglevel_inherit", field_assign(cfg, *level, "INHERIT", err) && cfg.logLevel == "inherit");
+    check("loglevel_bad", !field_assign(cfg, *level, "verbose", err));
+
+    const auto* dump = find_loader_field("crashDumpEnabled");
+    check("crashdump_toggle", dump != nullptr && field_assign(cfg, *dump, "false", err) && !cfg.crashDumpEnabled);
+
     // JSON 字面量: 字符串要带引号并转义。
     check("literal_bool", cesium::shell::field_json_literal(*topmost, "true") == "true");
     check("literal_number", cesium::shell::field_json_literal(*speed, "2") == "2");

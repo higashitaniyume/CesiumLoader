@@ -18,7 +18,12 @@ internal static class Program
 
     private static int Main(string[] args)
     {
-        string dll = args.Length > 0 ? args[0] : @"..\..\..\..\..\bin\Release\version.dll";
+        // 默认路径必须相对 exe 目录算: dotnet run 的工作目录不受控。
+        // bin\<配置>\net8.0 → ... → modding\msvc\bin\<配置>\version.dll
+        string dll = args.Length > 0
+            ? args[0]
+            : Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
+                @"..\..\..\..\..\..\bin\Release\version.dll"));
         string dllFull = Path.GetFullPath(dll);
         Console.WriteLine("加载(不调用导出): " + dllFull);
 
@@ -83,17 +88,25 @@ internal static class Program
             Console.WriteLine("[FAIL] cesium-loader-*.log 未生成");
             return 1;
         }
-        string text = File.ReadAllText(log);
+        // 加载器在进程存活期间一直持有日志句柄, 读的时候必须允许共享写, 否则 File.ReadAllText
+        // 会抛共享冲突(IOException) —— 这个测试读的是"正在写"的日志。
+        string text;
+        using (var stream = new FileStream(log, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+        using (var reader = new StreamReader(stream))
+        {
+            text = reader.ReadToEnd();
+        }
         Console.WriteLine("--- 日志内容 ---");
         Console.WriteLine(text);
         // 核心验证: boot 线程必须启动, 且配置解析出 enabled=true
         // (attach/config 行在 dotnet 控制台宿主下可能因 loader-lock 时序缺失,
         //  游戏进程静态加载时 attach 行正常写入 —— 见游戏目录日志)
-        bool boot = text.Contains("version.dll Doorstop 引导线程启动 (enabled=true)");
-        bool console = text.Contains("控制台窗口置顶完成");
-        Console.WriteLine(boot ? "[PASS] 引导线程启动 + enabled=true 配置解析" : "[FAIL] 引导线程启动");
-        Console.WriteLine(console ? "[PASS] 控制台初始化" : "[FAIL] 控制台初始化");
-        return (boot && console) ? 0 : 1;
+        // 不再断言控制台: 宿主本身已是控制台(AllocConsole 返回 0), 且是否置顶取决于配置。
+        bool boot = text.Contains("version.dll Doorstop boot thread started (enabled=true)");
+        bool config = text.Contains("[config] enabled=true");
+        Console.WriteLine(boot ? "[PASS] 引导线程启动" : "[FAIL] 引导线程启动");
+        Console.WriteLine(config ? "[PASS] 配置解析(enabled=true)" : "[FAIL] 配置解析");
+        return (boot && config) ? 0 : 1;
     }
 
     /// <summary>加载器每次启动写一个新日志文件, 取目录里最新的那个(没有则 null)。</summary>

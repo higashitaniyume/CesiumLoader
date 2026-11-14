@@ -49,7 +49,8 @@ foreach ($src in $sources) {
     $lines = @(
         '@echo off'
         "call `"$($vsDevCmd.FullName)`" -arch=x64 -host_arch=x64 -no_logo >nul 2>nul"
-        "cl /nologo /utf-8 /std:c++17 /EHsc /W3 /MD /O2 $incArgs /DFMT_HEADER_ONLY /DSPDLOG_FMT_EXTERNAL /Fo:`"$outDir\\`" /Fe:`"$exe`" $srcArgs /link user32.lib"
+        # /Zi + /DEBUG: 失败时能在 VS 里直接单步到这个测试, 而不是只看 assert 的行号。
+        "cl /nologo /utf-8 /std:c++17 /EHsc /W3 /MD /O2 /Zi /Fd:`"$outDir\$($src.BaseName).pdb`" $incArgs /DFMT_HEADER_ONLY /DSPDLOG_FMT_EXTERNAL /Fo:`"$outDir\\`" /Fe:`"$exe`" $srcArgs /link /DEBUG user32.lib"
         'if errorlevel 1 exit /b 1'
         "`"$exe`" `"$root`""
     )

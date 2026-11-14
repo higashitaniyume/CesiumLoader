@@ -66,6 +66,16 @@ std::wstring widen(const char* utf8)
     return w;
 }
 
+// 把整行日志镜像到调试器输出通道(VS「输出」窗口 / DebugView)。
+// 为什么不只靠控制台: 附加调试器时游戏窗口会抢焦点, 控制台常被挡在后面, 而 VS 的输出
+// 窗口是嵌在调试器里的 —— 原生加载器与转发过来的 mod 日志都能在断点旁边直接看到。
+// 没有调试器监听时这个调用几乎零成本(内核里一次判断), 所以不做开关。
+void mirror_to_debugger(const std::wstring& line)
+{
+    if (line.empty()) return;
+    OutputDebugStringW(line.c_str());
+}
+
 std::string narrow_utf8(const std::wstring& w)
 {
     if (w.empty()) return std::string();
@@ -527,18 +537,24 @@ void console_write(const char* utf8_msg)
     EnterCriticalSection(&g_write_cs);
     if (g_pre_write) g_pre_write();
 
+    const std::wstring text = widen(utf8_msg);
     std::wstring prefix;
     std::wstring body;
-    split_tag(widen(utf8_msg), prefix, body);
+    split_tag(text, prefix, body);
     emit(prefix, body, LOG_DIM, g_color);
 
     if (g_post_write) g_post_write();
     LeaveCriticalSection(&g_write_cs);
+
+    // 镜像放在锁外: 调试器如果响应慢, 阻塞的是本线程, 不会卡住其它正在写日志的线程。
+    mirror_to_debugger(text);
 }
 
 void console_write_w(const wchar_t* msg, size_t len)
 {
     if (!console_ready() || msg == nullptr || len == 0) return;
+
+    const std::wstring text(msg, len);
 
     ensure_write_lock();
     EnterCriticalSection(&g_write_cs);
@@ -546,11 +562,13 @@ void console_write_w(const wchar_t* msg, size_t len)
 
     std::wstring prefix;
     std::wstring body;
-    split_tag(std::wstring(msg, len), prefix, body);
+    split_tag(text, prefix, body);
     emit(prefix, body, LOG_DIM, g_color);
 
     if (g_post_write) g_post_write();
     LeaveCriticalSection(&g_write_cs);
+
+    mirror_to_debugger(text);
 }
 
 // 前缀与正文各自取色: mod 日志转发用("[时间] [级别] " 暗灰, 正文按级别)。
@@ -561,15 +579,19 @@ void console_write_styled(const char* utf8_prefix, const char* utf8_body,
 {
     if (!console_ready() || utf8_body == nullptr) return;
 
+    const std::wstring prefix = widen(utf8_prefix == nullptr ? "" : utf8_prefix);
+    const std::wstring body = widen(utf8_body);
+
     ensure_write_lock();
     EnterCriticalSection(&g_write_cs);
     if (g_pre_write) g_pre_write();
 
-    emit(widen(utf8_prefix == nullptr ? "" : utf8_prefix), widen(utf8_body),
-         prefix_color, body_color);
+    emit(prefix, body, prefix_color, body_color);
 
     if (g_post_write) g_post_write();
     LeaveCriticalSection(&g_write_cs);
+
+    mirror_to_debugger(prefix + body);
 }
 
 bool console_available()
