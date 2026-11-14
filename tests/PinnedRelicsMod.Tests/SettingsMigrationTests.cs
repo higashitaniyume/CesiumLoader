@@ -16,6 +16,9 @@ namespace PinnedRelicsMod.Tests
         {
             directory = Path.Combine(Path.GetTempPath(), "PinnedRelicsMod.Tests", Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(directory);
+            // 配置写在 <加载器目录>/configs 下：指到本用例的临时目录，免得写到全局目录里。
+            Environment.SetEnvironmentVariable("CESIUM_LOADER_DIR", directory);
+            Directory.CreateDirectory(Path.Combine(directory, "configs"));
             // Unique ModId: ModConfig caches instances by id for the process lifetime.
             return ModConfig.ForModId("PinnedRelicsMod.Tests." + Guid.NewGuid().ToString("N"), directory);
         }
@@ -78,7 +81,8 @@ namespace PinnedRelicsMod.Tests
                 Assert.Equal(0f, settings.X);
                 Assert.Equal(3f, settings.Y);
                 Assert.True(settings.Selection.Length == 8, "default list did not resolve to eight relics");
-                Assert.True(File.Exists(Path.Combine(directory, "config.json")), "Defaults did not persist config.json");
+                // 统一布局：配置写进 <加载器目录>/configs/<ModId>.json，不再放模组目录。
+                Assert.True(config.Path != null && File.Exists(config.Path), "Defaults did not persist config.json");
             }
             finally
             {
