@@ -207,6 +207,10 @@ namespace CesiumLoader.SDK.Runtime
         public static void Run(Action action)
         {
             if (action == null) return;
+            // 必须在主线程快速路径之前启动泵: 启动期 mod 入口本就跑在主线程上,
+            // 若只从 Post/Send 懒启动, 内联分支会直接返回, 泵永远启动不起来,
+            // UpdateService 的每帧回调一帧都不会执行(安卓数据版实测: 泵运行=False 帧数=0)。
+            EnsureStarted();
             if (IsMainThread) { _dispatcher.PostAndWait(action, 0); return; }
             if (!Send(action)) SdkLog.Error("MAINTHREAD", "Run 超时: 主线程未在 " + SendTimeoutMs + "ms 内执行回调");
         }
@@ -215,6 +219,7 @@ namespace CesiumLoader.SDK.Runtime
         public static T Run<T>(Func<T> func)
         {
             if (func == null) return default(T);
+            EnsureStarted();
             if (IsMainThread) { try { return func(); } catch (Exception e) { SdkLog.Error("MAINTHREAD", "Run<T> 异常: " + e); return default(T); } }
 
             T result = default(T);
@@ -227,6 +232,7 @@ namespace CesiumLoader.SDK.Runtime
         public static T Run<T>(Func<T> func, T fallback)
         {
             if (func == null) return fallback;
+            EnsureStarted();
             if (IsMainThread) { try { return func(); } catch { return fallback; } }
             T result = fallback;
             bool ok = Send(() => { result = func(); });

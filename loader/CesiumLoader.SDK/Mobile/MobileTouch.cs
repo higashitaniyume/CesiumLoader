@@ -35,8 +35,38 @@ namespace CesiumLoader.SDK.Mobile
             get
             {
                 Resolve();
-                return Application.platform == RuntimePlatform.Android && _touchCountGetter != null;
+                return CesiumLoader.SDK.AndroidPlatform.IsAndroid && _touchCountGetter != null;
             }
+        }
+
+        /// <summary>
+        /// 解析 <c>UnityEngine.Input</c>。必须单独成方法并在外层 try/catch 里调用：
+        /// HybridCLR 把 <c>Assembly.GetType</c> 裁掉了，调用处 JIT 阶段就抛
+        /// <c>MissingMethodException: MethodNotFind System.Reflection.Assembly::GetType</c>，
+        /// 同一个方法内的 try/catch 接不住（每帧 OnUpdate 都会抛，实测刷了 2 MB 日志）。
+        /// 优先走 <see cref="RuntimeAssemblyService.FindType"/>，它已被其它 SDK 路径验证可用。
+        /// </summary>
+        private static Type FindInputType()
+        {
+            try
+            {
+                Type found = Runtime.RuntimeAssemblyService.FindType("UnityEngine.Input");
+                if (found != null) return found;
+            }
+            catch { }
+
+            try
+            {
+                Assembly[] assemblies = AppDomain.CurrentDomain.GetAssemblies();
+                for (int i = 0; i < assemblies.Length; i++)
+                {
+                    Type candidate = assemblies[i].GetType("UnityEngine.Input", false);
+                    if (candidate != null) return candidate;
+                }
+            }
+            catch { }
+
+            return null;
         }
 
         private static void Resolve()
@@ -46,13 +76,7 @@ namespace CesiumLoader.SDK.Mobile
 
             try
             {
-                Type input = null;
-                Assembly[] assemblies = AppDomain.CurrentDomain.GetAssemblies();
-                for (int i = 0; i < assemblies.Length; i++)
-                {
-                    input = assemblies[i].GetType("UnityEngine.Input", false);
-                    if (input != null) break;
-                }
+                Type input = FindInputType();
 
                 if (input == null)
                 {
@@ -113,6 +137,7 @@ namespace CesiumLoader.SDK.Mobile
         {
             dx = 0f;
             dy = 0f;
+            if (_overlayOpen) return false;
             if (TouchCount != 1) return false;
             if (!TryGetTouchAt(0, out _, out Vector2 delta)) return false;
 
@@ -127,6 +152,7 @@ namespace CesiumLoader.SDK.Mobile
         public static bool TryGetPinch(out float delta)
         {
             delta = 0f;
+            if (_overlayOpen) { _lastPinchDistance = 0f; return false; }
             if (TouchCount < 2) { _lastPinchDistance = 0f; return false; }
             if (!TryGetTouchAt(0, out Vector2 first, out _)) return false;
             if (!TryGetTouchAt(1, out Vector2 second, out _)) return false;
@@ -156,6 +182,33 @@ namespace CesiumLoader.SDK.Mobile
             if (camera != null) _camera = camera;
             bool consumed = TryGetPinch(out _) || TryGetDrag(out _, out _);
             return consumed;
+        }
+
+        // ---------- 悬浮窗接管 ----------
+
+        private static bool _overlayOpen;
+
+        /// <summary>
+        /// 吞掉触摸的委托。FairyGUI 里把它挂到 <c>onTouchBegin</c> 即可阻止事件继续下传；
+        /// 悬浮窗打开时用它压住底下游戏的手势。这里只做占位、无副作用。
+        /// </summary>
+        public static FairyGUI.EventCallback0 BlockGestures = BlockGesturesImpl;
+
+        private static void BlockGesturesImpl()
+        {
+        }
+
+        /// <summary>悬浮窗自己登记开关：打开期间 <see cref="TryGetDrag"/> / <see cref="TryGetPinch"/> 一律返回 false。</summary>
+        public static void SetOverlayOpen(bool open)
+        {
+            _overlayOpen = open;
+            if (open) _lastPinchDistance = 0f;
+        }
+
+        /// <summary>悬浮窗当前是否处于打开状态。</summary>
+        public static bool IsOverlayOpen
+        {
+            get { return _overlayOpen; }
         }
     }
 }

@@ -29,6 +29,7 @@ namespace CesiumLoader.SDK.Scheduling
         private static readonly object _lock = new object();
         private static readonly List<Entry> _updateList = new List<Entry>();
         private static readonly List<Entry> _lateList = new List<Entry>();
+        private static readonly Dictionary<string, int> _errorCounts = new Dictionary<string, int>();
         private static Entry[] _updateSnapshot = new Entry[0];
         private static Entry[] _lateSnapshot = new Entry[0];
         private static long _nextId;
@@ -165,9 +166,27 @@ namespace CesiumLoader.SDK.Scheduling
                 catch (Exception e)
                 {
                     Interlocked.Increment(ref _exceptions);
-                    SdkLog.ReportCrash(entry.Tag ?? "UPDATE", "每帧回调", e);
+                    ReportThrottled(entry.Tag ?? "UPDATE", e);
                 }
             }
+        }
+
+        /// <summary>
+        /// 每帧回调异常按标签限流: 同一个 mod 前 3 次完整记录, 之后每 300 次记一次。
+        /// 缺 SDK 成员的 mod 会每帧抛异常, 不限流时一分钟就能刷出上千条、近 1 MB 日志。
+        /// </summary>
+        private static void ReportThrottled(string tag, Exception error)
+        {
+            int count;
+            lock (_errorCounts)
+            {
+                _errorCounts.TryGetValue(tag, out count);
+                count++;
+                _errorCounts[tag] = count;
+            }
+
+            if (count <= 3 || count % 300 == 0)
+                SdkLog.ReportCrash(tag, count <= 3 ? "每帧回调" : "每帧回调(累计第 " + count + " 次)", error);
         }
 
         private static void RemoveById(long id)

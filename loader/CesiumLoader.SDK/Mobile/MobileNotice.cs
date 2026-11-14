@@ -34,5 +34,13 @@ namespace CesiumLoader.SDK.Mobile
         {
             SdkLog.Info("MobileNotice", message ?? string.Empty);
         }
+
+        /// <summary>
+        /// 通知轮询入口（安卓编译的 mod 每帧会调）。当前没有通知队列，什么都不做；
+        /// 保留这个成员是为了让已编译的 mod 绑定成功（缺它会每帧抛 MethodNotFind）。
+        /// </summary>
+        public static void Tick()
+        {
+        }
     }
 }

@@ -12,10 +12,36 @@ namespace CesiumLoader.SDK
     /// </summary>
     public static class AndroidPlatform
     {
-        /// <summary>当前是否运行在 Android 上。</summary>
+        private static bool? _isAndroid;
+
+        /// <summary>
+        /// 当前是否运行在 Android 上。
+        ///
+        /// 必须包 try/catch 并缓存: <c>Application.platform</c> 是 UnityEngine 的 ECall,
+        /// 在普通 .NET 宿主(单元测试、命令行)里调用会抛
+        /// <c>SecurityException: ECall methods must be packaged into a system module</c>。
+        /// 之前没兜住, 直接把 <c>InputService</c> 的静态构造打挂, 牵连 20 个用例失败。
+        /// </summary>
         public static bool IsAndroid
         {
-            get { return Application.platform == RuntimePlatform.Android; }
+            get
+            {
+                if (_isAndroid.HasValue) return _isAndroid.Value;
+
+                // 调用必须放在**独立方法**里: SecurityException 是 JIT 期抛的,
+                // 写在同一个方法里连 try/catch 都进不去(和 HybridCLR 裁剪异常同一类)。
+                bool value;
+                try { value = ProbeAndroid(); }
+                catch { value = false; }
+
+                _isAndroid = value;
+                return value;
+            }
+        }
+
+        private static bool ProbeAndroid()
+        {
+            return Application.platform == RuntimePlatform.Android;
         }
 
         /// <summary>
