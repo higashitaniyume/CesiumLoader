@@ -81,11 +81,11 @@ namespace CesiumLoader.SDK.Runtime
             {
                 try { action(); }
                 catch (Exception e) { captured = e; }
-                finally { Volatile.Write(ref completed, 1); }
+                finally { completed = 1; }
             });
 
             int startTicks = Environment.TickCount;
-            while (Volatile.Read(ref completed) == 0)
+            while (completed == 0)
             {
                 int elapsed = unchecked(Environment.TickCount - startTicks);
                 if (elapsed >= timeoutMs) return false;

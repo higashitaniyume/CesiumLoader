@@ -6,6 +6,7 @@ using CesiumLoader.SDK.Configuration;
 using CesiumLoader.SDK.Engine;
 using CesiumLoader.SDK.Events;
 using CesiumLoader.SDK.Inputs;
+using CesiumLoader.SDK.Mobile;
 using CesiumLoader.SDK.Mods;
 using CesiumLoader.SDK.Scheduling;
 using CesiumLoader.SDK.UserInterface;
@@ -55,7 +56,12 @@ namespace FreeCameraMod
             if (!_autoFollow && !CinemachineService.IsAvailable)
                 Log.Warn("自动跟随已配置为关闭, 但没有解析到 Cinemachine: 本功能依赖角色相机的 VirtualCamera, 当前无法生效");
             if (!InputService.IsAvailable)
-                Log.Warn("输入后端不可用: 滚轮与热键都读不到(看 SDK 的 INPUT 日志; 本作滚轮只可能来自 Unity 的 mouseScrollDelta / Mouse ScrollWheel 轴)");
+            {
+                if (MobileTouch.IsSupported)
+                    Log.Info("键盘/滚轮输入不可用，已改用触摸手势: 双指捏合缩放、单指横拖旋转");
+                else
+                    Log.Warn("输入后端不可用: 滚轮与热键都读不到(看 SDK 的 INPUT 日志)");
+            }
         }
 
         /// <summary>配置文件热重载: 重读字段; autoFollow 切换时还原/重建镜头锁定。</summary>
@@ -125,6 +131,9 @@ namespace FreeCameraMod
 
                 // ---- 左右方向键: 旋转地图(同样不需要开关) ----
                 HandleRotateInput();
+
+                // ---- 安卓触摸: 捏合缩放 + 单指拖动旋转(手机上没有滚轮和方向键) ----
+                HandleTouchInput();
 
                 if (_active) _lastFollowInteractionAt = UnityEngine.Time.realtimeSinceStartup;
             }

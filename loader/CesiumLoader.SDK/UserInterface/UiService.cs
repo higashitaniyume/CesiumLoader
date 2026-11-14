@@ -422,7 +422,7 @@ namespace CesiumLoader.SDK.UserInterface
         // =====================================================================
 
         /// <summary>已登记的 GUI 回调数。</summary>
-        public static int GuiCallbackCount { get { return Volatile.Read(ref _guiSnapshot).Length; } }
+        public static int GuiCallbackCount { get { return _guiSnapshot.Length; } }
 
         /// <summary>
         /// 登记每帧 GUI 绘制回调(由 mod 的 <c>OnGUI</c> 覆写自动调用, 也可手动登记)。
@@ -493,7 +493,7 @@ namespace CesiumLoader.SDK.UserInterface
         {
             var array = new Action[_guiCallbacks.Count];
             for (int i = 0; i < _guiCallbacks.Count; i++) array[i] = _guiCallbacks[i].Callback;
-            Volatile.Write(ref _guiSnapshot, array);
+            _guiSnapshot = array;
         }
 
         /// <summary>
@@ -501,7 +501,7 @@ namespace CesiumLoader.SDK.UserInterface
         /// </summary>
         public static void InvokeGuiCallbacks()
         {
-            var snapshot = Volatile.Read(ref _guiSnapshot);
+            var snapshot = _guiSnapshot;
             for (int i = 0; i < snapshot.Length; i++)
             {
                 try { snapshot[i](); }

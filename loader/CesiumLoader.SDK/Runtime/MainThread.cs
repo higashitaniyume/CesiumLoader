@@ -46,17 +46,17 @@ namespace CesiumLoader.SDK.Runtime
         // ---------- 状态 ----------
 
         /// <summary>主线程泵是否在运行。</summary>
-        public static bool IsPumpRunning { get { return Volatile.Read(ref _running) != 0; } }
+        public static bool IsPumpRunning { get { return _running != 0; } }
 
         /// <summary>是否已经确认主线程 id。</summary>
-        public static bool HasMainThread { get { return Volatile.Read(ref _mainThreadId) != 0; } }
+        public static bool HasMainThread { get { return _mainThreadId != 0; } }
 
         /// <summary>主线程托管 id(未确认时为 0)。</summary>
-        public static int MainThreadId { get { return Volatile.Read(ref _mainThreadId); } }
+        public static int MainThreadId { get { return _mainThreadId; } }
 
         internal static void SetMainThreadIdForTesting(int id)
         {
-            Volatile.Write(ref _mainThreadId, id);
+            _mainThreadId = id;
         }
 
         /// <summary>显式确认当前线程为主线程（仅在当前确为 Unity 主线程或已由 UniTask 判定时生效）。</summary>
@@ -67,10 +67,10 @@ namespace CesiumLoader.SDK.Runtime
                 if (Cysharp.Threading.Tasks.PlayerLoopHelper.IsMainThread)
                 {
                     int id = Thread.CurrentThread.ManagedThreadId;
-                    int old = Volatile.Read(ref _mainThreadId);
+                    int old = _mainThreadId;
                     if (old != id)
                     {
-                        Volatile.Write(ref _mainThreadId, id);
+                        _mainThreadId = id;
                         SdkLog.Info("MAINTHREAD", "主线程 id 已确认 (PlayerLoopHelper): " + id);
                     }
                 }
@@ -83,7 +83,7 @@ namespace CesiumLoader.SDK.Runtime
         {
             get
             {
-                int id = Volatile.Read(ref _mainThreadId);
+                int id = _mainThreadId;
                 int currentId = Thread.CurrentThread.ManagedThreadId;
                 if (id != 0 && currentId == id) return true;
 
@@ -99,7 +99,7 @@ namespace CesiumLoader.SDK.Runtime
                                 SdkLog.Warn("MAINTHREAD", $"主线程 ID 自愈更正: 原记录={id}, PlayerLoopHelper={uniTaskId}");
                             else
                                 SdkLog.Info("MAINTHREAD", "主线程 id 已确认 (PlayerLoopHelper): " + uniTaskId);
-                            Volatile.Write(ref _mainThreadId, uniTaskId);
+                            _mainThreadId = uniTaskId;
                         }
                         return true;
                     }
@@ -107,13 +107,13 @@ namespace CesiumLoader.SDK.Runtime
                 catch { }
 
                 // 若当前线程是正在执行帧泵 Drain 的线程，则必定是真主线程
-                int drainId = Volatile.Read(ref _lastDrainThreadId);
+                int drainId = _lastDrainThreadId;
                 if (drainId != 0 && currentId == drainId)
                 {
                     if (id != drainId)
                     {
                         SdkLog.Warn("MAINTHREAD", $"主线程 ID 自愈更正 (Drain 线程): 原记录={id}, 当前={drainId}");
-                        Volatile.Write(ref _mainThreadId, drainId);
+                        _mainThreadId = drainId;
                     }
                     return true;
                 }
@@ -123,7 +123,7 @@ namespace CesiumLoader.SDK.Runtime
         }
 
         /// <summary>已泵出的帧数(Update 时机)。</summary>
-        public static int FrameCount { get { return Volatile.Read(ref _frameCount); } }
+        public static int FrameCount { get { return _frameCount; } }
 
         /// <summary>排队未执行的回调数。</summary>
         public static int PendingCount { get { return _dispatcher.PendingCount; } }
@@ -151,13 +151,13 @@ namespace CesiumLoader.SDK.Runtime
             // 调度都会永久失效(2026-09-20 游戏内实测过这个后果)。
             try
             {
-                Volatile.Write(ref _running, 1);
+                _running = 1;
                 ScheduleFrame();
                 SdkLog.Info("MAINTHREAD", "主线程泵已启动 (UniTask PlayerLoop)");
             }
             catch (Exception e)
             {
-                Volatile.Write(ref _running, 0);
+                _running = 0;
                 SdkLog.Warn("MAINTHREAD", "主线程泵启动失败, 将退化为按需 Post: " + e.Message);
             }
 
@@ -171,13 +171,13 @@ namespace CesiumLoader.SDK.Runtime
         /// <summary>停止主线程泵(队列保留)。用于测试/放弃。</summary>
         public static void Shutdown()
         {
-            Volatile.Write(ref _running, 0);
+            _running = 0;
         }
 
         /// <summary>确保泵已启动。</summary>
         private static void EnsureStarted()
         {
-            if (Volatile.Read(ref _started) == 0) Initialize();
+            if (_started == 0) Initialize();
         }
 
         // ---------- 调度 API ----------
@@ -281,9 +281,9 @@ namespace CesiumLoader.SDK.Runtime
             try
             {
                 int currentId = Thread.CurrentThread.ManagedThreadId;
-                Volatile.Write(ref _lastDrainThreadId, currentId);
+                _lastDrainThreadId = currentId;
 
-                int recordedId = Volatile.Read(ref _mainThreadId);
+                int recordedId = _mainThreadId;
                 if (recordedId == 0)
                 {
                     if (Interlocked.CompareExchange(ref _mainThreadId, currentId, 0) == 0)
@@ -292,7 +292,7 @@ namespace CesiumLoader.SDK.Runtime
                 else if (recordedId != currentId)
                 {
                     SdkLog.Warn("MAINTHREAD", $"检测到主线程 ID 偏离: 原记录={recordedId}, 当前 PlayerLoop 线程={currentId}, 已自动更正为当前线程");
-                    Volatile.Write(ref _mainThreadId, currentId);
+                    _mainThreadId = currentId;
                 }
 
                 Interlocked.Increment(ref _frameCount);
@@ -307,10 +307,10 @@ namespace CesiumLoader.SDK.Runtime
             try { UpdateService.RaiseUpdate(); }
             catch (Exception e) { SdkLog.Error("MAINTHREAD", "Update 分发异常: " + e.Message); }
 
-            if (Volatile.Read(ref _running) != 0)
+            if (_running != 0)
             {
                 try { UniTask.Post(_frameCallback, PlayerLoopTiming.Update); }
-                catch (Exception e) { Volatile.Write(ref _running, 0); SdkLog.Warn("MAINTHREAD", "主线程泵停止: " + e.Message); }
+                catch (Exception e) { _running = 0; SdkLog.Warn("MAINTHREAD", "主线程泵停止: " + e.Message); }
             }
         }
 
@@ -319,10 +319,10 @@ namespace CesiumLoader.SDK.Runtime
             try { UpdateService.RaiseLateUpdate(); }
             catch (Exception e) { SdkLog.Error("MAINTHREAD", "LateUpdate 分发异常: " + e.Message); }
 
-            if (Volatile.Read(ref _running) != 0)
+            if (_running != 0)
             {
                 try { UniTask.Post(_lateFrameCallback, PlayerLoopTiming.PostLateUpdate); }
-                catch (Exception e) { Volatile.Write(ref _running, 0); SdkLog.Warn("MAINTHREAD", "主线程泵(Late)停止: " + e.Message); }
+                catch (Exception e) { _running = 0; SdkLog.Warn("MAINTHREAD", "主线程泵(Late)停止: " + e.Message); }
             }
         }
 
@@ -360,8 +360,8 @@ namespace CesiumLoader.SDK.Runtime
             {
                 _watchdog = new Timer(_ =>
                 {
-                    if (Volatile.Read(ref _frameCount) == 0 &&
-                        Volatile.Read(ref _running) != 0 &&
+                    if (_frameCount == 0 &&
+                        _running != 0 &&
                         Interlocked.Exchange(ref _warnedNoTick, 1) == 0)
                     {
                         SdkLog.Warn("MAINTHREAD",

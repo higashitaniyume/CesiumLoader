@@ -80,13 +80,13 @@ namespace CesiumLoader.SDK.Scenes
         // =====================================================================
 
         /// <summary>SceneLoaded 订阅数。</summary>
-        public static int SceneLoadedSubscriberCount { get { return Volatile.Read(ref _loadedSnapshot).Length; } }
+        public static int SceneLoadedSubscriberCount { get { return _loadedSnapshot.Length; } }
 
         /// <summary>SceneUnloaded 订阅数。</summary>
-        public static int SceneUnloadedSubscriberCount { get { return Volatile.Read(ref _unloadedSnapshot).Length; } }
+        public static int SceneUnloadedSubscriberCount { get { return _unloadedSnapshot.Length; } }
 
         /// <summary>ActiveSceneChanged 订阅数。</summary>
-        public static int ActiveSceneChangedSubscriberCount { get { return Volatile.Read(ref _activeSnapshot).Length; } }
+        public static int ActiveSceneChangedSubscriberCount { get { return _activeSnapshot.Length; } }
 
         /// <summary>已转发的场景加载次数。</summary>
         public static long ForwardedLoadCount { get { return Interlocked.Read(ref _forwardedLoads); } }
@@ -484,7 +484,7 @@ namespace CesiumLoader.SDK.Scenes
                 SafeRaise(() => SceneEvents.RaiseSceneLoaded(args), "SceneEvents.SceneLoaded");
 
                 // 2) 订阅者
-                var snapshot = Volatile.Read(ref _loadedSnapshot);
+                var snapshot = _loadedSnapshot;
                 for (int i = 0; i < snapshot.Length; i++)
                 {
                     var entry = snapshot[i];
@@ -510,7 +510,7 @@ namespace CesiumLoader.SDK.Scenes
 
                 SafeRaise(() => SceneEvents.RaiseSceneUnloaded(name), "SceneEvents.SceneUnloaded");
 
-                var snapshot = Volatile.Read(ref _unloadedSnapshot);
+                var snapshot = _unloadedSnapshot;
                 for (int i = 0; i < snapshot.Length; i++)
                 {
                     var entry = snapshot[i];
@@ -550,7 +550,7 @@ namespace CesiumLoader.SDK.Scenes
 
             SafeRaise(() => SceneEvents.RaiseActiveSceneChanged(prevName, currName), "SceneEvents.ActiveSceneChanged");
 
-            var snapshot = Volatile.Read(ref _activeSnapshot);
+            var snapshot = _activeSnapshot;
             for (int i = 0; i < snapshot.Length; i++)
             {
                 var entry = snapshot[i];
@@ -571,7 +571,7 @@ namespace CesiumLoader.SDK.Scenes
 
         private static void CheckActiveSceneFallback()
         {
-            if (Volatile.Read(ref _unityHooked) == 0) return;
+            if (_unityHooked == 0) return;
 
             var active = UnityCall.GetActiveScene();
             if (!_hasLastScene)
@@ -667,9 +667,9 @@ namespace CesiumLoader.SDK.Scenes
 
         private static void RebuildSnapshotsLocked()
         {
-            Volatile.Write(ref _loadedSnapshot, _loaded.ToArray());
-            Volatile.Write(ref _unloadedSnapshot, _unloaded.ToArray());
-            Volatile.Write(ref _activeSnapshot, _activeChanged.ToArray());
+            _loadedSnapshot = _loaded.ToArray();
+            _unloadedSnapshot = _unloaded.ToArray();
+            _activeSnapshot = _activeChanged.ToArray();
         }
 
         private static ModContext SafeCurrentContext()

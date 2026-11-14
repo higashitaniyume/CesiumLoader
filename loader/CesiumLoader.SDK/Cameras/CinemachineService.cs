@@ -671,7 +671,7 @@ namespace CesiumLoader.SDK.Cameras
 
         private static void Resolve()
         {
-            if (Volatile.Read(ref _resolved)) return;
+            if (_resolved) return;
 
             lock (_lock)
             {
@@ -714,7 +714,7 @@ namespace CesiumLoader.SDK.Cameras
                 if (_coreType != null)
                     _coreInstance = RuntimeAssemblyService.FindProperty(_coreType, "Instance");
 
-                Volatile.Write(ref _resolved, true);
+                _resolved = true;
 
                 SdkLog.Debug("CINEMACHINE", "类型解析: brain=" + (_brainType != null) +
                                               " vcam=" + (_vcamType != null) +

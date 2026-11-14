@@ -37,10 +37,10 @@ namespace CesiumLoader.SDK.Scheduling
         private static long _exceptions;
 
         /// <summary>Update 订阅数。</summary>
-        public static int UpdateSubscriberCount { get { return Volatile.Read(ref _updateSnapshot).Length; } }
+        public static int UpdateSubscriberCount { get { return _updateSnapshot.Length; } }
 
         /// <summary>LateUpdate 订阅数。</summary>
-        public static int LateUpdateSubscriberCount { get { return Volatile.Read(ref _lateSnapshot).Length; } }
+        public static int LateUpdateSubscriberCount { get { return _lateSnapshot.Length; } }
 
         /// <summary>累计触发的 Update 次数。</summary>
         public static long UpdateTicks { get { return Interlocked.Read(ref _updateTicks); } }
@@ -138,7 +138,7 @@ namespace CesiumLoader.SDK.Scheduling
         {
             Interlocked.Increment(ref _updateTicks);
             try { ModHost.CheckConfigsOnMainThread(); } catch { }
-            InvokeAll(Volatile.Read(ref _updateSnapshot));
+            InvokeAll(_updateSnapshot);
 
             try { UpdateEvents.RaiseUpdate(); }
             catch (Exception e) { SdkLog.ReportCrash("UPDATE", "UpdateEvents", e); }
@@ -148,7 +148,7 @@ namespace CesiumLoader.SDK.Scheduling
         public static void RaiseLateUpdate()
         {
             Interlocked.Increment(ref _lateTicks);
-            InvokeAll(Volatile.Read(ref _lateSnapshot));
+            InvokeAll(_lateSnapshot);
 
             try { UpdateEvents.RaiseLateUpdate(); }
             catch (Exception e) { SdkLog.ReportCrash("UPDATE", "UpdateEvents(Late)", e); }
@@ -193,8 +193,8 @@ namespace CesiumLoader.SDK.Scheduling
 
         private static void RebuildSnapshotsLocked()
         {
-            Volatile.Write(ref _updateSnapshot, _updateList.ToArray());
-            Volatile.Write(ref _lateSnapshot, _lateList.ToArray());
+            _updateSnapshot = _updateList.ToArray();
+            _lateSnapshot = _lateList.ToArray();
         }
 
         private static ModContext SafeCurrentContext()

@@ -76,25 +76,25 @@ namespace CesiumLoader.SDK.Mods
         {
             get
             {
-                if (Volatile.Read(ref _enabledResolved) == 0)
+                if (_enabledResolved == 0)
                 {
-                    Volatile.Write(ref _enabled, ResolveEnabledFromEnv() ? 1 : 0);
-                    Volatile.Write(ref _enabledResolved, 1);
+                    _enabled = ResolveEnabledFromEnv() ? 1 : 0;
+                    _enabledResolved = 1;
                 }
-                return Volatile.Read(ref _enabled) != 0;
+                return _enabled != 0;
             }
             set
             {
-                Volatile.Write(ref _enabled, value ? 1 : 0);
-                Volatile.Write(ref _enabledResolved, 1);
+                _enabled = value ? 1 : 0;
+                _enabledResolved = 1;
             }
         }
 
         /// <summary>轮询间隔(毫秒, 游戏时间)。过小会增加每帧取单例的次数, 不需要改。</summary>
         public static int PollIntervalMs
         {
-            get { int v = Volatile.Read(ref _pollIntervalMs); return v > 0 ? v : DefaultPollIntervalMs; }
-            set { Volatile.Write(ref _pollIntervalMs, value); }
+            get { int v = _pollIntervalMs; return v > 0 ? v : DefaultPollIntervalMs; }
+            set { _pollIntervalMs = value; }
         }
 
         /// <summary>
@@ -103,8 +103,8 @@ namespace CesiumLoader.SDK.Mods
         /// </summary>
         public static int SettleMs
         {
-            get { int v = Volatile.Read(ref _settleMs); return v >= 0 ? v : 0; }
-            set { Volatile.Write(ref _settleMs, value); }
+            get { int v = _settleMs; return v >= 0 ? v : 0; }
+            set { _settleMs = value; }
         }
 
         /// <summary>
@@ -113,15 +113,15 @@ namespace CesiumLoader.SDK.Mods
         /// </summary>
         public static int StaggerIntervalMs
         {
-            get { int v = Volatile.Read(ref _staggerIntervalMs); return v >= 0 ? v : 0; }
-            set { Volatile.Write(ref _staggerIntervalMs, value); }
+            get { int v = _staggerIntervalMs; return v >= 0 ? v : 0; }
+            set { _staggerIntervalMs = value; }
         }
 
         /// <summary>本次进程内是否已确认"游戏就绪"(一旦确认即锁存)。</summary>
-        public static bool IsGameReady { get { return Volatile.Read(ref _ready) != 0; } }
+        public static bool IsGameReady { get { return _ready != 0; } }
 
         /// <summary>确认就绪时已经等了多少毫秒; 未确认为 -1。</summary>
-        public static int ReadyAtMs { get { return Volatile.Read(ref _readyAtMs); } }
+        public static int ReadyAtMs { get { return _readyAtMs; } }
 
         // ---------- 判定 ----------
 
@@ -183,13 +183,13 @@ namespace CesiumLoader.SDK.Mods
             //    避免"首个 mod 的上限较大, 后来上限较小的 mod 被拖长";
             //  - 共享探测协程若异常退出(Forget 吞掉异常)也不会让 mod 永久停在启动门。
             int waited = 0;
-            while (Volatile.Read(ref _sharedDone) == 0 && waited < capMs)
+            while (_sharedDone == 0 && waited < capMs)
             {
                 if (!await DelaySafe(PollIntervalMs)) break;
                 waited += PollIntervalMs;
             }
 
-            int elapsed = Volatile.Read(ref _sharedElapsedMs);
+            int elapsed = _sharedElapsedMs;
             if (elapsed < 0) elapsed = 0;
 
             // 错峰初始化：各 mod 间隔 30-50ms，避免全部 mod 在同一帧集中调用 OnInitialize 造成主界面卡顿
@@ -271,8 +271,8 @@ namespace CesiumLoader.SDK.Mods
         private static void CompleteProbe(int elapsedMs)
         {
             if (elapsedMs < 0) elapsedMs = 0;
-            Volatile.Write(ref _sharedElapsedMs, elapsedMs);
-            Volatile.Write(ref _sharedDone, 1);
+            _sharedElapsedMs = elapsedMs;
+            _sharedDone = 1;
         }
 
         private static void LogNoPumpOnce(string label, int capMs)
@@ -296,25 +296,25 @@ namespace CesiumLoader.SDK.Mods
         internal static void MarkReady(int waitedMs)
         {
             if (Interlocked.Exchange(ref _ready, 1) == 0)
-                Volatile.Write(ref _readyAtMs, waitedMs);
+                _readyAtMs = waitedMs;
         }
 
         /// <summary>仅供离线测试: 清空锁存与开关缓存。</summary>
         internal static void ResetForTesting()
         {
-            Volatile.Write(ref _ready, 0);
-            Volatile.Write(ref _readyAtMs, -1);
-            Volatile.Write(ref _enabledResolved, 0);
-            Volatile.Write(ref _enabled, 1);
-            Volatile.Write(ref _pollIntervalMs, DefaultPollIntervalMs);
-            Volatile.Write(ref _settleMs, DefaultSettleMs);
-            Volatile.Write(ref _staggerIntervalMs, DefaultStaggerIntervalMs);
-            Volatile.Write(ref _staggerSlot, 0);
-            Volatile.Write(ref _timeoutLogged, 0);
-            Volatile.Write(ref _noPumpLogged, 0);
-            Volatile.Write(ref _probeStarted, 0);
-            Volatile.Write(ref _sharedDone, 0);
-            Volatile.Write(ref _sharedElapsedMs, 0);
+            _ready = 0;
+            _readyAtMs = -1;
+            _enabledResolved = 0;
+            _enabled = 1;
+            _pollIntervalMs = DefaultPollIntervalMs;
+            _settleMs = DefaultSettleMs;
+            _staggerIntervalMs = DefaultStaggerIntervalMs;
+            _staggerSlot = 0;
+            _timeoutLogged = 0;
+            _noPumpLogged = 0;
+            _probeStarted = 0;
+            _sharedDone = 0;
+            _sharedElapsedMs = 0;
             Clock = DefaultClock;
         }
 

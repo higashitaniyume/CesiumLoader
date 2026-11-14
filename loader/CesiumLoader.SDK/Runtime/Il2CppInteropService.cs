@@ -141,7 +141,7 @@ namespace CesiumLoader.SDK.Runtime
         /// <summary>最近一次失败的描述(null = 无错误)。等价原生侧的 <c>g_last_error</c>。</summary>
         public static string LastError
         {
-            get { return Volatile.Read(ref _lastError); }
+            get { return _lastError; }
         }
 
         /// <summary>
@@ -792,12 +792,12 @@ namespace CesiumLoader.SDK.Runtime
 
         private static void SetError(string where, string message)
         {
-            Volatile.Write(ref _lastError, where + ": " + message);
+            _lastError = where + ": " + message;
         }
 
         private static void ClearError()
         {
-            Volatile.Write(ref _lastError, null);
+            _lastError = null;
         }
 
         private static string Fail(string where, string message)

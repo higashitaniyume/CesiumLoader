@@ -81,7 +81,7 @@ namespace CesiumLoader.SDK.Events
         }
 
         /// <summary>每帧相机观察者是否已安装(诊断/测试用)。安装是一次性的, 不会随订阅清空而卸载。</summary>
-        public static bool WatcherInstalled { get { return Volatile.Read(ref _installed) != 0; } }
+        public static bool WatcherInstalled { get { return _installed != 0; } }
 
         private static void EnsureWatcher()
         {

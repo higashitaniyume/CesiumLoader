@@ -215,7 +215,7 @@ namespace CesiumLoader.SDK.Inputs
 
         private static void Resolve()
         {
-            if (Volatile.Read(ref _resolved)) return;
+            if (_resolved) return;
             lock (_lock)
             {
                 if (_resolved) return;
@@ -235,7 +235,7 @@ namespace CesiumLoader.SDK.Inputs
                     _mouseScrollDelta = RuntimeAssemblyService.FindProperty(_inputType, "mouseScrollDelta");
                 }
 
-                Volatile.Write(ref _resolved, true);
+                _resolved = true;
                 SdkLog.Debug("INPUT", "UnityEngine.Input 反射解析: 类型=" + (_inputType != null) +
                                       " GetKey=" + (_getKey != null) +
                                       " GetAxis=" + (_getAxis != null));

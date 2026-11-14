@@ -86,7 +86,7 @@ namespace CesiumLoader.SDK.Audio
         /// <summary>当前是否注册了任何音频替换规则(无锁读取: 音效播放热路径每次都会查)。</summary>
         public static bool HasRules
         {
-            get { return Volatile.Read(ref _ruleCount) > 0; }
+            get { return _ruleCount > 0; }
         }
 
         // =====================================================================
@@ -411,7 +411,7 @@ namespace CesiumLoader.SDK.Audio
             lock (_ruleLock)
             {
                 _rules.Add(rule);
-                Volatile.Write(ref _ruleCount, _rules.Count);
+                _ruleCount = _rules.Count;
             }
             AudioEvents.StartAutoHook();
             AudioEvents.EnsureHooked();
@@ -425,7 +425,7 @@ namespace CesiumLoader.SDK.Audio
             lock (_ruleLock)
             {
                 _rules.RemoveAll(r => r.MatchMode == AudioMatchMode.ConfigId && r.TargetConfigId == eventConfigId);
-                Volatile.Write(ref _ruleCount, _rules.Count);
+                _ruleCount = _rules.Count;
             }
         }
 
@@ -438,7 +438,7 @@ namespace CesiumLoader.SDK.Audio
             {
                 _rules.RemoveAll(r => (r.MatchMode == AudioMatchMode.EventNameExact || r.MatchMode == AudioMatchMode.EventNamePrefix) &&
                                       string.Equals(r.TargetEventName, eventName, StringComparison.OrdinalIgnoreCase));
-                Volatile.Write(ref _ruleCount, _rules.Count);
+                _ruleCount = _rules.Count;
             }
         }
 
@@ -450,7 +450,7 @@ namespace CesiumLoader.SDK.Audio
             lock (_ruleLock)
             {
                 _rules.Clear();
-                Volatile.Write(ref _ruleCount, 0);
+                _ruleCount = 0;
             }
         }
 

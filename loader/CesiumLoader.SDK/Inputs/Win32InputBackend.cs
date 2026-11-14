@@ -56,18 +56,18 @@ namespace CesiumLoader.SDK.Inputs
         {
             get
             {
-                int state = Volatile.Read(ref _probeState);
+                int state = _probeState;
                 if (state != 0) return state > 0;
 
                 try
                 {
                     GetAsyncKeyState(0x01); // 探测一次
-                    Volatile.Write(ref _probeState, 1);
+                    _probeState = 1;
                     return true;
                 }
                 catch (Exception e)
                 {
-                    Volatile.Write(ref _probeState, -1);
+                    _probeState = -1;
                     SdkLog.Warn("INPUT", "Win32 输入后端不可用: " + e.Message);
                     return false;
                 }

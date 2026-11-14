@@ -147,7 +147,7 @@ namespace CesiumLoader.SDK.Scheduling
         /// <summary>由主线程泵调用: 推进所有协程一帧。</summary>
         public static void Tick()
         {
-            var snapshot = Volatile.Read(ref _snapshot);
+            var snapshot = _snapshot;
             for (int i = 0; i < snapshot.Length; i++)
             {
                 Advance(snapshot[i]);
@@ -280,7 +280,7 @@ namespace CesiumLoader.SDK.Scheduling
 
         private static void RebuildSnapshotLocked()
         {
-            Volatile.Write(ref _snapshot, _routines.ToArray());
+            _snapshot = _routines.ToArray();
         }
 
         private static ModContext SafeCurrentContext()
