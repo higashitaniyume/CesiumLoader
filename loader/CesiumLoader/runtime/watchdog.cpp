@@ -158,6 +158,7 @@ DWORD WINAPI watch_thread(LPVOID param)
     ULONGLONG last_rsp = 0;
     bool warned = false;
     bool dumped = false;
+    bool noted_background = false;
 
     for (;;)
     {
@@ -177,17 +178,26 @@ DWORD WINAPI watch_thread(LPVOID param)
         }
 
         // 窗口不在前台: 玩家可能切出去了, 主线程停住是正常的。重置停滞起点,
-        // 避免切回来的一瞬间就被判定成卡死。
+        // 避免切回来的一瞬间就被判定成卡死。但要记一次 —— 否则用户只看到"卡住却没 dump",
+        // 不知道是前台判定在起作用。
         if (windowed && !is_foreground(pid))
         {
+            if (!noted_background)
+            {
+                noted_background = true;
+                console_set_color(LOG_DIM);
+                log_line("[watchdog] main thread is not moving, but the game window is not in the foreground;"
+                         " stall timer keeps resetting (bring the window to front to let the watchdog fire)");
+                console_set_color(LOG_DEFAULT);
+            }
             moved_at = now;
             if (warned)
             {
-                log_line("[watchdog] game window left foreground; stall timer reset");
                 warned = false;
             }
             continue;
         }
+        noted_background = false;
 
         // 调试器附加时"指针不动"是断点停住了, 不是卡死 —— 重置计时, 不落盘。
         if (IsDebuggerPresent())

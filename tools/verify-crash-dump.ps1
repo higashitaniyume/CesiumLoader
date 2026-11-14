@@ -222,7 +222,7 @@ else
 $activityLog = Join-Path $logsDir ("activity-mod-" + $session + ".log")
 if (Test-Path -LiteralPath $activityLog)
 {
-    $armed = Select-String -LiteralPath $activityLog -Pattern '已武装|正在触发崩溃' | Select-Object -Last 2
+    $armed = Select-String -LiteralPath $activityLog -Pattern '已武装|正在触发崩溃|永久阻塞' | Select-Object -Last 2
     if ($armed)
     {
         Write-Host ''
