@@ -202,7 +202,7 @@ pwsh -NoProfile -File tools/package-modloader.ps1
 
 发布由 `modloader-<版本>` 标签触发。CI 从源码构建原生加载器、Bootstrap、SDK、全部内置模组与 CLI，运行测试，再用 `tools/stage-modloader-dist.ps1` 组装 `dist/modloader/` 分发布局并打包；内置清单统一读取 `tools/builtin-mods.json`。`tools/package-modloader.ps1` 复刻同一套步骤，打 tag 前可先在本地验证。
 
-Release 提供加载器包、SDK 工具包及独立默认皮肤包，加载器与工具包均有版本化名称和固定下载名称。加载器另外提供一个 **Debug 版包**（`cesium-loader-debug.zip` / `cesium-loader-debug-<版本>.zip`）：布局与正式包相同，只把 `version.dll` / `version.pdb` 换成 Debug 构建，供需要逐行单步排查原生问题的人使用；它依赖 Visual C++ 调试运行时（装 Visual Studio 的机器才有），普通玩家请用正式包。**先发布 CesiumLoader，再发布 Toys**，确保 Toys 内嵌最新加载器。
+Release 提供加载器包、SDK 工具包及独立默认皮肤包，加载器与工具包均有版本化名称和固定下载名称。加载器另外提供一个 **Debug 版包**（`cesium-loader-debug.zip` / `cesium-loader-debug-<版本>.zip`）：布局与正式包相同，`version.dll` / `version.pdb` 换成 Debug 构建，并带一份用 Debug 哈希生成的 `cesium-loader.json`（`channel: debug`），因此可以直接用 AstralParty.Toys 的「导入发布包」安装，也可以手动解压覆盖。它依赖 Visual C++ 调试运行时（装 Visual Studio 的机器才有），普通玩家请用正式包。**先发布 CesiumLoader，再发布 Toys**，确保 Toys 内嵌最新加载器。
 
 ## 许可
 

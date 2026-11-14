@@ -265,33 +265,15 @@ $readme = @(
 ) -join [Environment]::NewLine
 Set-Content -Path 'staging\README.txt' -Value $readme -Encoding UTF8
 
-# ---------------------------------------------------------------- 4b Debug 包布局
-# 发布产物里额外给一个 Debug 版加载器 zip: 布局与正式包一致, 只把 version.dll/pdb 换成
-# Debug 构建, 并附一份说明(需要调试 CRT、怎么附加调试器)。必须在写 cesium-loader.json 之前
-# 复制, 否则 Debug 包里会混进正式包的清单(哈希对不上)。
-Write-Step '4b. 组装 Debug 版布局 (debug-staging)'
-if (Test-Path 'debug-staging') { Remove-Item 'debug-staging' -Recurse -Force }
-# 直接编 vcxproj 时产物在 loader\...\bin\Debug; 用解决方案构建时在仓库 bin\Debug。两处都认。
+# ---------------------------------------------------------------- 4b Debug 包准备
+# Debug 包要在清单生成之后才能组装(见下面 5b): 它需要一份用 Debug dll/pdb 哈希重写的清单,
+# 否则 Toys 的「导入发布包」会因为缺少/不匹配 cesium-loader.json 直接拒绝。
 $debugDll = @('loader\CesiumLoader\bin\Debug\version.dll', 'bin\Debug\version.dll') |
     Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
 $debugPdb = @('loader\CesiumLoader\bin\Debug\version.pdb', 'bin\Debug\version.pdb') |
     Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
 $debugAvailable = -not [string]::IsNullOrEmpty($debugDll)
-if ($debugAvailable)
-{
-    New-Item -ItemType Directory -Path 'debug-staging' -Force | Out-Null
-    Copy-Item 'staging\*' 'debug-staging\' -Recurse -Force
-    Copy-Item $debugDll 'debug-staging\version.dll' -Force
-    if ($debugPdb) {
-        Copy-Item $debugPdb 'debug-staging\version.pdb' -Force
-    } else {
-        Write-Warning 'Debug 版 version.pdb 缺失, Debug 包不含加载器符号'
-    }
-    $debugReadme = (Get-Content (Join-Path $PSScriptRoot 'debug-loader-README.txt') -Raw).Replace('{{VERSION}}', $version)
-    Set-Content -Path 'debug-staging\README.txt' -Value $debugReadme -Encoding UTF8
-    Write-Host "  Debug 包已组装: $((Get-Item $debugDll).Length) bytes 的 version.dll + 说明"
-}
-else
+if (-not $debugAvailable)
 {
     Write-Warning '未找到 Debug 版 version.dll, 跳过 cesium-loader-debug 包(需要 -SkipBuild 前先构建 Debug)'
 }
@@ -313,6 +295,36 @@ $manifest = [ordered]@{
     files    = $fileMap
 }
 $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path 'staging\cesium-loader.json' -Encoding UTF8
+
+# ---------------------------------------------------------------- 5b Debug 包布局
+# 与正式包同布局, 只换 version.dll/pdb + 一份说明; 清单也用同一份, 只把这两个文件的哈希
+# 换成 Debug 版本, 并标记 channel=debug。这样 Toys 的「导入发布包」能正常校验并安装。
+if ($debugAvailable)
+{
+    Write-Step '5b. 组装 Debug 版布局 (debug-staging)'
+    if (Test-Path 'debug-staging') { Remove-Item 'debug-staging' -Recurse -Force }
+    New-Item -ItemType Directory -Path 'debug-staging' -Force | Out-Null
+    Copy-Item 'staging\*' 'debug-staging\' -Recurse -Force
+    Copy-Item $debugDll 'debug-staging\version.dll' -Force
+    if ($debugPdb) {
+        Copy-Item $debugPdb 'debug-staging\version.pdb' -Force
+    } else {
+        Write-Warning 'Debug 版 version.pdb 缺失, Debug 包不含加载器符号'
+    }
+    $debugReadme = (Get-Content (Join-Path $PSScriptRoot 'debug-loader-README.txt') -Raw).Replace('{{VERSION}}', $version)
+    Set-Content -Path 'debug-staging\README.txt' -Value $debugReadme -Encoding UTF8
+
+    # 用 Debug 文件的实际哈希重写清单: Toys 会逐个校验 required 项, 哈希不一致会拒绝安装。
+    $debugManifest = Get-Content 'staging\cesium-loader.json' -Raw | ConvertFrom-Json
+    $debugManifest.files.'version.dll' = (Get-FileHash 'debug-staging\version.dll' -Algorithm SHA256).Hash.ToLowerInvariant()
+    if (Test-Path 'debug-staging\version.pdb') {
+        $debugManifest.files.'version.pdb' = (Get-FileHash 'debug-staging\version.pdb' -Algorithm SHA256).Hash.ToLowerInvariant()
+    }
+    $debugManifest | Add-Member -NotePropertyName 'channel' -NotePropertyValue 'debug' -Force
+    $debugManifest | ConvertTo-Json -Depth 4 | Set-Content -Path 'debug-staging\cesium-loader.json' -Encoding UTF8
+
+    Write-Host "  Debug 包已组装: $((Get-Item $debugDll).Length) bytes 的 version.dll + 说明 + 专用清单"
+}
 
 # ---------------------------------------------------------------- 6 SDK 工具包
 Write-Step '6. 组装 SDK 工具包 (sdk-staging)'

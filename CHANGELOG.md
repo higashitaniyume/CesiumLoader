@@ -21,7 +21,7 @@
 
 ### 构建与打包
 
-- 发布产物新增 Debug 版加载器包（`cesium-loader-debug.zip` / `cesium-loader-debug-<版本>.zip`）：与正式包同布局，只把 `version.dll` / `version.pdb` 换成 Debug 构建，并附调试说明；`tools/package-modloader.ps1` 与发布工作流都会产出，本地可用同一脚本验证。
+- 发布产物新增 Debug 版加载器包（`cesium-loader-debug.zip` / `cesium-loader-debug-<版本>.zip`）：与正式包同布局，`version.dll` / `version.pdb` 换成 Debug 构建，并带一份用 Debug 哈希重写的 `cesium-loader.json`（`channel: debug`），因此 AstralParty.Toys 的「导入发布包」可以直接安装；`tools/package-modloader.ps1` 与发布工作流都会产出，本地可用同一脚本验证。包里的 `README.txt` 说明调试 CRT 依赖、附加调试器与转储位置（Toys 导入时不会解压 README）。
 
 ## [3.7.5] - 2026-11-13
 

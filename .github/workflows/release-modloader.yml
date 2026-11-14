@@ -248,24 +248,6 @@ jobs:
           ) -join [Environment]::NewLine
           Set-Content -Path "staging/README.txt" -Value $readme -Encoding UTF8
 
-      # Debug 版加载器包: 与正式包同一套布局, 只把 version.dll/pdb 换成 Debug 构建。
-      # 必须在生成 cesium-loader.json 之前复制, 否则调试包里会混进正式包的清单(哈希对不上)。
-      - name: Stage debug loader layout
-        shell: pwsh
-        run: |
-          if (Test-Path "debug-staging") { Remove-Item "debug-staging" -Recurse -Force }
-          New-Item -ItemType Directory -Path "debug-staging" -Force | Out-Null
-          Copy-Item "staging/*" "debug-staging/" -Recurse -Force
-          Copy-Item "bin/Debug/version.dll" "debug-staging/version.dll" -Force
-          if (Test-Path "bin/Debug/version.pdb") {
-            Copy-Item "bin/Debug/version.pdb" "debug-staging/version.pdb" -Force
-          } else {
-            Write-Warning "Debug 版 version.pdb 缺失: 调试包不含加载器符号"
-          }
-          $debugReadme = (Get-Content "tools/debug-loader-README.txt" -Raw).Replace('{{VERSION}}', "${{ steps.version.outputs.version }}")
-          Set-Content -Path "debug-staging/README.txt" -Value $debugReadme -Encoding UTF8
-          Get-ChildItem "debug-staging" | Select-Object Name, Length
-
       - name: Build manifest
         id: manifest
         shell: pwsh
@@ -318,6 +300,33 @@ jobs:
           $symbols = @($fileMap.Keys | Where-Object { $_.EndsWith(".pdb") }).Count
           Write-Host "manifest: $($fileMap.Count) 个文件, 其中符号 $symbols 个"
           Get-Content "staging/cesium-loader.json"
+
+      # Debug 版加载器包: 与正式包同布局, 只把 version.dll/pdb 换成 Debug 构建, 并用同一份清单
+      # 改写出 debug-staging/cesium-loader.json(替换这两个文件的哈希 + channel=debug)。
+      # 有清单 Toys 的「导入发布包」才会接受; 哈希必须与包内 Debug dll 一致。
+      - name: Stage debug loader layout
+        shell: pwsh
+        run: |
+          if (Test-Path "debug-staging") { Remove-Item "debug-staging" -Recurse -Force }
+          New-Item -ItemType Directory -Path "debug-staging" -Force | Out-Null
+          Copy-Item "staging/*" "debug-staging/" -Recurse -Force
+          Copy-Item "bin/Debug/version.dll" "debug-staging/version.dll" -Force
+          if (Test-Path "bin/Debug/version.pdb") {
+            Copy-Item "bin/Debug/version.pdb" "debug-staging/version.pdb" -Force
+          } else {
+            Write-Warning "Debug 版 version.pdb 缺失: 调试包不含加载器符号"
+          }
+          $debugReadme = (Get-Content "tools/debug-loader-README.txt" -Raw).Replace('{{VERSION}}', "${{ steps.version.outputs.version }}")
+          Set-Content -Path "debug-staging/README.txt" -Value $debugReadme -Encoding UTF8
+
+          $debugManifest = Get-Content "staging/cesium-loader.json" -Raw | ConvertFrom-Json
+          $debugManifest.files.'version.dll' = (Get-FileHash "debug-staging/version.dll" -Algorithm SHA256).Hash.ToLowerInvariant()
+          if (Test-Path "debug-staging/version.pdb") {
+            $debugManifest.files.'version.pdb' = (Get-FileHash "debug-staging/version.pdb" -Algorithm SHA256).Hash.ToLowerInvariant()
+          }
+          $debugManifest | Add-Member -NotePropertyName "channel" -NotePropertyValue "debug" -Force
+          $debugManifest | ConvertTo-Json -Depth 4 | Set-Content -Path "debug-staging/cesium-loader.json" -Encoding UTF8
+          Write-Host "debug manifest: version.dll=$($debugManifest.files.'version.dll'.Substring(0,12))… channel=debug"
 
       - name: Stage AI agent bridge package (optional add-on)
         shell: pwsh
