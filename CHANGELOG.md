@@ -2,7 +2,7 @@
 
 本文件按版本记录 `CesiumLoader` 的功能变更。版本号与 GitHub 发布 tag 一一对应（如 `modloader-3.3.2`，版本号为 `3.3.2`），发布产物由 [release-modloader.yml](.github/workflows/release-modloader.yml) 在打 tag 时自动构建。
 
-## [未发布]
+## [3.7.6] - 2026-11-14
 
 ### 调试支持
 
@@ -18,6 +18,7 @@
 
 - **Steam 绕过默认全部关闭**（`steamBypassEnabled` / `steamBypassRestartCheck` / `steamBypassMatchmaking` / `steamBypassLobbyHasValue` / `steamBypassLobbyQuery` 均为 `false`）。正常由 Steam 启动时不需要任何绕过；需要"不开 Steam 也能进游戏/建房"时再逐项打开，行为与联网语义随之改变。
 - `crashDumpEnabled=false` 只是关掉致命异常的自动落盘，转储设施仍会初始化，`dump` 命令与看门狗照常可用。
+- 转储目录从 `logs\crash\` 改为加载器目录下的 `crash\`（`<loader>\crash\`），避免大文件与日志混在一起；`tools\verify-crash-dump.ps1` 会自动识别新目录，旧安装的 `logs\crash\` 仍可回退读取。
 
 ### 构建与打包
 
