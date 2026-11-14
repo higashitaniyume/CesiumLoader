@@ -123,16 +123,26 @@ namespace CesiumLoader.SDK.Configuration
         {
             try
             {
-                if (!string.IsNullOrEmpty(modDirectory) && !IsModsRoot(modDirectory))
-                    return System.IO.Path.Combine(modDirectory, "config.json");
+                // 统一规则：玩家配置在 configs/<ModId>.json（外侧、便于手改与 UI 展示）。
+                // 模组目录里的 config.json 是随包默认值，引导首次启动会迁到 configs/ 并改名 .bak；
+                // 没迁过的旧安装仍读模组目录里那份，避免把已有设置丢掉。
+                string external = CesiumLoader.SDK.IO.Path.GetConfigPath(modId + ".json");
+                if (!string.IsNullOrEmpty(external))
+                {
+                    try { if (System.IO.File.Exists(external)) return external; }
+                    catch { }
 
-                // modDirectory 为空、或它就是 mods 根目录时不能直接拼 config.json:
-                // 安卓装载布局是扁平的 mods/<ModId>.dll, loader 传进来的 modDirectory 正是
-                // mods 根目录, 拼出来所有 mod 共用同一个 mods/config.json —— 后保存配置的
-                // mod 会把别人的 enabled 等同名键覆盖掉(实测把星币商店助手置成了 disabled)。
-                // 交给 SDK 自己的解析器: mods/<ModId>/config.json, 其次 configs/<ModId>.json。
-                string resolved = CesiumLoader.SDK.IO.Path.GetModConfigPath(modId);
-                if (!string.IsNullOrEmpty(resolved)) return resolved;
+                    if (!string.IsNullOrEmpty(modDirectory))
+                    {
+                        string inside = System.IO.Path.Combine(modDirectory, "config.json");
+                        try { if (System.IO.File.Exists(inside)) return inside; }
+                        catch { }
+                    }
+                    return external;
+                }
+
+                if (!string.IsNullOrEmpty(modDirectory))
+                    return System.IO.Path.Combine(modDirectory, "config.json");
 
                 string modsDir = Environment.GetEnvironmentVariable("CESIUM_MODS_DIR");
                 if (!string.IsNullOrEmpty(modsDir))
@@ -142,37 +152,6 @@ namespace CesiumLoader.SDK.Configuration
                 return System.IO.Path.Combine(root, "AstralParty_ModLoader", "configs", modId + ".json");
             }
             catch { return null; }
-        }
-
-        /// <summary>该目录是否就是 mods 根目录(而不是某个 mod 自己的目录)。</summary>
-        private static bool IsModsRoot(string directory)
-        {
-            try
-            {
-                string path = System.IO.Path.GetFullPath(directory).TrimEnd('/', '\\');
-
-                string mods = Environment.GetEnvironmentVariable("CESIUM_MODS_DIR");
-                if (!string.IsNullOrEmpty(mods) && SamePath(path, mods)) return true;
-
-                try
-                {
-                    string sdkMods = CesiumLoader.SDK.IO.Path.ModsDirectory;
-                    if (!string.IsNullOrEmpty(sdkMods) && SamePath(path, sdkMods)) return true;
-                }
-                catch { }
-
-                return false;
-            }
-            catch { return false; }
-        }
-
-        private static bool SamePath(string left, string right)
-        {
-            try
-            {
-                return string.Equals(left, System.IO.Path.GetFullPath(right).TrimEnd('/', '\\'), StringComparison.OrdinalIgnoreCase);
-            }
-            catch { return false; }
         }
 
         // =====================================================================
