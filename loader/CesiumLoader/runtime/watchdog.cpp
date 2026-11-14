@@ -191,6 +191,7 @@ DWORD WINAPI watch_thread(LPVOID param)
     // 有可见窗口时才做前台判定: 控制台/无窗口宿主没有"前台"可言, 直接看指针是否在动。
     // 启动时窗口可能还没建出来(UnityMain 之后才有), 所以每 5 秒复查一次, 而不是只判一次。
     bool windowed = has_visible_window(pid);
+    bool foreground_cached = !windowed || is_foreground(pid);
     ULONGLONG window_checked_at = 0;
 
     init_message_modules();
@@ -224,6 +225,7 @@ DWORD WINAPI watch_thread(LPVOID param)
         if (now - window_checked_at >= 5000)
         {
             windowed = has_visible_window(pid);
+            foreground_cached = !windowed || is_foreground(pid);
             window_checked_at = now;
         }
 
@@ -232,17 +234,10 @@ DWORD WINAPI watch_thread(LPVOID param)
         //   1) 主线程停在 user32/win32u 的消息等待里 = 后台挂起(Unity 的暂停), 忽略;
         //   2) 其它地方(Rip 在 GameAssembly/ntdll 的锁或等待里) = 仍在按 2 倍阈值判定,
         //      这样后台卡死也会在 timeout*2 内落盘。
-        bool foreground = true;
-        ULONGLONG threshold_ms = timeout_ms;
-        if (windowed)
-        {
-            foreground = is_foreground(pid);
-            if (!foreground)
-            {
-                // 需要先采样才能判断"是不是消息等待", 采样放到下面统一做; 这里只标记。
-                threshold_ms = timeout_ms * 2;
-            }
-        }
+        // 前台判定和窗口枚举一起做(5 秒一次): 每次 GetForegroundWindow/EnumWindows 都是
+        // 一次 user32 调用, 1 Hz 虽然不贵, 但没必要。
+        bool foreground = foreground_cached;
+        ULONGLONG threshold_ms = foreground ? timeout_ms : timeout_ms * 2;
 
         // 调试器附加时"指针不动"是断点停住了, 不是卡死 —— 重置计时, 不落盘。
         if (IsDebuggerPresent())
