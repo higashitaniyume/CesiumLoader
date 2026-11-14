@@ -301,7 +301,8 @@ namespace TurnClockMod
         private double? CurrentSpeed(double now)
         {
             double? speed = _nativeSpeedSampler.Sample(now, _speedRefreshSeconds, ReadNativeSpeed);
-            if (!speed.HasValue && !_nativeStateWarned)
+            // 没有原生引擎时"读不到原生倍率"是常态（安卓数据版），不算异常，也不该刷警告。
+            if (!speed.HasValue && !_nativeEngineAbsent && !_nativeStateWarned)
             {
                 _nativeStateWarned = true;
                 Log.Warn("原生时钟状态未知，暂不写入计时器，等待有效状态恢复。");

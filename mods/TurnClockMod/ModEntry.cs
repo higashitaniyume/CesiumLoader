@@ -119,6 +119,15 @@ namespace TurnClockMod
         private double _speed = 1.0;
         private bool _hasTimers;
         private bool _nativeStateWarned;
+
+        /// <summary>
+        /// 原生变速引擎根本不存在（安卓数据版没有原生加载器）。
+        ///
+        /// 这时倍率只能从 Unity 帧时钟读：Unity 模式的 timeScale 就体现在
+        /// `deltaTime / unscaledDeltaTime` 上。桌面版有原生引擎时这个标记恒为 false，
+        /// 「原生回执暂时读不到 → 只观察不写入」的安全约定原样保留。
+        /// </summary>
+        private bool _nativeEngineAbsent;
         private bool _frameDeltaUnavailable;
         private bool _timeScaleUnavailable;
         private double _lastFrameAt;
@@ -131,7 +140,7 @@ namespace TurnClockMod
         private int _errors;
 
         public override string Name { get { return "回合时钟"; } }
-        public override string Version { get { return "1.4.2"; } }
+        public override string Version { get { return "1.4.3"; } }
         public override string Author { get { return "CesiumLoader"; } }
 
         public override string Description
@@ -172,13 +181,16 @@ namespace TurnClockMod
 
             if (AnyClockEnabled()) Log.Info("界面倒计时: " + DescribeClocks());
 
-            if (!SpeedHack.IsAvailable)
-                Log.Info("变速引擎当前不可用: 这个 mod 只在倍率 >1x 时才需要工作, 不装变速时可以关掉它");
+            _nativeEngineAbsent = !SpeedHack.IsAvailable;
+            if (_nativeEngineAbsent)
+                Log.Info("原生变速引擎不可用（数据版安卓没有原生加载器）：倍率改用实测帧时钟，" +
+                         "Unity 模式（timeScale）下同样按真实时间补偿");
         }
 
         public override void OnConfigChanged()
         {
             LoadConfig();
+            _nativeEngineAbsent = !SpeedHack.IsAvailable;
             ResetMembers();
             ResetExtraClocks();
             _buffer.Clear();
@@ -276,14 +288,17 @@ namespace TurnClockMod
                 if (!_hasTimers) _nativeSpeedSampler.RequestRefresh();
                 _hasTimers = true;
                 double? speed = CurrentSpeed(now);
-                double frameScale = speed.HasValue ? ReadUnityFrameScale() : 1;
+                // 原生引擎不存在时倍率只能从帧时钟读（Unity 模式的 timeScale）。
+                // 有原生引擎时保持原样：原生回执读不到就只观察、不写计时器，帧时钟也不用读。
+                bool frameOnly = _nativeEngineAbsent;
+                double frameScale = (frameOnly || speed.HasValue) ? ReadUnityFrameScale() : 1;
                 _ticked.Clear();
                 for (int i = 0; i < operationCount; i++)
-                    if (_ticked.Add(_buffer[i])) TickTimer(_buffer[i], speed, frameScale, realDt, true);
+                    if (_ticked.Add(_buffer[i])) TickTimer(_buffer[i], speed, frameScale, realDt, true, frameOnly);
                 for (int i = 0; i < otherCount; i++)
-                    if (_ticked.Add(_showBuffer[i])) TickTimer(_showBuffer[i], speed, frameScale, realDt, false);
+                    if (_ticked.Add(_showBuffer[i])) TickTimer(_showBuffer[i], speed, frameScale, realDt, false, frameOnly);
                 for (int i = 0; i < extraCount; i++)
-                    if (_ticked.Add(_extraBuffer[i])) TickTimer(_extraBuffer[i], speed, frameScale, realDt, false);
+                    if (_ticked.Add(_extraBuffer[i])) TickTimer(_extraBuffer[i], speed, frameScale, realDt, false, frameOnly);
                 _ticked.Clear();
 
                 FinishTraces();
@@ -312,16 +327,26 @@ namespace TurnClockMod
         /// <paramref name="windowStats"/> 只给我自己的操作倒计时(timerDict)用:
         /// 别人头顶的倒计时和界面倒计时都只补偿, 不进"操作窗口"的统计。
         /// </summary>
-        private void TickTimer(object timer, double? nativeSpeed, double frameScale, double realDt, bool windowStats)
+        private void TickTimer(object timer, double? nativeSpeed, double frameScale, double realDt, bool windowStats, bool frameOnly = false)
         {
             // 只补偿第一帧探测到的那个计时器类型(游戏里都是 UnityTimer.Timer)
             if (_probedType != null && !ReferenceEquals(timer.GetType(), _probedType)) return;
 
-            // Missing/replaced state is unknown, not 1x. Observe progress without
-            // writing until the native clock is acknowledged again.
-            double speed = nativeSpeed.HasValue
-                ? (_timerClockRate != null ? _timerClockRate.EffectiveSpeed(timer, nativeSpeed.Value, frameScale) : nativeSpeed.Value)
-                : 1;
+            // frameOnly：没有原生引擎，倍率就是 Unity 帧时钟比值本身（安卓数据版的 Unity 模式）。
+            // 其余情况沿用原约定：原生回执读不到 = 未知，只观察不写入。
+            double speed;
+            if (frameOnly)
+            {
+                speed = Math.Max(1.0, frameScale);
+            }
+            else
+            {
+                speed = nativeSpeed.HasValue
+                    ? (_timerClockRate != null
+                        ? _timerClockRate.EffectiveSpeed(timer, nativeSpeed.Value, frameScale)
+                        : Math.Max(1.0, nativeSpeed.Value * frameScale))
+                    : 1;
+            }
 
             float elapsed;
             bool wrote;

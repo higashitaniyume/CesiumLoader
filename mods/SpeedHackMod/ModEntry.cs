@@ -115,6 +115,16 @@ namespace SpeedHackMod
         private bool _nativeResetRequested;
         private float _nextNativeResetAt;
         internal Func<double?> ReadNativeSpeed = NativeSpeedState.Read;
+        /// <summary>
+        /// 原生变速引擎根本不存在（安卓数据版没有原生加载器）。
+        ///
+        /// 原生引擎是桌面版的 version.dll：它装 inline hook 缩放系统时钟，并通过本进程的
+        /// 回环 UDP 回执当前倍率。安卓这条线没有它，`CESIUM_SPEED_PORT` 永远为空。
+        /// unity 模式只改 `Time.timeScale`，本来不需要原生引擎 —— 但它默认要先确认
+        /// 「原生时钟确实是 1x」才动手，否则会双重倍率。引擎不存在时就等于原生恒 1x，
+        /// 这个标记让 unity 模式跳过那次确认，不然热键永远不生效。
+        /// </summary>
+        private bool _nativeEngineAbsent;
         private int _unityNativeWaitPolls;
         private double _loggedUnityTarget = double.NaN;
         private readonly FairyUiTimeScaleBridge _uiAnimations = new FairyUiTimeScaleBridge();
@@ -125,7 +135,7 @@ namespace SpeedHackMod
         private int _lastIndependentCount;
         private int _lastWorldUiCount;
 
-        public override string Version { get { return "2.5.4"; } }
+        public override string Version { get { return "2.5.5"; } }
 
         // =====================================================================
         // 生命周期
@@ -139,6 +149,13 @@ namespace SpeedHackMod
             LoadConfig();
 
             if (SpeedHack.IsAvailable) MarkReady();
+            else if (_useUnitySpeed)
+            {
+                // 没有原生引擎（安卓数据版）：unity 模式自己就能加速，不必等一个不会来的回执。
+                _nativeEngineAbsent = true;
+                Log.Warn("未检测到原生变速引擎，按「原生时钟 1x」处理；Unity 模式直接生效");
+                MarkReady();
+            }
             else
             {
                 // 引擎还没就绪或尚未收到 UDP 回执: 每秒重试, 不做变速
@@ -209,7 +226,17 @@ namespace SpeedHackMod
                     if (now < _nextProbeAt) return;
                     _nextProbeAt = now + 1.0f;
 
-                    if (!SpeedHack.IsAvailable) return;   // 静默重试, 免得刷屏
+                    if (!SpeedHack.IsAvailable)
+                    {
+                        // 原生引擎不存在 + unity 模式：不再等回执，直接按 1x 启动 Unity 加速。
+                        if (_useUnitySpeed)
+                        {
+                            _nativeEngineAbsent = true;
+                            Log.Info("原生引擎不存在，改用 Unity 模式加速（原生时钟按 1x）");
+                            MarkReady();
+                        }
+                        return;   // 其它模式: 静默重试, 免得刷屏
+                    }
                     Log.Info("变速引擎已就绪(重试成功)");
                     MarkReady();
                 }
@@ -237,6 +264,8 @@ namespace SpeedHackMod
             bool previousUnity = _useUnitySpeed;
             double previousSpeed = _ready ? CurrentEngineSpeed() : _activeSpeed;
             LoadConfig();
+            // 切换模式时重新判断：改成 unity 且没有原生引擎，就按「原生恒 1x」处理。
+            _nativeEngineAbsent = _useUnitySpeed && !SpeedHack.IsAvailable;
             _uiAnimationFailed = false;
             if (!_useUnitySpeed || !_accelerateUiAnimations) _uiAnimations.Restore();
             if (!_useUnitySpeed || !_accelerateIndependentAnimations) _independentAnimations.Restore();
@@ -258,7 +287,17 @@ namespace SpeedHackMod
                 else if (_useUnitySpeed)
                 {
                     _unityFailed = false;
-                    _unityTargetSpeed = previousSpeed <= 1.0001 ? 1.0 : SpeedHack.ClampSpeed(previousSpeed, _minSpeed, _maxSpeed);
+                    // 没有原生引擎（安卓数据版）：以配置里的 speed 为准 —— 手机上没键盘，
+                    // 改配置是唯一的调速入口，改完必须立刻生效。
+                    // 有原生引擎时保持原行为：跟随引擎当前倍率，别让一次"范围修正"把
+                    // 临时关掉的 Unity 加速又打开。
+                    double target = _nativeEngineAbsent
+                        ? (_activeSpeed > 1.0001 ? _activeSpeed : 1.0)
+                        : (previousSpeed <= 1.0001 ? 1.0 : previousSpeed);
+                    // 1.0 表示"关掉 Unity 加速"，不能被 minSpeed 抬起来。
+                    _unityTargetSpeed = target <= 1.0001
+                        ? 1.0
+                        : SpeedHack.ClampSpeed(target, _minSpeed, _maxSpeed);
                     PollUnityBackend();
                 }
                 else if (current > 0.0)
@@ -502,6 +541,8 @@ namespace SpeedHackMod
         {
             if (_unityFailed) return;
             double? confirmed = ReadNativeSpeed();
+            // 原生引擎不存在 = 原生时钟恒为 1x，不必等那份永远不会来的回执。
+            if (!confirmed.HasValue && _nativeEngineAbsent) confirmed = 1.0;
             if (!confirmed.HasValue)
             {
                 _nextPerformanceSyncAt = UnityTime.RealtimeSinceStartup + 0.5f;
