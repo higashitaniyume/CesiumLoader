@@ -40,6 +40,11 @@ namespace CesiumLoader.SDK.Audio
                     {
                         _backend = unityBackend;
                     }
+                    else if (AndroidPlatform.IsAndroid)
+                    {
+                        // 安卓没有原生音频引擎(user32/winmm 那套)，直接用 Unity 后端。
+                        _backend = unityBackend;
+                    }
                     else
                     {
                         var nativeBackend = new NativeAudioBackend();

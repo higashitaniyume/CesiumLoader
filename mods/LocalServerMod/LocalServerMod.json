@@ -1,0 +1,1 @@
+{"id":"LocalServerMod","name":"本地服务器","version":"0.1.0","author":"Hiynet","description":"把客户端连接地址指向本地私服（开发测试用）。","permissions":0,"sdkVersion":"2.8.6","dependencies":[]}

@@ -23,8 +23,7 @@ namespace CesiumLoader.SDK.Inputs
     {
         private static readonly object _lock = new object();
 
-        private static IInputBackend _backend = new CompositeInputBackend(
-            new UnityInputReflectionBackend(), new Win32InputBackend());
+        private static IInputBackend _backend = CreateDefaultBackend();
 
         private static ModContext _keyboardOwner;
         private static ModContext _mouseOwner;
@@ -50,7 +49,20 @@ namespace CesiumLoader.SDK.Inputs
         /// <summary>替换输入后端(测试用)。传 null 恢复默认组合后端。</summary>
         public static void SetBackend(IInputBackend backend)
         {
-            _backend = backend ?? new CompositeInputBackend(new UnityInputReflectionBackend(), new Win32InputBackend());
+            _backend = backend ?? CreateDefaultBackend();
+        }
+
+        /// <summary>
+        /// 默认输入后端。
+        ///
+        /// 安卓上没有 Win32（`user32.dll` 根本不存在，构造 `Win32InputBackend` 会
+        /// `DllNotFoundException`），所以只保留 Unity 反射后端；桌面维持 Unity + Win32 组合，
+        /// Win32 那层负责热键边沿与光标锁定。
+        /// </summary>
+        private static IInputBackend CreateDefaultBackend()
+        {
+            if (AndroidPlatform.IsAndroid) return new UnityInputReflectionBackend();
+            return new CompositeInputBackend(new UnityInputReflectionBackend(), new Win32InputBackend());
         }
 
         /// <summary>输入是否可用(两个后端都不可用时为 false)。</summary>

@@ -1,0 +1,28 @@
+{
+  // 总开关：关闭后不改客户端连接地址
+  "enabled": true,
+  // 私服地址
+  "host": "127.0.0.1",
+  // 私服端口
+  "port": 8800,
+  "_comments": {
+    "enabled": {
+      "zh-Hans": "总开关：关闭后不改客户端连接地址。",
+      "zh-Hant": "總開關：關閉後不改客戶端連線位址。",
+      "en": "Master switch: when off, the client connection address is left unchanged.",
+      "ja": "全体スイッチ：オフにするとクライアントの接続先を変更しません。"
+    },
+    "host": {
+      "zh-Hans": "私服地址。",
+      "zh-Hant": "私服位址。",
+      "en": "Private server host.",
+      "ja": "プライベートサーバーのホスト。"
+    },
+    "port": {
+      "zh-Hans": "私服端口。",
+      "zh-Hant": "私服連接埠。",
+      "en": "Private server port.",
+      "ja": "プライベートサーバーのポート。"
+    }
+  }
+}
