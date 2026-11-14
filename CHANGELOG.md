@@ -19,6 +19,10 @@
 - **Steam 绕过默认全部关闭**（`steamBypassEnabled` / `steamBypassRestartCheck` / `steamBypassMatchmaking` / `steamBypassLobbyHasValue` / `steamBypassLobbyQuery` 均为 `false`）。正常由 Steam 启动时不需要任何绕过；需要"不开 Steam 也能进游戏/建房"时再逐项打开，行为与联网语义随之改变。
 - `crashDumpEnabled=false` 只是关掉致命异常的自动落盘，转储设施仍会初始化，`dump` 命令与看门狗照常可用。
 
+### 构建与打包
+
+- 发布产物新增 Debug 版加载器包（`cesium-loader-debug.zip` / `cesium-loader-debug-<版本>.zip`）：与正式包同布局，只把 `version.dll` / `version.pdb` 换成 Debug 构建，并附调试说明；`tools/package-modloader.ps1` 与发布工作流都会产出，本地可用同一脚本验证。
+
 ## [3.7.5] - 2026-11-13
 
 ### 新增内置模组

@@ -4,13 +4,14 @@
 
 .DESCRIPTION
     与 CI (.github\workflows\release-modloader.yml) 保持同一套步骤，便于打 tag 前先在本地验证：
-      1. MSBuild 构建原生加载器 version.dll (Release x64)
+      1. MSBuild 构建原生加载器 version.dll (Release x64; 另编一份 Debug x64 供调试包)
       2. dotnet 构建托管层: CesiumLoader.Bootstrap / CesiumLoader.SDK / 各 mod
       3. 刷新 dist\modloader\ 分发布局(tools\stage-modloader-dist.ps1, CI 复用同一份脚本)
       4. 组装 staging\ 部署布局 + README.txt
       5. 生成 cesium-loader.json 清单(含每个文件的 SHA256)
       6. 构建 cesium CLI 自包含单文件 → sdk-staging\ + README.txt
       7. 打包 zip: cesium-loader-<版本>.zip / cesium-loader.zip
+                   cesium-loader-debug-<版本>.zip / cesium-loader-debug.zip (Debug 版加载器)
                    cesium-sdk-tools-<版本>.zip / cesium-sdk-tools.zip
                    cesium-default-skins-<版本>.zip / cesium-default-skins.zip
 
@@ -109,6 +110,12 @@ if (-not $SkipBuild)
     if ($LASTEXITCODE -ne 0) { throw "原生加载器构建失败 (exit $LASTEXITCODE)" }
     $nativeDll = 'loader\CesiumLoader\bin\Release\version.dll'
     if (-not (Test-Path $nativeDll)) { throw "version.dll 未生成: $nativeDll" }
+
+    # Debug 版加载器(发布产物里的可选包): 与正式包同一套布局, 只换 version.dll/pdb。
+    Write-Host '  构建 Debug 版加载器 (version.dll, Debug x64)'
+    & $msbuild 'loader\CesiumLoader\CesiumLoader.vcxproj' /p:Configuration=Debug /p:Platform=x64 /m /nologo /v:minimal
+    if ($LASTEXITCODE -ne 0) { throw "Debug 版加载器构建失败 (exit $LASTEXITCODE)" }
+    if (-not (Test-Path 'loader\CesiumLoader\bin\Debug\version.dll')) { throw 'Debug 版 version.dll 未生成' }
 
     # 解包基线可能保留较旧时间戳；必须强制重编，避免增量缓存保留旧游戏枚举常量。
     Write-Step '2. 构建托管层 (Bootstrap / SDK / mods / cesium CLI)'
@@ -258,6 +265,37 @@ $readme = @(
 ) -join [Environment]::NewLine
 Set-Content -Path 'staging\README.txt' -Value $readme -Encoding UTF8
 
+# ---------------------------------------------------------------- 4b Debug 包布局
+# 发布产物里额外给一个 Debug 版加载器 zip: 布局与正式包一致, 只把 version.dll/pdb 换成
+# Debug 构建, 并附一份说明(需要调试 CRT、怎么附加调试器)。必须在写 cesium-loader.json 之前
+# 复制, 否则 Debug 包里会混进正式包的清单(哈希对不上)。
+Write-Step '4b. 组装 Debug 版布局 (debug-staging)'
+if (Test-Path 'debug-staging') { Remove-Item 'debug-staging' -Recurse -Force }
+# 直接编 vcxproj 时产物在 loader\...\bin\Debug; 用解决方案构建时在仓库 bin\Debug。两处都认。
+$debugDll = @('loader\CesiumLoader\bin\Debug\version.dll', 'bin\Debug\version.dll') |
+    Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+$debugPdb = @('loader\CesiumLoader\bin\Debug\version.pdb', 'bin\Debug\version.pdb') |
+    Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+$debugAvailable = -not [string]::IsNullOrEmpty($debugDll)
+if ($debugAvailable)
+{
+    New-Item -ItemType Directory -Path 'debug-staging' -Force | Out-Null
+    Copy-Item 'staging\*' 'debug-staging\' -Recurse -Force
+    Copy-Item $debugDll 'debug-staging\version.dll' -Force
+    if ($debugPdb) {
+        Copy-Item $debugPdb 'debug-staging\version.pdb' -Force
+    } else {
+        Write-Warning 'Debug 版 version.pdb 缺失, Debug 包不含加载器符号'
+    }
+    $debugReadme = (Get-Content (Join-Path $PSScriptRoot 'debug-loader-README.txt') -Raw).Replace('{{VERSION}}', $version)
+    Set-Content -Path 'debug-staging\README.txt' -Value $debugReadme -Encoding UTF8
+    Write-Host "  Debug 包已组装: $((Get-Item $debugDll).Length) bytes 的 version.dll + 说明"
+}
+else
+{
+    Write-Warning '未找到 Debug 版 version.dll, 跳过 cesium-loader-debug 包(需要 -SkipBuild 前先构建 Debug)'
+}
+
 Write-Step '5. 生成 cesium-loader.json 清单'
 $fileMap = [ordered]@{}
 foreach ($file in $manifestFiles)
@@ -339,6 +377,16 @@ Compress-Archive -Path 'staging\*' -DestinationPath $loaderZip -CompressionLevel
 Copy-Item $loaderZip $loaderLatest -Force
 Compress-Archive -Path 'sdk-staging\*' -DestinationPath $sdkZip -CompressionLevel Optimal
 Copy-Item $sdkZip $sdkLatest -Force
+
+# Debug 版加载器包(可选产物): 与正式包同布局, 只换 version.dll/pdb。
+if (Test-Path 'debug-staging\version.dll')
+{
+    $debugZip = Join-Path $OutputDir "cesium-loader-debug-$version.zip"
+    $debugLatest = Join-Path $OutputDir 'cesium-loader-debug.zip'
+    foreach ($z in @($debugZip, $debugLatest)) { if (Test-Path $z) { Remove-Item $z -Force } }
+    Compress-Archive -Path 'debug-staging\*' -DestinationPath $debugZip -CompressionLevel Optimal
+    Copy-Item $debugZip $debugLatest -Force
+}
 
 # 独立默认皮肤包：与 CI 共用校验，加载器包禁止包含 skins。
 & (Join-Path $PSScriptRoot 'package-default-skins.ps1') -Version $version -OutputDir $OutputDir

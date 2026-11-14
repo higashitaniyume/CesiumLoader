@@ -414,6 +414,7 @@ staging/
 sdk-staging/
 sdk-tools/
 agent-staging/
+debug-staging/
 agent-tools/
 cesium-loader*.zip
 cesium-sdk-tools*.zip

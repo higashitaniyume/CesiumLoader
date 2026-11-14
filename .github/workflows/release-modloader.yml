@@ -87,6 +87,21 @@ jobs:
             Write-Warning "version.pdb 未生成: 本次发布包不含加载器符号"
           }
 
+          # Debug 版原生加载器: 发布产物里附一个 cesium-loader-debug.zip, 给需要逐行单步的人。
+          & msbuild loader\CesiumLoader\CesiumLoader.vcxproj /p:Configuration=Debug /p:Platform=x64 /m /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $dbgbin = "loader/CesiumLoader/bin/Debug/version.dll"
+          if (-not (Test-Path $dbgbin)) { throw "Debug 版 version.dll 未生成" }
+          New-Item -ItemType Directory -Path "bin/Debug" -Force | Out-Null
+          Copy-Item $dbgbin "bin/Debug/version.dll" -Force
+          $dbgpdb = "loader/CesiumLoader/bin/Debug/version.pdb"
+          if (Test-Path $dbgpdb) {
+            Copy-Item $dbgpdb "bin/Debug/version.pdb" -Force
+            Write-Host "Debug 版 version.dll/pdb 已就绪 ($((Get-Item $dbgbin).Length) bytes)"
+          } else {
+            Write-Warning "Debug 版 version.pdb 未生成: 调试包不含加载器符号"
+          }
+
           # 2) 托管侧: 构建出货用的 csproj (loader/SDK/bootstrap/mods/mcp/CLI)。
           # tests\ 与 smoke\ 是测试与冒烟 harness, 只编不跑且不进 dist, 别浪费时间编它们。
           $projects = @(Get-ChildItem -Recurse -File -Filter *.csproj |
@@ -233,6 +248,24 @@ jobs:
           ) -join [Environment]::NewLine
           Set-Content -Path "staging/README.txt" -Value $readme -Encoding UTF8
 
+      # Debug 版加载器包: 与正式包同一套布局, 只把 version.dll/pdb 换成 Debug 构建。
+      # 必须在生成 cesium-loader.json 之前复制, 否则调试包里会混进正式包的清单(哈希对不上)。
+      - name: Stage debug loader layout
+        shell: pwsh
+        run: |
+          if (Test-Path "debug-staging") { Remove-Item "debug-staging" -Recurse -Force }
+          New-Item -ItemType Directory -Path "debug-staging" -Force | Out-Null
+          Copy-Item "staging/*" "debug-staging/" -Recurse -Force
+          Copy-Item "bin/Debug/version.dll" "debug-staging/version.dll" -Force
+          if (Test-Path "bin/Debug/version.pdb") {
+            Copy-Item "bin/Debug/version.pdb" "debug-staging/version.pdb" -Force
+          } else {
+            Write-Warning "Debug 版 version.pdb 缺失: 调试包不含加载器符号"
+          }
+          $debugReadme = (Get-Content "tools/debug-loader-README.txt" -Raw).Replace('{{VERSION}}', "${{ steps.version.outputs.version }}")
+          Set-Content -Path "debug-staging/README.txt" -Value $debugReadme -Encoding UTF8
+          Get-ChildItem "debug-staging" | Select-Object Name, Length
+
       - name: Build manifest
         id: manifest
         shell: pwsh
@@ -344,6 +377,10 @@ jobs:
           $zipName = "cesium-loader-${{ steps.version.outputs.version }}.zip"
           Compress-Archive -Path "staging/*" -DestinationPath $zipName -CompressionLevel Optimal
           Copy-Item $zipName "cesium-loader.zip" -Force
+
+          $debugZip = "cesium-loader-debug-${{ steps.version.outputs.version }}.zip"
+          Compress-Archive -Path "debug-staging/*" -DestinationPath $debugZip -CompressionLevel Optimal
+          Copy-Item $debugZip "cesium-loader-debug.zip" -Force
           if ($env:PUBLISH_AGENT_PACKAGE -eq 'true') {
             $agentZip = "cesium-agent-mcp-${{ steps.version.outputs.version }}.zip"
             Compress-Archive -Path "agent-staging/*" -DestinationPath $agentZip -CompressionLevel Optimal
@@ -558,7 +595,7 @@ jobs:
           set -euo pipefail
           ls -la artifacts/
           version="${GITHUB_REF_NAME#modloader-}"
-          for package in cesium-loader cesium-default-skins cesium-sdk-tools; do
+          for package in cesium-loader cesium-loader-debug cesium-default-skins cesium-sdk-tools; do
             test -s "artifacts/$package.zip"
             test -s "artifacts/$package-$version.zip"
           done
