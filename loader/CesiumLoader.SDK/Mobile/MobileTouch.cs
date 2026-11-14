@@ -44,29 +44,19 @@ namespace CesiumLoader.SDK.Mobile
         /// HybridCLR 把 <c>Assembly.GetType</c> 裁掉了，调用处 JIT 阶段就抛
         /// <c>MissingMethodException: MethodNotFind System.Reflection.Assembly::GetType</c>，
         /// 同一个方法内的 try/catch 接不住（每帧 OnUpdate 都会抛，实测刷了 2 MB 日志）。
-        /// 优先走 <see cref="RuntimeAssemblyService.FindType"/>，它已被其它 SDK 路径验证可用。
+        /// 所以这里只走 <see cref="RuntimeAssemblyService.FindType"/>（按类型表逐个比对名称，
+        /// 不碰被裁掉的 `Assembly.GetType` 重载）。
         /// </summary>
         private static Type FindInputType()
         {
             try
             {
-                Type found = Runtime.RuntimeAssemblyService.FindType("UnityEngine.Input");
-                if (found != null) return found;
+                return Runtime.RuntimeAssemblyService.FindType("UnityEngine.Input");
             }
-            catch { }
-
-            try
+            catch
             {
-                Assembly[] assemblies = AppDomain.CurrentDomain.GetAssemblies();
-                for (int i = 0; i < assemblies.Length; i++)
-                {
-                    Type candidate = assemblies[i].GetType("UnityEngine.Input", false);
-                    if (candidate != null) return candidate;
-                }
+                return null;
             }
-            catch { }
-
-            return null;
         }
 
         private static void Resolve()
