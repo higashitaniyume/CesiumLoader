@@ -373,9 +373,11 @@ void log_previous_dumps(const std::wstring& crash_dir)
     if (count <= 0) return;
 
     // 转储文件名就是日志会话标识 <yyyyMMdd>-<HHmmss>-<pid>, 和同目录的 .txt 一一对应。
+    // 日志行一律英文: 日志是给 grep 与外部工具看的, 控制台/shell 的交互文案才用中文。
     console_set_color(LOG_YELLOW);
-    log_line(L"[crash] " + std::to_wstring(count) + L" 个历史转储在 " + short_path(crash_dir) +
-             L"\\ (最新: " + newest + L")");
+    log_line(L"[crash] " + std::to_wstring(count) +
+             (count == 1 ? L" previous dump in " : L" previous dumps in ") + short_path(crash_dir) +
+             L"\\ (newest: " + newest + L")");
     console_set_color(LOG_DEFAULT);
 }
 
@@ -600,6 +602,8 @@ void install(const LoaderConfig& cfg, bool enabled, bool full_memory)
 
     if (!enabled)
     {
+        // 关掉自动落盘时也点名历史转储, 但放在"已禁用"之前, 避免日志看起来像装了处理器。
+        log_previous_dumps(g_crash_dir);
         log_line("[crash] fatal-exception handler disabled (crashDumpEnabled=false);"
                  " on-demand dumps (shell 'dump', watchdog) still available");
         return;
