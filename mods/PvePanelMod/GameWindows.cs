@@ -92,6 +92,39 @@ namespace PvePanelMod
 
         private static string _lastButtonsNote;
 
+        // 第三方 mod「战斗牌点数」（BattleCardPointsMod，作者 Aperfish）挂在官方战斗窗口 contentPane 下的攻方 / 防守方两块
+        private static readonly string[] CardPointsBlockNames = { "battle_played_atk", "battle_played_def" };
+
+        /// <summary>
+        /// 「战斗牌点数」在战斗窗口里画的两块在界面坐标里的范围（战斗面板要避开它们）。
+        /// 只按名字找，不依赖那个 mod：没装、没开或者以后改了名字，就是找不到，战斗面板照旧摆。
+        /// </summary>
+        public static void CardPointsBlocks(System.Collections.Generic.List<Rect> into)
+        {
+            into.Clear();
+            try
+            {
+                var ui = UIManager.inst;
+                var root = GRoot.inst;
+                if (ui == null || root == null || FightField == null) return;
+                var w = FightField.GetValue(ui) as Window;
+                if (w == null || w.isDisposed || !w.isShowing) return;
+                var pane = w.contentPane;
+                if (pane == null || pane.isDisposed) return;
+                for (int i = 0; i < pane.numChildren; i++)
+                {
+                    var c = pane.GetChildAt(i);
+                    if (c == null || c.isDisposed || System.Array.IndexOf(CardPointsBlockNames, c.name) < 0) continue;
+                    if (!c.onStage || !Shown(c) || c.width <= 1f || c.height <= 1f) continue;
+                    // 它会按屏幕大小给这两块整体缩放（SetScale），LocalToGlobal 已经算进去了
+                    Vector2 p = root.GlobalToLocal(c.LocalToGlobal(Vector2.zero));
+                    Vector2 q = root.GlobalToLocal(c.LocalToGlobal(new Vector2(c.width, c.height)));
+                    into.Add(Rect.MinMaxRect(Mathf.Min(p.x, q.x), Mathf.Min(p.y, q.y), Mathf.Max(p.x, q.x), Mathf.Max(p.y, q.y)));
+                }
+            }
+            catch { into.Clear(); }
+        }
+
         /// <summary>自己和每一层父节点都可见（按钮自己 visible=true，但整组被藏起来时也算看不见，例如手机版那套按钮）。</summary>
         private static bool Shown(GObject o)
         {

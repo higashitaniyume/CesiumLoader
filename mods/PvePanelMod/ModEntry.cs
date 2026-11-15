@@ -34,6 +34,7 @@ namespace PvePanelMod
         private Icons _icons;
         private LeftPanel _left;
         private RightPanel _right;
+        private readonly List<Rect> _cardPointsBlocks = new List<Rect>();
         private BattleView _battle;
         private HandDrawer _drawer;
         private Tooltip _tooltip;
@@ -293,7 +294,10 @@ namespace PvePanelMod
         {
             var odds = _battleFeed.Read();
             if (odds == null) { _battle.Hide(); return; }
-            _battle.Render(odds, _left.BottomY + 10f * PanelScale.K());
+            float top = _left.BottomY + 10f * PanelScale.K();
+            // 避开「战斗牌点数」画在战斗窗口里的攻 / 守两块；左栏收起时可以往上挪到左栏原来的位置
+            GameWindows.CardPointsBlocks(_cardPointsBlocks);
+            _battle.Render(odds, top, _left.Collapsed ? _left.SideTop : top, _cardPointsBlocks);
             _battleFeed.Claim();
         }
 

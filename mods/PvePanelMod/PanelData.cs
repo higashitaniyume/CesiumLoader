@@ -61,7 +61,12 @@ namespace PvePanelMod
             return Players.TryGetMatch(out m) && m.IsPve && m.InBattle;
         }
 
-        /// <summary>按楼层（Slot）排好的 4 个玩家。怪物没有昵称，排除掉。</summary>
+        /// <summary>
+        /// 按楼层（Slot）排好的 4 个玩家，怪物排除掉。
+        /// 按单位类型（Hero / Monster）判断，不能只看「有没有昵称」：别的 mod（例如「隐藏队友昵称」）
+        /// 会给所有单位都写上角色名，怪物也有了昵称，就会被当成玩家（实测：多出 3 行和自己同头像的怪物）。
+        /// 读不到类型时才退回看昵称。
+        /// </summary>
         public static List<PlayerRow> Read(Dictionary<int, string> headBySlot)
         {
             var rows = new List<PlayerRow>();
@@ -70,6 +75,9 @@ namespace PvePanelMod
                 try
                 {
                     if (pd?.player == null) continue;
+                    CharacterType type = CharacterType.None;
+                    try { type = pd.characterType; } catch { }
+                    if (type == CharacterType.Monster) continue;
                     string nick = Players.SafeNick(pd);
                     if (nick == null) continue;
                     var p = pd.player;
