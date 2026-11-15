@@ -136,13 +136,18 @@ namespace PvePanelMod
         private GComponent _layer, _box;
         private float _k;
         private long _shownVersion = -1;
+        private bool _floating;
+        private BattleOdds _shown;
 
         public void Hide()
         {
             if (_layer != null && !_layer.isDisposed) _layer.visible = false;
         }
 
-        public void Render(BattleOdds o, float topY)
+        /// <param name="topY">平时的顶部位置（左栏底下）。</param>
+        /// <param name="minTop">往上挪时最高能到哪；左栏展开时传 topY（不许往上挪，免得盖住左栏）。</param>
+        /// <param name="avoid">要避开的区域（「战斗牌点数」画在战斗窗口里的两块），界面坐标。</param>
+        public void Render(BattleOdds o, float topY, float minTop, List<Rect> avoid)
         {
             var root = GRoot.inst;
             if (root == null || o == null) { Hide(); return; }
@@ -157,13 +162,48 @@ namespace PvePanelMod
                 _layer.AddChild(_box);
                 _shownVersion = -1;
             }
-            if (o.Version != _shownVersion) { _shownVersion = o.Version; Draw(o); }
-            _box.SetXY(0f, PanelScale.FitBottom(topY, _box.height));   // 放大后不超出屏幕底边
+            if (o.Version != _shownVersion) { _shownVersion = o.Version; _shown = o; Draw(o); }
+            float x, y;
+            bool floating;
+            Place(root, topY, minTop, avoid, out x, out y, out floating);
+            if (floating != _floating) { _floating = floating; Draw(_shown); }   // 尺寸不变，只换底板形状
+            _box.SetXY(x, y);
             if (!_layer.visible) _layer.visible = true;
+        }
+
+        /// <summary>
+        /// 摆位置：平时贴屏幕左边、在左栏底下。撞上要避开的区域时，先试挪到它上面（不高过 minTop），
+        /// 不行再试挪到它右边（这时不贴边，floating = true），都不行就照旧（宁可叠着也别跑出屏幕）。
+        /// </summary>
+        private void Place(GRoot root, float topY, float minTop, List<Rect> avoid, out float x, out float y, out bool floating)
+        {
+            float w = _box.width, h = _box.height, gap = 10f * _k;
+            x = 0f;
+            y = PanelScale.FitBottom(topY, h);   // 放大后不超出屏幕底边
+            floating = false;
+            if (avoid == null || avoid.Count == 0) return;
+            var home = new Rect(0f, y, w, h);
+            float hitTop = float.MaxValue, hitRight = float.MinValue;
+            foreach (var a in avoid)
+                if (a.Overlaps(home)) { hitTop = Mathf.Min(hitTop, a.yMin); hitRight = Mathf.Max(hitRight, a.xMax); }
+            if (hitTop == float.MaxValue) return;
+
+            float up = hitTop - gap - h;
+            if (up >= minTop && !Hits(new Rect(0f, up, w, h), avoid)) { y = up; return; }
+
+            float right = hitRight + gap;
+            if (right + w <= root.width && !Hits(new Rect(right, y, w, h), avoid)) { x = right; floating = true; }
+        }
+
+        private static bool Hits(Rect r, List<Rect> avoid)
+        {
+            foreach (var a in avoid) if (a.Overlaps(r)) return true;
+            return false;
         }
 
         private void Draw(BattleOdds o)
         {
+            if (o == null) return;
             float k = _k, x0 = Pad * k;
             _box.RemoveChildren(0, -1, true);
             var items = new List<GObject>();
@@ -233,11 +273,13 @@ namespace PvePanelMod
             // 底板：右边圆角，左边贴死屏幕边（和左栏同一种「从边上伸出来」）
             float b = Border * k, r = 18f * k;
             var border = new GGraph { touchable = false };
-            border.DrawRoundRect(w, y, BorderColor, new[] { 0f, r, 0f, r });
+            // 挪到「战斗牌点数」右边时不贴边：四角都圆、四边都有边框
+            float rl = _floating ? r : 0f, rli = _floating ? r - b : 0f;
+            border.DrawRoundRect(w, y, BorderColor, new[] { rl, r, rl, r });
             _box.AddChild(border);
             var bg = new GGraph { touchable = false };
-            bg.SetXY(0f, b);
-            bg.DrawRoundRect(w - b, y - 2 * b, PanelColor, new[] { 0f, r - b, 0f, r - b });
+            bg.SetXY(_floating ? b : 0f, b);
+            bg.DrawRoundRect(_floating ? w - 2 * b : w - b, y - 2 * b, PanelColor, new[] { rli, r - b, rli, r - b });
             _box.AddChild(bg);
             foreach (var it in items) _box.AddChild(it);
             _box.SetSize(w, y);
@@ -277,7 +319,19 @@ namespace PvePanelMod
         }
 
         /// <summary>名字超过 7 个字就截断加「…」，长昵称不会把面板撑出屏幕。</summary>
-        private static string ShortName(string s) => string.IsNullOrEmpty(s) || s.Length <= 7 ? (s ?? "") : s.Substring(0, 7) + "…";
+        // 名字里的 UBB 标签：「炫彩ID」这类 mod 改出来的名字会带 [color=…][b][s][sub] 等，服务器原样保存，别的玩家用了这边也会收到
+        private static readonly System.Text.RegularExpressions.Regex Ubb = new System.Text.RegularExpressions.Regex(
+            @"\[/?(color|size|font|b|i|u|s|strike|del|sub|sup|url|img)(=[^\]]*)?\]",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        /// <summary>先去掉 UBB 标签再截到 7 个字（不去的话截出来是「[color=…」）。去完是空的就用原名。</summary>
+        internal static string ShortName(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            string plain = Ubb.Replace(s, "").Trim();
+            if (plain.Length == 0) plain = s;
+            return plain.Length <= 7 ? plain : plain.Substring(0, 7) + "…";
+        }
 
         private static Color SurviveColor(double p) => p >= 0.8 ? Green : p >= 0.5 ? Yellow : Red;
         private static Color KillColor(double p) => p >= 0.6 ? Green : p >= 0.3 ? Yellow : Red;
