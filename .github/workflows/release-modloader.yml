@@ -618,6 +618,8 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          # 该 job 没有 checkout，gh 无法从工作目录推断仓库，必须显式给出。
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           # 候选版本标 prerelease(不替换 Latest)，正式版直接置顶。
