@@ -2,6 +2,17 @@
 
 本文件按版本记录 `CesiumLoader` 的功能变更。版本号与 GitHub 发布 tag 一一对应（如 `modloader-3.3.2`，版本号为 `3.3.2`），发布产物由 [release-modloader.yml](.github/workflows/release-modloader.yml) 在打 tag 时自动构建。
 
+## [3.8.2] - 2026-11-15
+
+### 内置多语言支持更新（LanguageUnlockMod 1.0.2）
+
+- 从最新国际服客户端提取并更新全部英 / 日 / 繁语言资源（62 张 STR 表共 23,256 条文本，以及 FairyGUI 界面文案包）。
+- 模组版本更新为 `1.0.2`。
+
+### 构建与打包
+
+- SDK 的 `Version` / `FileVersion`、`SdkVersion.Current` / `LoaderVersion` 与加载器版本同步到 `3.8.2`。
+
 ## [3.8.1] - 2026-11-15
 
 ### 平台声明：模组可以标注只支持 Windows 或 Android
