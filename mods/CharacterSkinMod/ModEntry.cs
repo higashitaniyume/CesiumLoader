@@ -19,7 +19,7 @@ using UnityEngine;
 using UnityEngine.AddressableAssets;
 using UnityEngine.ResourceManagement.AsyncOperations;
 
-[assembly: ModManifest("角色皮肤", "0.2.7", "CesiumLoader", "多角色皮肤方案、官方动画与自定义资源覆盖", Permissions = ModPermission.ReadGameState | ModPermission.UI | ModPermission.ModifyGameState | ModPermission.FileWrite, SdkVersion = "2.8.6")]
+[assembly: ModManifest("角色皮肤", "0.2.7", "CesiumLoader", "多角色皮肤方案、官方动画与自定义资源覆盖", Permissions = ModPermission.ReadGameState | ModPermission.UI | ModPermission.ModifyGameState | ModPermission.FileWrite, SdkVersion = "2.8.6", Platforms = ModPlatform.Windows | ModPlatform.Android)]
 namespace CharacterSkinMod
 {
     public sealed partial class ModEntry : ModBase

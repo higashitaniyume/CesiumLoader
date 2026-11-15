@@ -10,7 +10,7 @@ using party.model;
 
 [assembly: ModManifest("手牌卡面皮肤", CardSkinMod.ModEntry.ModVersion, "CesiumLoader",
     "自定义手牌、事件、命运、地图事件及图鉴卡面，支持素材名、ID和中文名，支持序列帧动态卡面与显式动态异画，静态异画及未指定卡面保留原版",
-    Permissions = ModPermission.ReadGameState | ModPermission.UI, SdkVersion = "2.8.6")]
+    Permissions = ModPermission.ReadGameState | ModPermission.UI, SdkVersion = "2.8.6", Platforms = ModPlatform.Windows | ModPlatform.Android)]
 
 namespace CardSkinMod
 {

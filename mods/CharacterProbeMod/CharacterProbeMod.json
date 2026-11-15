@@ -4,5 +4,6 @@
   "version": "0.1.2",
   "author": "CesiumLoader",
   "description": "记录角色皮肤图片、账号头像、动画与精灵元数据，供自制皮肤研究；不改外观或对局状态",
-  "sdkVersion": "2.3.2"
+  "sdkVersion": "2.3.2",
+  "platforms": ["windows"]
 }

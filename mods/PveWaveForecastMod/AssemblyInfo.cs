@@ -6,4 +6,4 @@ using CesiumLoader.SDK.Manifests;
     "CesiumLoader",
     "在 PVE 地图上按回合显示任务波次的刷新内容与地块预告",
     Permissions = ModPermission.ReadGameState,
-    SdkVersion = "2.8.6")]
+    SdkVersion = "2.8.6", Platforms = ModPlatform.Windows | ModPlatform.Android)]

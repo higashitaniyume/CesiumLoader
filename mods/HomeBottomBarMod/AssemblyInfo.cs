@@ -6,4 +6,4 @@ using CesiumLoader.SDK.Manifests;
     "CesiumLoader",
     "隐藏主页底栏的公告按钮，把设置左移一位，并在最右侧增加退出按钮。",
     Permissions = ModPermission.UI,
-    SdkVersion = "2.8.6")]
+    SdkVersion = "2.8.6", Platforms = ModPlatform.Windows | ModPlatform.Android)]

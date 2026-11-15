@@ -7,4 +7,4 @@ using CesiumLoader.SDK.Speed;
 // mods\{程序集名}.permissions.json 逐项覆盖。
 [assembly: ModManifest("实时行为日志", "2.4.0", "CesiumLoader",
     "把对局内的行为(用牌/骰子/移动/战斗等)实时输出到加载器控制台",
-    Permissions = ModPermission.ReadGameState, SdkVersion = "2.8.6")]
+    Permissions = ModPermission.ReadGameState, SdkVersion = "2.8.6", Platforms = ModPlatform.Windows | ModPlatform.Android)]

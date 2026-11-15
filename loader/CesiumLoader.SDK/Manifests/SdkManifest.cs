@@ -57,6 +57,18 @@ namespace CesiumLoader.SDK.Manifests
             sb.Append(",\"description\":").Append(JsonString(m.Description));
             sb.Append(",\"permissions\":").Append((int)m.Permissions);
             sb.Append(",\"sdkVersion\":").Append(JsonString(m.SdkVersion));
+            // 平台: 枚举按位声明, 落盘转字符串数组(None = 没声明, 不写这个字段)
+            string[] platforms = ModPlatforms.ToNames(m.Platforms);
+            if (platforms.Length > 0)
+            {
+                sb.Append(",\"platforms\":[");
+                for (int i = 0; i < platforms.Length; i++)
+                {
+                    if (i > 0) sb.Append(',');
+                    sb.Append(JsonString(platforms[i]));
+                }
+                sb.Append(']');
+            }
             // 依赖
             sb.Append(",\"dependencies\":[");
             if (m.Dependencies != null)

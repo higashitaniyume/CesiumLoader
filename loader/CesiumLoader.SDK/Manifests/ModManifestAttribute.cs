@@ -27,5 +27,12 @@ namespace CesiumLoader.SDK.Manifests
 
         /// <summary>依赖的其他 mod(程序集名 + 最低版本)。加载器按依赖顺序加载。</summary>
         public ModDependency[] Dependencies { get; set; } = Array.Empty<ModDependency>();
+
+        /// <summary>
+        /// 支持的平台: 与 <see cref="ModPermission"/> 一样按位声明, 例如
+        /// <c>Platforms = ModPlatform.Windows | ModPlatform.Android</c>。
+        /// 缺省(<see cref="ModPlatform.None"/>) = 两个平台都支持; 只作界面标注, 不参与加载门槛。
+        /// </summary>
+        public ModPlatform Platforms { get; set; } = ModPlatform.None;
     }
 }

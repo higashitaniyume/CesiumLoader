@@ -10,7 +10,7 @@ namespace Apcsm
     internal static class Program
     {
         // 当前 SDK 版本(与 dist 分发一致; 打包时写入 sidecar)
-        private const string SdkVersion = "3.5.2";
+        private const string SdkVersion = "3.8.1";
 
         private static int Main(string[] args)
         {
@@ -137,15 +137,19 @@ namespace Apcsm
                     // mod 元数据: 程序集级声明(权威位置, 读取时不触发类型加载, 兼容 HybridCLR)。
                     // Permissions 声明会用到的能力(仅展示/警告, 已取消权限门控):
                     // 声明 GameActions(操作游戏)的 mod 在加载时/工具列表会显示 ⚠️ 警告。
+                    // Platforms 声明支持的平台(与 Permissions 一样是按位标记):
+                    // ModPlatform.Windows / ModPlatform.Android; 不写 = 两个平台都支持。
+                    // 只作界面标注, 不影响加载。
                     [assembly: ModManifest("{{name}}", "1.0.0", "{{author}}", "{{desc}}",
                         Permissions = ModPermission.ReadGameState,
-                        SdkVersion = "{{SdkVersion}}")]
+                        SdkVersion = "{{SdkVersion}}",
+                        Platforms = ModPlatform.Windows | ModPlatform.Android)]
                     """;
                 File.WriteAllText(Path.Combine(dir, "AssemblyInfo.cs"), asmInfo);
 
                 // 3. sidecar json(加载前就存在, 供依赖解析/版本协商/能力警告; 也随包分发)
                 string sidecar = $$"""
-                    {"id":"{{name}}","name":"{{name}}","version":"1.0.0","author":"{{author}}","description":"{{desc}}","permissions":1,"sdkVersion":"{{SdkVersion}}","dependencies":[]}
+                    {"id":"{{name}}","name":"{{name}}","version":"1.0.0","author":"{{author}}","description":"{{desc}}","permissions":1,"sdkVersion":"{{SdkVersion}}","platforms":["windows","android"],"dependencies":[]}
                     """;
                 File.WriteAllText(Path.Combine(dir, name + ".json"), sidecar);
 

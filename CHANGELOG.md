@@ -2,6 +2,20 @@
 
 本文件按版本记录 `CesiumLoader` 的功能变更。版本号与 GitHub 发布 tag 一一对应（如 `modloader-3.3.2`，版本号为 `3.3.2`），发布产物由 [release-modloader.yml](.github/workflows/release-modloader.yml) 在打 tag 时自动构建。
 
+## [3.8.1] - 2026-11-15
+
+### 平台声明：模组可以标注只支持 Windows 或 Android
+
+- `ModManifestAttribute` 新增 `Platforms`，与 `Permissions` 一样按位声明：`Platforms = ModPlatform.Windows | ModPlatform.Android`；缺省（`ModPlatform.None`）= 两个平台都支持，旧模组与第三方模组不写这个字段也能照常加载。
+- sidecar 落盘为字符串数组 `"platforms":["windows","android"]`（只写已知取值、去重、Windows 在前）；`ModPlatforms` 提供 `ToNames` / `Parse` / `Normalize` / `Supports` 转换。
+- 平台只用于界面标注，加载器与安卓引导都**不**按平台拦截。
+- 内置模组按实际能力声明：依赖 Win32 窗口 / 进程 / 桌面端文件的 11 个模组声明 `Windows`，其余声明两个平台（含触摸手势的 `FreeCameraMod`、可配置热键的 `SpeedHackMod` / `TurnClockMod`）。
+- `cesium init` 模板同时生成枚举声明与 sidecar 的 `platforms` 数组。
+
+### 构建与打包
+
+- SDK 的 `Version` / `FileVersion`、`SdkVersion.Current` / `LoaderVersion` 与加载器版本同步到 `3.8.1`。
+
 ## [3.8.0] - 2026-11-14
 
 ### 变速与回合时钟：没有原生加载器时也能用

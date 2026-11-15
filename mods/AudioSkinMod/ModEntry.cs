@@ -9,7 +9,7 @@ using CesiumLoader.SDK.Mods;
 
 [assembly: ModManifest("音效方案替换", AudioSkinMod.ModEntry.ModVersion, "CesiumLoader",
     "音效方案替换模组，支持自定义 UI、对局、技能、战斗、语音及背景音乐，支持多方案切换",
-    Permissions = ModPermission.ReadGameState | ModPermission.UI, SdkVersion = "3.0.0")]
+    Permissions = ModPermission.ReadGameState | ModPermission.UI, SdkVersion = "3.0.0", Platforms = ModPlatform.Windows | ModPlatform.Android)]
 
 namespace AudioSkinMod
 {

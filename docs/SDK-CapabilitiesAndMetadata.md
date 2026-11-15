@@ -43,6 +43,7 @@
 ```json
 {"id":"MyMod","name":"我的Mod","version":"1.0.0","author":"作者",
  "description":"描述","permissions":1,"sdkVersion":"2.3.0",
+ "platforms":["windows","android"],
  "dependencies":[{"id":"LibMod","minVersion":"1.0.0"}]}
 ```
 
@@ -52,7 +53,27 @@
 | `name` | 显示名 |
 | `permissions` | 权限位掩码 (与 C# 枚举一致: 1=ReadGameState, 2=GameActions, 4=SpeedHack, 8=FileWrite) |
 | `sdkVersion` | 需要的 SDK 最低版本 (SemVer) |
+| `platforms` | 支持的平台, 只认 `windows` / `android`; 不写 = 两个平台都支持 |
 | `dependencies` | 依赖的其他 mod (id + 可选 minVersion) |
+
+### 平台声明
+
+平台与 `Permissions` 一样按位声明 (`[Flags] ModPlatform`), 落盘时转成上面的字符串数组:
+
+```csharp
+[assembly: ModManifest("MyMod", "1.0.0", "作者", "描述",
+    Permissions = ModPermission.ReadGameState,
+    Platforms = ModPlatform.Windows | ModPlatform.Android)]
+
+// 只支持桌面版:
+[assembly: ModManifest("MyMod", "1.0.0", "作者", "描述",
+    Platforms = ModPlatform.Windows)]
+```
+
+- 缺省 (`ModPlatform.None`) = 没声明 = 两个平台都支持; 旧 mod / 第三方 mod 不写这个字段照常加载。
+- **平台只是标注**: 加载器与安卓引导都不会按平台拒绝加载, 界面只对单平台 mod 显示「仅 Windows」/「仅 Android」标签。
+- 转换工具: `ModPlatforms.ToNames(enum)` / `Parse(names)` / `Normalize(names)` / `Supports(enum, "android")`。
+
 
 ## 依赖解析 (加载器)
 
@@ -67,7 +88,7 @@
 
 ## API 版本协商
 
-- SDK 当前版本: `SdkVersion.Current = "3.5.2"` (与 csproj Version 一致)
+- SDK 当前版本: `SdkVersion.Current = "3.8.1"` (与 csproj Version 一致)
 - 加载器声明的当前版本: `doorstop_config.json` 的 `sdkVersion` (发布时同步更新)
 - mod 声明 `SdkVersion`: 高于当前 → 加载器拒绝加载该 mod
 - 运行时防御: `SdkVersion.Accepts("1.5.0")` / `SdkVersion.Compare(a, b)`

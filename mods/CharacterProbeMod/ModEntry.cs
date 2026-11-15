@@ -17,7 +17,7 @@ using UnityEngine.SceneManagement;
 
 [assembly: ModManifest("角色资源只读探针", "0.1.2", "CesiumLoader",
     "只读采集角色图片、进度条头像、动画与精灵元数据",
-    Permissions = ModPermission.ReadGameState | ModPermission.FileWrite, SdkVersion = "2.3.2")]
+    Permissions = ModPermission.ReadGameState | ModPermission.FileWrite, SdkVersion = "2.3.2", Platforms = ModPlatform.Windows)]
 
 namespace CharacterProbeMod
 {
