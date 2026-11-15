@@ -431,19 +431,19 @@ namespace PvePanelMod
         // ---------------- 一个格子：卡面，或 品质底图 + 筹码图标 ----------------
 
         /// <summary>
-        /// 结束后的样子（卡牌和筹码用同一套规则）：
-        ///   被拿走的（买了的卡 / 选中的筹码）= 盖一层深色 + ✓；
-        ///   没拿的卡 = 保持原色；没选的筹码 = 图标连同品质底图一起变黑白。
+        /// 卡牌和筹码用同一套规则，「彩色 = 被拿走了」：
+        ///   还在逛 / 还在选（绿点亮着）：全部彩色，方便看清店里有什么；已经买下的卡加一圈绿色细框；
+        ///   结束后：买了的卡 / 选中的筹码保持彩色，没拿的变黑白（筹码连同品质底图一起）。
+        /// 不再盖深色和打勾：彩色本身就是「拿走了」，悬停提示里仍写着「已购买」。
         /// 筹码品质底图是 wiki 上的 UT_RelicBase_*（游戏里按这个名字加载不出来），随模组放在 data/relicbase_*.png。
         /// </summary>
         private sealed class Item
         {
             private readonly Icons _icons;
             private readonly float _k;
-            private readonly GGraph _well, _shade, _shadeRound;
+            private readonly GGraph _well, _frame;
             private readonly GLoader _base;
             private readonly UI.TextureLoader _img;
-            private readonly GTextField _check;
             private float _x, _y;
 
             public Item(GComponent parent, Icons icons, float k)
@@ -459,27 +459,18 @@ namespace PvePanelMod
                 parent.AddChild(_base);
                 _img = new UI.TextureLoader { touchable = false, fill = FillType.ScaleFree };
                 parent.AddChild(_img);
-                var dark = new Color(0f, 0f, 0f, 0.55f);
-                _shade = new GGraph { touchable = false };
-                _shade.DrawRoundRect(s, s, dark, new[] { 7f * k, 7f * k, 7f * k, 7f * k });
-                parent.AddChild(_shade);
-                _shadeRound = new GGraph { touchable = false };
-                _shadeRound.DrawEllipse(s, s, dark);
-                parent.AddChild(_shadeRound);
-                _check = LeftPanel.Text(18f * k, Color.white, true);
-                _check.text = "✓";
-                parent.AddChild(_check);
+                // 还在逛时「已经买下」的细框：和右上角「进行中」的绿点同色，盖在卡面上面（只有边、不挡图）
+                _frame = new GGraph { touchable = false };
+                _frame.DrawRect(s, s, Mathf.Max(2, Mathf.RoundToInt(2f * k)), Live, Color.clear);
+                parent.AddChild(_frame);
             }
 
             public void SetXY(float x, float y)
             {
                 _x = x; _y = y;
-                float s = ItemSize * _k;
                 _well.SetXY(x, y);
                 _base.SetXY(x, y);
-                _shade.SetXY(x, y);
-                _shadeRound.SetXY(x, y);
-                _check.SetXY(x + (s - _check.textWidth) / 2f, y + (s - _check.textHeight) / 2f);
+                _frame.SetXY(x, y);
             }
 
             public void ShowCard(int cardId, bool bought, bool done)
@@ -487,15 +478,14 @@ namespace PvePanelMod
                 float s = ItemSize * _k;
                 _well.visible = true;
                 _base.visible = false;
-                _shadeRound.visible = false;
                 _img.visible = true;
                 _img.SetSize(s, s);
                 _img.SetXY(_x, _y);
                 string url = CardUrl(cardId);
                 if (_img.url != url) _img.url = url;
-                _img.grayed = false;
+                _img.grayed = done && !bought;
                 _img.alpha = 1f;
-                _shade.visible = _check.visible = bought;
+                _frame.visible = bought && !done;
                 _img.data = TipText.Card(cardId, bought);
                 _base.data = null;
             }
@@ -506,7 +496,7 @@ namespace PvePanelMod
                 string icon, quality;
                 RelicInfo(relicId, out icon, out quality);
                 _well.visible = false;
-                _shade.visible = false;
+                _frame.visible = false;   // 筹码只能选一个、选完就结束，用不着「已经拿了」的框
                 _base.visible = true;
                 _base.texture = _icons.Get("relicbase_" + quality);
                 _img.visible = true;
@@ -516,14 +506,13 @@ namespace PvePanelMod
                 bool gray = done && !picked;
                 _img.grayed = _base.grayed = gray;
                 _img.alpha = _base.alpha = 1f;
-                _shadeRound.visible = _check.visible = picked;
                 _base.data = TipText.Relic(relicId);   // 挂在整枚筹码（底图）上
                 _img.data = null;
             }
 
             public void Hide()
             {
-                _well.visible = _base.visible = _img.visible = _shade.visible = _shadeRound.visible = _check.visible = false;
+                _well.visible = _base.visible = _img.visible = _frame.visible = false;
                 _img.data = _base.data = null;
             }
 
