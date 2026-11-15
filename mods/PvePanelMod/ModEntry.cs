@@ -73,7 +73,7 @@ namespace PvePanelMod
         {
             _icons = new Icons(Context?.Directory);
             _left = new LeftPanel(_icons);
-            _right = new RightPanel(_icons);
+            _right = new RightPanel(_icons, msg => Log.Info(msg));
             _battle = new BattleView();
             _drawer = new HandDrawer();
             _tooltip = new Tooltip();
@@ -331,7 +331,14 @@ namespace PvePanelMod
                 try { _waves = WaveSchedule.Build(room, SimpleSingletonProvider<LandManager>.inst, 20); }
                 catch { _waves = new List<WaveInfo>(); }
             }
-            _right.Render(RightEdge(), round, progress, _waves, rows, _rightState.Snapshot());
+            // 有官方右上角那列按钮（表情、聊天…）就贴在它们左边、和最上面的按钮顶部对齐，并且压在它们的窗口下面，
+            // 这样打开表情列表、聊天菜单时是它们盖住右栏；读不到就退回原来贴屏幕右边的位置
+            Window expr;
+            Rect buttons;
+            if (GameWindows.ExpressionButtons(out expr, out buttons, msg => Log.Info(msg)))
+                _right.Render(buttons.xMin - 8f * PanelScale.K(), buttons.yMin, expr, round, progress, _waves, rows, _rightState.Snapshot());
+            else
+                _right.Render(RightEdge(), -1f, null, round, progress, _waves, rows, _rightState.Snapshot());
         }
 
         /// <summary>方格地图出错只记日志、退回官方小地图，不连累左右两栏。</summary>

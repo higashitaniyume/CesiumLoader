@@ -42,21 +42,27 @@ namespace PvePanelMod
         // 每 0.25 秒都要用，放字段里复用，免得每帧刷新都 new 两个 List
         private readonly List<WaveInfo> _upcoming = new List<WaveInfo>();
         private readonly List<int> _monsterRounds = new List<int>();
-        private float _k, _right;
+        private const int DefaultOrder = 25010;
+        private float _k, _right, _top;
+        private bool _floating, _loggedOrder;
         private int _waveLines = -1;
         private string _lastHeader;
 
-        public RightPanel(Icons icons) { _icons = icons; }
+        private readonly Action<string> _info;
+
+        public RightPanel(Icons icons, Action<string> info) { _icons = icons; _info = info; }
 
         public void Hide()
         {
             if (_layer != null && !_layer.isDisposed) _layer.visible = false;
         }
 
-        /// <param name="rightEdge">屏幕右边在界面坐标里的位置。窄屏（如 1028×720）时界面根节点比屏幕窄，要用官方面板的右边界。</param>
+        /// <param name="rightEdge">右栏右边贴到哪（界面坐标）：官方按钮列的左边，或者屏幕右边。窄屏（如 1028×720）时界面根节点比屏幕窄，要用官方面板的右边界。</param>
+        /// <param name="top">右栏顶部的位置；小于 0 = 用原来的默认高度。</param>
+        /// <param name="under">要压在它下面的官方窗口（表情 / 聊天那列按钮所在的窗口）；null = 照旧放在最上层。</param>
         /// <param name="round">第几回合：标题和轮次奖励倒计时用。</param>
         /// <param name="progress">游戏进度（GameProgress）：波次按它触发。平时等于回合，玩家被击倒会让它多推进。</param>
-        public void Render(float rightEdge, int round, int progress, List<WaveInfo> waves, List<PlayerRow> players, Dictionary<long, RightEntry> entries)
+        public void Render(float rightEdge, float top, Window under, int round, int progress, List<WaveInfo> waves, List<PlayerRow> players, Dictionary<long, RightEntry> entries)
         {
             var root = GRoot.inst;
             if (root == null || players == null || players.Count == 0) { Hide(); return; }
@@ -67,13 +73,16 @@ namespace PvePanelMod
                 foreach (var w in waves) if (w.Progress > progress && _upcoming.Count < MaxWaves) _upcoming.Add(w);
 
             if (_layer == null || _layer.isDisposed || _layer.parent != root || Math.Abs(k - _k) > 0.001f
-                || _rows.Count != players.Count || _waveLines != _upcoming.Count)
-                Build(root, k, players.Count, _upcoming.Count);
-            if (Math.Abs(rightEdge - _right) > 0.5f)
+                || _rows.Count != players.Count || _waveLines != _upcoming.Count || _floating != (under != null))
+                Build(root, k, players.Count, _upcoming.Count, under != null);
+            if (top < 0f) top = Top * k;
+            if (Math.Abs(rightEdge - _right) > 0.5f || Math.Abs(top - _top) > 0.5f)
             {
                 _right = rightEdge;
-                _box.SetXY(rightEdge - _box.width, PanelScale.FitBottom(Top * k, _box.height));   // 放大后不超出屏幕底边
+                _top = top;
+                _box.SetXY(rightEdge - _box.width, PanelScale.FitBottom(top, _box.height));   // 放大后不超出屏幕底边
             }
+            PlaceUnder(root, under);
 
             // 第一排：刷怪和轮次奖励都在回合开头结算，所以只看以后的（没有「本回合」）
             _monsterRounds.Clear();
@@ -102,16 +111,46 @@ namespace PvePanelMod
             if (!_layer.visible) _layer.visible = true;
         }
 
+        /// <summary>
+        /// 把右栏的层级放到 <paramref name="under"/> 下面。FairyGUI 里 sortingOrder 大的在上；
+        /// sortingOrder 相同（都是 0）时按子节点顺序，而 SetChildIndex 只对 sortingOrder 为 0 的节点有效。
+        /// </summary>
+        private void PlaceUnder(GRoot root, Window under)
+        {
+            if (under == null || under.isDisposed || under.parent != root)
+            {
+                if (_layer.sortingOrder != DefaultOrder) _layer.sortingOrder = DefaultOrder;
+                return;
+            }
+            if (!_loggedOrder)
+            {
+                _loggedOrder = true;
+                _info?.Invoke("PVE 面板右栏：表情 / 聊天按钮窗口 sortingOrder=" + under.sortingOrder
+                    + "，在第 " + root.GetChildIndex(under) + " 层（共 " + root.numChildren + " 层）");
+            }
+            if (under.sortingOrder > 0)
+            {
+                int order = under.sortingOrder - 1;
+                if (_layer.sortingOrder != order) _layer.sortingOrder = order;
+                return;
+            }
+            if (_layer.sortingOrder != 0) _layer.sortingOrder = 0;
+            int wi = root.GetChildIndex(under), li = root.GetChildIndex(_layer);
+            if (wi >= 0 && li > wi) root.SetChildIndex(_layer, wi);
+        }
+
         // ---------------- 搭骨架 ----------------
 
-        private void Build(GRoot root, float k, int count, int waveLines)
+        private void Build(GRoot root, float k, int count, int waveLines, bool floating)
         {
             Dispose();
             _k = k;
             _waveLines = waveLines;
+            _floating = floating;
             _lastHeader = null;
             _right = -1f;
-            _layer = new GComponent { name = "PvePanelRight", sortingOrder = 25010, touchable = false };
+            _top = -1f;
+            _layer = new GComponent { name = "PvePanelRight", sortingOrder = DefaultOrder, touchable = false };
             root.AddChild(_layer);
 
             float waveBlock = waveLines > 0 ? waveLines * WaveLineH + 8f : 0f;
@@ -121,13 +160,14 @@ namespace PvePanelMod
             _box.SetSize(w, h);
             _layer.AddChild(_box);
 
-            // 底板：左边圆角，右边贴死屏幕边
+            // 底板：贴屏幕边时左边圆角、右边贴死；挪到按钮列左边（浮着）时四角都圆、四边都有边框
+            float rr = floating ? r : 0f, ri = floating ? r - b : 0f, inner = floating ? w - 2 * b : w - b;
             var border = new GGraph { touchable = false };
-            border.DrawRoundRect(w, h, BorderColor, new[] { r, 0f, r, 0f });
+            border.DrawRoundRect(w, h, BorderColor, new[] { r, rr, r, rr });
             _box.AddChild(border);
             var bg = new GGraph { touchable = false };
             bg.SetXY(b, b);
-            bg.DrawRoundRect(w - b, h - 2 * b, PanelColor, new[] { r - b, 0f, r - b, 0f });
+            bg.DrawRoundRect(inner, h - 2 * b, PanelColor, new[] { r - b, ri, r - b, ri });
             _box.AddChild(bg);
 
             float y = 6f * k;
@@ -148,13 +188,13 @@ namespace PvePanelMod
 
             var sep = new GGraph { touchable = false };
             sep.SetXY(b, y);
-            sep.DrawRect(w - b, Mathf.Max(1f, k), 0, Color.clear, LineColor);
+            sep.DrawRect(inner, Mathf.Max(1f, k), 0, Color.clear, LineColor);
             _box.AddChild(sep);
             y += 4f * k;
 
             for (int i = 0; i < count; i++)
             {
-                var row = new RowView(_icons, k, w);
+                var row = new RowView(_icons, k, floating ? inner : w);
                 row.Root.SetXY(b, y + i * (RowH + RowGap) * k);
                 _box.AddChild(row.Root);
                 _rows.Add(row);
