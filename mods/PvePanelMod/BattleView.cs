@@ -319,7 +319,19 @@ namespace PvePanelMod
         }
 
         /// <summary>名字超过 7 个字就截断加「…」，长昵称不会把面板撑出屏幕。</summary>
-        private static string ShortName(string s) => string.IsNullOrEmpty(s) || s.Length <= 7 ? (s ?? "") : s.Substring(0, 7) + "…";
+        // 名字里的 UBB 标签：「炫彩ID」这类 mod 改出来的名字会带 [color=…][b][s][sub] 等，服务器原样保存，别的玩家用了这边也会收到
+        private static readonly System.Text.RegularExpressions.Regex Ubb = new System.Text.RegularExpressions.Regex(
+            @"\[/?(color|size|font|b|i|u|s|strike|del|sub|sup|url|img)(=[^\]]*)?\]",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        /// <summary>先去掉 UBB 标签再截到 7 个字（不去的话截出来是「[color=…」）。去完是空的就用原名。</summary>
+        internal static string ShortName(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            string plain = Ubb.Replace(s, "").Trim();
+            if (plain.Length == 0) plain = s;
+            return plain.Length <= 7 ? plain : plain.Substring(0, 7) + "…";
+        }
 
         private static Color SurviveColor(double p) => p >= 0.8 ? Green : p >= 0.5 ? Yellow : Red;
         private static Color KillColor(double p) => p >= 0.6 ? Green : p >= 0.3 ? Yellow : Red;
