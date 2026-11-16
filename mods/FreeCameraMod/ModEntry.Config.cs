@@ -26,7 +26,9 @@ namespace FreeCameraMod
             "mode", "height", "heightStep", "pitch", "fov", "boardHeight", "aimDistance",
             "maxTargetDistance", "autoActivate", "autoActivateDelay",
             "orbitDistance", "distanceStep", "speed", "rotationSpeed", "invertY", "lockCursor",
-            "nearClip", "farClip"
+            "nearClip", "farClip",
+            // v2.7.2 移除: 点击怪物头像还原视角已永久停用(改由游戏自己切镜头), 留着键只会误导。
+            "restoreOnMonsterFocus"
         };
 
         private void LoadConfig(bool isInitial = false)
@@ -81,7 +83,6 @@ namespace FreeCameraMod
             _rotateStep = _config.GetFloat("rotateStep", _rotateStep);
             _invertRotate = _config.GetBool("invertRotate", _invertRotate);
             _blockPanWhileRotate = _config.GetBool("blockPanWhileRotate", _blockPanWhileRotate);
-            _restoreOnMonsterFocus = _config.GetBool("restoreOnMonsterFocus", _restoreOnMonsterFocus);
 
             // 数值兜底: 配置写坏也不能变成"滚轮没反应"或"一滚飞出去"
             if (!IsUsable(_zoomStep)) _zoomStep = FreeCameraMath.DefaultZoomStep;
@@ -111,7 +112,7 @@ namespace FreeCameraMod
             bool docsChanged = FreeCameraConfigDocs.Apply(_config);
             if (!force && _config.Has("autoFollow") && _config.Has("zoomStep") && _config.Has("restoreKey") &&
                 _config.Has("rotateLeftKey") && _config.Has("rotateSpeed") && _config.Has("rotateStep") &&
-                _config.Has("invertRotate") && _config.Has("restoreOnMonsterFocus"))
+                _config.Has("invertRotate"))
             {
                 if (docsChanged)
                 {
@@ -140,7 +141,6 @@ namespace FreeCameraMod
             _config.Set("rotateStep", _rotateStep);
             _config.Set("invertRotate", _invertRotate);
             _config.Set("blockPanWhileRotate", _blockPanWhileRotate);
-            _config.Set("restoreOnMonsterFocus", _restoreOnMonsterFocus);
             _config.SaveIfDirty();
             _configFixed = true;
         }
