@@ -2,6 +2,12 @@
 
 本文件按版本记录 `CesiumLoader` 的功能变更。版本号与 GitHub 发布 tag 一一对应（如 `modloader-3.3.2`，版本号为 `3.3.2`），发布产物由 [release-modloader.yml](.github/workflows/release-modloader.yml) 在打 tag 时自动构建。
 
+## [3.8.6] - 2026-11-16
+
+### 模组
+
+- `FreeCameraMod` 2.7.1 → 2.7.2：移除「点击怪物头像时还原缩放/旋转」开关（`restoreOnMonsterFocus`）。该行为已停用，镜头切换交回游戏自己处理；老配置里的该键在加载时自动清除。
+
 ## [3.8.5] - 2026-11-16
 
 ### 更新检查（加载器 + 游戏内提示）
