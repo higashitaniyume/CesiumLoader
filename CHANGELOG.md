@@ -2,6 +2,26 @@
 
 本文件按版本记录 `CesiumLoader` 的功能变更。版本号与 GitHub 发布 tag 一一对应（如 `modloader-3.3.2`，版本号为 `3.3.2`），发布产物由 [release-modloader.yml](.github/workflows/release-modloader.yml) 在打 tag 时自动构建。
 
+## [3.8.5] - 2026-11-16
+
+### 更新检查（加载器 + 游戏内提示）
+
+- 加载器启动后在后台线程拉取 Release 的静态 `version.json`（不请求 GitHub API，无配额与鉴权），直连失败自动回退 `gh-proxy` 镜像；结果写入 `update/state.json`，控制台以绿色输出一行 `[update]`。
+- 新增配置：`updateCheckEnabled`、`updateCheckUrl`、`updateCheckMirror`、`updateCheckIntervalHours`、`updateCheckTimeoutSec`。默认 6 小时内不重复联网（复用上次结果）、单条请求 8 秒超时；取值范围越界按默认值处理。
+- Debug Shell 新增 `update` 命令：`update` 查看结论与发布页、`update check` 忽略冷却强制重查、`update open` 用默认浏览器打开发布页；`status` 增加「更新」一行。
+- 新增内置模组 `UpdateNoticeMod 1.0.0`（加载器更新提示）：发现新版本时在游戏内弹面板，显示当前/最新版本与发布页，提供「打开发布页」「忽略此版本」「稍后再看」，热键 `F8`。模组自身不联网，只读状态文件，并通过本地 UDP 请求加载器执行打开浏览器/重新检查。
+
+### SDK
+
+- 新增 `CesiumLoader.SDK.Updates.UpdateCheck` / `UpdateCheckState`：读取检查结果、请求重新检查、打开发布页（见 [SDK-UpdateCheck](docs/SDK-UpdateCheck.md)）。
+- `WidgetService` 新增 `Button` / `SetOnClick` / `IsButtonAvailable`，可在 mod 面板里放置可点击按钮，缺 uGUI 类型时安全退回键盘交互。
+- `WidgetService.Place` 现在会把 `pivot` 对齐到锚点所在的角/边。此前只设锚点、pivot 仍是中心，`position` 变成「矩形中心离锚点多远」，顶部元素会向上溢出、相邻两行叠在一起。
+
+### 构建与打包
+
+- SDK 的 `Version` / `FileVersion`、`SdkVersion.Current` / `LoaderVersion` 与加载器版本同步到 `3.8.5`。
+- `tools/builtin-mods.json` 与 Toys 内置分发清单加入 `UpdateNoticeMod`。
+
 ## [3.8.3] - 2026-11-15
 
 ### 内置 PVE 面板更新（PvePanelMod 0.3.1）

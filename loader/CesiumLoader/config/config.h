@@ -172,6 +172,35 @@ struct LoaderConfig
     // 仅在 steamBypassMatchmaking 为 true 时有意义。false = 不挂钩(游戏退回 SetPublic 的 NRE)。
     bool steamBypassLobbyHasValue = false;
 
+    // ---------- 更新检查(实现见 update/update.h) ----------
+    //
+    // 加载器启动后在**后台线程**拉一次 GitHub Release 的静态 version.json, 把结果写进
+    // <loader>\update\state.json, 并在控制台打一行 [update]。内置模组 UpdateNoticeMod
+    // 读那个文件在游戏里显示提示; 关掉这里只是不再自动联网(不装该模组时完全无感)。
+    //
+    // 为什么要联网: 加载器与 SDK/内置模组是强耦合的(热更后必须整包重编译), 玩家手里的
+    // 旧版撞上新版游戏会出现"模组起不来"这类看似 bug 的现象。提前提示更新, 比事后排查便宜。
+    bool updateCheckEnabled = true;
+
+    // 清单地址。默认取 GitHub Release 的 latest/download 静态资产(CI 每次发布都带),
+    // 不请求 GitHub REST API —— 无配额、无鉴权。换成自己的地址也能工作, 只要字段同名。
+    std::string updateCheckUrl =
+        "https://github.com/higashitaniyume/CesiumLoader/releases/latest/download/version.json";
+
+    // 镜像策略(国内直连 GitHub 经常超时):
+    //   "auto"(默认) = 先直连, 失败后自动用 https://gh-proxy.com/ 前缀再试一次
+    //   "off" / "none" / "direct" = 只直连
+    //   其它非空字符串 = 当作镜像前缀(自动补尾随 /), 同样先直连再走它
+    std::string updateCheckMirror = "auto";
+
+    // 两次联网检查的最小间隔(小时)。上次结果在有效期内时直接复用 state.json, 不联网。
+    // 取值范围 [1, 168]; 越界按默认 6 处理。
+    unsigned updateCheckIntervalHours = 6;
+
+    // 单条请求的超时(秒), 范围 [2, 60]; 越界按默认 8 处理。
+    // 注意这是"读+连"单次的上限, 直连+镜像两条通道最坏会各等满一次。
+    unsigned updateCheckTimeoutSec = 8;
+
     // 当前分发的 SDK 版本(SemVer)。加载器用它校验 mod 声明的 SdkVersion,
     // 不兼容(mod 要求更高版本)时拒绝加载该 mod 并记录警告。
     // 发布新版 SDK 时手动更新此字段 + dist\sdk\CesiumLoader.SDK.dll。
@@ -248,11 +277,11 @@ struct LoaderConfig
     // 只受本开关控制。设为 false = 恢复原版行为(退房/解散/被踢时 await 之后的代码仍会被 NRE 跳过)。
     bool steamBypassLobbyQuery = false;
 
-    std::string sdkVersion = "3.8.3";
+    std::string sdkVersion = "3.8.5";
 
     // 加载器自身版本(SemVer)。与发布 tag (modloader-<版本>) 对应, 启动横幅会打印。
     // 与 sdkVersion 独立递增: 改动引导/互操作/打包时递增此值。
-    static constexpr const char* loaderVersion = "3.8.3";
+    static constexpr const char* loaderVersion = "3.8.5";
 };
 
 // 从 config_path 读取配置。文件不存在/解析失败返回默认配置(不抛异常)。

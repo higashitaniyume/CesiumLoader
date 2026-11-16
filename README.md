@@ -84,6 +84,7 @@ winget install Hiynet.AstralParty.Toys
 | [PinnedRelicsMod](mods/PinnedRelicsMod/README.md) | 持有指定筹码后，在左侧玩家星币下方横排显示游戏原生图标，支持中文名自定义名单、大小与位置 |
 | [PvePanelMod](mods/PvePanelMod/README.md) | PVE 对局合并面板：左栏头像/血量/星币/星级/技能冷却/buff，右栏波次与商店筹码，手牌抽屉与战斗胜率读数 |
 | [AngelModeUnlockMod](mods/AngelModeUnlockMod/README.md) | 解除审核渠道对「天使模式」开关的封锁，恢复设置页开关并可固定开关状态 |
+| [UpdateNoticeMod](mods/UpdateNoticeMod/README.md) | 加载器发现新版本时在游戏内弹面板：显示当前/最新版本、打开发布页、忽略此版本或稍后再看（模组自身不联网） |
 
 内置模组的 `config.json` 带简中、繁中、英文、日文配置说明，Toys 会按界面语言显示；第三方模组可按 [配置与元数据](docs/SDK-ConfigAndMetadata.md) 用 `ConfigDoc` 提供说明。
 
@@ -108,6 +109,9 @@ winget install Hiynet.AstralParty.Toys
 | `crashDumpEnabled` / `crashDumpFullMemory` | 访问冲突、栈溢出等致命原生异常时在 `crash/` 写 `<会话>.dmp` 与同名说明文件（含异常摘要与崩溃时的加载器环境信息），可直接用 Visual Studio 打开；后者连完整内存一起导出 |
 | `nativeWatchdogEnabled` / `nativeWatchdogTimeoutSec` | 主线程停滞（游戏无响应）超过阈值时自动写 `crash/hang-<会话>.dmp`，用于没有异常可抓的卡死；默认关 |
 | `debugWaitForDebugger` / `debugWaitTimeoutSec` | 引导线程等待调试器附加后再继续（默认关），便于在游戏启动阶段下断点 |
+| `updateCheckEnabled` | 启动后在后台检查加载器新版本（默认开）。结果写入 `update/state.json`，控制台以绿色打一行 `[update]`，游戏内由 UpdateNoticeMod 提示 |
+| `updateCheckMirror` | 更新检查的镜像策略：`auto`（默认，直连失败后自动走 `https://gh-proxy.com/`）、`off`（只直连）或自定义镜像前缀 |
+| `updateCheckIntervalHours` / `updateCheckTimeoutSec` | 两次联网检查的最小间隔（默认 6 小时，1–168）与单条请求超时（默认 8 秒，2–60）；有效期内复用上次结果 |
 
 模组加载采用**启动门就绪判定**：进入主界面或可玩场景且稳定 1 秒后立刻完成初始化，告别旧版固定等待 30 秒；若特殊场景未触发判定，到达 30 秒上限后仍会兜底触发。如需恢复固定等待，可设置环境变量 `CESIUM_MOD_BOOT_GATE=0`。
 
@@ -126,10 +130,11 @@ cesium> ls TurnFocus
 cesium> set TurnFocusMod.cooldownSeconds 2
 cesium> set loader.speedhackBaseSpeed 3
 cesium> dump 卡住了
+cesium> update check
 cesium> exit
 ```
 
-配置键为 `loader.<字段>` 或 `<ModId>.<键>`，`ls` 列出全部可配置项，`get` / `set` 读写单个键，`help` 查看全部命令。`dump` 会立即把当前所有线程栈写一份转储到 `crash\`（写入期间游戏停顿不到 1 秒），用于没有崩溃、也没有卡死时的现场取证。行编辑与常见 shell 一致：方向键移动光标、`Home` / `End`、`Delete`、`Ctrl+W`/`Ctrl+K`/`Ctrl+U` 删词删行，`Tab` 补全命令名与配置键。修改会立即写盘并保留文件原有格式。
+配置键为 `loader.<字段>` 或 `<ModId>.<键>`，`ls` 列出全部可配置项，`get` / `set` 读写单个键，`help` 查看全部命令。`update` 查看最近一次更新检查的结论（版本、发布页、检查时间），`update check` 忽略冷却立刻重查，`update open` 用默认浏览器打开发布页。`dump` 会立即把当前所有线程栈写一份转储到 `crash\`（写入期间游戏停顿不到 1 秒），用于没有崩溃、也没有卡死时的现场取证。行编辑与常见 shell 一致：方向键移动光标、`Home` / `End`、`Delete`、`Ctrl+W`/`Ctrl+K`/`Ctrl+U` 删词删行，`Tab` 补全命令名与配置键。修改会立即写盘并保留文件原有格式。
 
 日志按启动会话分别保存，文件名包含时间与进程 ID；排障时保留对应会话的日志及同次构建的 DLL/PDB。
 

@@ -14,6 +14,7 @@
 #include "shell/shell.h"
 #include "speed/speedctl.h"
 #include "speed/speedhack.h"
+#include "update/update.h"
 #include "window/windowctl.h"
 
 #include <tlhelp32.h>
@@ -110,6 +111,10 @@ std::wstring env_value(const wchar_t* name)
 
 void cmd_help(const std::vector<std::string>& args);
 
+// 定义在文件后半段(更新检查一节), status 也要用。
+std::string update_line(const cesium::update::Summary& s);
+WORD update_color(const cesium::update::Summary& s);
+
 void cmd_status(const std::vector<std::string>&)
 {
     const auto snap = cesium::runtime::snapshot();
@@ -136,6 +141,11 @@ void cmd_status(const std::vector<std::string>&)
 
     print("变速   " + format_speed_line() +
           fmt::format(" · base {}", format_double(snap.cfg.speedhackBaseSpeed)));    print(fmt::format("mods   {}/{} 已加载", loaded, snap.mods.size()));
+
+    {
+        const auto update = cesium::update::summary();
+        print("更新   " + update_line(update), update_color(update));
+    }
 
     print("日志   " + narrow(short_path(cesium::log::loader_log_path())), LOG_DIM);
 }
@@ -391,6 +401,107 @@ void cmd_exit(const std::vector<std::string>& args)
     ExitProcess(code);
 }
 
+// ---------- 更新检查 ----------
+
+// 一行摘要(update 命令与 status 共用), 保证两处说法一致。
+std::string update_line(const cesium::update::Summary& s)
+{
+    if (!s.enabled) return "已关闭(updateCheckEnabled=false)";
+    if (s.checking) return "检查中…";
+    if (s.status == "update-available")
+        return "有新版本 " + s.latest_version + " (当前 " + s.current_version + ")";
+    if (s.status == "up-to-date") return "已是最新 (" + s.current_version + ")";
+    if (s.status == "error") return "检查失败: " + (s.error.empty() ? std::string("未知错误") : s.error);
+    if (s.status == "idle" || s.status.empty()) return "尚未检查";
+    if (s.status == "disabled") return "已关闭";
+    return s.status;
+}
+
+WORD update_color(const cesium::update::Summary& s)
+{
+    if (!s.enabled) return LOG_DIM;
+    // 与控制台日志同一套语义: 有可用更新用亮绿, 失败用红, 其余压暗。
+    if (s.status == "update-available") return LOG_GREEN;
+    if (s.status == "error") return LOG_RED;
+    if (s.status == "up-to-date") return LOG_DIM;
+    return LOG_DIM;
+}
+
+std::string update_state_path()
+{
+    return narrow(short_path(cesium::update::update_dir(loader_root()) + L"\\state.json"));
+}
+
+void cmd_update(const std::vector<std::string>& args)
+{
+    const std::string sub = args.empty() ? std::string() : cesium::shell::lower_ascii(args[0]);
+
+    if (sub == "check" || sub == "recheck" || sub == "--force" || sub == "-f")
+    {
+        if (!cesium::update::summary().enabled)
+        {
+            print("更新检查已关闭; 打开: set loader.updateCheckEnabled true(重启游戏生效)", LOG_YELLOW);
+            return;
+        }
+        cesium::update::request_check();
+        print("已在后台重新检查(忽略冷却); 结果会打一行 [update], 同时写进状态文件", LOG_DIM);
+        return;
+    }
+
+    if (sub == "open")
+    {
+        const auto state = cesium::update::summary();
+        if (state.release_url.empty())
+        {
+            print("还没有发布页地址: 先 update check, 或等首次检查完成", LOG_YELLOW);
+            return;
+        }
+        if (cesium::update::open_url(state.release_url))
+        {
+            print("已用默认浏览器打开: " + state.release_url);
+        }
+        else
+        {
+            print("打开失败(只允许 https 的 GitHub / 镜像域名): " + state.release_url, LOG_RED);
+        }
+        return;
+    }
+
+    if (sub == "path")
+    {
+        print(update_state_path());
+        return;
+    }
+
+    const auto state = cesium::update::summary();
+    print("更新     " + update_line(state), update_color(state));
+
+    if (!state.latest_version.empty())
+    {
+        std::string line = "线上版本 " + state.latest_version;
+        if (!state.release_tag.empty()) line += " · " + state.release_tag;
+        if (!state.release_date.empty()) line += " · " + state.release_date;
+        if (!state.source.empty()) line += " · " + state.source;
+        print(line);
+    }
+    if (!state.release_url.empty()) print("发布页   " + state.release_url, LOG_DIM);
+
+    if (state.checked_at_unix != 0)
+    {
+        char ago[64] = {};
+        const ULONGLONG now = now_utc_ms() / 1000ULL;
+        const ULONGLONG delta = now > state.checked_at_unix ? now - state.checked_at_unix : 0;
+        snprintf(ago, sizeof(ago), "%.1f 小时前", static_cast<double>(delta) / 3600.0);
+        print(fmt::format("上次检查 {} · {}", ago, update_state_path()), LOG_DIM);
+    }
+    else
+    {
+        print("状态文件 " + update_state_path(), LOG_DIM);
+    }
+
+    print("提示: update check 强制重查 · update open 打开发布页 · update path 只打印状态文件", LOG_DIM);
+}
+
 // ---------- 命令表 ----------
 
 struct Command
@@ -409,6 +520,7 @@ const Command kCommands[] = {
     { "paths", "paths", "全部目录与日志文件(带存在性)", "", cmd_paths },
     { "mods", "mods [--all]", "模组加载结果", "mods --all", cmd_mods },
     { "hooks", "hooks", "变速 hook 与各子系统状态", "", cmd_hooks },
+    { "update", "update [check|open|path]", "更新检查状态; check 强制重查, open 打开发布页", "update check", cmd_update },
     { "log", "log [行数|path]", "查看本次启动的加载器日志尾部", "log 50", cmd_log },
     { "dump", "dump [备注]", "立即写一份线程栈转储到 <loader>\\crash(写入时游戏短暂停顿)", "dump 卡住了", cmd_dump },
     { "proc", "proc", "进程资源(内存/句柄/线程)", "", cmd_proc },

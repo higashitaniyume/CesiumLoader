@@ -135,4 +135,5 @@ public static class ModEntry
 | [SDK-CapabilitiesAndMetadata.md](SDK-CapabilitiesAndMetadata.md) | 能力声明(仅警告) / sidecar 元数据 / 依赖解析 / 版本协商 |
 | [SDK-ConfigAndMetadata.md](SDK-ConfigAndMetadata.md) | SdkConfig JSON 配置 / ModManifest 元数据 / SdkManifest sidecar |
 | [SDK-Paths.md](SDK-Paths.md) | SdkPath / Path 路径服务 (各级目录发现、子路径定位与安全文件操作) |
+| [SDK-UpdateCheck.md](SDK-UpdateCheck.md) | UpdateCheck 加载器更新检查结果 (只读状态文件 / 请求重查 / 打开发布页) |
 

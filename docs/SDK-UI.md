@@ -109,6 +109,8 @@ WidgetService.EnsureEventSystem();             // Slider 拖动需要
 | `Text(parent, text, size, color, anchor)` | 文本，默认 `raycastTarget = false`、自动换行 |
 | `Slider(parent, min, max, value)` | 背景 + 填充，数值用 `SetValue` 修改 |
 | `Badge(parent, tint, rounded)` | 带底色的 Image |
+| `Button(parent, background, rounded)` | 可点击按钮（uGUI Button + Image）；文字自己 `Text` + `Stretch` 铺上去 |
+| `SetOnClick(buttonRect, action)` | 绑定点击回调；缺 uGUI Button 时返回 `false`（用 `IsButtonAvailable` 先判断） |
 | `Anchor` / `Stretch` / `Place` | 设置锚点 / 铺满父节点 / 贴角定位 |
 | `Destroy(rt)` / `DestroyAll()` | 销毁根节点（子节点递归销毁）/ 销毁本 SDK 创建的全部 Canvas |
 | `EnsureEventSystem()` | 复用已有 EventSystem，没有才创建 |

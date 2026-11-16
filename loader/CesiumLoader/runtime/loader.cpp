@@ -34,6 +34,7 @@
 #include "shell/shell.h"
 #include "steam/steamhack.h"
 #include "taptap/taptaphack.h"
+#include "update/update.h"
 
 #include <tlhelp32.h>
 #include <vector>
@@ -445,6 +446,17 @@ static DWORD WINAPI boot_thread(LPVOID)
     set_env_w(L"CESIUM_AUDIO_ENABLED", kEnableAudioControl ? L"1" : L"0");
     set_env_w(L"CESIUM_LOADER_DIR", loader_root());
     set_env_w(L"CESIUM_GAME_DIR", parent_dir(loader_root()));
+
+    // 更新检查(见 update/update.h): 在后台线程拉一次版本清单, 结果写 <loader>\update\state.json
+    // 并在控制台打一行 [update]。这里必须早于下面 SDK/mod 加载 ——
+    //   - mod(UpdateNoticeMod)在初始化时就要能读到状态文件与 CESIUM_UPDATE_PORT;
+    //   - 检查本身是 detached 线程, 不会拖慢引导。
+    {
+        const std::wstring update_watch_dir = cesium::update::update_dir(loader_root());
+        set_env_w(L"CESIUM_UPDATE_DIR", update_watch_dir);
+        log_line(L"[loader] update dir " + short_path(update_watch_dir));
+    }
+    cesium::update::start(loader_root(), cfg);
 
     // mod/SDK 日志级别: SdkLog 只读环境变量 CESIUM_LOG_LEVEL, 而 Steam 启动的游戏继承的是
     // Steam 进程的环境 —— 临时 setx 要连 Steam 一起重启才生效。所以把配置里的 logLevel

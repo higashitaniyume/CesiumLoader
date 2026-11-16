@@ -194,6 +194,7 @@ jobs:
             "HomeBottomBarMod" = "主页底栏调整, 隐藏公告 / 设置左移 / 右侧增加退出按钮"
             "UnlockFrameRateMod" = "帧率解锁, 帧率列表追加 144/165/240/360/不限帧"
             "LanguageUnlockMod" = "多语言支持, 国服启用英文/日文/繁中语言选项"
+            "UpdateNoticeMod" = "加载器更新提示, 发现新版本时在游戏内弹面板"
           }
           $modList = @()
           foreach ($mod in $builtInMods) {

@@ -232,6 +232,8 @@ namespace CesiumLoader.SDK.UserInterface
         private static Type _textType;
         private static Type _imageType;
         private static Type _sliderType;
+        private static Type _buttonType;
+        private static Type _unityActionType;
         private static Type _eventSystemType;
         private static Type _inputModuleType;
         private static Type _fontType;
@@ -272,6 +274,10 @@ namespace CesiumLoader.SDK.UserInterface
                 _textType = RuntimeAssemblyService.FindType("UnityEngine.UI.Text");
                 _imageType = RuntimeAssemblyService.FindType("UnityEngine.UI.Image");
                 _sliderType = RuntimeAssemblyService.FindType("UnityEngine.UI.Slider");
+                // Button 是**可选**能力: 缺它只让 WidgetService.Button / SetOnClick 返回 false,
+                // 不影响 Panel/Text/Slider(按钮是"锦上添花", 不该把整套 uGUI 判成不可用)。
+                _buttonType = RuntimeAssemblyService.FindType("UnityEngine.UI.Button");
+                _unityActionType = RuntimeAssemblyService.FindType("UnityEngine.Events.UnityAction");
                 _eventSystemType = RuntimeAssemblyService.FindType("UnityEngine.EventSystems.EventSystem");
                 _inputModuleType = RuntimeAssemblyService.FindType("UnityEngine.EventSystems.StandaloneInputModule");
                 _fontType = RuntimeAssemblyService.FindType("UnityEngine.Font");
@@ -341,6 +347,40 @@ namespace CesiumLoader.SDK.UserInterface
             return MainThread.Run(() => CreateImageCore(parent, "Badge", tint, rounded, false), null);
         }
 
+        /// <summary>当前环境是否支持按钮(uGUI Button + UnityAction 都解析到了)。</summary>
+        public static bool IsButtonAvailable
+        {
+            get
+            {
+                EnsureTypes();
+                return _buttonType != null && _unityActionType != null;
+            }
+        }
+
+        /// <summary>
+        /// 创建一个可点击按钮(纯色底 + uGUI Button)。按钮文字自己用 <see cref="Text"/> 建在它下面,
+        /// 再 <see cref="Stretch"/> 铺满即可 —— 这样文字样式/多行排版不用在这里再包一层。
+        ///
+        /// 缺 uGUI Button 时返回 null(整个 WidgetService 仍然可用), 调用方应退回
+        /// 键盘/热键交互而不是让面板消失。
+        /// </summary>
+        public static WidgetHandle Button(RectTransform parent, Color background, bool rounded = true)
+        {
+            if (ReferenceEquals(parent, null) || !IsAvailable || !IsButtonAvailable) return null;
+            return MainThread.Run(() => CreateButtonCore(parent, background, rounded), null);
+        }
+
+        /// <summary>
+        /// 给 <see cref="Button"/> 创建的节点绑定点击回调。
+        /// 返回是否绑定成功(缺 uGUI 类型、节点上没有 Button 组件时 false)。
+        /// </summary>
+        public static bool SetOnClick(RectTransform buttonRect, Action onClick)
+        {
+            if (ReferenceEquals(buttonRect, null) || onClick == null) return false;
+            if (!IsButtonAvailable) return false;
+            return MainThread.Run(() => SetOnClickCore(buttonRect, onClick), false);
+        }
+
         /// <summary>创建控件作用域(配合 <c>ctx.RegisterCleanup(scope.Dispose)</c>)。</summary>
         public static WidgetScope CreateScope(string name = null)
         {
@@ -381,8 +421,11 @@ namespace CesiumLoader.SDK.UserInterface
         }
 
         /// <summary>
-        /// 把锚点固定到父节点的某个角/边, 并设置尺寸。
+        /// 把锚点固定到父节点的某个角/边、把 **pivot 对齐到同一个角/边**, 并设置尺寸。
         /// <see cref="WidgetAnchor.Stretch"/> 时 <paramref name="position"/> 表示四边内缩, 忽略尺寸。
+        ///
+        /// pivot 必须跟着锚点走: 只设锚点的话 pivot 仍是中心, 传进去的 position 就变成
+        /// "矩形中心离锚点多远", 顶部元素会往上溢出、相邻两行会叠在一起(实测踩过)。
         /// </summary>
         public static bool Place(RectTransform rt, WidgetAnchor corner, Vector2 position, Vector2 size)
         {
@@ -414,6 +457,7 @@ namespace CesiumLoader.SDK.UserInterface
             {
                 try
                 {
+                    rt.pivot = min;
                     rt.anchoredPosition = position;
                     rt.sizeDelta = size;
                     return true;
@@ -630,6 +674,61 @@ namespace CesiumLoader.SDK.UserInterface
             }
 
             return new WidgetHandle(rt, image);
+        }
+
+        private static WidgetHandle CreateButtonCore(RectTransform parent, Color background, bool rounded)
+        {
+            // 复用 Image 的建法(圆角/九宫格贴图都在里面), 但必须接收鼠标命中 ——
+            // 按钮不 raycast 就永远点不到。
+            var visual = CreateImageCore(parent, "Button", background, rounded, true);
+            if (visual == null) return null;
+
+            var button = GameObjectUtil.AddComponent(visual.Rect.gameObject, _buttonType);
+            if (button == null)
+            {
+                UnityObject.SafeDestroy(visual.Rect.gameObject);
+                return null;
+            }
+
+            // targetGraphic 不设的话 Button 不会做高亮/按下的颜色过渡(点击仍然有效),
+            // 设上才有"按下变暗"的反馈。
+            SetMemberCore(button, "targetGraphic", visual.Component);
+            return new WidgetHandle(visual.Rect, button);
+        }
+
+        private static bool SetOnClickCore(RectTransform rect, Action onClick)
+        {
+            try
+            {
+                var go = rect.gameObject;
+                if (go == null) return false;
+
+                var button = go.GetComponent(_buttonType);
+                if (button == null) return false;
+
+                var property = _buttonType.GetProperty("onClick", BindingFlags.Public | BindingFlags.Instance);
+                if (property == null) return false;
+                var clicked = property.GetValue(button, null);
+                if (clicked == null) return false;
+
+                var addListener = clicked.GetType().GetMethod("AddListener", new[] { _unityActionType });
+                if (addListener == null) return false;
+
+                // UnityEvent.AddListener(UnityAction): 把托管 Action 绑定成 UnityAction。
+                // 两者的签名都是 void() —— CreateDelegate 能直接桥接, 不需要再写一个回调分发器。
+                var callback = onClick.Target == null
+                    ? Delegate.CreateDelegate(_unityActionType, onClick.Method)
+                    : Delegate.CreateDelegate(_unityActionType, onClick.Target, onClick.Method);
+                if (callback == null) return false;
+
+                addListener.Invoke(clicked, new object[] { callback });
+                return true;
+            }
+            catch (Exception e)
+            {
+                SdkLog.Warn("UI", "WidgetService.SetOnClick 失败: " + e.Message);
+                return false;
+            }
         }
 
         private static WidgetHandle CreateTextCore(RectTransform parent, string text, int size, Color color, WidgetAnchor anchor)

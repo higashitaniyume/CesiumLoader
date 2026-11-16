@@ -101,6 +101,19 @@ const Field kFields[] = {
       "托管引导程序入口类型" },
     { "bootstrapMethod", ValueType::String, 0, 0, nullptr, Apply::Restart,
       "托管引导程序入口方法" },
+
+    // 更新检查(update/update.h)。间隔/超时只影响"下一次检查", 所以标 Restart 最诚实:
+    // 已经起过的后台线程不会因为这里改了值就换参数。
+    { "updateCheckEnabled", ValueType::Bool, 0, 0, nullptr, Apply::Restart,
+      "启动后联网检查加载器新版本(结果写 <loader>\\update, 控制台打 [update])" },
+    { "updateCheckUrl", ValueType::String, 0, 0, nullptr, Apply::Restart,
+      "版本清单地址(默认 GitHub Release 的 version.json)" },
+    { "updateCheckMirror", ValueType::String, 0, 0, nullptr, Apply::Restart,
+      "镜像策略 auto/off/前缀 URL; auto=直连失败后走 gh-proxy" },
+    { "updateCheckIntervalHours", ValueType::Int, 1, 168, nullptr, Apply::Restart,
+      "两次联网检查的最小间隔(小时); 有效期内复用上次结果" },
+    { "updateCheckTimeoutSec", ValueType::Int, 2, 60, nullptr, Apply::Restart,
+      "单条请求的超时秒数" },
 };
 
 constexpr size_t kFieldCount = sizeof(kFields) / sizeof(kFields[0]);
@@ -289,6 +302,11 @@ std::string field_value(const LoaderConfig& cfg, const Field& f)
     if (n == "bootstrapAssembly") return cfg.bootstrapAssembly;
     if (n == "bootstrapType") return cfg.bootstrapType;
     if (n == "bootstrapMethod") return cfg.bootstrapMethod;
+    if (n == "updateCheckEnabled") return cfg.updateCheckEnabled ? "true" : "false";
+    if (n == "updateCheckUrl") return cfg.updateCheckUrl;
+    if (n == "updateCheckMirror") return cfg.updateCheckMirror;
+    if (n == "updateCheckIntervalHours") return std::to_string(cfg.updateCheckIntervalHours);
+    if (n == "updateCheckTimeoutSec") return std::to_string(cfg.updateCheckTimeoutSec);
     return "";
 }
 
@@ -365,6 +383,11 @@ bool field_assign(LoaderConfig& cfg, const Field& f, const std::string& text, st
     else if (n == "bootstrapAssembly") cfg.bootstrapAssembly = v;
     else if (n == "bootstrapType") cfg.bootstrapType = v;
     else if (n == "bootstrapMethod") cfg.bootstrapMethod = v;
+    else if (n == "updateCheckEnabled") cfg.updateCheckEnabled = (v == "true");
+    else if (n == "updateCheckUrl") cfg.updateCheckUrl = v;
+    else if (n == "updateCheckMirror") cfg.updateCheckMirror = v;
+    else if (n == "updateCheckIntervalHours") cfg.updateCheckIntervalHours = (unsigned)std::strtoul(v.c_str(), nullptr, 10);
+    else if (n == "updateCheckTimeoutSec") cfg.updateCheckTimeoutSec = (unsigned)std::strtoul(v.c_str(), nullptr, 10);
     else { err = "未知字段"; return false; }
     return true;
 }

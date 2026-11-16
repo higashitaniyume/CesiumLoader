@@ -172,6 +172,18 @@ LoaderConfig load_config(const std::wstring& config_path)
     // 同样缺失/损坏走默认(启用), 绝不阻止启动。独立开关, 与上面几个互不影响。
     cfg.steamBypassLobbyQuery = jsonc::boolean(j, "steamBypassLobbyQuery", cfg.steamBypassLobbyQuery);
     cfg.sdkVersion = jsonc::str(j, "sdkVersion", cfg.sdkVersion);
+    // 更新检查(见 update/update.h): 缺失/损坏走默认(启用), 关掉只影响那一次联网拉取。
+    // 间隔与超时做范围裁剪 —— 写 0 会让"冷却"失效(每次启动都联网), 写 99999 会让坏网络
+    // 拖住后台线程很久, 两种都不该被一份手改过的配置带进来。
+    cfg.updateCheckEnabled = jsonc::boolean(j, "updateCheckEnabled", cfg.updateCheckEnabled);
+    cfg.updateCheckUrl = jsonc::str(j, "updateCheckUrl", cfg.updateCheckUrl);
+    cfg.updateCheckMirror = jsonc::str(j, "updateCheckMirror", cfg.updateCheckMirror);
+    {
+        const int64_t interval = jsonc::integer(j, "updateCheckIntervalHours", cfg.updateCheckIntervalHours);
+        if (interval >= 1 && interval <= 168) cfg.updateCheckIntervalHours = static_cast<unsigned>(interval);
+        const int64_t timeout = jsonc::integer(j, "updateCheckTimeoutSec", cfg.updateCheckTimeoutSec);
+        if (timeout >= 2 && timeout <= 60) cfg.updateCheckTimeoutSec = static_cast<unsigned>(timeout);
+    }
     // 多 profile: 目录重定向(见 profile/profile.h)。空 = 不重定向。
     cfg.profile = jsonc::str(j, "profile", cfg.profile);
     // 多 profile: 是否在游戏窗口标题后追加 profile 名。缺失/损坏走默认(开启)。
