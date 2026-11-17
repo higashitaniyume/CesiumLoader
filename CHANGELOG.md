@@ -2,13 +2,17 @@
 
 本文件按版本记录 `CesiumLoader` 的功能变更。版本号与 GitHub 发布 tag 一一对应（如 `modloader-3.3.2`，版本号为 `3.3.2`），发布产物由 [release-modloader.yml](.github/workflows/release-modloader.yml) 在打 tag 时自动构建。
 
-## [未发布]
+## [3.8.7] - 2026-11-17
 
 ### 模组
 
 - 新增内置模组 `FontMod 1.0.0`（系统字体）：把游戏旧版界面字体替换成系统已安装的字体，支持按字重独立命名的变体（如 `Microsoft YaHei UI Light`）与多语言回退；在 Toys「自定义 → 字体」里选择，配置热重载即时生效。
 - 替换前按游戏文案字符集检查缺字，缺字过多时保持默认字体并记录缺字，避免方块；`config.json` 的 `checkCoverage` 可关闭检查，`fallbackFonts` 可补充回退字体。
 - `tools/builtin-mods.json` 与 Toys 内置分发清单加入 `FontMod`。
+
+### 构建与打包
+
+- SDK 的 `Version` / `FileVersion`、`SdkVersion.Current` / `LoaderVersion`、原生加载器 `loaderVersion` 与分发模板 `doorstop_config.json` 的 `sdkVersion` 同步到 `3.8.7`。
 
 ## [3.8.6] - 2026-11-16
 
