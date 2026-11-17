@@ -44,6 +44,7 @@
     <Project Path="tests/CharacterTransparencyMod.Tests/CharacterTransparencyMod.Tests.csproj" />
     <Project Path="tests/CombatOddsMod.Tests/CombatOddsMod.Tests.csproj" />
     <Project Path="tests/ForkDirectionMod.Tests/ForkDirectionMod.Tests.csproj" />
+    <Project Path="tests/FontMod.Tests/FontMod.Tests.csproj" />
     <Project Path="tests/HideHudMod.Tests/HideHudMod.Tests.csproj" />
     <Project Path="tests/LanguageUnlockMod.Tests/LanguageUnlockMod.Tests.csproj" />
     <Project Path="tests/PinnedRelicsMod.Tests/PinnedRelicsMod.Tests.csproj" />
