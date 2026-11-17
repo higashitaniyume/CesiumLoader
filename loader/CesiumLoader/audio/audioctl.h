@@ -27,11 +27,12 @@
 
 #include <string>
 
-// 原生音频通道总开关 —— **硬编码关闭**。
-// 关掉后加载器不再起 UDP/MCI 音频服务: 游戏本体音效不受影响, 只损失"自定义音效/BGM 替换"
-// (依赖 AudioService 的 mod 会判定后端不可用)。配置键 audioControlEnabled 只保留解析与读写,
-// 不再决定是否启动; 要恢复把这里改回 true。
-constexpr bool kEnableAudioControl = false;
+// 原生音频通道编译期总开关 —— **默认打开**。
+// 打开后加载器会起 UDP/MCI 音频服务, 托管侧 AudioService 才能替换音效与 BGM;
+// 关掉只损失"自定义音效/BGM 替换"(依赖 AudioService 的 mod 会判定后端不可用),
+// 游戏本体音效不受影响。运行时是否真正启动还要看配置键 audioControlEnabled
+// (两者都为真才启动), 只想临时停用时改配置, 不要改这个常量。
+constexpr bool kEnableAudioControl = true;
 
 // 控制文件目录(供环境变量 CESIUM_AUDIO_DIR 使用)。
 std::wstring audioctl_dir();

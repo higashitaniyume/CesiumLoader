@@ -123,8 +123,8 @@ struct LoaderConfig
     // 原生音频控制通道(UDP 端口 + <audio>\request.txt / state.txt)。
     // Astral Party 为 IL2CPP 构建且裁剪了 AudioSource 方法，热更程序集无法 P/Invoke，
     // 由原生加载器提供底层音效与背景音乐播放。
-    // **当前该通道在代码里被硬编码关闭**(runtime/loader.cpp 的 kEnableAudioControl=false)，
-    // 本键只保留解析与读写，不再决定是否启动；改代码常量才能重新打开。
+    // 实际启动条件 = 编译期总开关 kEnableAudioControl(audio/audioctl.h) 与本键同时为真；
+    // 本键关系到"自定义音效/BGM 替换"是否可用，关掉只是不启动该通道，不影响游戏本体音效。
     bool audioControlEnabled = true;
 
     // Steam 自杀门绕过(见 steamhack.h)。默认**关** —— 正常由 Steam 启动时用不到;

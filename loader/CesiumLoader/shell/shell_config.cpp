@@ -140,7 +140,7 @@ void apply_loader_hot(const Field& field, const LoaderConfig& cfg, const std::st
     {
         if (!kEnableAudioControl)
         {
-            print("  原生音频通道已在代码里硬编码关闭(kEnableAudioControl=false), 配置项无法打开", LOG_YELLOW);
+            print("  原生音频通道已被编译期总开关关掉(kEnableAudioControl=false), 配置项无法打开", LOG_YELLOW);
         }
         else if (cfg.audioControlEnabled)
         {

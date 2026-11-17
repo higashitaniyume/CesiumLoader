@@ -70,8 +70,8 @@
   "windowControlEnabled": true,
   // 原生音频控制通道(UDP 端口 + <audio>\request.txt / state.txt):
   // 游戏裁剪了 AudioSource 方法且热更程序集无法 P/Invoke，由加载器提供底层音频播放。
-  // 注意: 该通道目前在加载器代码里硬编码关闭(kEnableAudioControl=false)，本键只保留读写，
-  // 不再决定是否启动；关闭后自定义音效/BGM 替换不可用，游戏本体音效不受影响。
+  // 注意: 是否启动还受加载器编译期总开关 kEnableAudioControl 约束(发布包为开)，
+  // 两者都为真才启动；关闭后自定义音效/BGM 替换不可用，游戏本体音效不受影响。
   "audioControlEnabled": true,
   // ---------- Steam 绕过(默认全关) ----------
   // 正常由 Steam 启动时不需要任何绕过; 只有"不开 Steam 也要进游戏/建房"才逐项打开。

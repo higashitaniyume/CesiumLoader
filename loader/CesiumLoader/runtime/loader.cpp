@@ -50,10 +50,9 @@ namespace fs = std::filesystem;
 namespace boot = cesium::runtime::boot;
 namespace forward = cesium::runtime::forward;
 
-// 原生音频服务关闭时清理遗留的状态文件:
-// 音频通道由 audioctl.h 的 kEnableAudioControl 硬编码关闭, 但上一轮运行可能留下
-// port.txt / state.txt(写着 available=1 + 旧端口), 托管侧(NativeAudioBackend)会据此
-// 误判"服务还在跑", 把音效请求静默丢弃 —— 启动时一并清掉。
+// 原生音频服务未启动时清理遗留的状态文件(编译期常量或配置把通道关掉了):
+// 上一轮运行可能留下 port.txt / state.txt(写着 available=1 + 旧端口), 托管侧
+// (NativeAudioBackend)会据此误判"服务还在跑", 把音效请求静默丢弃 —— 启动时一并清掉。
 static void purge_audio_state_files()
 {
     std::vector<std::wstring> dirs{ audioctl_dir() };
@@ -313,8 +312,8 @@ static DWORD WINAPI boot_thread(LPVOID)
         windowctl_start(windowctl_dir());
     else
         log_line("[loader] windowControlEnabled=false, skipping foreground control UDP channel");
-    // 3.7.1b 原生音频通道(见 audioctl.h): 是否启动只由代码常量 kEnableAudioControl 决定,
-    //        配置键 audioControlEnabled 仅保留解析(Toys 读写), 不再能打开该通道。
+    // 3.7.1b 原生音频通道(见 audioctl.h): 编译期总开关 kEnableAudioControl 与配置键
+    //        audioControlEnabled 同时为真才启动; 常量留给"整包彻底关掉该通道"的场景。
     if (kEnableAudioControl)
     {
         if (cfg.audioControlEnabled)
