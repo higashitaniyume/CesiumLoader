@@ -6,8 +6,10 @@ using CesiumLoader.SDK.Gameplay;
 using CesiumLoader.SDK.Logging;
 using CesiumLoader.SDK.Manifests;
 using CesiumLoader.SDK.Mods;
+using Core.Net;
 using GameLogic;
 using party.model;
+using party.protocol;
 using Tools;
 using UI;
 
@@ -143,9 +145,10 @@ namespace ActivityLogMod
             GameEvents.RelicSelected += OnRelicSelected;
             GameEvents.RelicsSynced += OnRelicsSynced;
             GameEvents.HandChanged += OnHandChanged;
-            // 事件驱动: SDK 内部自动维持 RPC 挂钩(每 1 秒检查战斗回调), mod 无需轮询
+            // 事件二选一(5317/5318)没有强类型事件, 走原始 Action 流; 服务端广播全房, 队友的也能看到
+            GameEvents.RawAction += OnRawAction;
             GameEvents.StartAutoHook();
-            SdkLog.Info("ActivityLog", $"事件订阅完成({GameEvents.EventCount} 个事件), 自动挂钩已启动");
+            SdkLog.Info("ActivityLog", $"事件订阅完成({GameEvents.EventCount} 个事件), 含事件候选(5317/5318); 自动挂钩已启动");
         }
 
         // ============================== 事件处理 ==============================
@@ -262,6 +265,62 @@ namespace ActivityLogMod
                 visible.Count > 0
                     ? $"[手牌] {Nick(playerId)} 的手牌: {string.Join(" | ", visible)}"
                     : $"[手牌] {Nick(playerId)} 手牌变化: {cards.Count} 张 [服务器掩码]");
+        }
+
+        private static long _lastEventCandidateSn = -1;
+
+        /// <summary>
+        /// 事件二选一(5317 SelectEventC2S / 5318 SelectEventS2C)。SDK 没有强类型事件, 走 RawAction。
+        /// 服务端把 5317 广播给全房, 所以队友玩侦探时这里也能拿到他的两个候选; 逐条按 Sn 去重。
+        /// 网络线程回调: 只解码 + SdkLog(内部线程安全), 不碰 Unity API。
+        /// </summary>
+        private static void OnRawAction(RawActionEvent e)
+        {
+            if (!_cfg.LogEvents || e == null) return;
+            try
+            {
+                if (e.Id == 5317)
+                {
+                    var d = ByteBuf.ReadObject<SelectEventC2S>(e.Data);
+                    if (d == null || d.Events == null || d.Events.Count == 0) return;
+                    if (_lastEventCandidateSn == e.Sn) return; // 同一 Action 会被重复广播
+                    _lastEventCandidateSn = e.Sn;
+
+                    var labels = new List<string>();
+                    foreach (var id in d.Events) labels.Add(EventName(id));
+                    SdkLog.Info("ActivityLog",
+                        $"[事件候选] {Nick(e.PlayerId)}{Self(e.PlayerId)} 候选: {string.Join(" | ", labels)} (sn={e.Sn})");
+                }
+                else if (e.Id == 5318)
+                {
+                    var d = ByteBuf.ReadObject<SelectEventS2C>(e.Data);
+                    if (d == null) return;
+                    SdkLog.Info("ActivityLog",
+                        $"[事件结果] {Nick(d.PlayerId)}{Self(d.PlayerId)} 最终选择: {EventName(d.EventId)}");
+                }
+            }
+            catch
+            {
+                // 网络线程, 异常绝不能逃进 SDK 回调链
+            }
+        }
+
+        private static string EventName(int eventId)
+        {
+            try
+            {
+                if (eventId > 0 && StaticConfigure.Event != null)
+                {
+                    EventInfoConfigure cfg;
+                    if (StaticConfigure.Event.InfoDict.TryGetValue(eventId, out cfg) && cfg != null)
+                    {
+                        string n = cfg.NameID.GetLocal(UIStringType.Event);
+                        if (!string.IsNullOrEmpty(n)) return n + "(" + eventId + ")";
+                    }
+                }
+            }
+            catch { }
+            return "事件" + eventId;
         }
 
         // ============================== 轮询(tick) ==============================

@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Core.Net;
 using Cysharp.Threading.Tasks;
 using GameLogic;
+using party.protocol;
 using Tools;
 using CesiumLoader.SDK.Logging;
 using CesiumLoader.SDK.Runtime;
