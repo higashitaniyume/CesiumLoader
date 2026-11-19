@@ -503,7 +503,8 @@ namespace CesiumLoader.SDK.Gameplay
                        || ShopCandidates != null
                        || RelicCandidates != null
                        || ShopOffered != null
-                       || RelicOffered != null;
+                       || RelicOffered != null
+                       || PredictActionPreDispatch.HasSubscribers;
             if (!_predictHook.Prepare(needed, rpc, rpc.OnPredictActionS2CServerCallBackAsync,
                     o => rpc.OnPredictActionS2CServerCallBackAsync = o)) return;
 
@@ -511,12 +512,30 @@ namespace CesiumLoader.SDK.Gameplay
             Core.Net.PredictActionS2CRPC.OnPredictActionS2CServerDelegate wrapped = (model, errId, isDispatch) =>
             {
                 ModCallbackGuard.Run("EVENTS/" + nameof(OnPredictActions), () => OnPredictActions(model?.Actions));
-                if (original != null) return original(model, errId, isDispatch);
-                return UniTask.CompletedTask;
+                if (original == null) return UniTask.CompletedTask;
+                if (errId != 0 || !PredictActionPreDispatch.HasSubscribers)
+                    return original(model, errId, isDispatch);
+                return ForwardPredictWithPreDispatchAsync(model, errId, isDispatch, original);
             };
             rpc.OnPredictActionS2CServerCallBackAsync = wrapped;
             _predictHook.Installed(wrapped);
             SdkLog.Write("EVENTS", "[挂钩] PredictActionS2C");
+        }
+
+        // 可选的前置动作处理，不屏蔽整包 RPC 消息。
+        // 原版回调始终收到未经修改的服务端消息。
+        // 注意：前置处理在主线程完成，因此正常情况下 original 的续体也会在主线程上继续，
+        // 而不再是最初的网络线程。超时/失败时原版流程同样会被调用，绝不吞掉消息。
+        private static async UniTask ForwardPredictWithPreDispatchAsync(
+            PredictActionS2C model, int errId, bool isDispatch,
+            Core.Net.PredictActionS2CRPC.OnPredictActionS2CServerDelegate original)
+        {
+            try { await PredictActionPreDispatch.ProcessAsync(model); }
+            catch (Exception e)
+            {
+                SdkLog.Warn("PREDICT/PRE", "前置处理失败，继续原版动作: " + e.Message);
+            }
+            await original(model, errId, isDispatch);
         }
 
         private static void HookBattleUseCard(Core.Net.RPCMsgManager net)
