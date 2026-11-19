@@ -521,9 +521,11 @@ namespace CesiumLoader.SDK.Gameplay
             _predictHook.Installed(wrapped);
             SdkLog.Write("EVENTS", "[挂钩] PredictActionS2C");
         }
-        
+
         // 可选的前置动作处理，不屏蔽整包 RPC 消息。
         // 原版回调始终收到未经修改的服务端消息。
+        // 注意：前置处理在主线程完成，因此正常情况下 original 的续体也会在主线程上继续，
+        // 而不再是最初的网络线程。超时/失败时原版流程同样会被调用，绝不吞掉消息。
         private static async UniTask ForwardPredictWithPreDispatchAsync(
             PredictActionS2C model, int errId, bool isDispatch,
             Core.Net.PredictActionS2CRPC.OnPredictActionS2CServerDelegate original)
