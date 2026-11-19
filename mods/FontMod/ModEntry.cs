@@ -47,6 +47,9 @@ namespace FontMod
                 + ", fontFamily=" + (_settings.FontFamily.Length == 0 ? "(未设置)" : _settings.FontFamily)
                 + ", applyToAllFonts=" + _settings.ApplyToAllFonts);
 
+            // 字体页要拿到游戏真正认识的字体名，所以即使没配置字体也要尝试导出。
+            _replacement.ExportInstalledFontNames(Log);
+
             if (!_settings.Enabled || _settings.FontFamily.Length == 0)
             {
                 Log.Info("未启用字体替换，保持游戏默认字体。");
@@ -58,11 +61,14 @@ namespace FontMod
 
         public override void OnUpdate()
         {
-            if (!_settings.Enabled || _settings.FontFamily.Length == 0) return;
-
             double now = NowSeconds();
             if (now < _nextCheck) return;
             _nextCheck = now + CheckIntervalSeconds;
+
+            // 字体注册晚于模组初始化时，由轮询把字体名列表导出给 Toys。
+            _replacement.ExportInstalledFontNames(Log);
+
+            if (!_settings.Enabled || _settings.FontFamily.Length == 0) return;
 
             // 登录/切语言会让 UIManager.AsyncLoadFonts 重新注册字体，这里把替换补回去；
             // 已经替换过的实例会被跳过，开销只是一次字典遍历。

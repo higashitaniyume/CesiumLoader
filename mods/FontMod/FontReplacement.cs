@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Text;
 using CesiumLoader.SDK.Logging;
+using CesiumLoader.SDK.UserInterface;
 using FairyGUI;
 
 namespace FontMod
@@ -23,6 +25,17 @@ namespace FontMod
 
         private const string WarmupText = "永和九年，岁在癸丑。星币筹码技能攻击防御0123456789ABCabc";
 
+        /// <summary>
+        /// 单名字探测用的常用中文。多名字 Font 在名字都不存在时也会返回非空对象，
+        /// 且 HasCharacter 会被回退字体（雅黑）骗过去；必须用单名字 Font 才能分辨
+        /// “用户选的字体真生效”与“被悄悄回退成雅黑”。
+        /// </summary>
+        private const string CoreChineseSample =
+            "中文的一是在不了有和人这大上个国我以要他时来用们生到作地于出就分对成会可主发年动同工也能下过子说产种";
+
+        /// <summary>探测时最多允许缺几个常用字；超过就认定这个字体名在游戏里不可用于中文。</summary>
+        private const int MaxProbeMissing = 2;
+
         private static readonly PropertyInfo NativeFontProperty =
             typeof(DynamicFont).GetProperty("nativeFont", BindingFlags.Public | BindingFlags.Instance);
 
@@ -30,6 +43,7 @@ namespace FontMod
         private object _replacement;
         private string _family;
         private string _failedFamily;
+        private bool _exportedFontNames;
 
         internal string AppliedFamily { get { return _family; } }
         internal int ReplacedCount { get { return _originals.Count; } }
@@ -91,7 +105,9 @@ namespace FontMod
             {
                 Warmup(font);
                 RequestTextRebuild();
-                log.Info("已把 " + applied + " 个界面字体替换为「" + family + "」");
+                PushSdkFont(font);
+                log.Info("已把 " + applied + " 个界面字体替换为「" + family
+                    + "」（已通过单名字校验，中文由该字体渲染）");
             }
             return applied > 0;
         }
@@ -127,6 +143,7 @@ namespace FontMod
             }
 
             DestroyReplacement();
+            PushSdkFont(null);
             _failedFamily = null;
         }
 
@@ -150,9 +167,25 @@ namespace FontMod
 
             string[] candidates = FontNames.BuildCandidates(family, fallbackCsv);
 
-            if (!FontNames.Contains(GetInstalledFontNames(fontType), family))
+            // 硬判据：名字必须在游戏自己枚举的 OS 字体列表里。
+            // 这是唯一可靠的判断——Unity 的 CreateDynamicFontFromOSFont 对不存在的名字
+            // 也会返回一个非空 Font，且 HasCharacter 会 fallback 到系统默认字体返回 true，
+            // 所以单名字探测（以及多名字后的 HasCharacter）都无法分辨“真字体”和“回退”。
+            // 列表读不到（null/空）时不拦，交给后面的探测与多名字加载。
+            string[] installed = GetInstalledFontNames(fontType);
+            if (installed != null && installed.Length > 0 && !FontNames.Contains(installed, family))
             {
-                log.Warn("系统字体列表里没有「" + family + "」，仍按名字尝试加载。");
+                log.Error("字体「" + family + "」不在游戏可识别的系统字体列表里，已保持游戏默认字体。"
+                    + "请在 Toys「自定义 → 字体」里重新选一个列表中的字体。");
+                _failedFamily = family;
+                return null;
+            }
+
+            // 辅助校验：名字在列表里也确认一次能渲染常用中文（例如纯拉丁字体要拦掉）。
+            if (!ProbeFont(fontType, family, log))
+            {
+                _failedFamily = family;
+                return null;
             }
 
             MethodInfo create = fontType.GetMethod(
@@ -220,6 +253,139 @@ namespace FontMod
             _family = family;
             _failedFamily = null;
             return font;
+        }
+
+        /// <summary>
+        /// 用“只有一个名字”的 Font 探测该名字在游戏里是否真能渲染中文。
+        /// 这是本模组最重要的防呆：Unity 的 CreateDynamicFontFromOSFont(string[], int) 在
+        /// 所有名字都找不到时依然返回非空对象，后续 HasCharacter / 缺字检查会被
+        /// 候选表第二项 Microsoft YaHei 骗过去，于是日志写着“已替换”，屏幕上却是雅黑。
+        /// 单名字 Font 没有回退可言，能可靠区分“名字有效”和“被悄悄回退”。
+        /// </summary>
+        /// <summary>
+        /// 把 Unity 真正认识的系统字体名写成 JSON 给 Toys 读。字体页若用 WPF/GDI 的
+        /// 另一套名字，游戏会静默回退成雅黑；以这份列表为准才能从根上对上名字。
+        /// 字体尚未注册时返回，由控制器的低频轮询重试。
+        /// </summary>
+        internal void ExportInstalledFontNames(ModLogger log)
+        {
+            if (_exportedFontNames) return;
+            try
+            {
+                Dictionary<string, BaseFont> registry = FontManager.sFontFactory;
+                if (registry == null || registry.Count == 0) return;
+                Type fontType = ResolveFontType(registry);
+                if (fontType == null) return;
+                string[] names = GetInstalledFontNames(fontType);
+                if (names == null || names.Length == 0) return;
+
+                string root = CesiumLoader.SDK.IO.Path.LoaderRootDirectory;
+                if (string.IsNullOrEmpty(root)) return;
+                string dir = System.IO.Path.Combine(root, "data");
+                System.IO.Directory.CreateDirectory(dir);
+
+                var sb = new StringBuilder();
+                sb.Append("[\n");
+                for (int i = 0; i < names.Length; i++)
+                {
+                    if (i > 0) sb.Append(",\n");
+                    sb.Append("  ").Append(JsonString(names[i]));
+                }
+                sb.Append("\n]\n");
+                System.IO.File.WriteAllText(System.IO.Path.Combine(dir, "FontMod-installed-fonts.json"), sb.ToString());
+                _exportedFontNames = true;
+                log.Info("已导出游戏可识别的系统字体列表（" + names.Length + " 项）");
+            }
+            catch (Exception e)
+            {
+                log.Warn("导出系统字体列表失败: " + e.Message);
+            }
+        }
+
+        private static string JsonString(string value)
+        {
+            var sb = new StringBuilder("\"");
+            for (int i = 0; i < value.Length; i++)
+            {
+                char c = value[i];
+                if (c == '"' || c == '\\') sb.Append('\\').Append(c);
+                else if (c == '\n') sb.Append("\\n");
+                else if (c == '\r') sb.Append("\\r");
+                else if (c == '\t') sb.Append("\\t");
+                else if (c < 0x20) sb.Append("\\u").Append(((int)c).ToString("x4"));
+                else sb.Append(c);
+            }
+            return sb.Append('"').ToString();
+        }
+
+        private static bool ProbeFont(Type fontType, string family, ModLogger log)
+        {
+            MethodInfo create = fontType.GetMethod(
+                "CreateDynamicFontFromOSFont",
+                BindingFlags.Public | BindingFlags.Static,
+                null,
+                new[] { typeof(string), typeof(int) },
+                null);
+
+            if (create == null)
+            {
+                // 极老的构建可能只有数组重载；探测跳过，不拦，交给后面的多名字加载。
+                log.Warn("游戏构建里没有单名字的 CreateDynamicFontFromOSFont，跳过字体名校验。");
+                return true;
+            }
+
+            object probe = null;
+            try
+            {
+                try { probe = create.Invoke(null, new object[] { family, 64 }); }
+                catch (Exception e)
+                {
+                    log.Error("字体「" + family + "」加载失败: " + e.Message);
+                    return false;
+                }
+
+                if (probe == null)
+                {
+                    log.Error("字体「" + family + "」不是游戏能识别的系统字体名，已保持游戏默认字体。"
+                        + "（Toys 列出的名字可能与游戏识别的名字不一致）");
+                    return false;
+                }
+
+                MethodInfo hasChar = probe.GetType().GetMethod(
+                    "HasCharacter", BindingFlags.Public | BindingFlags.Instance, null, new[] { typeof(char) }, null);
+                if (hasChar == null)
+                {
+                    // 没有这个 API 就无法探测，不拦；后面多名字加载照常。
+                    return true;
+                }
+
+                int missing = 0;
+                var sample = new List<char>(16);
+                for (int i = 0; i < CoreChineseSample.Length; i++)
+                {
+                    char ch = CoreChineseSample[i];
+                    bool has;
+                    try { has = (bool)hasChar.Invoke(probe, new object[] { ch }); }
+                    catch { has = false; }
+                    if (has) continue;
+                    missing++;
+                    if (sample.Count < 16 && !sample.Contains(ch)) sample.Add(ch);
+                }
+
+                if (missing > MaxProbeMissing)
+                {
+                    log.Error("字体「" + family + "」不含足够的常用中文（缺 " + missing + " 个，如 "
+                        + new string(sample.ToArray()) + "），已保持游戏默认字体，"
+                        + "避免整屏文字被回退字体接管。");
+                    return false;
+                }
+
+                return true;
+            }
+            finally
+            {
+                DestroyObject(probe);
+            }
         }
 
         /// <summary>从已注册字体的 nativeFont 上取到运行时的 UnityEngine.Font 类型。</summary>
@@ -376,6 +542,16 @@ namespace FontMod
                     "textRebuildFlag", BindingFlags.Static | BindingFlags.NonPublic);
                 if (field != null) field.SetValue(null, true);
             }
+            catch { }
+        }
+
+        /// <summary>
+        /// 把已校验的字体推给 SDK 自绘浮层（F8 面板等），让它们和游戏正文用同一套字体。
+        /// 老版本 SDK 没有这个 API 时静默跳过，不影响主功能。
+        /// </summary>
+        private static void PushSdkFont(object font)
+        {
+            try { WidgetService.SetDefaultFont(font); }
             catch { }
         }
 

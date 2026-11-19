@@ -243,6 +243,26 @@ namespace CesiumLoader.SDK.UserInterface
         private static bool _fontAttempted;
         private static UnityEngine.Object _builtinFont;
 
+        /// <summary>
+        /// 让模组把已经校验过的字体注入 SDK 自绘浮层（F8 面板、PVE 面板等），
+        /// 使这些文字与游戏正文用同一套字体。FontMod 套用成功后调用；传 null 恢复内置字体探测。
+        /// 参数用 object 是为了让只引用 CoreModule 的热更模组也能传入 UnityEngine.Font。
+        /// </summary>
+        public static void SetDefaultFont(object font)
+        {
+            var unityFont = font as UnityEngine.Object;
+            if (unityFont != null)
+            {
+                _builtinFont = unityFont;
+                _fontAttempted = true;
+            }
+            else
+            {
+                _builtinFont = null;
+                _fontAttempted = false;
+            }
+        }
+
         private static Sprite _roundedSprite;
         private static bool _roundedSpriteFailed;
 
