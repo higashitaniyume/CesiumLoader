@@ -2,6 +2,21 @@
 
 本文件按版本记录 `CesiumLoader` 的功能变更。版本号与 GitHub 发布 tag 一一对应（如 `modloader-3.3.2`，版本号为 `3.3.2`），发布产物由 [release-modloader.yml](.github/workflows/release-modloader.yml) 在打 tag 时自动构建。
 
+## [3.8.8] - 2026-11-19
+
+### 模组
+
+- `FontMod`（系统字体）修复了「选了字体却仍显示系统默认字体」的问题。字体列表现在以游戏自身识别的字体为准，选择后立即生效；无法识别的字体名会被跳过并保留游戏默认字体，不再出现选了没变化的情况。
+- 加载器自绘的面板（如 F8 更新提示、PVE 面板）现在跟随所选字体。
+
+### SDK
+
+- `WidgetService.SetDefaultFont(object)` 允许模组把已校验的字体提供给自绘面板使用。
+
+### 构建与打包
+
+- SDK 的 `Version` / `FileVersion`、`SdkVersion.Current` / `LoaderVersion`、原生加载器 `loaderVersion` 与分发模板 `doorstop_config.json` 的 `sdkVersion` 同步到 `3.8.8`。
+
 ## [3.8.7] - 2026-11-17
 
 ### 模组
