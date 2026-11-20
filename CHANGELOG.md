@@ -2,6 +2,16 @@
 
 本文件按版本记录 `CesiumLoader` 的功能变更。版本号与 GitHub 发布 tag 一一对应（如 `modloader-3.3.2`，版本号为 `3.3.2`），发布产物由 [release-modloader.yml](.github/workflows/release-modloader.yml) 在打 tag 时自动构建。
 
+## [3.8.9] - 2026-11-20
+
+### 加载器
+
+- 修复游戏安装在非 ASCII（如中文）目录时模组无法加载的问题。模组目录扫描、`{ModId}.json` 元数据读取与模组 DLL 读取统一改用宽字符路径，不再依赖系统 ANSI 代码页；此前安装路径含中文时会出现 `dll read failed` 或元数据解析失败，表现为模组一个也加载不出来。
+
+### 构建与打包
+
+- SDK 的 `Version` / `FileVersion`、`SdkVersion.Current` / `LoaderVersion`、原生加载器 `loaderVersion` 与分发模板 `doorstop_config.json` 的 `sdkVersion` 同步到 `3.8.9`。
+
 ## [3.8.8] - 2026-11-19
 
 ### 模组
