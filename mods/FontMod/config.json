@@ -3,5 +3,18 @@
   "fontFamily": "",
   "applyToAllFonts": true,
   "fallbackFonts": "Microsoft YaHei,Microsoft YaHei UI,SimHei,SimSun,SimSun-ExtB,Yu Gothic,Meiryo,Microsoft JhengHei,Segoe UI Symbol",
-  "checkCoverage": true
+  "checkCoverage": true,
+  "fontPath": "",
+  "fontStyle": "",
+  "titleFontPath": "",
+  "replaceTmpFonts": true,
+  "bridgeDynamicToSdf": true,
+  "replaceSceneTmpText": true,
+  "atlasSize": 4096,
+  "samplingPointSize": 48,
+  "atlasPadding": 5,
+  "tmpFontScale": 1.0,
+  "normalWeight": 0.0,
+  "boldWeight": 0.15,
+  "warmupGameCharset": true
 }

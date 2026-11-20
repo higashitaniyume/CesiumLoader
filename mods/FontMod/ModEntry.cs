@@ -1,5 +1,5 @@
 using System;
-using CesiumLoader.SDK.Configuration;
+using System.IO;
 using CesiumLoader.SDK.Mods;
 
 namespace FontMod
@@ -13,12 +13,10 @@ namespace FontMod
     }
 
     /// <summary>
-    /// 系统字体替换。
-    ///
-    /// 只动 FairyGUI 的旧版动态字体（默认正文 <c>JingNanBoBoHei</c> 等），
-    /// 带 <c>_TMP</c> 的预烘焙 SDF 字体不在本版本范围内。
-    /// 配置变化由 SDK 热重载（每帧轮询），登录/切语言后 <c>FontManager.Clear()</c>
-    /// 会重建字体，所以用一个低频轮询把替换补回去。
+    /// 系统字体 v1.1.0：
+    /// 统一接管 FairyGUI 全部 _TMP SDF 字体（含 JingNanBoBoHei_TMP 及标题/数字字体）、
+    /// 旧版 DynamicFont（通过 DynamicBridgeTmpFont 无损桥接至高清 SDF）、场景 3D TMP_Text 与 SDK 浮层字体；
+    /// 自动导出系统与用户目录字体列表供 Toys 选择，支持配置热重载与随时恢复游戏默认。
     /// </summary>
     public sealed class FontController : ModBase
     {
@@ -29,11 +27,14 @@ namespace FontMod
         private double _nextCheck;
 
         public override string Name { get { return "系统字体"; } }
-        public override string Version { get { return "1.0.0"; } }
+        public override string Version { get { return "1.1.0"; } }
         public override string Author { get { return "CesiumLoader"; } }
         public override string Description
         {
-            get { return "把游戏界面字体替换成系统里已安装的字体，可随时换回游戏默认。"; }
+            get
+            {
+                return "全面替换游戏界面字体（含全部 _TMP SDF 字体与旧版动态字体）；支持系统/用户目录字体及本地字体文件直读，游戏中即时生效，可随时换回默认。";
+            }
         }
 
         public override void OnInitialize()
@@ -43,14 +44,11 @@ namespace FontMod
             if (Config != null) Config.SaveIfDirty();
 
             _settings = FontSettings.Read(Config);
-            Log.Info("系统字体: enabled=" + _settings.Enabled
-                + ", fontFamily=" + (_settings.FontFamily.Length == 0 ? "(未设置)" : _settings.FontFamily)
-                + ", applyToAllFonts=" + _settings.ApplyToAllFonts);
+            Log.Info("系统字体 v1.1.0: " + _settings.DescribeTarget());
 
-            // 字体页要拿到游戏真正认识的字体名，所以即使没配置字体也要尝试导出。
             _replacement.ExportInstalledFontNames(Log);
 
-            if (!_settings.Enabled || _settings.FontFamily.Length == 0)
+            if (!_settings.HasTarget)
             {
                 Log.Info("未启用字体替换，保持游戏默认字体。");
                 return;
@@ -61,27 +59,27 @@ namespace FontMod
 
         public override void OnUpdate()
         {
+            // 每帧轻量刷新 TMP 动态图集 GPU 上传队列
+            _replacement.FlushDynamicAtlases();
+
             double now = NowSeconds();
             if (now < _nextCheck) return;
             _nextCheck = now + CheckIntervalSeconds;
 
-            // 字体注册晚于模组初始化时，由轮询把字体名列表导出给 Toys。
             _replacement.ExportInstalledFontNames(Log);
 
-            if (!_settings.Enabled || _settings.FontFamily.Length == 0) return;
+            if (!_settings.HasTarget) return;
 
-            // 登录/切语言会让 UIManager.AsyncLoadFonts 重新注册字体，这里把替换补回去；
-            // 已经替换过的实例会被跳过，开销只是一次字典遍历。
             ApplySafely();
         }
 
         public override void OnConfigChanged()
         {
             FontSettings next = FontSettings.Read(Config);
-            bool retarget = !next.SameTarget(_settings);
+            bool retarget = !next.SameAssetConfig(_settings);
             _settings = next;
 
-            if (!_settings.Enabled || _settings.FontFamily.Length == 0)
+            if (!_settings.HasTarget)
             {
                 _replacement.Restore(Log);
                 Log.Info("字体替换已关闭，恢复游戏默认字体。");
@@ -89,8 +87,7 @@ namespace FontMod
             }
 
             if (retarget) _replacement.Reset(Log);
-            Log.Info("字体配置已热重载: fontFamily=" + _settings.FontFamily
-                + ", applyToAllFonts=" + _settings.ApplyToAllFonts);
+            Log.Info("字体配置已热重载: " + _settings.DescribeTarget());
             ApplySafely();
         }
 
@@ -103,23 +100,35 @@ namespace FontMod
         {
             try
             {
-                _replacement.Apply(
-                    _settings.FontFamily,
-                    _settings.FallbackFonts,
-                    _settings.ApplyToAllFonts,
-                    _settings.CheckCoverage,
-                    Log);
+                _replacement.Apply(_settings, SafeModRoot(), SafeLoaderRoot(), Log);
             }
             catch (Exception e)
             {
-                // 任何异常都不能逃进游戏的每帧循环；记录后下次轮询再试。
-                Log.Warn("应用字体失败: " + e.Message);
+                Log.Warn("应用系统字体失败: " + e.Message);
+            }
+        }
+
+        private static string SafeLoaderRoot()
+        {
+            try { return CesiumLoader.SDK.IO.Path.LoaderRootDirectory; }
+            catch { return ""; }
+        }
+
+        private static string SafeModRoot()
+        {
+            try
+            {
+                string loc = typeof(FontController).Assembly.Location;
+                return string.IsNullOrEmpty(loc) ? "" : Path.GetDirectoryName(loc);
+            }
+            catch
+            {
+                return "";
             }
         }
 
         private static double NowSeconds()
         {
-            // 变速 hook 的是系统计时 API，DateTime.UtcNow 不受影响。
             return DateTime.UtcNow.Ticks / (double)TimeSpan.TicksPerSecond;
         }
     }

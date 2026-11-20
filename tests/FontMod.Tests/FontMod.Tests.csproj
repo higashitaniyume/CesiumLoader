@@ -11,5 +11,8 @@
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
     <Compile Include="../../mods/FontMod/FontNames.cs" Link="FontNames.cs" />
+    <Compile Include="../../mods/FontMod/FontSettings.cs" Link="FontSettings.cs" />
+    <Compile Include="../../mods/FontMod/FontFileResolver.cs" Link="FontFileResolver.cs" />
+    <ProjectReference Include="../../loader/CesiumLoader.SDK/CesiumLoader.SDK.csproj" />
   </ItemGroup>
 </Project>

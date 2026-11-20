@@ -1,15 +1,14 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 
 namespace FontMod
 {
     /// <summary>
     /// 字体名处理：拼候选列表、做大小写/空格无关的比较。
-    /// 纯字符串逻辑，不碰 Unity，便于单元测试。
     /// </summary>
     internal static class FontNames
     {
-        /// <summary>候选字体名之后的安全网：用户字体缺字时尽量别画成方块。</summary>
         private static readonly string[] BuiltInFallback =
         {
             "Microsoft YaHei",
@@ -27,7 +26,7 @@ namespace FontMod
         internal static string Normalize(string name)
         {
             if (string.IsNullOrEmpty(name)) return "";
-            var sb = new System.Text.StringBuilder(name.Length);
+            var sb = new StringBuilder(name.Length);
             for (int i = 0; i < name.Length; i++)
             {
                 char c = name[i];
@@ -37,10 +36,6 @@ namespace FontMod
             return sb.ToString();
         }
 
-        /// <summary>
-        /// 用户选的字体排第一，然后是配置里的回退字体，最后是内置安全网。
-        /// 重复项（忽略大小写与空格）只保留第一次出现。
-        /// </summary>
         internal static string[] BuildCandidates(string family, string fallbackCsv)
         {
             var list = new List<string>();
@@ -54,7 +49,6 @@ namespace FontMod
             return list.ToArray();
         }
 
-        /// <summary>系统已装字体列表里是否有这一项（忽略大小写与空格）。列表读不到时返回 true（不拦）。</summary>
         internal static bool Contains(string[] installed, string family)
         {
             if (installed == null || installed.Length == 0) return true;
