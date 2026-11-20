@@ -50,18 +50,18 @@ struct ModMeta
 struct ModLoc
 {
     std::string id;
-    std::string dll;
-    std::string sidecar;
+    std::filesystem::path dll;
+    std::filesystem::path sidecar;
 };
 
 // 扫描 mods 目录, 返回所有 mod 的位置(与加载器/工具一致的布局规则):
 //   新布局: mods\{ModId}\{ModId}.dll (每 mod 一个文件夹, sidecar 在文件夹内 {ModId}.json)
 //   兼容旧布局: mods\{ModId}.dll 平铺(直接放 mods 根下的 dll 仍识别, sidecar 在同目录)
 // 返回列表按 id 排序。目录损坏/不存在返回空。
-std::vector<ModLoc> scan_mods_dir(const std::string& mods_dir);
+std::vector<ModLoc> scan_mods_dir(const std::filesystem::path& mods_dir);
 
 // 读取 sidecar 文件内容; 失败返回空串
-std::string read_sidecar_text(const std::string& path);
+std::string read_sidecar_text(const std::filesystem::path& path);
 
 // 解析 sidecar JSON → ModMeta; 空/损坏返回 hasSidecar=false
 ModMeta parse_sidecar(const std::string& json);
@@ -71,7 +71,7 @@ int semver_compare(const std::string& a, const std::string& b);
 
 // 从 mods 目录读取所有 mod 的元数据(读 {stem}.json)
 // mods_dir: 目录路径; 返回 map: stem → ModMeta(只含有 sidecar 的)
-std::map<std::string, ModMeta> read_mods_meta(const std::string& mods_dir);
+std::map<std::string, ModMeta> read_mods_meta(const std::filesystem::path& mods_dir);
 
 // 依赖拓扑排序(Kahn):
 //   dll_stems: 全部 mod 程序集名列表

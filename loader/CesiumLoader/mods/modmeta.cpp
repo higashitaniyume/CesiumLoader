@@ -13,7 +13,7 @@ namespace cesium
 // 解析实现见下方 parse_sidecar —— 旧的"在 JSON 文本里按 key 找冒号"的手写扫描器
 // (jval / jstr / jdeps / jbool_opt / jint_opt) 已删除, 改用 nlohmann/json(见 jsonc.h)。
 
-std::string read_sidecar_text(const std::string& path)
+std::string read_sidecar_text(const std::filesystem::path& path)
 {
     std::ifstream in(path, std::ios::binary);
     if (!in) return "";
@@ -82,11 +82,9 @@ int semver_compare(const std::string& a, const std::string& b)
     return 0;
 }
 
-std::map<std::string, ModMeta> read_mods_meta(const std::string& mods_dir)
+std::map<std::string, ModMeta> read_mods_meta(const std::filesystem::path& mods_dir)
 {
     std::map<std::string, ModMeta> result;
-    // 遍历目录找 *.json 且对应 *.dll 存在
-    std::string pattern = mods_dir + "/*.json";
     // 用 <filesystem> 遍历
     std::error_code ec;
     for (auto& entry : std::filesystem::directory_iterator(mods_dir, ec))
@@ -96,13 +94,13 @@ std::map<std::string, ModMeta> read_mods_meta(const std::string& mods_dir)
         auto p = entry.path();
         if (p.extension() != ".json") continue;
         std::string stem = p.stem().string();
-        ModMeta m = parse_sidecar(read_sidecar_text(p.string()));
+        ModMeta m = parse_sidecar(read_sidecar_text(p));
         if (m.hasSidecar && !m.id.empty()) result[stem] = m;
     }
     return result;
 }
 
-std::vector<ModLoc> scan_mods_dir(const std::string& mods_dir)
+std::vector<ModLoc> scan_mods_dir(const std::filesystem::path& mods_dir)
 {
     namespace fs = std::filesystem;
     std::vector<ModLoc> result;
@@ -115,8 +113,8 @@ std::vector<ModLoc> scan_mods_dir(const std::string& mods_dir)
             if (m.id == id) return;   // 去重(新布局优先, 平铺同名跳过)
         ModLoc loc;
         loc.id = id;
-        loc.dll = dll.string();
-        if (!sidecar.empty() && fs::exists(sidecar)) loc.sidecar = sidecar.string();
+        loc.dll = dll;
+        if (!sidecar.empty() && fs::exists(sidecar)) loc.sidecar = sidecar;
         result.push_back(std::move(loc));
     };
 
@@ -125,10 +123,12 @@ std::vector<ModLoc> scan_mods_dir(const std::string& mods_dir)
     {
         if (ec) break;
         if (!entry.is_directory()) continue;
-        std::string id = entry.path().filename().string();
-        fs::path dll = entry.path() / (id + ".dll");
+        const auto& p = entry.path();
+        std::wstring id_w = p.filename().wstring();
+        fs::path dll = p / (id_w + L".dll");
         if (!fs::exists(dll)) continue;   // 文件夹里没有同名 dll, 不是 mod 文件夹
-        fs::path sc = entry.path() / (id + ".json");
+        fs::path sc = p / (id_w + L".json");
+        std::string id = p.filename().string();
         add(id, dll, sc);
     }
     // 旧布局兼容: mods 根下平铺的 .dll (sidecar 在同目录 {id}.json)
@@ -138,8 +138,9 @@ std::vector<ModLoc> scan_mods_dir(const std::string& mods_dir)
         if (!entry.is_regular_file()) continue;
         auto p = entry.path();
         if (p.extension() != ".dll") continue;
+        std::wstring id_w = p.stem().wstring();
+        fs::path sc = p.parent_path() / (id_w + L".json");
         std::string id = p.stem().string();
-        fs::path sc = p.parent_path() / (id + ".json");
         add(id, p, sc);
     }
 

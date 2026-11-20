@@ -583,7 +583,7 @@ static DWORD WINAPI boot_thread(LPVOID)
     // 新布局: mods\{ModId}\{ModId}.dll (每 mod 一个文件夹, sidecar 在文件夹内 {ModId}.json)
     // 兼容旧布局: mods\{ModId}.dll 平铺(直接放 mods 根下的 dll 仍加载)
     std::map<std::string, cesium::ModLoc> mod_locs;
-    for (auto& loc : cesium::scan_mods_dir(utf8_from_wide(mods.c_str())))
+    for (auto& loc : cesium::scan_mods_dir(mods))
         mod_locs[loc.id] = loc;
 
     // 读所有 sidecar, 用于依赖解析 + SDK 版本协商

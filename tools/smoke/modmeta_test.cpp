@@ -207,19 +207,28 @@ int main()
             std::ofstream(root / "Legacy.json") << "{\"id\":\"Legacy\",\"version\":\"0.5.0\"}";
         }
 
-        auto mods = cesium::scan_mods_dir(root.string());
+        auto mods = cesium::scan_mods_dir(root);
         check(mods.size() == 3, "扫到 3 个 mod(ModA/ModB/Legacy)");
         if (mods.size() == 3)
         {
             check(mods[0].id == "Legacy" && !mods[0].sidecar.empty(), "排序: Legacy 平铺(带 sidecar)");
             check(mods[1].id == "ModA" && mods[1].sidecar.empty(), "排序: ModA 文件夹(无 sidecar)");
             check(mods[2].id == "ModB" && !mods[2].sidecar.empty(), "排序: ModB 文件夹(带 sidecar)");
-            check(mods[1].dll.find("ModA\\ModA.dll") != std::string::npos ||
-                  mods[1].dll.find("ModA/ModA.dll") != std::string::npos, "ModA DLL 路径在文件夹内");
+            check(mods[1].dll.string().find("ModA\\ModA.dll") != std::string::npos ||
+                  mods[1].dll.string().find("ModA/ModA.dll") != std::string::npos, "ModA DLL 路径在文件夹内");
         }
 
+        // 验证中文路径下的 mod 扫描
+        fs::path cnRoot = root / L"中文路径测试目录";
+        fs::create_directories(cnRoot / "ModCN");
+        {
+            std::ofstream(cnRoot / "ModCN" / "ModCN.dll");
+        }
+        auto cnMods = cesium::scan_mods_dir(cnRoot);
+        check(cnMods.size() == 1 && cnMods[0].id == "ModCN", "中文路径能正常扫描到 mod");
+
         // 不存在的目录 → 空
-        check(cesium::scan_mods_dir((root / "missing").string()).empty(), "不存在目录返回空");
+        check(cesium::scan_mods_dir(root / "missing").empty(), "不存在目录返回空");
 
         fs::remove_all(root);
     }
