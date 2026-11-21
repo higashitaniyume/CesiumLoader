@@ -2,6 +2,26 @@
 
 本文件按版本记录 `CesiumLoader` 的功能变更。版本号与 GitHub 发布 tag 一一对应（如 `modloader-3.3.2`，版本号为 `3.3.2`），发布产物由 [release-modloader.yml](.github/workflows/release-modloader.yml) 在打 tag 时自动构建。
 
+## [3.8.10] - 2026-11-21
+
+### 模组
+
+- `FontMod`（系统字体）升级到 `1.1.0`：现在同时替换 FairyGUI 的 `_TMP` 预烘焙 SDF 字体与旧版动态字体，大厅、角色列表、卡组、结算、公告、对话框等界面不再停留在游戏默认字体。
+- 游戏文案所需字形以动态 SDF 图集生成；主字体缺少的字会从 `fallbackFonts` 补到**同一张**图集里，单图集限制下也能完整显示中文，不再出现缺字方块。
+- 旧版动态字体统一桥接到 SDF 时清除残留的 `faceDilate` / 描边参数，修复角色技能说明等界面在 SDF 下描边过粗、糊成色块的问题。
+- 支持直接指定本地 `.ttf` / `.otf` / `.ttc` 文件（`fontPath` / `titleFontPath`，`fontStyle` 可精确选择字重与 TTC 索引），无需安装到系统。
+- 字体清单补全 `%LOCALAPPDATA%\Microsoft\Windows\Fonts` 下的用户目录字体，此前在 Toys 字体页看不到这批字体。
+- 新增 `replaceTmpFonts` 与 `bridgeDynamicToSdf` 开关，可回退到旧版纯动态字体替换模式；原有 5 个配置键保持兼容。
+
+### 性能
+
+- 修复字体替换生效后仍有周期性开销的问题：FairyGUI 显示树遍历改为每次字体重建只执行一次，场景 `TMP_Text` 补扫降为低频；此前两者每 0.5 秒重跑一遍全量扫描。
+- 无法识别的字体名（如用户目录字体）不再每 0.5 秒重新枚举一次系统字体列表。
+
+### 构建与打包
+
+- SDK 的 `Version` / `FileVersion`、`SdkVersion.Current` / `LoaderVersion`、原生加载器 `loaderVersion` 与分发模板 `doorstop_config.json` 的 `sdkVersion` 同步到 `3.8.10`。
+
 ## [3.8.9] - 2026-11-20
 
 ### 加载器
