@@ -1,9 +1,9 @@
 {
   "id": "FontMod",
   "name": "系统字体",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "CesiumLoader",
-  "description": "把游戏界面字体替换成系统里已安装的字体；在 Toys「自定义 → 字体」里挑一张卡片即可，游戏中即时生效，可随时换回游戏默认。",
+  "description": "全面替换游戏界面字体（含 FairyGUI 全部 _TMP SDF 字体与旧版动态字体）；在 Toys「自定义 → 字体」里挑一张卡片即可（同时支持用户目录安装的字体与本地 .ttf/.otf/.ttc 文件直读），游戏中即时生效，可随时换回游戏默认。",
   "permissions": 16,
   "sdkVersion": "3.8.0",
   "platforms": ["windows"],
