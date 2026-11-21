@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using CesiumLoader.SDK.Mods;
 
 namespace FontMod
@@ -114,17 +113,15 @@ namespace FontMod
             catch { return ""; }
         }
 
+        /// <summary>
+        /// 模组自身目录（用于解析相对模组目录的字体文件路径）。
+        /// 走 SDK 的 ModContext：热更程序集由 Assembly.Load(byte[]) 载入，
+        /// Assembly.Location 在 HybridCLR 解释器下会抛 MissingMethodException。
+        /// </summary>
         private static string SafeModRoot()
         {
-            try
-            {
-                string loc = typeof(FontController).Assembly.Location;
-                return string.IsNullOrEmpty(loc) ? "" : Path.GetDirectoryName(loc);
-            }
-            catch
-            {
-                return "";
-            }
+            try { return CesiumLoader.SDK.IO.Path.CurrentModDirectory; }
+            catch { return ""; }
         }
 
         private static double NowSeconds()

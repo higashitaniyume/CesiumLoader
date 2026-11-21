@@ -24,6 +24,9 @@ namespace FontMod
     {
         private const int MaxMissingGlyphs = 25;
         private const int MaxProbeMissing = 2;
+
+        /// <summary>场景 TMP_Text 补扫间隔（秒）。首次替换后仅在低频补扫新实例化对象。</summary>
+        private const double SceneTmpRefreshSeconds = 5.0;
         private const string WarmupText = "永和九年，岁在癸丑。星币筹码技能攻击防御0123456789ABCabc";
         private const string CoreChineseSample =
             "中文的一是在不了有和人这大上个国我以要他时来用们生到作地于出就分对成会可主发年动同工也能下过子说产种";
@@ -75,6 +78,33 @@ namespace FontMod
         private string _failedSignature;
         private bool _exportedFontNames;
         private bool _loggedRegistrySnapshot;
+
+        // 一次性扫描闸门：Stage 树遍历与全场景 FindObjectsOfType 每帧代价高，
+        // 完成一次后就置位，直到 Restore/Reset 或桥接集合变化才重扫。
+        // FontManager.Clear() 重建字体后桥接集合会重新长出来，此时第三阶段必须再走一遍。
+        private bool _stageSwapDone;
+        private int _stageSwapBridgeCount = -1;
+        private bool _sceneTmpDone;
+        private double _nextSceneTmpRefresh;
+
+        // 失败闸门：GetOSInstalledFontNames / 经典字体探测都是重量级同步调用，
+        // 失败后不能每 0.5 秒重试，否则用户选中「不在 Unity 列表里」的用户目录字体时会持续卡顿。
+        private bool _sdkOverlayAttempted;
+        private bool _classicOsFontAttempted;
+
+        // 注册表键快照缓存（键集合不变时复用，避免每轮分配）。
+        private string[] _registryKeys;
+
+        /// <summary>校验缓存的键快照与当前注册表键集合是否完全一致（逐键 exists，不分配）。</summary>
+        private bool KeysStillMatch(Dictionary<string, BaseFont> registry)
+        {
+            if (_registryKeys == null || _registryKeys.Length != registry.Count) return false;
+            for (int i = 0; i < _registryKeys.Length; i++)
+            {
+                if (!registry.ContainsKey(_registryKeys[i])) return false;
+            }
+            return true;
+        }
 
         // Stage 遍历反射缓存
         private PropertyInfo _stageInstProp;
@@ -244,16 +274,22 @@ namespace FontMod
 
             bool useBridgeForDynamic = settings.BridgeDynamicToSdf && _mainTmpBundle != null;
 
-            // 2. 若未桥接旧版字体（或 SDF 构建失败），走 v1.0.0 经典 OS 动态字体创建路径
-            if (!useBridgeForDynamic && _classicOsFont == null && !string.IsNullOrEmpty(settings.FontFamily))
+            // 2. 若未桥接旧版字体（或 SDF 构建失败），走 v1.0.0 经典 OS 动态字体创建路径。
+            //    该路径会枚举系统字体并创建探测字体，失败后置闸门，等配置真正变化再重试。
+            if (!useBridgeForDynamic && _classicOsFont == null && !_classicOsFontAttempted
+                && !string.IsNullOrEmpty(settings.FontFamily))
             {
+                _classicOsFontAttempted = true;
                 _classicOsFont = CreateValidatedClassicOsFont(
                     _factory.FontType, settings.FontFamily, settings.FallbackFonts, settings.CheckCoverage, log);
             }
 
-            // 3. SDK 浮层字体（WidgetService.SetDefaultFont）：仅在 Unity 系统字体列表识别时推送
-            if (_sdkOverlayFont == null && !string.IsNullOrEmpty(settings.FontFamily))
+            // 3. SDK 浮层字体（WidgetService.SetDefaultFont）：仅在 Unity 系统字体列表识别时推送。
+            //    用户目录字体不在 Unity 的 GetOSInstalledFontNames 里，这里必然失败；
+            //    置闸门避免每轮都做一次几十毫秒的系统字体枚举。
+            if (_sdkOverlayFont == null && !_sdkOverlayAttempted && !string.IsNullOrEmpty(settings.FontFamily))
             {
+                _sdkOverlayAttempted = true;
                 _sdkOverlayFont = TryCreateSdkOverlayFont(_factory.FontType, settings.FontFamily, settings.FallbackFonts);
                 if (_sdkOverlayFont != null) PushSdkFont(_sdkOverlayFont);
             }
@@ -277,11 +313,19 @@ namespace FontMod
 
             var appliedTmpNames = new List<string>();
             var appliedDynNames = new List<string>();
-            var keys = new List<string>(registry.Keys);
 
-            for (int i = 0; i < keys.Count; i++)
+            // 键快照缓存：Apply 只替换字典里的值、不同时增删键，
+            // 键集合没变时复用上一轮数组，省掉每 0.5 秒一次的 List<string> 分配。
+            // 仅比对数量不足以证明键集合没变（同数目换名），因此逐键校验一次（不分配）。
+            if (_registryKeys == null || !KeysStillMatch(registry))
             {
-                string key = keys[i];
+                _registryKeys = new string[registry.Count];
+                registry.Keys.CopyTo(_registryKeys, 0);
+            }
+
+            for (int i = 0; i < _registryKeys.Length; i++)
+            {
+                string key = _registryKeys[i];
                 BaseFont bf;
                 if (!registry.TryGetValue(key, out bf) || bf == null) continue;
 
@@ -381,17 +425,29 @@ namespace FontMod
                 }
             }
 
-            // D. 热切换 Stage.inst 上所有已存在的旧版 TextField / RichTextField
+            // D. 热切换 Stage.inst 上所有已存在的旧版 TextField / RichTextField。
+            //    这是一次全 FairyGUI 显示树的反射遍历，只在桥接集合发生变化时做一次；
+            //    之后再创建的新控件会在构造时直接取到 registry 里的桥接字体，无需重扫。
             int stageSwapped = 0;
-            if (_oldDynamicToBridge.Count > 0)
+            if (_oldDynamicToBridge.Count > 0
+                && (!_stageSwapDone || _stageSwapBridgeCount != _oldDynamicToBridge.Count))
             {
                 stageSwapped = SwapStageTextFields(_oldDynamicToBridge, settings.ApplyToAllFonts);
+                _stageSwapDone = true;
+                _stageSwapBridgeCount = _oldDynamicToBridge.Count;
             }
 
-            // E. 替换 3D 场景 TMPro.TMP_Text
+            // E. 替换 3D 场景 TMPro.TMP_Text。
+            //    FindObjectsOfType 是主线程全场景扫描且每次分配数组，首次立即补一轮，
+            //    之后按 SceneTmpRefreshSeconds 低频补扫新实例化对象。
             if (settings.ReplaceSceneTmpText && _mainTmpBundle != null)
             {
-                sceneApplied = ApplySceneTmpTexts(_mainTmpBundle.TmpFontAsset);
+                if (!_sceneTmpDone || NowSeconds() >= _nextSceneTmpRefresh)
+                {
+                    sceneApplied = ApplySceneTmpTexts(_mainTmpBundle.TmpFontAsset);
+                    _sceneTmpDone = true;
+                    _nextSceneTmpRefresh = NowSeconds() + SceneTmpRefreshSeconds;
+                }
             }
 
             if (tmpApplied > 0 || tmpRestored > 0 || dynBridged > 0 || dynClassic > 0 || dynRestored > 0 || stageSwapped > 0 || sceneApplied > 0)
@@ -414,6 +470,13 @@ namespace FontMod
         internal void Restore(ModLogger log)
         {
             Dictionary<string, BaseFont> registry = FontManager.sFontFactory;
+
+            // 复位一次性扫描闸门：下次重新 Apply 时 Stage 树与场景文本需要再走一遍。
+            _stageSwapDone = false;
+            _stageSwapBridgeCount = -1;
+            _sceneTmpDone = false;
+            _nextSceneTmpRefresh = 0;
+            _registryKeys = null;
 
             // 1. 恢复原生 TMPFont
             int tmpRestored = 0;
@@ -485,6 +548,10 @@ namespace FontMod
             PushSdkFont(null);
             _builtForSettings = null;
             _failedSignature = null;
+
+            // 配置变化时清掉失败闸门，让新的目标字体有机会重试一次。
+            _sdkOverlayAttempted = false;
+            _classicOsFontAttempted = false;
         }
 
         internal void Reset(ModLogger log)
@@ -905,6 +972,13 @@ namespace FontMod
 
         private void PruneStale(Dictionary<string, BaseFont> registry)
         {
+            // 稳态下各跟踪集合都已清空或稳定，直接返回，避免每轮为四个列表分配内存。
+            if (_originalTmpAssets.Count == 0 && _originalClassicNatives.Count == 0
+                && _bridgeByKey.Count == 0 && _originalSceneTmpFonts.Count == 0)
+            {
+                return;
+            }
+
             var staleTmp = new List<BaseFont>();
             foreach (KeyValuePair<BaseFont, object> pair in _originalTmpAssets)
             {
@@ -1161,6 +1235,12 @@ namespace FontMod
         {
             try { WidgetService.SetDefaultFont(font); }
             catch { }
+        }
+
+        /// <summary>不受变速 hook 影响的时间基准（与 FontController 保持一致）。</summary>
+        private static double NowSeconds()
+        {
+            return DateTime.UtcNow.Ticks / (double)TimeSpan.TicksPerSecond;
         }
 
         private static void DestroyObject(object obj)

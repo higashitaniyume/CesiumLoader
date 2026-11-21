@@ -422,71 +422,70 @@ namespace FontMod
             return false;
         }
 
+        /// <summary>
+        /// 解析一个字体文件的 name 表。整文件一次性读入后用偏移索引，
+        /// 不碰 FileStream / FileInfo / Seek —— 这些在 HybridCLR 热更侧没有保证。
+        /// </summary>
         internal static void ParseFontFile(string filePath, List<FontFaceRecord> output)
         {
-            using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-            {
-                if (fs.Length < 12) return;
-                byte[] hdr = new byte[12];
-                if (fs.Read(hdr, 0, 12) != 12) return;
+            byte[] data = File.ReadAllBytes(filePath);
+            if (data.Length < 12) return;
 
-                uint tag = ReadUInt32BE(hdr, 0);
-                if (tag == 0x74746366) // 'ttcf'
+            uint tag = ReadUInt32BE(data, 0);
+            if (tag == 0x74746366) // 'ttcf'
+            {
+                uint numFonts = ReadUInt32BE(data, 8);
+                if (numFonts == 0 || numFonts > 64) return;
+                if (12L + numFonts * 4L > data.Length) return;
+
+                for (int fi = 0; fi < (int)numFonts; fi++)
                 {
-                    uint numFonts = ReadUInt32BE(hdr, 8);
-                    if (numFonts == 0 || numFonts > 64) return;
-                    byte[] offBytes = new byte[numFonts * 4];
-                    if (fs.Read(offBytes, 0, offBytes.Length) != offBytes.Length) return;
-                    for (int fi = 0; fi < (int)numFonts; fi++)
-                    {
-                        uint sfntOffset = ReadUInt32BE(offBytes, fi * 4);
-                        FontFaceRecord rec = ParseSfntFace(fs, filePath, fi, sfntOffset);
-                        if (rec != null) output.Add(rec);
-                    }
-                }
-                else if (tag == 0x00010000 || tag == 0x4F54544F || tag == 0x74727565)
-                {
-                    FontFaceRecord rec = ParseSfntFace(fs, filePath, 0, 0);
+                    uint sfntOffset = ReadUInt32BE(data, 12 + fi * 4);
+                    FontFaceRecord rec = ParseSfntFace(data, filePath, fi, sfntOffset);
                     if (rec != null) output.Add(rec);
                 }
             }
+            else if (tag == 0x00010000 || tag == 0x4F54544F || tag == 0x74727565)
+            {
+                FontFaceRecord rec = ParseSfntFace(data, filePath, 0, 0);
+                if (rec != null) output.Add(rec);
+            }
         }
 
-        private static FontFaceRecord ParseSfntFace(FileStream fs, string filePath, int faceIndex, uint sfntOffset)
+        private static FontFaceRecord ParseSfntFace(byte[] data, string filePath, int faceIndex, uint sfntOffset)
         {
-            if (sfntOffset + 12 > fs.Length) return null;
-            fs.Position = sfntOffset;
-            byte[] sfntHdr = new byte[12];
-            if (fs.Read(sfntHdr, 0, 12) != 12) return null;
+            long faceStart = sfntOffset;
+            if (faceStart < 0 || faceStart + 12 > data.Length) return null;
 
-            ushort numTables = ReadUInt16BE(sfntHdr, 4);
+            int hdr = (int)faceStart;
+            ushort numTables = ReadUInt16BE(data, hdr + 4);
             if (numTables == 0 || numTables > 128) return null;
 
-            byte[] dir = new byte[numTables * 16];
-            if (fs.Read(dir, 0, dir.Length) != dir.Length) return null;
+            long dirStart = faceStart + 12;
+            if (dirStart + numTables * 16L > data.Length) return null;
 
+            int dir = (int)dirStart;
             uint nameOffset = 0;
             uint nameLength = 0;
             for (int i = 0; i < numTables; i++)
             {
-                uint ttag = ReadUInt32BE(dir, i * 16);
+                uint ttag = ReadUInt32BE(data, dir + i * 16);
                 if (ttag == 0x6E616D65) // 'name'
                 {
-                    nameOffset = ReadUInt32BE(dir, i * 16 + 8);
-                    nameLength = ReadUInt32BE(dir, i * 16 + 12);
+                    nameOffset = ReadUInt32BE(data, dir + i * 16 + 8);
+                    nameLength = ReadUInt32BE(data, dir + i * 16 + 12);
                     break;
                 }
             }
             if (nameOffset == 0 || nameLength < 6 || nameLength > 2 * 1024 * 1024) return null;
-            if (nameOffset + nameLength > fs.Length) return null;
+            if ((long)nameOffset + nameLength > data.Length) return null;
 
-            fs.Position = nameOffset;
-            byte[] buf = new byte[nameLength];
-            if (fs.Read(buf, 0, buf.Length) != buf.Length) return null;
+            int bufBase = (int)nameOffset;
+            int bufLen = (int)nameLength;
 
-            ushort count = ReadUInt16BE(buf, 2);
-            ushort stringOffset = ReadUInt16BE(buf, 4);
-            if (6 + count * 12 > buf.Length) return null;
+            ushort count = ReadUInt16BE(data, bufBase + 2);
+            ushort stringOffset = ReadUInt16BE(data, bufBase + 4);
+            if (6L + count * 12L > bufLen) return null;
 
             var names = new List<string>();
             var rawFamilyNames = new List<string>();
@@ -497,20 +496,20 @@ namespace FontMod
 
             for (int i = 0; i < count; i++)
             {
-                int ro = 6 + i * 12;
-                ushort platformId = ReadUInt16BE(buf, ro);
-                ushort encodingId = ReadUInt16BE(buf, ro + 2);
-                ushort langId = ReadUInt16BE(buf, ro + 4);
-                ushort nameId = ReadUInt16BE(buf, ro + 6);
-                ushort length = ReadUInt16BE(buf, ro + 8);
-                ushort offset = ReadUInt16BE(buf, ro + 10);
+                int ro = bufBase + 6 + i * 12;
+                ushort platformId = ReadUInt16BE(data, ro);
+                ushort encodingId = ReadUInt16BE(data, ro + 2);
+                ushort langId = ReadUInt16BE(data, ro + 4);
+                ushort nameId = ReadUInt16BE(data, ro + 6);
+                ushort length = ReadUInt16BE(data, ro + 8);
+                ushort offset = ReadUInt16BE(data, ro + 10);
 
                 if (nameId != 1 && nameId != 2 && nameId != 4 && nameId != 6 && nameId != 16 && nameId != 17) continue;
 
                 int strPos = stringOffset + offset;
-                if (strPos < 0 || strPos + length > buf.Length) continue;
+                if (strPos < 0 || strPos + length > bufLen) continue;
 
-                string decoded = DecodeNameString(buf, strPos, length, platformId, encodingId);
+                string decoded = DecodeNameString(data, bufBase + strPos, length, platformId, encodingId);
                 if (string.IsNullOrEmpty(decoded)) continue;
 
                 string norm = NormalizeName(decoded);
@@ -547,17 +546,17 @@ namespace FontMod
             return rec;
         }
 
-        private static string DecodeNameString(byte[] buf, int offset, int length, ushort platformId, ushort encodingId)
+        private static string DecodeNameString(byte[] data, int offset, int length, ushort platformId, ushort encodingId)
         {
             try
             {
                 if (platformId == 3 || platformId == 0)
                 {
-                    return Encoding.BigEndianUnicode.GetString(buf, offset, length).Trim('\0', ' ');
+                    return Encoding.BigEndianUnicode.GetString(data, offset, length).Trim('\0', ' ');
                 }
                 if (platformId == 1 && encodingId == 0)
                 {
-                    return Encoding.ASCII.GetString(buf, offset, length).Trim('\0', ' ');
+                    return Encoding.ASCII.GetString(data, offset, length).Trim('\0', ' ');
                 }
             }
             catch
