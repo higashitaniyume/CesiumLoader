@@ -6,8 +6,8 @@
     纯部署脚本: 只复制已构建的产物, 不做 git 操作、不改动游戏自身文件、不碰 BepInEx。
     - 原生加载器 version.dll 必须位于游戏 exe 同目录 (Doorstop 式代理)。
     - SDK / mods / 配置放在游戏目录下的 AstralParty_ModLoader\。
-    - 游戏实际 exe 目录可能是 Steam 安装目录下的混淆子目录 (如 8vJXn6CN),
-      用 -GameDir 指向"含 AstralParty_CN.exe 的目录"。
+    - 游戏实际 exe 目录可能是 Steam 安装目录下的混淆子目录 (如 8vJXn6CN / 8vJXnINT),
+      用 -GameDir 指向"含 AstralParty*.exe 的目录" (国服 AstralParty_CN.exe, 国际服 AstralParty_INT.exe)。
 
 .PARAMETER GameDir
     游戏 exe 所在目录。默认自动探测 Steam 安装位置。
@@ -25,7 +25,7 @@
     部署完成后通过 Steam 启动游戏 (steam://rungameid/<AppId>)。
 
     注意: **必须由 Steam 拉起游戏**。本作在 SteamManager.Awake() 里校验启动来源,
-    直接运行 AstralParty_CN.exe 会得到 "[ERROR] [SteamManager] 非Steam客户端启动,
+    直接运行 AstralParty_CN.exe / AstralParty_INT.exe 会得到 "[ERROR] [SteamManager] 非Steam客户端启动,
     退出游戏" 并主动退出 (Player.log 中 SteamPlatform Initialized: False)。
     另外请确保同一时刻只有一个游戏实例: 多实例会各注入一次 version.dll、
     重复加载 mod (每次启动各写一套日志, 见下)。
@@ -77,9 +77,13 @@ function Resolve-GameDir
 
     if ($Explicit)
     {
-        if (-not (Test-Path -LiteralPath (Join-Path $Explicit 'AstralParty_CN.exe')))
+        # 接受任何区域客户端的 exe: 国服 AstralParty_CN.exe / 国际服 AstralParty_INT.exe
+        # (与 Toys 的 ContainsGameExe 同一口径: AstralParty*.exe)。
+        $exe = Get-ChildItem -LiteralPath $Explicit -Filter 'AstralParty*.exe' -File -ErrorAction SilentlyContinue |
+               Select-Object -First 1
+        if (-not $exe)
         {
-            throw "指定的 -GameDir 下没有 AstralParty_CN.exe: $Explicit"
+            throw "指定的 -GameDir 下没有 AstralParty*.exe (国服 AstralParty_CN.exe / 国际服 AstralParty_INT.exe): $Explicit"
         }
         return (Resolve-Path -LiteralPath $Explicit).Path
     }
@@ -94,13 +98,13 @@ function Resolve-GameDir
 
     foreach ($root in $roots)
     {
-        # 游戏 exe 可能位于混淆子目录下
-        $exe = Get-ChildItem -LiteralPath $root -Filter 'AstralParty_CN.exe' -Recurse -Depth 2 -ErrorAction SilentlyContinue |
+        # 游戏 exe 可能位于混淆子目录下; 国服/国际服各一个 (AstralParty_CN.exe / AstralParty_INT.exe)
+        $exe = Get-ChildItem -LiteralPath $root -Filter 'AstralParty*.exe' -Recurse -Depth 2 -ErrorAction SilentlyContinue |
                Select-Object -First 1
         if ($exe) { return $exe.DirectoryName }
     }
 
-    throw "未能自动定位游戏目录, 请用 -GameDir 指定 (含 AstralParty_CN.exe 的目录)。"
+    throw "未能自动定位游戏目录, 请用 -GameDir 指定 (含 AstralParty*.exe 的目录)。"
 }
 
 $gameDir = Resolve-GameDir -Explicit $GameDir
@@ -109,9 +113,10 @@ $loaderDir = Join-Path $gameDir 'AstralParty_ModLoader'
 Write-Host "游戏目录 : $gameDir"
 Write-Host "配置     : $Configuration"
 
-if (Get-Process -Name 'AstralParty_CN' -ErrorAction SilentlyContinue)
+# 进程名用 AstralParty_* 而不是 AstralParty*: 后者会把 AstralParty.Toys(管理器)也当成游戏。
+if (Get-Process -Name 'AstralParty_*' -ErrorAction SilentlyContinue)
 {
-    throw '游戏正在运行, 请先退出再部署 (version.dll 被占用时无法覆盖)。'
+    throw '游戏正在运行, 请先退出再部署 (version.dll / CesiumLoader.dll 被占用时无法覆盖)。'
 }
 
 # ---------------------------------------------------------------- 构建 (可选)
@@ -317,7 +322,7 @@ if ($Launch)
 {
     # 单实例原则: 同一时刻只允许一个游戏进程。两个进程会各自注入一次 version.dll 并重复加载 mod
     # (日志现在是每次启动各一套, 不会交错, 但仍会让同一份 mod 被加载两遍)。
-    if (Get-Process -Name 'AstralParty_CN' -ErrorAction SilentlyContinue)
+    if (Get-Process -Name 'AstralParty_*' -ErrorAction SilentlyContinue)
     {
         throw '已有游戏实例在运行, 拒绝再次启动 (避免多实例重复注入)。'
     }
@@ -329,5 +334,5 @@ if ($Launch)
 
     Write-Host "通过 Steam 启动 (appid $SteamAppId)..." -ForegroundColor Cyan
     Start-Process "steam://rungameid/$SteamAppId"
-    Write-Host '  注意: 切勿用 Start-Process 直接运行 AstralParty_CN.exe —— 游戏会立即退出。' -ForegroundColor Yellow
+    Write-Host '  注意: 切勿用 Start-Process 直接运行 AstralParty_CN.exe / AstralParty_INT.exe —— 游戏会立即退出。' -ForegroundColor Yellow
 }
