@@ -635,7 +635,7 @@ jobs:
           # 这里不用 action-gh-release 的 prerelease/make_latest 输入：模板表达式的结果是
           # 字符串 "false"，而 action 内部按真值判断，等于每次都变成 prerelease。
           case "$GITHUB_REF_NAME" in
-            modloader-3.5.1|modloader-3.5.2|modloader-3.6.0|modloader-3.7.1)
+            modloader-3.5.1|modloader-3.5.2|modloader-3.6.0|modloader-3.7.1|modloader-4.1.0)
               gh release create "$GITHUB_REF_NAME" artifacts/* \
                 --title "$GITHUB_REF_NAME" --notes "" --prerelease ;;
             *)
@@ -645,14 +645,14 @@ jobs:
 
       # 候选版本不推 NuGet: apcsm 的稳定通道只发正式版, 候选版留给手动安装。
       - name: NuGet login (OIDC Trusted Publishing)
-        if: github.ref_name != 'modloader-3.6.0' && github.ref_name != 'modloader-3.7.1'
+        if: github.ref_name != 'modloader-3.6.0' && github.ref_name != 'modloader-3.7.1' && github.ref_name != 'modloader-4.1.0'
         uses: NuGet/login@v1
         id: nuget-login
         with:
           user: ${{ secrets.NUGET_USER }}
 
       - name: Publish apcsm to NuGet.org
-        if: github.ref_name != 'modloader-3.6.0' && github.ref_name != 'modloader-3.7.1'
+        if: github.ref_name != 'modloader-3.6.0' && github.ref_name != 'modloader-3.7.1' && github.ref_name != 'modloader-4.1.0'
         shell: bash
         run: |
           dotnet nuget push artifacts/apcsm.*.nupkg \

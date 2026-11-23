@@ -2,6 +2,20 @@
 
 本文件按版本记录 `CesiumLoader` 的功能变更。版本号与 GitHub 发布 tag 一一对应（如 `modloader-3.3.2`，版本号为 `3.3.2`），发布产物由 [release-modloader.yml](.github/workflows/release-modloader.yml) 在打 tag 时自动构建。
 
+## [4.1.0] - 2026-11-23
+
+### 加载器
+
+- **原生层拆成两个文件**：`version.dll`（薄代理：转发系统 `version.dll` 的导出，并加载同目录的加载器核心）与 `CesiumLoader.dll`（加载器主体：配置、变速、文件重定向、多 profile、日志、调试 shell、更新检查、崩溃转储、IL2CPP 与托管模组编排）。两者**必须成对安装并保持同目录**，装到游戏 exe 所在目录即可。
+- 只有代理没有核心、核心被杀软截断，或代理与核心版本不同步时，游戏照常启动，只是不加载任何模组；原因写在 `<加载器目录>\logs\proxy-*.log`。
+- 旧版原生附加导出（`ap_speed_set` / `ap_speed_get` / `ap_speed_active` / `ap_console_write*`）保持可用，由代理转发到核心。
+- 安装、升级与卸载请使用配套的 AstralParty.Toys：新版会识别并维护这两个文件；旧版 Toys 仍可安装与更新本包，但卸载时不会清理 `CesiumLoader.dll`，也不会提示核心缺失。
+- 本版本为预发布：不会被「最新版本」渠道获取，加载器的更新检查与 Toys 的自动检查都不会提示它。
+
+### 工具与调试
+
+- `tools/deploy.ps1` 支持国际服客户端（`AstralParty_INT.exe`），并会校验 `version.dll` 与 `CesiumLoader.dll` 是否成对部署。
+
 ## [4.0.1] - 2026-11-23
 
 ### 模组
