@@ -23,6 +23,33 @@ public sealed partial class SpeedHackControllerTests
     }
 
     [Fact]
+    public void DesktopUnity_WaitsForNativeAcknowledgementWhenPortExists()
+    {
+        const string port = "CESIUM_SPEED_PORT";
+        string previousPort = Environment.GetEnvironmentVariable(port);
+        var mod = Create();
+        try
+        {
+            Environment.SetEnvironmentVariable(port, "42424");
+            mod.Config.Set("speed", 4.0);
+            SpeedHack.IsAvailable = false;
+            mod.OnInitialize();
+            Advance(mod, 3, .5f);
+            Assert.Equal(1f, Time.Scale);
+
+            SpeedHack.IsAvailable = true;
+            SpeedHack.Speed = 1;
+            Advance(mod, 4, .5f);
+            Assert.Equal(4f, Time.Scale);
+        }
+        finally
+        {
+            mod.OnUnload();
+            Environment.SetEnvironmentVariable(port, previousPort);
+        }
+    }
+
+    [Fact]
     public void DisableWhilePaused_DefersRestoreWithoutUnpausing()
     {
         float scale = 1;
@@ -49,10 +76,11 @@ public sealed partial class SpeedHackControllerTests
         SpeedHack.Speed = 1;
         var mod = Create(); mod.Config.Set("repeatInterval", 0f); mod.OnInitialize();
         InputService.Held.Add(KeyCode.LeftAlt); InputService.Held.Add(KeyCode.Equals);
-        Advance(mod, 100, .1f); Assert.Single(SpeedHack.Requests);
+        Advance(mod, 100, .1f); Assert.Equal(2.5f, Time.Scale);
         InputService.Held.Clear(); mod.OnUpdate();
         InputService.Held.Add(KeyCode.LeftAlt); InputService.Held.Add(KeyCode.Equals);
-        Advance(mod, 100, .1f); Assert.Equal(2, SpeedHack.Requests.Count);
+        Advance(mod, 100, .1f); Assert.Equal(3f, Time.Scale);
+        Assert.Empty(SpeedHack.Requests);
         mod.OnUnload();
     }
 
@@ -81,18 +109,6 @@ public sealed partial class SpeedHackControllerTests
     }
 
     [Fact]
-    public void LowerMaximumOnReload_RequestsClampedNativeSpeed()
-    {
-        var mod = Create(); mod.OnInitialize();
-        mod.Config.Set("maxSpeed", 2.0); mod.OnConfigChanged();
-        Assert.Equal(2, SpeedHack.Requested);
-        // Do not optimize using the new target until the native engine acknowledges.
-        Assert.Equal(.08f, Time.Step, 5);
-        SpeedHack.Speed = 2; Advance(mod, 20, .1f); Assert.Equal(.04f, Time.Step, 5);
-        mod.OnUnload();
-    }
-
-    [Fact]
     public void BoundsReload_DoesNotEnableTemporarilyDisabledUnitySpeed()
     {
         var mod = StartUnity(); Press(mod); Assert.Equal(1, Time.Scale);
@@ -101,15 +117,21 @@ public sealed partial class SpeedHackControllerTests
     }
 
     [Fact]
-    public void BoundsReload_ReplacesAnOutOfRangeUnacknowledgedNativeRequest()
+    public void BoundsReload_ClampsUnityTargetWhileWaitingForNativeReset()
     {
-        SpeedHack.Speed = 2;
-        var mod = Create(); mod.OnInitialize();
-        InputService.Held.Add(KeyCode.LeftAlt); InputService.Held.Add(KeyCode.Equals);
-        mod.OnUpdate(); InputService.Held.Clear(); mod.OnUpdate();
-        Assert.Equal(2.5, SpeedHack.Requested);
-        mod.Config.Set("maxSpeed", 2.0); mod.OnConfigChanged();
-        Assert.Equal(2, SpeedHack.Requested);
+        var mod = Create();
+        mod.OnInitialize();
+        mod.Config.Set("maxSpeed", 2.0);
+        mod.OnConfigChanged();
+
+        Assert.Equal(1f, Time.Scale);
+        Assert.Equal(0.02, Time.Step, 0.000001);
+        Assert.All(SpeedHack.Requests, speed => Assert.Equal(1, speed));
+
+        SpeedHack.Speed = 1;
+        Advance(mod, 10, .5f);
+        Assert.Equal(2f, Time.Scale);
+        Assert.Equal(0.04, Time.Step, 0.000001);
         mod.OnUnload();
     }
 
@@ -175,7 +197,7 @@ public sealed partial class SpeedHackControllerTests
     {
         SpeedHack.Speed = 1;
         string state = "hooks=4";
-        var mod = Create(); mod.Config.Set("speed", 4.0); mod.Config.Set("accelerationMode", "unity");
+        var mod = Create(); mod.Config.Set("speed", 4.0);
         mod.ReadNativeSpeed = () => NativeSpeedState.Parse(state);
         mod.OnInitialize(); Advance(mod, 20, .5f); Assert.Equal(1f, Time.Scale);
         state = "hooks=4\nspeed=4.000";
@@ -187,7 +209,7 @@ public sealed partial class SpeedHackControllerTests
     [Fact]
     public void MissingStateDuringReset_DoesNotAcknowledgeSdkFallback()
     {
-        var mod = Create(); mod.Config.Set("accelerationMode", "unity"); mod.OnInitialize();
+        var mod = Create(); mod.OnInitialize();
         SpeedHack.IsAvailable = false; SpeedHack.StateReadable = false; SpeedHack.Speed = 1;
         Advance(mod, 20, .5f); Assert.Equal(1f, Time.Scale); Assert.Equal(0.02, Time.Step, 0.000001);
         int warnings = mod.Log.Warnings.Count;
@@ -197,27 +219,48 @@ public sealed partial class SpeedHackControllerTests
     }
 
     [Fact]
-    public void NativeResetWithoutUdpAckKeepsPendingTargetAndReleasesPhysicsOwnership()
+    public void ConfigReloadWithUnknownNativeState_RestoresUnityUntilConfirmation()
     {
-        var mod = Create(); mod.OnInitialize(); Assert.Equal(.08f, Time.Step, 5);
-        Press(mod); Assert.Equal(1, SpeedHack.Requested);
+        var mod = StartUnity();
         SpeedHack.StateReadable = false;
-        Advance(mod, 20, .1f); Assert.Equal(.02f, Time.Step, 5);
-        // Do not interpret an absent acknowledgement as the requested 1x reset.
-        Press(mod); Assert.Equal(4, SpeedHack.Requested);
-        SpeedHack.StateReadable = true; SpeedHack.Speed = 4;
-        Advance(mod, 20, .1f); Assert.Equal(.08f, Time.Step, 5);
+        mod.Config.Set("maxSpeed", 2.0);
+        mod.OnConfigChanged();
+        Assert.Equal(1f, Time.Scale);
+        Assert.Equal(0.02, Time.Step, 0.000001);
+        Assert.Empty(SpeedHack.Requests);
+
+        SpeedHack.StateReadable = true;
+        Advance(mod, 4, .5f);
+        Assert.Equal(2f, Time.Scale);
+        Assert.Equal(0.04, Time.Step, 0.000001);
         mod.OnUnload();
     }
 
     [Fact]
-    public void NativeConfigReloadWithUnknownStateDoesNotAssumeOneX()
+    public void PortlessUnity_UsesConfiguredSpeedOnStartupAndReload()
     {
-        var mod = Create(); mod.OnInitialize(); SpeedHack.StateReadable = false;
-        mod.OnConfigChanged(); Assert.Equal(.02f, Time.Step, 5);
-        InputService.Held.Add(KeyCode.LeftAlt); InputService.Held.Add(KeyCode.Equals);
-        mod.OnUpdate(); Assert.Equal(4.5, SpeedHack.Requested);
-        mod.OnUnload();
+        const string port = "CESIUM_SPEED_PORT";
+        string previousPort = Environment.GetEnvironmentVariable(port);
+        var mod = Create();
+        try
+        {
+            Environment.SetEnvironmentVariable(port, null);
+            SpeedHack.IsAvailable = false;
+            SpeedHack.Speed = 1;
+            mod.Config.Set("speed", 4.0);
+            mod.OnInitialize();
+            Assert.Equal(4f, Time.Scale);
+
+            mod.Config.Set("speed", 2.0);
+            mod.OnConfigChanged();
+            Assert.Equal(2f, Time.Scale);
+            Assert.Empty(SpeedHack.Requests);
+        }
+        finally
+        {
+            mod.OnUnload();
+            Environment.SetEnvironmentVariable(port, previousPort);
+        }
     }
 
     [Fact]

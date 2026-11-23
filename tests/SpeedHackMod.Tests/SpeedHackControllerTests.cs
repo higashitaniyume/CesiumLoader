@@ -1,3 +1,4 @@
+using CesiumLoader.SDK.Configuration;
 using CesiumLoader.SDK.Engine;
 using CesiumLoader.SDK.Inputs;
 using CesiumLoader.SDK.Speed;
@@ -103,8 +104,24 @@ public sealed partial class SpeedHackControllerTests : IDisposable
             _ => new object[] { controller });
         bridge.Tick(0, 4); Assert.Equal(3f, controller.player.Speed); Assert.Equal(1, bridge.ChangedVideos);
         bridge.Tick(1, 2); Assert.Equal(2f, controller.player.Speed);
-        int writes = controller.player.Writes; bridge.Tick(2, 2); Assert.Equal(writes, controller.player.Writes);
+        controller.player.SetSpeed(1f); bridge.Tick(2, 2); Assert.Equal(2f, controller.player.Speed);
+        Assert.Equal(FakeFrameDrop.Ten, controller.maxFrameDrop);
         bridge.Restore(); Assert.Equal(1f, controller.player.Speed);
+        Assert.Equal(FakeFrameDrop.Two, controller.maxFrameDrop);
+    }
+
+    [Fact]
+    public void SilentVideo_PreservesInfiniteFrameDrop()
+    {
+        var controller = new FakeMovieController { maxFrameDrop = FakeFrameDrop.Infinite };
+        var bridge = new IndependentAnimationBridge(n => n == "UI.CriManaMovieControllerForGGraph" ? typeof(FakeMovieController) : null,
+            _ => new object[] { controller });
+        bridge.Tick(0, 4);
+        Assert.Equal(3f, controller.player.Speed);
+        Assert.Equal(FakeFrameDrop.Infinite, controller.maxFrameDrop);
+        bridge.Restore();
+        Assert.Equal(1f, controller.player.Speed);
+        Assert.Equal(FakeFrameDrop.Infinite, controller.maxFrameDrop);
     }
 
     [Fact]
@@ -113,8 +130,80 @@ public sealed partial class SpeedHackControllerTests : IDisposable
         var controller = new FakeMovieController(); controller.player.movieInfo.numAudioStreams = 1;
         var bridge = new IndependentAnimationBridge(n => n == "UI.CriManaMovieControllerForGGraph" ? typeof(FakeMovieController) : null,
             _ => new object[] { controller });
-        bridge.Tick(0, 4); Assert.Equal(0, controller.player.Writes); Assert.Equal(0, bridge.ChangedVideos);
+        var reports = new List<string>(); bridge.Report = reports.Add;
+        bridge.Tick(0, 4); bridge.Tick(0.25f, 4);
+        Assert.Equal(0, controller.player.Writes); Assert.Equal(0, bridge.ChangedVideos);
+        Assert.Equal(1, bridge.SkippedAudioVideos);
+        Assert.Single(reports, message => message.Contains("numAudioStreams=1"));
         bridge.Restore(); Assert.Equal(0, controller.player.Writes);
+    }
+
+    [Fact]
+    public void FightWindowVideo_MultipliesAndRestoresBattleRate()
+    {
+        var controller = new FakeMovieController();
+        var callback = new UI.CriMovieManager.PlayCallback(new UI.FightWindow().ShowFightVideoLoader);
+        controller.player.statusChangeCallback = callback.OnStatus;
+        var bridge = new IndependentAnimationBridge(n => n switch
+        {
+            "UI.CriManaMovieControllerForGGraph" => typeof(FakeMovieController),
+            "GameLogic.BattleConfig" => typeof(GameLogic.BattleConfig),
+            _ => null
+        }, _ => new object[] { controller });
+
+        bridge.Tick(0, 2);
+        Assert.Equal(2.5f, controller.player.Speed);
+        bridge.Restore();
+        Assert.Equal(1.25f, controller.player.Speed);
+    }
+
+    [Fact]
+    public void ReusedVideo_WaitsForActivePlayingAndMovieInfo()
+    {
+        var controller = new FakeMovieController();
+        var bridge = new IndependentAnimationBridge(
+            n => n == "UI.CriManaMovieControllerForGGraph" ? typeof(FakeMovieController) : null,
+            _ => throw new InvalidOperationException(), _ => new object[] { controller });
+        bridge.Tick(0, 2);
+
+        var player = controller.player;
+        controller.isActiveAndEnabled = false;
+        bridge.Tick(0.25f, 2);
+        Assert.Equal(1, player.Writes);
+
+        controller.isActiveAndEnabled = true;
+        controller.CurrentVideoKey = "second";
+        player.SetSpeed(1);
+        player.movieInfo = null;
+        player.status = FakeMovieStatus.WaitPrep;
+        bridge.Tick(0.5f, 2);
+        player.status = FakeMovieStatus.Playing;
+        bridge.Tick(0.75f, 2);
+        Assert.Equal(2, player.Writes);
+        player.movieInfo = new FakeMovieInfo();
+        bridge.Tick(1, 2);
+        Assert.Equal(2f, player.Speed);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void WorldVideo_ScalesGameRateAndLeavesTimelineInControl(bool fullscreen)
+    {
+        var quad = new FakeBattleQuad();
+        string channel = fullscreen ? "Core.Unit.BattleFullScreenQuad" : "Core.Unit.BattleCustomVideoQuad";
+        var bridge = new IndependentAnimationBridge(n => n == channel ? typeof(FakeBattleQuad) : null,
+            _ => new object[] { quad });
+        if (fullscreen)
+        {
+            bridge.Tick(0, 2);
+            Assert.Equal(0, quad.controller.player.Writes);
+            quad._syncWithTimeline = false;
+        }
+        bridge.Tick(1, 2);
+        Assert.Equal(2.5f, quad.controller.player.Speed);
+        bridge.Restore();
+        Assert.Equal(1.25f, quad.controller.player.Speed);
     }
 
     [Fact]
@@ -149,13 +238,14 @@ public sealed partial class SpeedHackControllerTests : IDisposable
     }
 
     [Fact]
-    public void UiAnimationSynchronization_CanBeDisabledIndependently()
+    public void UiAnimationSynchronization_CannotBeDisabledByConfig()
     {
         var mod = StartUnity();
         var root = new FairyGUI.GRoot(); var transition = new FairyGUI.Transition(); root.AddTransition(transition);
         FairyGUI.GRoot.SetExisting(root); Advance(mod, 5, 0.01f);
         mod.Config.Set("accelerateUiAnimations", false); mod.OnConfigChanged(); Advance(mod, 10, 0.01f);
-        Assert.True(transition.ignoreEngineTimeScale);
+        Assert.False(transition.ignoreEngineTimeScale);
+        Assert.False(mod.Config.Has("accelerateUiAnimations"));
         Assert.Equal(4f, Time.Scale); mod.OnUnload();
     }
 
@@ -202,7 +292,7 @@ public sealed partial class SpeedHackControllerTests : IDisposable
     public void UnityAcceleration_KeepsNativeClockAtNormalSpeed()
     {
         SpeedHack.Speed = 1;
-        var mod = Create(); mod.Config.Set("speed", 4.0); mod.Config.Set("accelerationMode", "unity");
+        var mod = Create(); mod.Config.Set("speed", 4.0);
         mod.OnInitialize(); mod.OnUpdate();
         Assert.Equal(1, SpeedHack.Actual); Assert.Equal(4f, Time.Scale); Assert.Equal(0.08, Time.Step, 0.000001);
         Press(mod); Assert.Equal(1f, Time.Scale); Assert.Equal(0.02, Time.Step, 0.000001);
@@ -213,7 +303,7 @@ public sealed partial class SpeedHackControllerTests : IDisposable
     [Fact]
     public void UnityStartup_WaitsForNativeConfirmation()
     {
-        var mod = Create(); mod.Config.Set("accelerationMode", "unity");
+        var mod = Create();
         mod.OnInitialize(); mod.OnUpdate();
         Assert.Equal(1, SpeedHack.Requested); Assert.Equal(1f, Time.Scale);
         Advance(mod, 20, 0.5f); Assert.Equal(1f, Time.Scale);
@@ -222,16 +312,23 @@ public sealed partial class SpeedHackControllerTests : IDisposable
         mod.OnUnload(); Assert.Equal(1f, Time.Scale);
     }
 
-    [Fact]
-    public void SwitchingBackends_DoesNotMultiplyNativeAndUnitySpeed()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("unity")]
+    [InlineData("native")]
+    [InlineData("invalid")]
+    public void Startup_AlwaysUsesUnityAndRemovesLegacyMode(string mode)
     {
-        var mod = Start(4);
-        mod.Config.Set("accelerationMode", "unity"); mod.OnConfigChanged();
-        Assert.Equal(1f, Time.Scale); Assert.Equal(1, SpeedHack.Requested);
-        SpeedHack.Speed = 1; Advance(mod, 10, 0.5f); Assert.Equal(4f, Time.Scale);
-        mod.Config.Set("accelerationMode", "native"); mod.OnConfigChanged();
-        Assert.Equal(1f, Time.Scale); Assert.Equal(4, SpeedHack.Requested);
-        SpeedHack.Speed = 4; Advance(mod, 10, 0.5f); Assert.Equal(0.08, Time.Step, 0.000001);
+        SpeedHack.Speed = 1;
+        var mod = Create();
+        mod.Config.Set("speed", 4.0);
+        if (mode != null) mod.Config.Set("accelerationMode", mode);
+
+        mod.OnInitialize();
+
+        Assert.Equal(4f, Time.Scale);
+        Assert.False(mod.Config.Has("accelerationMode"));
+        Assert.Empty(SpeedHack.Requests);
         mod.OnUnload();
     }
 
@@ -272,11 +369,12 @@ public sealed partial class SpeedHackControllerTests : IDisposable
     }
 
     [Fact]
-    public void UnityMode_CanDisableFixedStepCompensationWithoutDisablingSpeed()
+    public void UnityMode_LocksFixedStepCompensationEnabled()
     {
         var mod = StartUnity();
         mod.Config.Set("optimizeFixedUpdates", false); mod.OnConfigChanged();
-        Assert.Equal(4f, Time.Scale); Assert.Equal(0.02, Time.Step, 0.000001);
+        Assert.Equal(4f, Time.Scale); Assert.Equal(0.08, Time.Step, 0.000001);
+        Assert.False(mod.Config.Has("optimizeFixedUpdates"));
         Press(mod); Assert.Equal(1f, Time.Scale); Press(mod); Assert.Equal(4f, Time.Scale);
         mod.OnUnload();
     }
@@ -285,59 +383,64 @@ public sealed partial class SpeedHackControllerTests : IDisposable
     public void UnityInternalCallFailure_IsNotRepeatedEveryFrame()
     {
         SpeedHack.Speed = 1; Time.FailAccess = true;
-        var mod = Create(); mod.Config.Set("accelerationMode", "unity"); mod.Config.Set("speed", 4.0);
+        var mod = Create(); mod.Config.Set("speed", 4.0);
         mod.OnInitialize(); int warnings = mod.Log.Warnings.Count;
         Advance(mod, 1000, 0.1f); Assert.Equal(warnings, mod.Log.Warnings.Count);
         Time.FailAccess = false; mod.OnUnload();
     }
 
     [Fact]
-    public void Toggle_CanResumeWhileNativeAcknowledgementIsDelayed()
+    public void Toggle_RetainsUnityTargetWhileWaitingForNativeReset()
     {
-        var mod = Start(4);
-        InputService.Pressed.Add(KeyCode.Delete); mod.OnUpdate(); InputService.Pressed.Clear();
+        var mod = Create();
+        mod.OnInitialize();
+        Assert.Equal(1f, Time.Scale);
         Assert.Equal(1, SpeedHack.Requested);
-        // The request changed, but state.txt still reports 4x.
-        Advance(mod, 3, 0.5f);
-        InputService.Pressed.Add(KeyCode.Delete); mod.OnUpdate(); InputService.Pressed.Clear();
-        Assert.Equal(4, SpeedHack.Requested);
-        mod.OnUnload();
-    }
 
-    [Fact]
-    public void LongStaleState_DoesNotTrapToggleAtNormalSpeed()
-    {
-        var mod = Start(4, false);
-        Press(mod); Assert.Equal(1, SpeedHack.Requested);
-        Advance(mod, 200, 0.5f);
-        int warnings = mod.Log.Warnings.Count;
-        Advance(mod, 100, 0.5f); Assert.Equal(warnings, mod.Log.Warnings.Count);
-        Press(mod); Assert.Equal(4, SpeedHack.Requested);
+        Press(mod);
+        Advance(mod, 20, 0.5f);
+        Press(mod);
+        Assert.Equal(1f, Time.Scale);
+        Assert.All(SpeedHack.Requests, speed => Assert.Equal(1, speed));
+
+        SpeedHack.Speed = 1;
+        Advance(mod, 10, 0.5f);
+        Assert.Equal(4f, Time.Scale);
         mod.OnUnload();
     }
 
     [Fact]
     public void HeldKeyOrDuplicateUpdate_DoesNotToggleRepeatedly()
     {
-        var mod = Start(4);
-        InputService.Held.Add(KeyCode.Delete); InputService.Pressed.Add(KeyCode.Delete);
-        Advance(mod, 20, 0.01f); Assert.Single(SpeedHack.Requests);
-        InputService.Held.Clear(); InputService.Pressed.Clear(); mod.OnUpdate();
-        Press(mod); Assert.Equal(4, SpeedHack.Requested); Assert.Equal(2, SpeedHack.Requests.Count);
+        var mod = StartUnity();
+        InputService.Held.Add(KeyCode.Delete);
+        InputService.Pressed.Add(KeyCode.Delete);
+        Advance(mod, 20, 0.01f);
+        Assert.Equal(1f, Time.Scale);
+        Assert.Equal(2, Time.ScaleWrites);
+
+        InputService.Held.Clear();
+        InputService.Pressed.Clear();
+        mod.OnUpdate();
+        Press(mod);
+        Assert.Equal(4f, Time.Scale);
+        Assert.Equal(3, Time.ScaleWrites);
+        Assert.Empty(SpeedHack.Requests);
         mod.OnUnload();
     }
 
     [Fact]
-    public void RepeatedAcknowledgedToggleCycles_RetainSelectedSpeed()
+    public void RepeatedToggleCycles_RetainSelectedSpeed()
     {
-        var mod = Start(4);
+        var mod = StartUnity();
         for (int cycle = 0; cycle < 50; cycle++)
         {
-            Press(mod); Assert.Equal(1, SpeedHack.Requested);
-            SpeedHack.Speed = 1; Advance(mod, 4, 0.5f);
-            Press(mod); Assert.Equal(4, SpeedHack.Requested);
-            SpeedHack.Speed = 4; Advance(mod, 4, 0.5f);
+            Press(mod);
+            Assert.Equal(1f, Time.Scale);
+            Press(mod);
+            Assert.Equal(4f, Time.Scale);
         }
+        Assert.Empty(SpeedHack.Requests);
         mod.OnUnload();
     }
 
@@ -348,111 +451,143 @@ public sealed partial class SpeedHackControllerTests : IDisposable
     [InlineData(10.0)]
     public void StartupSpeed_KeepsFiftyFixedUpdatesPerRealSecond(double speed)
     {
-        var mod = Start(speed);
+        var mod = StartUnity(speed);
         Assert.Equal(50, speed / Time.fixedDeltaTime, 0.001);
         mod.OnUnload(); Assert.Equal(0.02, Time.Step, 0.000001);
     }
 
     [Fact]
-    public void StableNativeFrames_HaveBoundedPollingAndNoRedundantWrites()
-    {
-        var mod = Start(4); int writes = Time.Writes;
-        SpeedHack.Reads = 0; Advance(mod, 2400, 4f / 240f);
-        Assert.Equal(writes, Time.Writes); Assert.InRange(SpeedHack.Reads, 0, 21);
-        mod.OnUnload();
-    }
-
-    [Fact]
     public void SpeedChanges_RescaleFixedStepWithoutCompounding()
     {
-        var mod = Start(4);
-        SpeedHack.Speed = 2; Advance(mod, 10, 0.5f); Assert.Equal(0.04, Time.Step, 0.000001);
-        SpeedHack.Speed = 1; Advance(mod, 10, 0.5f); Assert.Equal(0.02, Time.Step, 0.000001);
-        SpeedHack.Speed = 4; Advance(mod, 10, 0.5f); Assert.Equal(0.08, Time.Step, 0.000001);
-        mod.OnUnload();
-    }
+        var mod = StartUnity();
+        mod.Config.Set("speedStep", 2.0);
+        mod.OnConfigChanged();
+        InputService.Held.Add(KeyCode.LeftAlt);
+        InputService.Held.Add(KeyCode.Minus);
+        mod.OnUpdate();
+        Assert.Equal(0.04, Time.Step, 0.000001);
 
-    [Fact]
-    public void AsynchronousRequest_WaitsForActualSpeedBeforeRestoringPhysics()
-    {
-        var mod = Start(4);
-        InputService.Pressed.Add(KeyCode.Delete); mod.OnUpdate(); InputService.Pressed.Clear();
-        Assert.Equal(1, SpeedHack.Requested); Assert.Equal(0.08, Time.Step, 0.000001);
-        SpeedHack.Speed = 1; UnityTime.RealtimeSinceStartup = 0.4f;
-        mod.OnUpdate(); Assert.Equal(0.02, Time.Step, 0.000001);
-        mod.OnUnload();
-    }
-
-    [Fact]
-    public void FailedRequest_LeavesPhysicsUnchanged()
-    {
-        var mod = Start(4); SpeedHack.AcceptRequest = false;
-        InputService.Pressed.Add(KeyCode.Delete); mod.OnUpdate(); InputService.Pressed.Clear();
-        Assert.Equal(0.08, Time.Step, 0.000001); mod.OnUnload();
-    }
-
-    [Fact]
-    public void Configuration_CanDisableAndReenableOptimization()
-    {
-        var mod = Start(4);
-        mod.Config.Set("optimizeFixedUpdates", false); mod.OnConfigChanged();
+        InputService.Held.Clear();
+        Press(mod);
         Assert.Equal(0.02, Time.Step, 0.000001);
-        SpeedHack.Reads = 0; Advance(mod, 120, 0.1f); Assert.Equal(0, SpeedHack.Reads);
-        Assert.Equal(4, SpeedHack.Actual);
-        mod.Config.Set("optimizeFixedUpdates", true); mod.OnConfigChanged(); Assert.Equal(0.08, Time.Step, 0.000001);
+        Press(mod);
+        Assert.Equal(0.04, Time.Step, 0.000001);
+        Assert.Empty(SpeedHack.Requests);
         mod.OnUnload();
     }
 
     [Fact]
-    public void DisabledOptimizationAtStartup_PreservesOriginalSemantics()
+    public void Startup_ForcesLockedOptionsEnabledEvenWhenConfigSetsFalse()
     {
-        var mod = Start(4, false); Assert.Equal(0.02, Time.Step, 0.000001); Assert.Equal(0, Time.Writes); mod.OnUnload();
+        Reset(); SpeedHack.Speed = 1;
+        var root = new FairyGUI.GRoot(); var transition = new FairyGUI.Transition(); root.AddTransition(transition);
+        FairyGUI.GRoot.SetExisting(root);
+
+        var mod = Create();
+        mod.Config.Set("speed", 4.0);
+        mod.Config.Set("accelerationMode", "native");
+        mod.Config.Set("optimizeFixedUpdates", false);
+        mod.Config.Set("accelerateUiAnimations", false);
+        mod.Config.Set("accelerateIndependentAnimations", false);
+        mod.Config.Set(ModConfig.CommentsKey, new Dictionary<string, object>(StringComparer.Ordinal)
+        {
+            ["speed"] = "keep-speed",
+            ["accelerationMode"] = "keep-mode",
+            ["optimizeFixedUpdates"] = "stale",
+            ["accelerateUiAnimations"] = "stale",
+            ["accelerateIndependentAnimations"] = "stale"
+        });
+        mod.OnInitialize();
+        Advance(mod, 5, 0.01f);
+
+        Assert.False(mod.Config.Has("optimizeFixedUpdates"));
+        Assert.False(mod.Config.Has("accelerateUiAnimations"));
+        Assert.False(mod.Config.Has("accelerateIndependentAnimations"));
+        var comments = mod.Config.Get<IDictionary<string, object>>(ModConfig.CommentsKey);
+        Assert.NotNull(comments);
+        Assert.False(comments.ContainsKey("optimizeFixedUpdates"));
+        Assert.False(comments.ContainsKey("accelerateUiAnimations"));
+        Assert.False(comments.ContainsKey("accelerateIndependentAnimations"));
+        Assert.True(comments.ContainsKey("speed"));
+        Assert.False(comments.ContainsKey("accelerationMode"));
+        Assert.False(mod.Config.Has("accelerationMode"));
+        Assert.Equal(4f, Time.Scale);
+        Assert.Equal(0.08, Time.Step, 0.000001);
+        Assert.False(transition.ignoreEngineTimeScale);
+        Assert.Contains(mod.Log.Infos, m => m.Contains("accelerateUiAnimations=true(锁定)") && m.Contains("accelerateIndependentAnimations=true(锁定)"));
+
+        mod.Config.Set("accelerationMode", "native"); mod.OnConfigChanged();
+        Assert.False(mod.Config.Has("accelerationMode"));
+        Assert.Equal(4f, Time.Scale);
+        Assert.Empty(SpeedHack.Requests);
+
+        // Unload flushes the remembered speed without restoring removed keys.
+        InputService.Held.Add(KeyCode.LeftAlt); InputService.Held.Add(KeyCode.Equals);
+        Advance(mod, 1, 0.01f);
+        InputService.Held.Clear();
+        mod.OnUnload();
+        Assert.Equal(4.5, mod.Config.GetDouble("speed", 0));
+        Assert.False(mod.Config.Has("accelerationMode"));
+        Assert.False(mod.Config.Has("optimizeFixedUpdates"));
+        Assert.False(mod.Config.Has("accelerateUiAnimations"));
+        Assert.False(mod.Config.Has("accelerateIndependentAnimations"));
     }
 
     [Fact]
     public void Unload_PreservesLaterFixedStepWrite()
     {
-        var mod = Start(4); Time.Step = 0.03f; mod.OnUnload(); Assert.Equal(0.03f, Time.Step);
+        var mod = StartUnity(); Time.Step = 0.03f; mod.OnUnload(); Assert.Equal(0.03f, Time.Step);
     }
 
     [Fact]
     public void SceneTimestepReplacement_BecomesLatestBaseline()
     {
-        var mod = Start(4); Time.Step = 0.01f; Advance(mod, 10, 0.5f); Assert.Equal(0.04, Time.Step, 0.000001);
+        var mod = StartUnity(); Time.Step = 0.01f; Advance(mod, 10, 0.5f); Assert.Equal(0.04, Time.Step, 0.000001);
         mod.OnUnload(); Assert.Equal(0.01, Time.Step, 0.000001);
     }
 
     [Fact]
     public void MaximumTimestep_CapsExtremeAcceleration()
     {
-        var mod = Start(100); Assert.Equal(1.0 / 3.0, Time.Step, 0.000001);
-        SpeedHack.Speed = 2; Advance(mod, 3, 50f); Assert.Equal(0.04, Time.Step, 0.000001);
+        var mod = StartUnity(100); Assert.Equal(1.0 / 3.0, Time.Step, 0.000001);
+        mod.Config.Set("maxSpeed", 2.0); mod.OnConfigChanged();
+        Assert.Equal(0.04, Time.Step, 0.000001);
         mod.OnUnload(); Assert.Equal(0.02, Time.Step, 0.000001);
     }
 
     [Fact]
-    public void MissingInternalCall_LogsOnceAndLeavesHotkeysWorking()
+    public void MissingFixedStepInternalCall_LogsOnceAndLeavesHotkeysWorking()
     {
-        Time.FailAccess = true;
-        var mod = Create(); mod.OnInitialize(); int warnings = mod.Log.Warnings.Count;
-        Advance(mod, 1000, 0.1f); Assert.Equal(warnings, mod.Log.Warnings.Count);
-        InputService.Pressed.Add(KeyCode.Delete); mod.OnUpdate(); InputService.Pressed.Clear();
-        Assert.Equal(1, SpeedHack.Requested); mod.OnUnload();
+        Time.FailStepAccess = true;
+        SpeedHack.Speed = 1;
+        var mod = Create();
+        mod.Config.Set("speed", 4.0);
+        mod.OnInitialize();
+        int warnings = mod.Log.Warnings.Count;
+
+        Advance(mod, 1000, 0.1f);
+        Assert.Equal(warnings, mod.Log.Warnings.Count);
+        Assert.Equal(4f, Time.Scale);
+        Press(mod);
+        Assert.Equal(1f, Time.Scale);
+        Assert.Empty(SpeedHack.Requests);
+        mod.OnUnload();
     }
 
     [Fact]
     public void ModUi_BlocksInputWithoutBlockingSynchronization()
     {
-        var mod = Start(4); UiService.ShouldBlockGameInput = true;
-        SpeedHack.Speed = 1; Advance(mod, 10, 0.5f); Assert.Equal(0.02, Time.Step, 0.000001); mod.OnUnload();
-    }
+        var mod = StartUnity();
+        UiService.ShouldBlockGameInput = true;
+        Press(mod);
+        Assert.Equal(4f, Time.Scale);
 
-    [Fact]
-    public void LateEngineAvailability_EnablesOptimization()
-    {
-        SpeedHack.IsAvailable = false;
-        var mod = Create(); mod.OnInitialize(); Assert.Equal(0.02, Time.Step, 0.000001);
-        SpeedHack.IsAvailable = true; Advance(mod, 10, 0.5f); Assert.Equal(0.08, Time.Step, 0.000001); mod.OnUnload();
+        SpeedHack.Speed = 4;
+        Advance(mod, 10, 0.5f);
+        Assert.Equal(1f, Time.Scale);
+        Assert.Equal(0.02, Time.Step, 0.000001);
+        Assert.Equal(1, SpeedHack.Requested);
+        mod.OnUnload();
     }
 
     [Theory]
@@ -481,13 +616,6 @@ public sealed partial class SpeedHackControllerTests : IDisposable
         Assert.Equal(0.08, current, 0.000001); fail = false; budget.Restore(); Assert.Equal(0.02f, current);
     }
 
-    private static SpeedHackController Start(double speed, bool enabled = true)
-    {
-        Reset(); SpeedHack.Speed = speed;
-        var mod = Create(); mod.Config.Set("optimizeFixedUpdates", enabled);
-        mod.OnInitialize(); mod.OnUpdate(); return mod;
-    }
-
     private static SpeedHackController Create()
     {
         var mod = new SpeedHackController
@@ -497,16 +625,16 @@ public sealed partial class SpeedHackControllerTests : IDisposable
         mod.Config.Set("maxSpeed", 100.0); return mod;
     }
 
-    private static SpeedHackController StartUnity()
+    private static SpeedHackController StartUnity(double speed = 4.0)
     {
         Reset(); SpeedHack.Speed = 1;
-        var mod = Create(); mod.Config.Set("speed", 4.0); mod.Config.Set("accelerationMode", "unity");
+        var mod = Create(); mod.Config.Set("speed", speed);
         mod.OnInitialize(); mod.OnUpdate(); return mod;
     }
 
     private static void Reset()
     {
-        Time.Step = 0.02f; Time.maximumDeltaTime = 1f / 3f; Time.Writes = 0; Time.FailAccess = false;
+        Time.Step = 0.02f; Time.maximumDeltaTime = 1f / 3f; Time.Writes = 0; Time.FailStepAccess = false; Time.FailAccess = false;
         Time.Scale = 1f; Time.ScaleWrites = 0;
         FairyGUI.GRoot.SetExisting(null); FairyGUI.FakeTweenManager.SetActive();
         SpeedHack.Reset();

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using CesiumLoader.SDK.Configuration;
 using CesiumLoader.SDK.Engine;
@@ -18,52 +19,20 @@ namespace SpeedHackMod
     public static class ModEntry
     {
         /// <summary>
-        /// 启动延迟。其它 mod 默认等 30 秒是为了避开"游戏启动早期访问 NetManager/UIManager
-        /// 触发 0x80000003 崩溃"的窗口; 本 mod 只碰加载器导出(ap_speed_*)和 Unity 的 Input,
-        /// 不碰任何游戏单例, 所以可以早一点接管热键(加载/开场动画阶段就能变速)。
+        /// 启动延迟。等 Unity 时间和输入接口可用后再启动控制器。
         /// </summary>
         private const int StartupDelayMs = 10000;
 
         public static void Main()
         {
-            // 变速引擎由加载器在进程启动时安装(inline hook 4 个时间 API), 并与 mod 之间
-            // 通过本进程的回环 UDP 通道通信；热更侧不调用原生 P/Invoke。
-            //
-            // 引擎此刻不可用也不放弃: 控制器照常跑, 每秒重试一次, 一旦收到加载器状态回执
-            // 就自动就绪。这样"加载器/ mod 初始化先后顺序"再怎么变, 热键都能用上。
-            if (!SpeedHack.IsAvailable)
-                SdkLog.Warn("SpeedHack", "引擎暂不可用(会每秒重试): " + SpeedHack.UnavailableReason +
-                                         " [需要加载器 ≥ 2.1.5 且 speedControlEnabled 不为 false]");
-
             ModBase.Run(new SpeedHackController(), StartupDelayMs);
         }
     }
 
     /// <summary>
-    /// 变速热键。把加载器的变速引擎(SDK 的 <see cref="SpeedHack"/>)接到键盘上:
-    ///
-    /// <code>
-    ///   Delete               在 1.0x 与"刚才的倍率"之间来回切(引擎保持开启, 不卸载 hook)
-    ///   Alt + =(小键盘 +)    加速, 每次 speedStep; 按住不放会连续加速
-    ///   Alt + -(小键盘 -)    减速, 同上
-    /// </code>
-    ///
-    /// 几个刻意的设计:
-    ///  - <b>只读键盘</b>: 不接管鼠标、不用输入独占, 也不拦截游戏自己的按键 —— 不会影响正常游玩;
-    ///  - <b>立即生效</b>: 调完马上调 <see cref="SpeedHack.SetSpeed"/>, 不用重启游戏;
-    ///  - <b>Delete 是"1.0x ↔ 刚才的倍率"的开关, 不是"关掉变速"</b>: 两次写入走的代码路径与
-    ///    Alt 调整**完全一致**(都是纯粹的一次倍率写入)。加载器的变速引擎一旦装上 hook 就常驻,
-    ///    1.0x 时 hook 保留偏置、按真实速率推进 —— 所以不存在"卸载 hook / 切换引擎状态"这种会引发卡顿的
-    ///    额外动作。第一次按: 记下当前真实倍率再设为 1.0x; 再按一次: 切回记下的倍率。
-    ///    这个记忆只在本次运行内有效, 且每次**离开非 1.0x** 都会用当时的真实倍率覆盖它 ——
-    ///    所以 Alt 调到多少就能切回多少(`toggleRestoresSpeed=false` 可退回老行为: 永远只设为 1.0x);
-    ///  - <b>Alt 永远从"引擎当前真实倍率"起算</b>: 所以 Delete 调到 1.0x 后按 Alt+= 得到 1.5x,
-    ///    而不是跳到"上次记忆的倍率";
-    ///  - 调过的倍率写回 config.json(停手约 1.2 秒后), 下次启动沿用; Delete 的两次切换都不写回
-    ///    (1.0x 是"临时恢复正常", 切回的倍率又恰好等于记忆倍率, 都不该覆盖你习惯的倍率)。
-    ///
-    /// ⚠️ 变速影响游戏感知的所有时间(动画/演出/回合/网络超时), 倍率别调太高(建议 ≤3x),
-    /// 详见 docs/SDK-SpeedHack.md。
+    /// 用 Unity 时间缩放实现变速。Delete 在 1.0x 和上次倍率间切换，
+    /// Alt + = / Alt + - 调整倍率并在停手后写回配置。
+    /// 原生时钟可用时，确认其恢复到 1x 后才应用 Unity 倍率。
     /// </summary>
     public sealed class SpeedHackController : ModBase
     {
@@ -82,10 +51,6 @@ namespace SpeedHackMod
         private bool _notify = true;                              // 屏幕上弹提示
         private bool _rememberSpeed = true;                       // 写回 config.json
         private bool _toggleRestoresSpeed = true;                 // toggleKey 再按一次 = 切回刚才的倍率
-        private bool _optimizeFixedUpdates = true;               // 固定更新按真实时间维持正常频率
-        private bool _useUnitySpeed;
-        private bool _accelerateUiAnimations = true;
-        private bool _accelerateIndependentAnimations = true;
         private float _repeatInterval = 0.15f;                    // 按住连调的间隔(秒); 0 = 只调一次
 
         private const float SaveDelaySec = 1.2f;                  // 停手多久后落盘
@@ -93,7 +58,7 @@ namespace SpeedHackMod
         // =====================================================================
         // 运行态
         // =====================================================================
-        private bool _ready;               // 引擎是否已确认可用(不可用时每秒重试)
+        private bool _ready;               // 已确认原生引擎可用或没有原生端口
         private float _nextProbeAt;        // 下次探测引擎的时刻
         private bool _holding;             // 上一帧是否按着 Alt+加/减键(用于"按下立即调一次")
         private float _nextRepeatAt;       // 连续调整的下一次时刻
@@ -104,9 +69,6 @@ namespace SpeedHackMod
             UnityFixedStepAccess.ReadStep, UnityFixedStepAccess.ReadMaximum, UnityFixedStepAccess.WriteStep);
         private bool _fixedStepUnavailable;
         private float _nextPerformanceSyncAt;
-        private double _pendingSpeed;
-        private int _pendingSpeedPolls;
-        private bool _awaitingSpeedConfirmation;
         private bool _toggleWasHeld;
         private readonly UnitySpeedScale _unityScale = new UnitySpeedScale(UnityScaleAccess.Read, UnityScaleAccess.Write);
         private double _unityTargetSpeed = 1.0;
@@ -115,15 +77,7 @@ namespace SpeedHackMod
         private bool _nativeResetRequested;
         private float _nextNativeResetAt;
         internal Func<double?> ReadNativeSpeed = NativeSpeedState.Read;
-        /// <summary>
-        /// 原生变速引擎根本不存在（安卓数据版没有原生加载器）。
-        ///
-        /// 原生引擎是桌面版的 version.dll：它装 inline hook 缩放系统时钟，并通过本进程的
-        /// 回环 UDP 回执当前倍率。安卓这条线没有它，`CESIUM_SPEED_PORT` 永远为空。
-        /// unity 模式只改 `Time.timeScale`，本来不需要原生引擎 —— 但它默认要先确认
-        /// 「原生时钟确实是 1x」才动手，否则会双重倍率。引擎不存在时就等于原生恒 1x，
-        /// 这个标记让 unity 模式跳过那次确认，不然热键永远不生效。
-        /// </summary>
+        // 安卓数据版没有原生端口，原生时钟按 1x 处理。
         private bool _nativeEngineAbsent;
         private int _unityNativeWaitPolls;
         private double _loggedUnityTarget = double.NaN;
@@ -131,11 +85,11 @@ namespace SpeedHackMod
         private bool _uiAnimationFailed;
         private bool _loggedUiAnimationSupport;
         private readonly IndependentAnimationBridge _independentAnimations = new IndependentAnimationBridge(
-            UnityAnimationDiscovery.FindType, UnityAnimationDiscovery.Find);
+            UnityAnimationDiscovery.FindType, UnityAnimationDiscovery.Find, UnityAnimationDiscovery.FindActive);
         private int _lastIndependentCount;
         private int _lastWorldUiCount;
 
-        public override string Version { get { return "2.5.5"; } }
+        public override string Version { get { return "2.5.7"; } }
 
         // =====================================================================
         // 生命周期
@@ -145,75 +99,53 @@ namespace SpeedHackMod
         {
             _config = Config;
             _independentAnimations.Report = message => Log.Info(message);
-            _independentAnimations.RegisterUiRoot = root => { if (_accelerateUiAnimations) _uiAnimations.RegisterExternalRoot(root); };
+            _independentAnimations.RegisterUiRoot = root => _uiAnimations.RegisterExternalRoot(root);
             LoadConfig();
 
             if (SpeedHack.IsAvailable) MarkReady();
-            else if (_useUnitySpeed)
+            else if (!HasNativeSpeedPort())
             {
                 // 没有原生引擎（安卓数据版）：unity 模式自己就能加速，不必等一个不会来的回执。
                 _nativeEngineAbsent = true;
-                Log.Warn("未检测到原生变速引擎，按「原生时钟 1x」处理；Unity 模式直接生效");
+                Log.Warn("无 CESIUM_SPEED_PORT，按「原生时钟 1x」处理；Unity 模式直接生效");
                 MarkReady();
             }
             else
             {
                 // 引擎还没就绪或尚未收到 UDP 回执: 每秒重试, 不做变速
                 _nextProbeAt = UnityTime.RealtimeSinceStartup + 1.0f;
-                Log.Warn("变速引擎暂不可用, 每秒重试; 期间热键不起作用");
+                Log.Warn("正在等待原生时钟状态，每秒重试，期间暂停变速热键");
                 Log.Warn("引擎诊断: " + SpeedHack.UnavailableReason);
             }
 
             // 输入不可用时热键必然没反应 —— 提前写清楚, 省得排查"按了没反应"
             Log.Info("输入后端: " + InputService.BackendName + " (可用=" + InputService.IsAvailable + ")");
             Log.Info("操作: " + _toggleKey + (_toggleRestoresSpeed
-                         ? " 在 1.0x 与刚才的倍率之间切换(引擎保持开启)"
-                         : " 设为 1.0x(引擎保持开启; toggleRestoresSpeed=false 已关掉回切)") +
+                         ? " 在 1.0x 与刚才的倍率之间切换"
+                         : " 设为 1.0x(toggleRestoresSpeed=false 已关掉回切)") +
                      "; 按住 Alt + " + _speedUpKey + " 加速, Alt + " + _speedDownKey +
                      " 减速 (每次 " + F(_speedStep) + "x, 范围 " + F(_minSpeed) + "~" + F(_maxSpeed) + "x" +
                      (_rememberSpeed ? ", 停手 " + F(SaveDelaySec) + "s 后写回配置" : "") + ")");
             Log.Info("配置键: speed(Alt 调整的记忆倍率)/speedStep/minSpeed/maxSpeed/toggleKey/toggleRestoresSpeed/" +
-                     "speedUpKey/speedDownKey/useNumpadKeys/rememberSpeed/repeatInterval/notify/optimizeFixedUpdates");
-            if (_useUnitySpeed)
-                Log.Warn("Unity 模式只加速受 timeScale 影响的游戏逻辑；独立计时的 UI/动画可能保持原速。");
-            else
-                Log.Warn("注意: 变速会改变游戏感知的所有时间(动画/演出/回合/网络超时), 倍率别调太高(建议 ≤3x)");
+                     "speedUpKey/speedDownKey/useNumpadKeys/rememberSpeed/repeatInterval/notify");
         }
 
-        /// <summary>引擎可用了: 记录当前倍率并打日志。</summary>
         private void MarkReady()
         {
             _ready = true;
 
-            double current = SpeedHack.Speed;
-            if (_useUnitySpeed)
-            {
-                double target = current > 1.0001 ? current : _activeSpeed;
-                StartUnityBackend(target);
-                current = _unityTargetSpeed;
-            }
-            else
-            {
-                SynchronizePerformance(current);
-                _nextPerformanceSyncAt = UnityTime.RealtimeSinceStartup + (float)(0.5 * Math.Max(1.0, current));
-            }
-            if (current > 0.0 && Math.Abs(current - 1.0) > 0.0001)
-            {
-                // 加载器已按 doorstop 的 speedhackBaseSpeed 设过倍率: 以它为准, 并记下来作为
-                // "记忆倍率"(用户按 Alt 继续调整时用得上)
-                _activeSpeed = SpeedHack.ClampSpeed(current, _minSpeed, _maxSpeed);
-            }
-            else
-            {
-                _activeSpeed = SpeedHack.ClampSpeed(_activeSpeed, _minSpeed, _maxSpeed);
-            }
+            // 启动时沿用加载器设定的基础倍率。没有基础倍率时使用配置中的记忆倍率。
+            double nativeSpeed = SpeedHack.Speed;
+            _unityTargetSpeed = SpeedHack.ClampSpeed(nativeSpeed > 1.0001 ? nativeSpeed : _activeSpeed, _minSpeed, _maxSpeed);
+            _activeSpeed = _unityTargetSpeed;
+            PollUnityBackend();
 
             Log.Info("变速热键已就绪: " + Describe());
-            Log.Info("固定更新优化: " + (_optimizeFixedUpdates && !_fixedStepUnavailable ? "开启" : "关闭/不可用") +
+            LogEffectiveConfiguration();
+            Log.Info("固定更新优化: " + (!_fixedStepUnavailable ? "开启" : "关闭/不可用") +
                      " (按已确认倍率调整物理步长，1 倍时恢复)");
             Log.Info("引擎: " + SpeedHack.Describe());
-            Log.Info("变速模式: " + (_useUnitySpeed ? "unity（原生时钟保持 1x）" : "native（系统时钟缩放）"));
-            if (_notify) Notify("变速: 热键已就绪 (" + F(current) + "x)", UiNotificationLevel.Success);
+            if (_notify) Notify("变速: 热键已就绪 (" + F(_unityTargetSpeed) + "x)", UiNotificationLevel.Success);
         }
 
         public override void OnUpdate()
@@ -228,21 +160,15 @@ namespace SpeedHackMod
 
                     if (!SpeedHack.IsAvailable)
                     {
-                        // 原生引擎不存在 + unity 模式：不再等回执，直接按 1x 启动 Unity 加速。
-                        if (_useUnitySpeed)
-                        {
-                            _nativeEngineAbsent = true;
-                            Log.Info("原生引擎不存在，改用 Unity 模式加速（原生时钟按 1x）");
-                            MarkReady();
-                        }
-                        return;   // 其它模式: 静默重试, 免得刷屏
+                        if (HasNativeSpeedPort()) return;
+                        _nativeEngineAbsent = true;
+                        Log.Info("无 CESIUM_SPEED_PORT，按原生时钟 1x 启用 Unity 变速");
                     }
-                    Log.Info("变速引擎已就绪(重试成功)");
                     MarkReady();
                 }
 
                 HandleHotkeys();
-                PollPerformance();
+                if (UnityTime.RealtimeSinceStartup >= _nextPerformanceSyncAt) PollUnityBackend();
                 UpdateUnityAnimations();
                 FlushSaveIfDue();
             }
@@ -253,7 +179,6 @@ namespace SpeedHackMod
         {
             // 退出/卸载: 把还没落盘的倍率补写一次(不改倍率 —— 进程都要结束了, 别再动引擎)
             FlushSaveNow();
-            _uiAnimations.Restore();
             RestoreUnityScale();
             RestoreFixedSteps();
             Log.Info("变速已卸载");
@@ -261,55 +186,27 @@ namespace SpeedHackMod
 
         public override void OnConfigChanged()
         {
-            bool previousUnity = _useUnitySpeed;
-            double previousSpeed = _ready ? CurrentEngineSpeed() : _activeSpeed;
             LoadConfig();
-            // 切换模式时重新判断：改成 unity 且没有原生引擎，就按「原生恒 1x」处理。
-            _nativeEngineAbsent = _useUnitySpeed && !SpeedHack.IsAvailable;
             _uiAnimationFailed = false;
-            if (!_useUnitySpeed || !_accelerateUiAnimations) _uiAnimations.Restore();
-            if (!_useUnitySpeed || !_accelerateIndependentAnimations) _independentAnimations.Restore();
             _fixedStepUnavailable = false;
-            _nextPerformanceSyncAt = 0f;
-            if (!_optimizeFixedUpdates) RestoreFixedSteps();
+            _unityFailed = false;
             if (_ready)
             {
-                double? nativeConfirmed = ReadNativeSpeed();
-                double current = nativeConfirmed ?? previousSpeed;
-                if (previousUnity != _useUnitySpeed)
-                {
-                    RestoreUnityScale();
-                    RestoreFixedSteps();
-                    _awaitingSpeedConfirmation = false;
-                    if (_useUnitySpeed) StartUnityBackend(previousSpeed);
-                    else Apply(previousSpeed);
-                }
-                else if (_useUnitySpeed)
-                {
-                    _unityFailed = false;
-                    // 没有原生引擎（安卓数据版）：以配置里的 speed 为准 —— 手机上没键盘，
-                    // 改配置是唯一的调速入口，改完必须立刻生效。
-                    // 有原生引擎时保持原行为：跟随引擎当前倍率，别让一次"范围修正"把
-                    // 临时关掉的 Unity 加速又打开。
-                    double target = _nativeEngineAbsent
-                        ? (_activeSpeed > 1.0001 ? _activeSpeed : 1.0)
-                        : (previousSpeed <= 1.0001 ? 1.0 : previousSpeed);
-                    // 1.0 表示"关掉 Unity 加速"，不能被 minSpeed 抬起来。
-                    _unityTargetSpeed = target <= 1.0001
-                        ? 1.0
-                        : SpeedHack.ClampSpeed(target, _minSpeed, _maxSpeed);
-                    PollUnityBackend();
-                }
-                else if (current > 0.0)
-                {
-                    double target = _awaitingSpeedConfirmation ? _pendingSpeed : current;
-                    _activeSpeed = SpeedHack.ClampSpeed(target, _minSpeed, _maxSpeed);
-                    if (target > 1.0001 && Math.Abs(target - _activeSpeed) > 0.0005) Apply(_activeSpeed);
-                    if (nativeConfirmed.HasValue) SynchronizePerformance(current);
-                    else RestoreFixedSteps();
-                }
+                // 没有原生端口的设备可直接改 speed 调速。有原生端口时，热重载只约束当前目标。
+                double target = _nativeEngineAbsent ? _activeSpeed : _unityTargetSpeed;
+                // 临时关闭的 1x 不受加速下限限制。
+                _unityTargetSpeed = target <= 1.0001 ? 1.0 : SpeedHack.ClampSpeed(target, _minSpeed, _maxSpeed);
+                PollUnityBackend();
             }
             Log.Info("配置已热重载: " + Describe());
+            LogEffectiveConfiguration();
+        }
+
+        private void LogEffectiveConfiguration()
+        {
+            Log.Info("生效配置: " + (_config != null && !string.IsNullOrEmpty(_config.Path) ? _config.Path : "(未知路径)") +
+                     "，Unity 变速，原生时钟保持 1x" +
+                     "，accelerateUiAnimations=true(锁定)，accelerateIndependentAnimations=true(锁定)，optimizeFixedUpdates=true(锁定)");
         }
 
         // =====================================================================
@@ -355,9 +252,8 @@ namespace SpeedHackMod
         /// <summary>按一次热键调整倍率, 下一帧即生效。</summary>
         private void Adjust(int dir)
         {
-            // 永远从"引擎当前真实倍率"起算: 这样 Delete 调到 1.0x 之后, Alt+= 得到的是 1.5x
-            // 而不是跳到记忆里的旧倍率。
-            double current = CurrentEngineSpeed();
+            // 从 Unity 当前目标起算，临时切到 1.0x 后加速会从 1.0x 开始。
+            double current = _unityTargetSpeed;
             double next = SpeedHack.StepSpeed(current, dir, _speedStep, _minSpeed, _maxSpeed);
 
             if (Math.Abs(next - current) < 0.0005)
@@ -367,7 +263,7 @@ namespace SpeedHackMod
                 return;
             }
 
-            if (!Apply(next)) return;
+            if (!SetUnityTarget(next)) return;
 
             _activeSpeed = next;      // 记住用户选的倍率(下次变速沿用)
             MarkSpeedDirty();
@@ -375,22 +271,10 @@ namespace SpeedHackMod
             Notify("变速: " + F(next) + "x", UiNotificationLevel.Info);
         }
 
-        /// <summary>
-        /// toggleKey(默认 Delete): 在 1.0x 与"刚才的倍率"之间来回切。
-        ///
-        /// 这里刻意**不是**"关闭变速": 加载器的变速引擎一旦装上 hook 就常驻, 1.0x 时 hook
-        /// 原样返回真实时间(等价于不变速)。所以两次切换都是一次普通的倍率写入 ——
-        /// 与 Alt 调整走完全相同的代码路径(踩过"按 Delete 卡死、改成 1 倍却正常"的坑)。
-        /// 两次也都不写回配置: 1.0x 只是临时恢复正常, 切回的倍率原本就等于记忆倍率。
-        ///
-        /// 第一次按(当前不是 1.0x): 记下引擎真实倍率 -> 设为 1.0x;
-        /// 再按一次(当前是 1.0x): 切回记下的倍率。
-        /// 记忆只在本次运行内有效, 并且每次"离开非 1.0x"都会用当时的真实倍率覆盖它 ——
-        /// 于是 Alt 调到多少, toggleKey 就能切回多少。
-        /// </summary>
+        /// <summary>在 1.0x 和上次加速倍率间切换，保持配置中的记忆倍率。</summary>
         private void ToggleSpeed()
         {
-            double current = CurrentEngineSpeed();
+            double current = _unityTargetSpeed;
 
             if (Math.Abs(current - 1.0) < 0.0005)
             {
@@ -402,28 +286,28 @@ namespace SpeedHackMod
                     return;
                 }
 
-                if (!Apply(back)) return;
+                if (!SetUnityTarget(back)) return;
 
                 Log.Info("倍率 1.0x -> " + F(back) + "x (切回 " + _toggleKey + " 按下前的倍率)");
                 Notify("变速: " + F(back) + "x (再按 " + _toggleKey + " 回到 1.0x)", UiNotificationLevel.Info);
                 return;
             }
 
-            // 不在 1.0x: 记下这一刻的真实倍率, 再压到 1.0x
+            // 记下当前 Unity 目标，再切到 1.0x。
             double previous = _restoreSpeed;
             _restoreSpeed = SpeedHack.ClampSpeed(current, _minSpeed, _maxSpeed);
 
-            if (!Apply(1.0))
+            if (!SetUnityTarget(1.0))
             {
                 _restoreSpeed = previous;   // 写失败就别记下一个没能生效的倍率
                 return;
             }
 
-            Log.Info("倍率 " + F(current) + "x -> 1.0x (引擎保持开启, 未卸载 hook" +
-                     (_toggleRestoresSpeed ? "; 再按 " + _toggleKey + " 回到 " + F(_restoreSpeed) + "x" : "") + ")");
+            Log.Info("倍率 " + F(current) + "x -> 1.0x" +
+                     (_toggleRestoresSpeed ? " (再按 " + _toggleKey + " 回到 " + F(_restoreSpeed) + "x)" : ""));
             Notify(_toggleRestoresSpeed
                        ? "变速: 1.0x (再按 " + _toggleKey + " 回到 " + F(_restoreSpeed) + "x)"
-                       : "变速: 1.0x (引擎保持开启)", UiNotificationLevel.Info);
+                       : "变速: 1.0x", UiNotificationLevel.Info);
         }
 
         /// <summary>切回时该用的倍率: 夹到当前范围; 不可用(没记过 / 低于 1.0x)时返回 0。</summary>
@@ -434,115 +318,32 @@ namespace SpeedHackMod
             return clamped > 1.0 ? clamped : 0.0;
         }
 
-        /// <summary>
-        /// 引擎当前真实倍率(读不到就退回记忆值), 并夹到 [minSpeed, maxSpeed]。
-        /// Alt 调整与 Delete 都以此为准, 保证"看到的就是引擎里的"。
-        /// </summary>
-        private double CurrentEngineSpeed()
+        private bool SetUnityTarget(double speed)
         {
-            if (_useUnitySpeed) return _unityTargetSpeed;
-            // UDP acknowledges asynchronously. Until acknowledgement, another
-            // key press must continue from the latest requested target, otherwise a
-            // delayed/stuck 4x snapshot keeps requesting 1x forever and cannot resume.
-            if (_awaitingSpeedConfirmation)
-                return SpeedHack.ClampSpeed(_pendingSpeed, _minSpeed, _maxSpeed);
-            double real = ReadNativeSpeed() ?? _activeSpeed;
-            if (!(real > 0.0) || real > _maxSpeed)
-                real = SpeedHack.ClampSpeed(_activeSpeed, _minSpeed, _maxSpeed);
-            return SpeedHack.ClampSpeed(real, _minSpeed, _maxSpeed);
-        }
-
-        /// <summary>真正写引擎倍率(失败只提示, 不抛)。</summary>
-        private bool Apply(double speed)
-        {
-            if (_useUnitySpeed)
-            {
-                if (_unityFailed) return false;
-                double previous = _unityTargetSpeed;
-                _unityTargetSpeed = speed;
-                if (_unityActive && !ApplyUnityScale()) { _unityTargetSpeed = previous; return false; }
-                return true;
-            }
-            if (SpeedHack.SetSpeed(speed))
-            {
-                // The native engine applies requests asynchronously. Read its confirmed
-                // speed on subsequent ticks; do not compensate physics using a request
-                // that has not actually taken effect yet.
-                _nextPerformanceSyncAt = 0f;
-                _pendingSpeed = speed;
-                _pendingSpeedPolls = 0;
-                _awaitingSpeedConfirmation = true;
-                return true;
-            }
-
-            Log.Warn("设置倍率 " + F(speed) + "x 失败(引擎不可用 / 倍率非法 / 无 SpeedHack 权限)");
-            Notify("变速: 设置失败(" + F(speed) + "x)", UiNotificationLevel.Warning);
+            if (_unityFailed) return false;
+            double previous = _unityTargetSpeed;
+            _unityTargetSpeed = speed;
+            if (!_unityActive || ApplyUnityScale()) return true;
+            _unityTargetSpeed = previous;
             return false;
         }
 
-        private void PollPerformance()
+        private static bool HasNativeSpeedPort()
         {
-            if (_useUnitySpeed)
+            try
             {
-                float nowUnity = UnityTime.RealtimeSinceStartup;
-                if (nowUnity >= _nextPerformanceSyncAt) PollUnityBackend();
-                return;
+                return int.TryParse(Environment.GetEnvironmentVariable("CESIUM_SPEED_PORT"), out int port)
+                    && port > 0 && port <= 65535;
             }
-            if ((!_optimizeFixedUpdates || _fixedStepUnavailable) && !_awaitingSpeedConfirmation) return;
-            float now = UnityTime.RealtimeSinceStartup;
-            if (now < _nextPerformanceSyncAt) return;
-            double? confirmed = ReadNativeSpeed();
-            if (!confirmed.HasValue)
-            {
-                // Missing UDP acknowledgement is not a confirmed reset to 1x.
-                // Keep the pending target, but release physics ownership until the
-                // actual native clock can be sampled again.
-                RestoreFixedSteps();
-                _nextPerformanceSyncAt = now + (float)(0.1 * Math.Max(1.0, _activeSpeed));
-                return;
-            }
-            double actual = confirmed.Value;
-            // Unity realtime is also accelerated by the native QPC hook. Scale the
-            // interval so idle polling remains about twice per real second at any speed.
-            bool awaitingConfirmation = _awaitingSpeedConfirmation && Math.Abs(actual - _pendingSpeed) > 0.0005;
-            if (awaitingConfirmation && ++_pendingSpeedPolls < 10)
-                _nextPerformanceSyncAt = now + (float)(0.1 * Math.Max(1.0, actual));
-            else
-            {
-                if (!awaitingConfirmation && _awaitingSpeedConfirmation)
-                {
-                    _awaitingSpeedConfirmation = false;
-                    Log.Info("加载器已确认倍率 " + F(actual) + "x");
-                }
-                else if (awaitingConfirmation && _pendingSpeedPolls == 10)
-                {
-                    Log.Warn("变速请求 " + F(_pendingSpeed) + "x 已发送，但加载器状态仍为 " + F(actual) +
-                             "x；尚未确认生效，继续等待。再次按切换键可以撤销/恢复请求。");
-                    Notify("变速: 加载器尚未确认 " + F(_pendingSpeed) + "x", UiNotificationLevel.Warning);
-                }
-                _nextPerformanceSyncAt = now + (float)(0.5 * Math.Max(1.0, actual));
-            }
-            SynchronizePerformance(actual);
-        }
-
-        private void StartUnityBackend(double target)
-        {
-            _unityTargetSpeed = SpeedHack.ClampSpeed(target, _minSpeed, _maxSpeed);
-            _unityActive = false;
-            _unityFailed = false;
-            _nativeResetRequested = false;
-            _unityNativeWaitPolls = 0;
-            _loggedUnityTarget = double.NaN;
-            _nextPerformanceSyncAt = 0f;
-            PollUnityBackend();
+            catch { return false; }
         }
 
         private void PollUnityBackend()
         {
             if (_unityFailed) return;
             double? confirmed = ReadNativeSpeed();
-            // 原生引擎不存在 = 原生时钟恒为 1x，不必等那份永远不会来的回执。
-            if (!confirmed.HasValue && _nativeEngineAbsent) confirmed = 1.0;
+            if (confirmed.HasValue) _nativeEngineAbsent = false;
+            else if (_nativeEngineAbsent && !HasNativeSpeedPort()) confirmed = 1.0;
             if (!confirmed.HasValue)
             {
                 _nextPerformanceSyncAt = UnityTime.RealtimeSinceStartup + 0.5f;
@@ -600,8 +401,8 @@ namespace SpeedHackMod
                 _unityFailed = true;
                 RestoreUnityScale();
                 RestoreFixedSteps();
-                Log.Warn("Unity 加速接口不可用，已暂停此模式: " + e.GetType().Name + " " + e.Message);
-                Notify("变速: Unity 接口不可用，可在配置中切回 native 模式", UiNotificationLevel.Warning);
+                Log.Warn("Unity 加速接口不可用，已暂停变速: " + e.GetType().Name + " " + e.Message);
+                Notify("变速: Unity 接口不可用", UiNotificationLevel.Warning);
                 return false;
             }
         }
@@ -616,7 +417,7 @@ namespace SpeedHackMod
 
         private void UpdateUnityAnimations()
         {
-            if (!_useUnitySpeed || !_unityActive || _unityFailed || _unityTargetSpeed <= 1.0001)
+            if (!_unityActive || _unityFailed || _unityTargetSpeed <= 1.0001)
             {
                 if (_independentAnimations.ChangedComponents > 0) _independentAnimations.Restore();
                 if (_uiAnimations.HasState) _uiAnimations.Restore();
@@ -625,11 +426,9 @@ namespace SpeedHackMod
             try
             {
                 if (UnityScaleAccess.Read() <= 0f) { _uiAnimations.Restore(); _independentAnimations.Restore(); return; }
-                if (_accelerateIndependentAnimations)
-                    _independentAnimations.Tick(UnityTime.RealtimeSinceStartup, _unityTargetSpeed);
-                else if (_independentAnimations.ChangedComponents > 0) _independentAnimations.Restore();
-                if (_accelerateUiAnimations && !_uiAnimationFailed) _uiAnimations.Tick(UnityTime.RealtimeSinceStartup);
-                else if (_uiAnimations.TrackedTransitions > 0 || _uiAnimations.TrackedAnimations > 0) _uiAnimations.Restore();
+                _independentAnimations.Tick(UnityTime.RealtimeSinceStartup, _unityTargetSpeed);
+                if (!_uiAnimationFailed)
+                    _uiAnimations.Tick(UnityTime.RealtimeSinceStartup);
                 if (_uiAnimations.ExternalRoots != _lastWorldUiCount)
                 {
                     _lastWorldUiCount = _uiAnimations.ExternalRoots;
@@ -658,7 +457,7 @@ namespace SpeedHackMod
 
         private void SynchronizePerformance(double actualSpeed)
         {
-            if (!_optimizeFixedUpdates || _fixedStepUnavailable) return;
+            if (_fixedStepUnavailable) return;
             try { _fixedSteps.Synchronize(actualSpeed); }
             catch (Exception e)
             {
@@ -695,17 +494,10 @@ namespace SpeedHackMod
             _notify = _config.GetBool("notify", _notify);
             _rememberSpeed = _config.GetBool("rememberSpeed", _rememberSpeed);
             _toggleRestoresSpeed = _config.GetBool("toggleRestoresSpeed", _toggleRestoresSpeed);
-            _optimizeFixedUpdates = _config.GetBool("optimizeFixedUpdates", true);
-            _useUnitySpeed = string.Equals(_config.GetString("accelerationMode", "native"), "unity", StringComparison.OrdinalIgnoreCase);
-            _accelerateUiAnimations = _config.GetBool("accelerateUiAnimations", true);
-            _accelerateIndependentAnimations = _config.GetBool("accelerateIndependentAnimations", true);
             _repeatInterval = _config.GetFloat("repeatInterval", _repeatInterval);
 
             bool docsChanged = SpeedHackConfigDocs.Apply(_config);
-            docsChanged |= _config.SetDefault("optimizeFixedUpdates", true);
-            docsChanged |= _config.SetDefault("accelerationMode", "native");
-            docsChanged |= _config.SetDefault("accelerateUiAnimations", true);
-            docsChanged |= _config.SetDefault("accelerateIndependentAnimations", true);
+            bool removedOptions = RemoveObsoleteOptions();
 
             // 夹紧范围。注意要放在**读完全部键之后**: SaveConfig 会把所有键整份重写,
             // 提前调用会把还没读到的键写回默认值(等于吃掉用户的配置)。
@@ -724,10 +516,44 @@ namespace SpeedHackMod
                 SaveConfig();
                 Log.Info("配置里的倍率范围已按新规则纠正(下限 1.0, 不允许减速)");
             }
-            else if (docsChanged)
+            else if (docsChanged || removedOptions)
             {
                 _config.SaveIfDirty();
             }
+
+            if (removedOptions)
+                Log.Info("已从配置文件清理旧设置: accelerationMode / optimizeFixedUpdates / accelerateUiAnimations / accelerateIndependentAnimations");
+        }
+
+        private bool RemoveObsoleteOptions()
+        {
+            bool changed = _config.Remove("accelerationMode");
+            changed |= _config.Remove("optimizeFixedUpdates");
+            changed |= _config.Remove("accelerateUiAnimations");
+            changed |= _config.Remove("accelerateIndependentAnimations");
+
+            var comments = _config.Get<IDictionary<string, object>>(ModConfig.CommentsKey, null);
+            if (comments == null) return changed;
+
+            bool strippedComment = false;
+            var cleaned = new Dictionary<string, object>(StringComparer.Ordinal);
+            foreach (var pair in comments)
+            {
+                if (string.Equals(pair.Key, "accelerationMode", StringComparison.Ordinal) ||
+                    string.Equals(pair.Key, "optimizeFixedUpdates", StringComparison.Ordinal) ||
+                    string.Equals(pair.Key, "accelerateUiAnimations", StringComparison.Ordinal) ||
+                    string.Equals(pair.Key, "accelerateIndependentAnimations", StringComparison.Ordinal))
+                {
+                    strippedComment = true;
+                    continue;
+                }
+                cleaned[pair.Key] = pair.Value;
+            }
+            if (!strippedComment) return changed;
+
+            if (cleaned.Count == 0) _config.Remove(ModConfig.CommentsKey);
+            else _config.Set(ModConfig.CommentsKey, cleaned);
+            return true;
         }
 
         /// <summary>
@@ -773,10 +599,6 @@ namespace SpeedHackMod
                 _config.Set("notify", _notify);
                 _config.Set("rememberSpeed", _rememberSpeed);
                 _config.Set("toggleRestoresSpeed", _toggleRestoresSpeed);
-                _config.Set("optimizeFixedUpdates", _optimizeFixedUpdates);
-                _config.Set("accelerationMode", _useUnitySpeed ? "unity" : "native");
-                _config.Set("accelerateUiAnimations", _accelerateUiAnimations);
-                _config.Set("accelerateIndependentAnimations", _accelerateIndependentAnimations);
                 _config.Set("repeatInterval", _repeatInterval);
                 _config.SaveIfDirty();
             }
@@ -825,11 +647,8 @@ namespace SpeedHackMod
 
         private string Describe()
         {
-            if (_useUnitySpeed)
-                return "Unity 目标 " + F(_unityTargetSpeed) + "x，原生时钟 " + F(SpeedHack.Speed) +
-                       "x (记忆倍率 " + F(_activeSpeed) + "x)";
-            return "引擎当前 " + F(SpeedHack.IsAvailable ? SpeedHack.Speed : 1.0) + "x" +
-                   " (Alt 调整的记忆倍率 " + F(_activeSpeed) + "x, 每次 " + F(_speedStep) + "x)";
+            return "Unity 目标 " + F(_unityTargetSpeed) + "x，原生时钟 " + F(SpeedHack.Speed) +
+                   "x (记忆倍率 " + F(_activeSpeed) + "x)";
         }
 
         private void Notify(string text, UiNotificationLevel level)
