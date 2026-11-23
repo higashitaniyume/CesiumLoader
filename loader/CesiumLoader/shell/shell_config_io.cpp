@@ -77,6 +77,8 @@ bool write_text_file(const std::wstring& path, const std::string& text, std::str
     return true;
 }
 
+// 旧版集中配置目录(<loader>\configs)。4.0.0 起配置在模组目录里, 这里只剩"显示/排查"用途:
+// 加载器启动时会把该目录改名 configs.bak, 已经没有任何 mod 读它。
 std::wstring configs_dir()
 {
     return loader_root() + L"\\configs";
@@ -107,7 +109,9 @@ bool file_exists(const std::wstring& path)
     return GetFileAttributesW(path.c_str()) != INVALID_FILE_ATTRIBUTES;
 }
 
-// mod 配置文件: 优先 mods\<Id>\config.json(ModConfig), 退回 configs\<Id>.json(旧式 SdkConfig)。
+// mod 配置文件: 只有 mods\<Id>\config.json 一处(4.0.0 起)。
+// 旧版集中放的 configs\<Id>.json 已在启动时改名 configs.bak, 这里不再回退读它 ——
+// 否则 shell set 会写进一个 mod 根本不读的文件, 表现就是"改了没反应"。
 bool find_mod_config(const std::string& mod, std::wstring& path, std::string& canonical)
 {
     for (const std::string& id : list_mod_ids())
@@ -116,9 +120,6 @@ bool find_mod_config(const std::string& mod, std::wstring& path, std::string& ca
         canonical = id;
         const std::wstring primary = mods_dir() + L"\\" + widen(id) + L"\\config.json";
         if (file_exists(primary)) { path = primary; return true; }
-
-        const std::wstring legacy = configs_dir() + L"\\" + widen(id) + L".json";
-        if (file_exists(legacy)) { path = legacy; return true; }
         return false;
     }
     return false;

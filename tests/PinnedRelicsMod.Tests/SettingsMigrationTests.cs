@@ -16,11 +16,14 @@ namespace PinnedRelicsMod.Tests
         {
             directory = Path.Combine(Path.GetTempPath(), "PinnedRelicsMod.Tests", Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(directory);
-            // 配置写在 <加载器目录>/configs 下：指到本用例的临时目录，免得写到全局目录里。
+            // 4.0.0 起配置只写在模组目录里（mods\<ModId>\config.json）：指到本用例的临时目录，
+            // 免得写到全局目录里。
             Environment.SetEnvironmentVariable("CESIUM_LOADER_DIR", directory);
-            Directory.CreateDirectory(Path.Combine(directory, "configs"));
             // Unique ModId: ModConfig caches instances by id for the process lifetime.
-            return ModConfig.ForModId("PinnedRelicsMod.Tests." + Guid.NewGuid().ToString("N"), directory);
+            string modId = "PinnedRelicsMod.Tests." + Guid.NewGuid().ToString("N");
+            string modDir = Path.Combine(directory, "mods", modId);
+            Directory.CreateDirectory(modDir);
+            return ModConfig.ForModId(modId, modDir);
         }
 
         [Fact]

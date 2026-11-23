@@ -123,7 +123,15 @@ namespace CesiumLoader.SDK.IO
             }
         }
 
-        /// <summary>模组配置文件目录（&lt;加载器目录&gt;\configs）。</summary>
+        /// <summary>
+        /// 旧版集中配置目录（&lt;加载器目录&gt;\configs）。
+        /// <para>
+        /// 4.0.0 起已废弃：每个 mod 的配置在自己的目录里（<c>mods\{ModId}\config.json</c>，
+        /// 见 <see cref="GetModConfigPath"/>）。加载器启动时会把该目录改名 <c>configs.bak</c>，
+        /// 里面即使还留着旧文件也不会被任何 mod 读取。
+        /// </para>
+        /// </summary>
+        [Obsolete("4.0.0 起配置在模组目录（GetModConfigPath(modId)）；此目录已废弃。")]
         public static string ConfigsDirectory
         {
             get
@@ -320,47 +328,30 @@ namespace CesiumLoader.SDK.IO
         }
 
         /// <summary>
-        /// 解析指定模组的配置文件路径。
-        /// 优先查找 mods/{modId}/config.json，其次查找 configs/{modId}.json。
+        /// 解析指定模组的配置文件路径：<c>mods\{modId}\config.json</c>（只拼接，不要求文件已存在）。
+        ///
+        /// 4.0.0 起这是唯一位置；旧版集中放在 <c>configs\{modId}.json</c>，已不再读取。
         /// </summary>
         public static string GetModConfigPath(string modId)
         {
             if (string.IsNullOrEmpty(modId)) return null;
-            string safe = SanitizeFileName(modId);
-
-            string inModDir = System.IO.Path.Combine(GetModDirectory(safe), "config.json");
-            try
-            {
-                if (System.IO.File.Exists(inModDir)) return inModDir;
-            }
-            catch { }
-
-            string inConfigDir = System.IO.Path.Combine(ConfigsDirectory, safe + ".json");
-            try
-            {
-                if (System.IO.File.Exists(inConfigDir)) return inConfigDir;
-            }
-            catch { }
-
-            try
-            {
-                if (System.IO.Directory.Exists(GetModDirectory(safe))) return inModDir;
-            }
-            catch { }
-
-            return inConfigDir;
+            return System.IO.Path.Combine(GetModDirectory(modId), "config.json");
         }
 
-        /// <summary>获取 configs 目录下的配置文件路径（若无 .json 后缀会自动追加）。</summary>
+        /// <summary>
+        /// 4.0.0 起等价于 <see cref="GetModConfigPath"/>（参数带不带 <c>.json</c> 都行）。
+        /// 保留旧名只是为了不破坏已编译的第三方 mod：它现在同样指向模组目录，不会碰 <c>configs</c>。
+        /// </summary>
+        [Obsolete("4.0.0 起配置在模组目录：改用 GetModConfigPath(modId)。")]
         public static string GetConfigPath(string fileNameOrModId)
         {
-            if (string.IsNullOrEmpty(fileNameOrModId)) return ConfigsDirectory;
-            string safe = SanitizeFileName(fileNameOrModId);
-            if (!safe.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+            if (string.IsNullOrEmpty(fileNameOrModId)) return ModsDirectory;
+            string id = fileNameOrModId;
+            if (id.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
             {
-                safe += ".json";
+                id = id.Substring(0, id.Length - ".json".Length);
             }
-            return System.IO.Path.Combine(ConfigsDirectory, safe);
+            return GetModConfigPath(id);
         }
 
         /// <summary>获取日志目录下的子路径。</summary>

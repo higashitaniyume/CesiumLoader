@@ -10,7 +10,7 @@
 - **零副作用还原**：松开或切换回正常时，精准还原角色原本的透明度，与角色隐身技能互不冲突。
 - **输入保护**：聊天框输入文字或处于输入焦点时不触发热键。
 
-## 配置项 (`configs/CharacterTransparencyMod.json`)
+## 配置项 (`mods/CharacterTransparencyMod/config.json`)
 
 | 配置项 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |

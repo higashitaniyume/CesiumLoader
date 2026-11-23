@@ -2,15 +2,20 @@
 
 命名空间：`CesiumLoader.SDK.Configuration`（配置）；`CesiumLoader.SDK.Manifests`（元数据）
 
-## SdkConfig — mod 配置 (JSON)
+## SdkConfig — 旧版 mod 配置 (JSON)
+
+> **4.0.0 起已过时**：模组配置统一在模组目录里（`mods/{ModId}/config.json`，见下面的 `ModConfig`）。
+> `SdkConfig` 的成员保留原名与签名（已编译的模组不会因为升级而加载失败），但实现已指向模组目录，
+> 不再读写 `<加载器目录>/configs`。新模组请直接用 `ModConfig`。
 
 每个 mod 一个独立 JSON 配置文件，**读写即存**，零外部依赖。
 
 ```csharp
+[Obsolete("4.0.0 起配置在模组目录: 改用 ModConfig(mods/{ModId}/config.json)。")]
 public static class SdkConfig
 {
-    public static string ConfigDirectory { get; }             // 配置目录(自动创建)
-    public static string ConfigPath(string modName);          // 配置文件完整路径
+    public static string ConfigDirectory { get; }             // 模组总目录(mods; 自动创建)
+    public static string ConfigPath(string modName);          // mods\{modName}\config.json
     public static T Load<T>(string modName) where T : class, new();  // 读取
     public static bool Save<T>(string modName, T value);      // 保存, 失败静默 false
     public static bool Exists(string modName);                // 配置是否存在
@@ -19,9 +24,10 @@ public static class SdkConfig
 
 ### 路径
 
-- `CESIUM_MODS_DIR\..\configs\{modName}.json`（即 `<游戏目录>/AstralParty_ModLoader/configs/{modName}.json`）
-- 未设置环境变量时回退：`%LocalAppData%\AstralParty_ModLoader\configs\{modName}.json`
-- `ConfigPath` 里 modName 的非法文件名字符会被替换为下划线。
+- `{ModsDirectory}\{modName}\config.json`（即 `<游戏目录>/AstralParty_ModLoader/mods/{modName}/config.json`）
+- 未设置环境变量时回退：`%LocalAppData%\AstralParty_ModLoader\mods\{modName}\config.json`
+- `ConfigDirectory` 是模组总目录（每个 mod 一个子目录），取具体文件用 `ConfigPath`；`modName` 的非法文件名字符会被替换为下划线。
+- 旧版集中目录 `<加载器目录>/configs` 已废弃：加载器启动时整目录改名 `configs.bak`，任何 mod 都不再读它。
 
 ### 配置对象约定（手写 JSON，零外部依赖）
 
@@ -57,7 +63,7 @@ SdkConfig.Save("MyMod", cfg);
 
 ## ModConfig — 模组配置与热重载
 
-新模组推荐使用 `ModConfig`，文件位于 `mods/{ModId}/config.json`（与 DLL 同目录）。
+新模组推荐使用 `ModConfig`，文件位于 `mods/{ModId}/config.json`（与 DLL 同目录，4.0.0 起这是唯一位置）。
 
 ```csharp
 var cfg = Config;                       // ModBase 子类可直接取; 或 ModConfig.ForMod(ctx)
@@ -130,7 +136,7 @@ public override void OnInitialize()
 }
 ```
 
-旧配置升级后会补上说明，值保持不变；重复调用相同内容不会触发保存。旧式 `SdkConfig`（集中放在 `configs/{modName}.json`）不参与这套机制，说明只在该文件里本来就存在时才会被 Toys 显示。
+旧配置升级后会补上说明，值保持不变；重复调用相同内容不会触发保存。旧式 `SdkConfig`（现在指向模组目录里的同一份 `config.json`，但没有合并与说明 API）不参与这套机制，它的 `_comments` 需要自己维护。
 
 ### 热重载
 
@@ -228,7 +234,11 @@ public static class ModEntry
 
     static void OnInit()
     {
-        var cfg = SdkConfig.Load<DemoConfig>("Demo");
+        // 新模组用 ModConfig（模组目录里的 config.json，支持热重载与 _comments）
+        var cfg = ModConfig.ForModId("Demo");
+        cfg.SetDefault("Enabled", true);
+        cfg.SetDefault("IntervalSec", 1);
+        cfg.SaveIfDirty();
         // ... 按 cfg 初始化
     }
 

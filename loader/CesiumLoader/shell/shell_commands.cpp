@@ -177,7 +177,7 @@ void cmd_env(const std::vector<std::string>&)
     print("  logs     " + narrow(short_path(logs_dir())));
     print("  speed    " + narrow(short_path(speedctl_dir())));
     print("  window   " + narrow(short_path(windowctl_dir())));
-    print("  configs  " + narrow(short_path(configs_dir())));
+    print("  configs  " + narrow(short_path(configs_dir())) + "  (已废弃, 启动时改名 configs.bak)", LOG_DIM);
 
     print("配置     " + narrow(short_path(config_path())));
     print("日志     " + narrow(short_path(cesium::log::loader_log_path())));
@@ -207,7 +207,7 @@ void cmd_paths(const std::vector<std::string>&)
         { "logs", logs_dir() },
         { "speed", speedctl_dir() },
         { "window", windowctl_dir() },
-        { "configs", configs_dir() },
+        { "configs(legacy)", configs_dir() },
         { "config", config_path() },
         { "boot log", cesium::log::loader_log_path() },
     };

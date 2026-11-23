@@ -37,7 +37,7 @@ CesiumLoader SDK 提供了官方路径服务，统一由加载器注入的 `CESI
 | `GameDirectory`<br>`GameRootDirectory` | 游戏根目录（包含 `AstralParty_CN.exe` 的目录） | `C:\Games\Astral Party\8vJXn6CN` |
 | `LoaderDirectory`<br>`LoaderRootDirectory` | 加载器根目录（默认为游戏目录下的 `AstralParty_ModLoader`） | `C:\Games\...\AstralParty_ModLoader` |
 | `ModsDirectory` | 模组总目录（`AstralParty_ModLoader\mods`） | `...\AstralParty_ModLoader\mods` |
-| `ConfigsDirectory` | 模组配置总目录（`AstralParty_ModLoader\configs`） | `...\AstralParty_ModLoader\configs` |
+| `ConfigsDirectory` | **已废弃**（4.0.0 起）：旧版集中配置目录 `AstralParty_ModLoader\configs`，加载器启动时改名 `configs.bak`；配置在 `ModsDirectory\{ModId}\config.json` | `...\AstralParty_ModLoader\configs` |
 | `LogsDirectory` | 日志总目录（`AstralParty_ModLoader\logs`） | `...\AstralParty_ModLoader\logs` |
 | `SkinsDirectory` | 卡牌/角色皮肤总目录（`AstralParty_ModLoader\skins`） | `...\AstralParty_ModLoader\skins` |
 | `AudioDirectory` | 音频子系统通信目录（`AstralParty_ModLoader\audio`） | `...\AstralParty_ModLoader\audio` |
@@ -94,11 +94,8 @@ CesiumLoader SDK 提供了官方路径服务，统一由加载器注入的 `CESI
   ```
 
 ### 3. 配置与日志
-- `GetModConfigPath(string modId)`：按优先级探测模组配置文件路径：
-  1. 优先检查 `mods\{modId}\config.json`（若文件存在）。
-  2. 其次检查 `configs\{modId}.json`（若文件存在）。
-  3. 若均不存在，模组目录存在时返回 `mods\{modId}\config.json`，否则返回 `configs\{modId}.json`。
-- `GetConfigPath(string fileNameOrModId)`：获取 `configs` 目录下的指定配置文件（未带 `.json` 时会自动追加）。
+- `GetModConfigPath(string modId)`：返回模组的配置文件路径 `mods\{modId}\config.json`（只拼接，不要求文件已存在）。4.0.0 起这是唯一位置；旧版集中的 `configs\{modId}.json` 已废弃，不再被读取。
+- `GetConfigPath(string fileNameOrModId)`：同 `GetModConfigPath`（参数带不带 `.json` 都行），保留旧名只为兼容已编译的模组。
 - `GetLogPath(params string[] subPaths)`：拼接 `logs` 目录下的子路径。
 
 ### 4. 皮肤与音效方案

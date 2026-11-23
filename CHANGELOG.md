@@ -2,6 +2,20 @@
 
 本文件按版本记录 `CesiumLoader` 的功能变更。版本号与 GitHub 发布 tag 一一对应（如 `modloader-3.3.2`，版本号为 `3.3.2`），发布产物由 [release-modloader.yml](.github/workflows/release-modloader.yml) 在打 tag 时自动构建。
 
+## [4.0.0] - 2026-11-23
+
+### 配置
+
+- **模组配置只有一个位置：模组目录里的 `config.json`**（`mods/<ModId>/config.json`；停用模组在 `disabled_mods/<ModId>/config.json`）。加载器不再读取 `<加载器目录>/configs/<ModId>.json`。
+- 启动时把旧的 `<加载器目录>/configs` 整目录改名 `configs.bak`：内容保留便于找回，但不再被任何模组读取；改在那里也不会生效。
+- SDK 的 `ModConfig` 与 `Path.GetModConfigPath` 只解析模组目录；`Path.GetConfigPath`、`Path.ConfigsDirectory`、`SdkConfig` 保留同名 API（已编译的第三方模组不会因升级而加载失败），实现改指模组目录并标记为过时。
+- 旧平铺布局（`mods/<ModId>.dll`）的配置落在 `mods/<ModId>/config.json`，多个平铺模组不会再共用 `mods/config.json`。
+
+### 工具与调试
+
+- Debug Shell 的 `config get/set` 与键补全只认模组目录里的 `config.json`；`paths` 列表里该项标为 `configs(legacy)`。
+- SDK 的 `Version` / `FileVersion`、`SdkVersion.Current` / `LoaderVersion`、原生加载器 `loaderVersion`、`apcsm` 内置 SDK 版本与分发模板 `doorstop_config.json` 的 `sdkVersion` 同步到 `4.0.0`。
+
 ## [3.8.11] - 2026-11-23
 
 ### 音频

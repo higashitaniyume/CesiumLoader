@@ -123,35 +123,35 @@ namespace CesiumLoader.SDK.Configuration
         {
             try
             {
-                // 统一规则：玩家配置在 configs/<ModId>.json（外侧、便于手改与 UI 展示）。
-                // 模组目录里的 config.json 是随包默认值，引导首次启动会迁到 configs/ 并改名 .bak；
-                // 没迁过的旧安装仍读模组目录里那份，避免把已有设置丢掉。
-                string external = CesiumLoader.SDK.IO.Path.GetConfigPath(modId + ".json");
-                if (!string.IsNullOrEmpty(external))
-                {
-                    try { if (System.IO.File.Exists(external)) return external; }
-                    catch { }
-
-                    if (!string.IsNullOrEmpty(modDirectory))
-                    {
-                        string inside = System.IO.Path.Combine(modDirectory, "config.json");
-                        try { if (System.IO.File.Exists(inside)) return inside; }
-                        catch { }
-                    }
-                    return external;
-                }
-
-                if (!string.IsNullOrEmpty(modDirectory))
+                // 4.0.0 起只有一处配置：模组目录里的 config.json（mods\<ModId>\config.json）。
+                // 旧版集中放配置的 <加载器目录>\configs 已废弃（加载器启动时把它改名 configs.bak），
+                // 这里绝不再回退到它 —— 否则用户在废弃目录里的改动会静默失效。
+                if (!string.IsNullOrEmpty(modDirectory) && !IsModsRoot(modDirectory))
                     return System.IO.Path.Combine(modDirectory, "config.json");
 
-                string modsDir = Environment.GetEnvironmentVariable("CESIUM_MODS_DIR");
-                if (!string.IsNullOrEmpty(modsDir))
-                    return System.IO.Path.Combine(modsDir, modId, "config.json");
-
-                string root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                return System.IO.Path.Combine(root, "AstralParty_ModLoader", "configs", modId + ".json");
+                // 旧平铺布局（mods\X.dll）的上下文目录就是 mods 根：落到 mods\<ModId>\config.json，
+                // 免得几个平铺模组共用 mods\config.json 互相覆盖。
+                return System.IO.Path.Combine(
+                    CesiumLoader.SDK.IO.Path.GetModDirectory(modId), "config.json");
             }
             catch { return null; }
+        }
+
+        /// <summary>
+        /// <paramref name="modDirectory"/> 是否就是 mods 根目录（旧平铺布局的 ModContext.Directory）。
+        /// </summary>
+        private static bool IsModsRoot(string modDirectory)
+        {
+            try
+            {
+                string modsRoot = CesiumLoader.SDK.IO.Path.ModsDirectory;
+                if (string.IsNullOrEmpty(modsRoot)) return false;
+                return string.Equals(
+                    System.IO.Path.GetFullPath(modDirectory).TrimEnd('\\', '/'),
+                    System.IO.Path.GetFullPath(modsRoot).TrimEnd('\\', '/'),
+                    StringComparison.OrdinalIgnoreCase);
+            }
+            catch { return false; }
         }
 
         // =====================================================================

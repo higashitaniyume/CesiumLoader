@@ -168,6 +168,34 @@ static void log_environment(Il2CppDomain* domain)
     console_set_color(LOG_DEFAULT);
 }
 
+// 4.0.0 起 mod 配置只有一处: mods\<ModId>\config.json。旧版集中目录 <loader>\configs 里的
+// 玩家改动不会再被任何 mod 读取, 留着只会让人以为改了会生效 —— 启动时整目录改名 configs.bak
+// (保留内容便于找回, 绝不删除用户数据)。
+static void retire_legacy_configs_dir()
+{
+    const std::wstring legacy = loader_root() + L"\\configs";
+    const std::wstring retired = loader_root() + L"\\configs.bak";
+
+    if (GetFileAttributesW(legacy.c_str()) == INVALID_FILE_ATTRIBUTES) return;
+
+    if (GetFileAttributesW(retired.c_str()) != INVALID_FILE_ATTRIBUTES)
+    {
+        log_line("[loader] 废弃的 configs 目录仍在(已有 configs.bak, 不改名也不删除); "
+                 "配置现在只在 mods\\<ModId>\\config.json");
+        return;
+    }
+
+    if (MoveFileExW(legacy.c_str(), retired.c_str(), 0))
+    {
+        log_line("[loader] 旧配置目录已退休: configs -> configs.bak "
+                 "(4.0.0 起配置在 mods\\<ModId>\\config.json)");
+        return;
+    }
+
+    log_line("[loader] 旧配置目录 configs 改名 configs.bak 失败 (error " +
+             std::to_string(GetLastError()) + "); 它不会被读取, 可手动删除");
+}
+
 static DWORD WINAPI boot_thread(LPVOID)
 {
     // 若由 DllMain(DLL_PROCESS_ATTACH) 启动, 先等 loader lock 释放:
@@ -193,6 +221,9 @@ static DWORD WINAPI boot_thread(LPVOID)
         log_line("[loader] doorstop_config.json enabled=false, skipping boot");
         return 0;
     }
+
+    // 3.0 退休旧配置目录(见函数注释): 必须在任何 mod 加载之前完成。
+    retire_legacy_configs_dir();
 
     // 3.1 崩溃转储(见 runtime/crashdump.h): 越早装越好 —— 后面解析 il2cpp、装 hook、
     //     走 Steam 绕过都可能崩, 而那些崩溃在游戏侧只留一行 Player.log。

@@ -19,23 +19,62 @@ namespace CesiumLoader.SDK.Tests
         private static ModConfig NewConfig(out string dir, string modId)
         {
             dir = TestEnv.NewTempDir("config");
-            // 统一布局后配置写在 <加载器目录>/configs/<ModId>.json：把加载器目录指到本用例的临时
-            // 目录，用例之间才不会共用一份配置（上次运行留下的键或 .bak 会污染断言）。
+            // 4.0.0 起配置只有一处：模组目录里的 config.json。把加载器目录指到本用例的临时
+            // 目录，让 mods 根也落在临时目录里，用例之间才不会共用一份配置
+            // （上次运行留下的键或 .bak 会污染断言）。
             Environment.SetEnvironmentVariable("CESIUM_LOADER_DIR", dir);
-            Directory.CreateDirectory(Path.Combine(dir, "configs"));
             ModConfig.ClearCache();
-            return ModConfig.ForModId(modId, dir);
+            string modDirectory = Path.Combine(dir, "mods", modId);
+            Directory.CreateDirectory(modDirectory);
+            return ModConfig.ForModId(modId, modDirectory);
         }
 
         [Fact]
-        public void ForModId_ResolvesConfigInUnifiedConfigsDirectory()
+        public void ForModId_ResolvesConfigInModDirectory()
         {
             string dir;
             var cfg = NewConfig(out dir, "ConfigPathMod");
 
             Assert.NotNull(cfg.Path);
-            Assert.Equal(Path.Combine(dir, "configs", "ConfigPathMod.json"), cfg.Path);
+            Assert.Equal(Path.Combine(dir, "mods", "ConfigPathMod", "config.json"), cfg.Path);
             Assert.Equal("ConfigPathMod", cfg.ModId);
+        }
+
+        /// <summary>
+        /// 4.0.0 起集中的 configs 目录不再被读取：里面有旧文件也不认。
+        /// </summary>
+        [Fact]
+        public void LegacyConfigsDirectory_IsIgnored()
+        {
+            string dir;
+            var cfg = NewConfig(out dir, "LegacyConfigsMod");
+
+            string legacy = Path.Combine(dir, "configs", "LegacyConfigsMod.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(legacy)!);
+            File.WriteAllText(legacy, "{\"speed\": 99.5, \"fromConfigs\": true}");
+
+            Assert.False(cfg.Reload());
+            Assert.False(cfg.Has("fromConfigs"));
+            Assert.Equal(0f, cfg.GetFloat("speed", 0f));
+        }
+
+        /// <summary>
+        /// 旧平铺布局（mods\X.dll）的 ModContext.Directory 就是 mods 根：必须落到
+        /// mods\&lt;ModId&gt;\config.json，不能几个平铺模组共用 mods\config.json。
+        /// </summary>
+        [Fact]
+        public void FlatLayoutMod_DoesNotShareModsRootConfig()
+        {
+            string dir = TestEnv.NewTempDir("config-flat");
+            Environment.SetEnvironmentVariable("CESIUM_LOADER_DIR", dir);
+            ModConfig.ClearCache();
+
+            string modsRoot = Path.Combine(dir, "mods");
+            Directory.CreateDirectory(modsRoot);
+
+            var cfg = ModConfig.ForModId("FlatMod", modsRoot);
+
+            Assert.Equal(Path.Combine(modsRoot, "FlatMod", "config.json"), cfg.Path);
         }
 
         [Fact]
@@ -107,7 +146,7 @@ namespace CesiumLoader.SDK.Tests
             cfg.Set("inner", new Nested { Level = 9, Label = "deep" });
             Assert.True(cfg.Save());
 
-            var reloaded = ModConfig.ForModId("NestedMod", dir);
+            var reloaded = ModConfig.ForModId("NestedMod", Path.Combine(dir, "mods", "NestedMod"));
             Assert.True(reloaded.Reload());
 
             var inner = reloaded.Get<Nested>("inner");
@@ -149,7 +188,7 @@ namespace CesiumLoader.SDK.Tests
 
             // 模拟重启: 清缓存后重新加载
             ModConfig.ClearCache();
-            var again = ModConfig.ForModId("PersistMod", dir);
+            var again = ModConfig.ForModId("PersistMod", Path.Combine(dir, "mods", "PersistMod"));
             Assert.Equal(12.5f, again.GetFloat("speed"));
             Assert.Equal("F1", again.GetString("toggleKey"));
             Assert.True(again.GetBool("invertY"));

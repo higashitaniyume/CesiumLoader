@@ -59,9 +59,7 @@ namespace ActivityLogMod
                     return;
                 }
 
-                // 回退读取旧版 configs/ActivityLogMod.json
-                var legacy = SdkConfig.Load<ActivityLogConfig>("ActivityLogMod");
-                if (legacy != null) _cfg = legacy;
+                // 4.0.0 起配置只有模组目录这一处；不再回退读旧版 configs/ActivityLogMod.json。
 
                 // 首次在 mods/ActivityLogMod/config.json 写入默认值
                 if (isInitial && c != null)

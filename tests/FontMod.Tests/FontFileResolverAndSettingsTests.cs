@@ -97,8 +97,6 @@ namespace FontMod.Tests
         public void FontSettings_ClampsOutOfRangeValuesFromConfig()
         {
             string tempDir = Path.Combine(Path.GetTempPath(), "FontModCfg_" + Guid.NewGuid().ToString("N"));
-            string configsDir = Path.Combine(tempDir, "configs");
-            Directory.CreateDirectory(configsDir);
             string prevLoaderDir = Environment.GetEnvironmentVariable("CESIUM_LOADER_DIR");
             try
             {
@@ -106,11 +104,14 @@ namespace FontMod.Tests
                 ModConfig.ClearCache();
 
                 string modId = "FontModTest_" + Guid.NewGuid().ToString("N");
-                string cfgFile = Path.Combine(configsDir, modId + ".json");
+                // 4.0.0 起配置只在模组目录里：<mods>\<ModId>\config.json。
+                string modDir = Path.Combine(tempDir, "mods", modId);
+                Directory.CreateDirectory(modDir);
+                string cfgFile = Path.Combine(modDir, "config.json");
                 File.WriteAllText(cfgFile,
                     "{\"atlasSize\": 128, \"samplingPointSize\": 999, \"atlasPadding\": 99, \"tmpFontScale\": 5.0, \"normalWeight\": -2.0, \"boldWeight\": 3.0}");
 
-                ModConfig cfg = ModConfig.ForModId(modId, tempDir);
+                ModConfig cfg = ModConfig.ForModId(modId, modDir);
                 FontSettings s = FontSettings.Read(cfg);
 
                 Assert.Equal(1024, s.AtlasSize);

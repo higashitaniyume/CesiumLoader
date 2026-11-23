@@ -45,7 +45,10 @@ namespace CesiumLoader.SDK.Tests
 
                 // Subdirectories
                 Assert.Equal(System.IO.Path.Combine(fakeLoader, "mods"), SdkIOPath.ModsDirectory);
+                // 4.0.0 起 configs 已废弃（加载器启动时改名 configs.bak），属性只为兼容保留。
+#pragma warning disable CS0618
                 Assert.Equal(System.IO.Path.Combine(fakeLoader, "configs"), SdkIOPath.ConfigsDirectory);
+#pragma warning restore CS0618
                 Assert.Equal(System.IO.Path.Combine(fakeLoader, "logs"), SdkIOPath.LogsDirectory);
                 Assert.Equal(System.IO.Path.Combine(fakeLoader, "skins"), SdkIOPath.SkinsDirectory);
                 Assert.Equal(System.IO.Path.Combine(fakeLoader, "audio"), SdkIOPath.AudioDirectory);
@@ -99,8 +102,13 @@ namespace CesiumLoader.SDK.Tests
                 Assert.Equal(System.IO.Path.Combine(fakeLoader, "mods", "TestMod", "data", "cards.json"),
                     SdkIOPath.GetModDataPath("TestMod", "cards.json"));
 
-                Assert.Equal(System.IO.Path.Combine(fakeLoader, "configs", "MyMod.json"), SdkIOPath.GetConfigPath("MyMod"));
-                Assert.Equal(System.IO.Path.Combine(fakeLoader, "configs", "MyMod.json"), SdkIOPath.GetConfigPath("MyMod.json"));
+                Assert.Equal(System.IO.Path.Combine(fakeLoader, "mods", "MyMod", "config.json"),
+                    SdkIOPath.GetModConfigPath("MyMod"));
+                // 旧名 GetConfigPath 仍然可用，但已重定向到模组目录（带不带 .json 都行）。
+#pragma warning disable CS0618
+                Assert.Equal(System.IO.Path.Combine(fakeLoader, "mods", "MyMod", "config.json"), SdkIOPath.GetConfigPath("MyMod"));
+                Assert.Equal(System.IO.Path.Combine(fakeLoader, "mods", "MyMod", "config.json"), SdkIOPath.GetConfigPath("MyMod.json"));
+#pragma warning restore CS0618
 
                 Assert.Equal(System.IO.Path.Combine(fakeLoader, "skins", "summer", "card.png"),
                     SdkIOPath.GetSkinPath("summer", "card.png"));
@@ -111,7 +119,7 @@ namespace CesiumLoader.SDK.Tests
         }
 
         [Fact]
-        public void GetModConfigPath_PrefersModDir_ThenConfigsDir()
+        public void GetModConfigPath_AlwaysUsesModDirectory()
         {
             string tempDir = TestEnv.NewTempDir("path-config-test");
             string modsDir = System.IO.Path.Combine(tempDir, "mods");
@@ -122,24 +130,19 @@ namespace CesiumLoader.SDK.Tests
             using (new EnvScope("CESIUM_LOADER_DIR", tempDir))
             using (new EnvScope("CESIUM_MODS_DIR", modsDir))
             {
-                // 1. None exist -> defaults to configs/{modId}.json
-                string cfg = SdkIOPath.GetModConfigPath("ModA");
-                Assert.Equal(System.IO.Path.Combine(configsDir, "ModA.json"), cfg);
+                // 模组目录还不存在：路径照样拼接（调用方可能要写它）
+                string modADir = System.IO.Path.Combine(modsDir, "ModA");
+                Assert.Equal(System.IO.Path.Combine(modADir, "config.json"), SdkIOPath.GetModConfigPath("ModA"));
 
-                // 2. Mod directory exists -> defaults to mods/{modId}/config.json
+                // configs 下有同名文件也不再被采用（4.0.0 起集中目录已废弃）
+                string configA = System.IO.Path.Combine(configsDir, "ModA.json");
+                File.WriteAllText(configA, "{}");
+                Assert.Equal(System.IO.Path.Combine(modADir, "config.json"), SdkIOPath.GetModConfigPath("ModA"));
+
+                // 模组目录里那份是唯一结果
                 string modBDir = System.IO.Path.Combine(modsDir, "ModB");
                 Directory.CreateDirectory(modBDir);
                 Assert.Equal(System.IO.Path.Combine(modBDir, "config.json"), SdkIOPath.GetModConfigPath("ModB"));
-
-                // 3. File in configs/ exists -> picks configs/{modId}.json
-                string configA = System.IO.Path.Combine(configsDir, "ModA.json");
-                File.WriteAllText(configA, "{}");
-                Assert.Equal(configA, SdkIOPath.GetModConfigPath("ModA"));
-
-                // 4. File in mods/{modId}/config.json exists -> takes precedence
-                string configB = System.IO.Path.Combine(modBDir, "config.json");
-                File.WriteAllText(configB, "{}");
-                Assert.Equal(configB, SdkIOPath.GetModConfigPath("ModB"));
             }
         }
 
@@ -187,7 +190,10 @@ namespace CesiumLoader.SDK.Tests
                 Assert.Equal(SdkIOPath.LoaderDirectory, Paths.LoaderDirectory);
                 Assert.Equal(SdkIOPath.GameDirectory, Paths.GameDirectory);
                 Assert.Equal(SdkIOPath.ModsDirectory, Paths.ModsDirectory);
+#pragma warning disable CS0618
                 Assert.Equal(SdkIOPath.ConfigsDirectory, Paths.ConfigsDirectory);
+                Assert.Equal(SdkIOPath.GetConfigPath("ModX"), Paths.GetConfigPath("ModX"));
+#pragma warning restore CS0618
                 Assert.Equal(SdkIOPath.GetModDirectory("ModX"), Paths.GetModDirectory("ModX"));
                 Assert.Equal(SdkIOPath.GetModPath("ModX", "sub"), Paths.GetModPath("ModX", "sub"));
 
@@ -195,7 +201,9 @@ namespace CesiumLoader.SDK.Tests
                 Assert.Equal(SdkIOPath.LoaderDirectory, SdkPath.LoaderDirectory);
                 Assert.Equal(SdkIOPath.GameDirectory, SdkPath.GameDirectory);
                 Assert.Equal(SdkIOPath.ModsDirectory, SdkPath.ModsDirectory);
+#pragma warning disable CS0618
                 Assert.Equal(SdkIOPath.ConfigsDirectory, SdkPath.ConfigsDirectory);
+#pragma warning restore CS0618
                 Assert.Equal(SdkIOPath.GetModDirectory("ModX"), SdkPath.GetModDirectory("ModX"));
                 Assert.Equal(SdkIOPath.GetModPath("ModX", "sub"), SdkPath.GetModPath("ModX", "sub"));
             }

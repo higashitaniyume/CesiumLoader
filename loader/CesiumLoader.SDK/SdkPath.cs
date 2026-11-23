@@ -1,6 +1,9 @@
 using System;
 using CesiumLoader.SDK.IO;
 
+// 兼容壳: 转发到已标记 [Obsolete] 的 Path 成员, 不在这里重复告警。
+#pragma warning disable CS0618
+
 namespace CesiumLoader.SDK
 {
     /// <summary>
@@ -20,6 +23,7 @@ namespace CesiumLoader.SDK
         public static string GameDirectory { get { return Path.GameDirectory; } }
         public static string GameRootDirectory { get { return Path.GameRootDirectory; } }
         public static string ModsDirectory { get { return Path.ModsDirectory; } }
+        [Obsolete("4.0.0 起配置在模组目录（GetModConfigPath(modId)）；此目录已废弃。")]
         public static string ConfigsDirectory { get { return Path.ConfigsDirectory; } }
         public static string LogsDirectory { get { return Path.LogsDirectory; } }
         public static string SkinsDirectory { get { return Path.SkinsDirectory; } }
@@ -43,6 +47,7 @@ namespace CesiumLoader.SDK
         public static string GetModDataDirectory(string modId) { return Path.GetModDataDirectory(modId); }
         public static string GetModDataPath(string modId, params string[] subPaths) { return Path.GetModDataPath(modId, subPaths); }
         public static string GetModConfigPath(string modId) { return Path.GetModConfigPath(modId); }
+        [Obsolete("4.0.0 起配置在模组目录：改用 GetModConfigPath(modId)。")]
         public static string GetConfigPath(string fileNameOrModId) { return Path.GetConfigPath(fileNameOrModId); }
         public static string GetLogPath(params string[] subPaths) { return Path.GetLogPath(subPaths); }
         public static string GetSkinDirectory(string skinName) { return Path.GetSkinDirectory(skinName); }
