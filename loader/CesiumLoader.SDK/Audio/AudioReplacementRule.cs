@@ -39,6 +39,12 @@ namespace CesiumLoader.SDK.Audio
         public int RedirectConfigId { get; set; }
         public bool IsMute { get; set; }
 
+        /// <summary>
+        /// 命中背景音乐(BGM)事件时，自定义音频是否循环播放（默认 true；原版 BGM 都是循环的）。
+        /// 仅对 BGM 生效，音效替换忽略本属性。
+        /// </summary>
+        public bool Loop { get; set; } = true;
+
         public AudioReplacementRule(int configId, object clip, float volume = 1.0f, AudioChannel channel = AudioChannel.Sfx)
         {
             MatchMode = AudioMatchMode.ConfigId;

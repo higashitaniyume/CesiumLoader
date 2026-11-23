@@ -76,7 +76,7 @@ winget install Hiynet.AstralParty.Toys
 | [HomeBottomBarMod](mods/HomeBottomBarMod/README.md) | 主页底栏隐藏公告，设置左移一位，最右侧增加退出按钮 |
 | [UnlockFrameRateMod](mods/UnlockFrameRateMod/README.md) | 在游戏帧率列表追加 144/165/240/360/不限帧 选项，选中后由游戏自己应用 |
 | [LanguageUnlockMod](mods/LanguageUnlockMod/README.md) | 国服启用设置里已有的英文 / 日文 / 繁中语言选项，切换后重登生效 |
-| [AudioSkinMod](docs/SDK-Audio.md) | 游戏内置音效/语音替换与音量控制 |
+| [AudioSkinMod](docs/SDK-Audio.md) | 游戏内置音效/语音/背景音乐替换与音量控制 |
 | [StarCoinShopMod](mods/StarCoinShopMod/README.md) | 主界面商城星币商店一键顺序购买全部商品，带可配置的冷却间隔与槽位开关 |
 | [CharacterTransparencyMod](mods/CharacterTransparencyMod/README.md) | 按 H 使游戏中角色半透明化（默认 36% 不透明度），支持长按与点击切换 |
 | [ShopRelicPeekMod](mods/ShopRelicPeekMod/README.md) | 在游戏右上角展示玩家进店卡牌与选筹码候选历史，显示角色名与刚刚/X秒前，按一至四楼红绿蓝黄排列 |

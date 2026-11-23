@@ -24,6 +24,7 @@ namespace CesiumLoader.SDK.Audio
         private static IAudioBackend _backend;
         private static bool _syncWithGameSettings = true;
         private static bool _bgmOverrideActive = false;
+        private static bool _bgmMuteOnly = false;
         private static float _previousWwiseBgmVolume = -1f;
 
         /// <summary>
@@ -69,8 +70,11 @@ namespace CesiumLoader.SDK.Audio
             set => _syncWithGameSettings = value;
         }
 
-        /// <summary>当前是否有自定义 BGM 覆盖正在运行。</summary>
+        /// <summary>当前是否有自定义 BGM 覆盖正在运行（含「只静音原版 BGM」模式）。</summary>
         public static bool IsBgmOverrideActive => _bgmOverrideActive;
+
+        /// <summary>当前覆盖是否只是静音原版 BGM（没有播放自定义音乐）。</summary>
+        public static bool IsBgmMuteOnly => _bgmMuteOnly;
 
         /// <summary>当前 BGM 是否正在播放。</summary>
         public static bool IsBgmPlaying => Backend != null && Backend.IsBgmPlaying;
@@ -415,6 +419,7 @@ namespace CesiumLoader.SDK.Audio
             }
             AudioEvents.StartAutoHook();
             AudioEvents.EnsureHooked();
+            AudioEvents.NotifyRulesChanged();
         }
 
         /// <summary>
@@ -427,6 +432,7 @@ namespace CesiumLoader.SDK.Audio
                 _rules.RemoveAll(r => r.MatchMode == AudioMatchMode.ConfigId && r.TargetConfigId == eventConfigId);
                 _ruleCount = _rules.Count;
             }
+            AudioEvents.NotifyRulesChanged();
         }
 
         /// <summary>
@@ -440,6 +446,7 @@ namespace CesiumLoader.SDK.Audio
                                       string.Equals(r.TargetEventName, eventName, StringComparison.OrdinalIgnoreCase));
                 _ruleCount = _rules.Count;
             }
+            AudioEvents.NotifyRulesChanged();
         }
 
         /// <summary>
@@ -452,6 +459,7 @@ namespace CesiumLoader.SDK.Audio
                 _rules.Clear();
                 _ruleCount = 0;
             }
+            AudioEvents.NotifyRulesChanged();
         }
 
         /// <summary>
@@ -485,6 +493,7 @@ namespace CesiumLoader.SDK.Audio
 
             MuteGameWwiseBgm();
             _bgmOverrideActive = true;
+            _bgmMuteOnly = false;
             PlayBgm(clip, loop, volume, fadeTime);
             SdkLog.Info("AUDIO", "已启用自定义 BGM 覆盖。");
         }
@@ -502,6 +511,32 @@ namespace CesiumLoader.SDK.Audio
         }
 
         /// <summary>
+        /// 只静音游戏原版 BGM，不播放自定义音乐（用于「把某首 BGM 静音」的替换规则）。
+        /// 会停止此前由本服务播放的自定义 BGM。
+        /// </summary>
+        public static void MuteGameBgm(float fadeTime = 0.2f)
+        {
+            MuteGameWwiseBgm();
+            _bgmOverrideActive = true;
+            _bgmMuteOnly = true;
+            StopBgm(fadeTime);
+            SdkLog.Info("AUDIO", "已静音游戏原版 BGM。");
+        }
+
+        /// <summary>
+        /// 重新把原版 BGM 音量压回静音。
+        ///
+        /// 覆盖生效期间玩家仍可能在设置里拖动「背景音乐」滑条，游戏会把新的音量写进
+        /// `BGMVolume` RTPC，导致原版音乐重新出声并与自定义音乐重叠；SDK 在覆盖期间会周期性调用本方法复位。
+        /// </summary>
+        public static void RefreshBgmMute()
+        {
+            if (!_bgmOverrideActive) return;
+            try { GameAudioBridge.SetWwiseRtpc(BgmRtpcName, 0f); }
+            catch { }
+        }
+
+        /// <summary>
         /// 取消自定义 BGM 覆盖，停止自定义音乐并恢复原版游戏 BGM 音量。
         /// </summary>
         public static void ClearBgmOverride(float fadeTime = 0.5f)
@@ -511,8 +546,12 @@ namespace CesiumLoader.SDK.Audio
             StopBgm(fadeTime);
             RestoreGameWwiseBgm();
             _bgmOverrideActive = false;
+            _bgmMuteOnly = false;
             SdkLog.Info("AUDIO", "已取消自定义 BGM 覆盖并恢复游戏音乐。");
         }
+
+        /// <summary>游戏原版 BGM 音量所用的 Wwise RTPC 名称（与游戏设置面板一致）。</summary>
+        private const string BgmRtpcName = "BGMVolume";
 
         private static void MuteGameWwiseBgm()
         {
@@ -520,7 +559,7 @@ namespace CesiumLoader.SDK.Audio
             {
                 _previousWwiseBgmVolume = GameAudioBridge.GetGameBgmVolume();
                 // 通过 Wwise RTPC 将原版 BGM 音量归零，不破坏原版状态机
-                GameAudioBridge.SetWwiseRtpc("BGMVolume", 0f);
+                GameAudioBridge.SetWwiseRtpc(BgmRtpcName, 0f);
             }
             catch (Exception ex)
             {
@@ -532,8 +571,13 @@ namespace CesiumLoader.SDK.Audio
         {
             try
             {
-                float targetVol = _previousWwiseBgmVolume >= 0 ? _previousWwiseBgmVolume : GameAudioBridge.GetGameBgmVolume();
-                GameAudioBridge.SetWwiseRtpc("BGMVolume", targetVol);
+                // 优先用当前设置值恢复: 覆盖期间玩家可能改过音量，游戏自己也是按这个值写 RTPC 的。
+                float targetVol = GameAudioBridge.GetGameBgmVolume();
+                if (targetVol < 0f)
+                {
+                    targetVol = _previousWwiseBgmVolume >= 0f ? _previousWwiseBgmVolume : 0f;
+                }
+                GameAudioBridge.SetWwiseRtpc(BgmRtpcName, targetVol);
             }
             catch (Exception ex)
             {

@@ -43,6 +43,13 @@ namespace AudioSkinMod
                 "ボイスチャンネルの全体音量倍率（0.0 〜 2.0）。"
             ));
 
+            config.Describe("bgmLoop", ConfigDoc.Of(
+                "替换后的背景音乐是否循环播放（原版 BGM 均为循环）。",
+                "替換後的背景音樂是否循環播放（原版 BGM 均為循環）。",
+                "Whether replaced background music loops (original BGM always loops).",
+                "置き換えた BGM をループ再生するかどうか（原版 BGM はすべてループ）。"
+            ));
+
             config.Describe("logEvents", ConfigDoc.Of(
                 "是否在控制台打印游戏触发的声音事件日志（用于调试定位事件 ID）。",
                 "是否在控制台列印遊戲觸發的聲音事件日誌（用於調試定位事件 ID）。",

@@ -1,8 +1,60 @@
 {
+  // 总开关：关闭后不再应用任何音效/BGM 替换
   "enabled": true,
+  // 当前生效的音效方案标识（对应 AstralParty_ModLoader\audio-schemes\<标识>，由 Toys「音效方案」页管理）
   "activeScheme": "default",
+  // 音效通道全局倍率（0.0 ~ 2.0）
   "sfxVolume": 1.0,
+  // 背景音乐通道全局倍率（0.0 ~ 2.0）
   "bgmVolume": 1.0,
+  // 角色语音通道全局倍率（0.0 ~ 2.0）
   "voiceVolume": 1.0,
-  "logEvents": false
+  // 替换后的背景音乐是否循环播放（原版 BGM 都是循环的）
+  "bgmLoop": true,
+  // 是否在控制台打印游戏触发的声音事件日志（用于调试定位事件 ID）
+  "logEvents": false,
+  "_comments": {
+    "enabled": {
+      "zh-Hans": "是否启用音效方案替换功能。",
+      "zh-Hant": "是否啟用音效方案替換功能。",
+      "en": "Whether sound skin and audio replacement is enabled.",
+      "ja": "サウンドスキンの置き換え機能を有効にするかどうか。"
+    },
+    "activeScheme": {
+      "zh-Hans": "当前生效的音效方案目录标识（对应 audio-schemes/<标识>）。",
+      "zh-Hant": "當前生效的音效方案目錄標識（對應 audio-schemes/<標識>）。",
+      "en": "Active audio scheme ID (corresponds to audio-schemes/<id>).",
+      "ja": "現在有効なサウンドスキーム識別子（audio-schemes/<ID> に対応）。"
+    },
+    "sfxVolume": {
+      "zh-Hans": "音效通道全局倍率（0.0 ~ 2.0）。",
+      "zh-Hant": "音效通道全域倍率（0.0 ~ 2.0）。",
+      "en": "SFX audio channel volume multiplier (0.0 ~ 2.0).",
+      "ja": "効果音チャンネルの全体音量倍率（0.0 〜 2.0）。"
+    },
+    "bgmVolume": {
+      "zh-Hans": "背景音乐通道全局倍率（0.0 ~ 2.0）。",
+      "zh-Hant": "背景音樂通道全域倍率（0.0 ~ 2.0）。",
+      "en": "BGM audio channel volume multiplier (0.0 ~ 2.0).",
+      "ja": "BGMチャンネルの全体音量倍率（0.0 〜 2.0）。"
+    },
+    "voiceVolume": {
+      "zh-Hans": "角色语音通道全局倍率（0.0 ~ 2.0）。",
+      "zh-Hant": "角色語音通道全域倍率（0.0 ~ 2.0）。",
+      "en": "Voice audio channel volume multiplier (0.0 ~ 2.0).",
+      "ja": "ボイスチャンネルの全体音量倍率（0.0 〜 2.0）。"
+    },
+    "bgmLoop": {
+      "zh-Hans": "替换后的背景音乐是否循环播放（原版 BGM 均为循环）。",
+      "zh-Hant": "替換後的背景音樂是否循環播放（原版 BGM 均為循環）。",
+      "en": "Whether replaced background music loops (original BGM always loops).",
+      "ja": "置き換えた BGM をループ再生するかどうか（原版 BGM はすべてループ）。"
+    },
+    "logEvents": {
+      "zh-Hans": "是否在控制台打印游戏触发的声音事件日志（用于调试定位事件 ID）。",
+      "zh-Hant": "是否在控制台列印遊戲觸發的聲音事件日誌（用於調試定位事件 ID）。",
+      "en": "Log all audio events to console for diagnostic and event lookup.",
+      "ja": "ゲーム内で発生したサウンドイベントログをコンソールに出力するかどうか。"
+    }
+  }
 }

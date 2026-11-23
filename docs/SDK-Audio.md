@@ -49,6 +49,9 @@ AudioService.PlayClipAtPoint(clip, new Vector3(0, 1, 0), volume: 1.0f);
 AudioClipHandle bgmClip = AudioService.LoadWav("MyMod/custom_bgm.wav");
 AudioService.SetBgmOverride(bgmClip, volume: 0.7f, loop: true);
 
+// 只静音原版 BGM（不播放自定义音乐）
+AudioService.MuteGameBgm();
+
 // 暂停与恢复自定义 BGM
 AudioService.PauseBgm();
 AudioService.ResumeBgm();
@@ -56,6 +59,8 @@ AudioService.ResumeBgm();
 // 停止并恢复游戏原有 BGM
 AudioService.ClearBgmOverride();
 ```
+
+> 覆盖生效期间 SDK 会周期性把原版 BGM 音量压回静音，玩家在设置里拖动「背景音乐」滑条后也不会重新听到原版音乐；`ClearBgmOverride()` 会按当前设置值恢复。
 
 ### 2.3 角色语音 (Voice) 播放
 
@@ -86,6 +91,8 @@ AudioService.SyncVolumeFromGameSettings();
 ## 3. 游戏原生音效监听与拦截替换
 
 游戏原生触发音效时，均会进入 `AudioEvents` 进行派发。Mod 可以通过事件委托或声明式规则进行静音、重定向或自定义音效替换。
+
+背景音乐（BGM）是另一条链路：它由 `Core.Audio.BGMHelper.TryPlayBGM` → `AudioManager.PlayBGM` → `BGMModule.PlayBGM` → `AkSoundEngine.PostEvent` 直接播放，<b>不经过</b> `Stage.inst.playSoundCallback`。SDK 会跟随游戏自身的 BGM 播放状态识别换曲、恢复与停止，并用同一套替换规则处理 BGM：命中自定义音频时循环覆盖并静音原版 Wwise BGM，命中静音规则时只静音原版；切换到未配置替换的曲目、BGM 停止或规则被清除时自动恢复原版音乐。
 
 ### 3.1 声明式替换规则 (推荐)
 
@@ -137,6 +144,44 @@ private static void OnBeforeSoundPlay(object sender, SoundPlayEventArgs e)
     }
 }
 ```
+
+### 3.3 背景音乐 (BGM) 替换与事件
+
+BGM 与音效共用同一套规则注册接口，匹配键是 `Audio.Event` 配表 ID（也就是音效目录里 BGM 分类条目的 ID，例如 `10011` = `BGM_Login`）或 Wwise 事件名：
+
+```csharp
+// 用自定义音乐替换登录 BGM，并循环播放
+var customBgm = AudioService.LoadWav("MyMod/login_bgm.wav");
+var rule = AudioReplacementRule.ForConfigId(10011, customBgm, volume: 0.9f);
+rule.Channel = AudioChannel.Bgm; // 声明这是 BGM 规则
+rule.Loop = true;                // BGM 覆盖默认循环
+AudioService.RegisterReplacement(rule);
+
+// 把某首 BGM 静音
+AudioService.RegisterReplacement(AudioReplacementRule.Mute(10021));
+```
+
+需要自己接管时也可以订阅 BGM 事件（订阅后 SDK 自动开始监视 BGM 状态）：
+
+```csharp
+AudioEvents.BeforeBgmPlay += (sender, e) =>
+{
+    // e.EventConfigId / e.EventName / e.BankId / e.StateName 描述当前识别到的曲目
+    if (e.EventName == "BGM_Login")
+    {
+        e.Cancel = true;
+        e.CustomClip = customBgm;
+        e.Loop = true;
+    }
+};
+```
+
+说明：
+
+- `AudioEvents.IsBgmEvent(id)` / `AudioEvents.IsBgmStopEvent(id)` 判断一个事件配置 ID 是 BGM 播放事件还是停止事件；`AudioEvents.CurrentBgmEventConfigId` / `CurrentBgmEventName` 给出当前曲目读数。
+- 覆盖的生命周期跟随游戏自己的 BGM 播放：游戏切曲、停止或该曲目播放结束（游戏释放该 bank）时，自定义音乐随之停止并恢复原版音量；同一首 BGM 的多次播放会各自重新判定一次。
+- BGM 停止事件（如 `BGM_Login_Stop`）与恢复事件（如 `BGM_Resume`）本身不播放音乐，为它们注册替换不会生效。
+- BGM 不支持重定向（`AudioReplacementRule.Redirect`）：自定义音频不是 Wwise 事件，无法把 BGM 切到游戏内的另一条事件，遇到这类规则会保持原版播放并在日志中说明。
 
 ---
 

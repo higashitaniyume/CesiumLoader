@@ -10,6 +10,7 @@ namespace AudioSkinMod
         public float SfxVolume { get; set; } = 1.0f;
         public float BgmVolume { get; set; } = 1.0f;
         public float VoiceVolume { get; set; } = 1.0f;
+        public bool BgmLoop { get; set; } = true;
         public bool LogEvents { get; set; } = false;
 
         public static AudioSkinSettings Load(ModConfig config)
@@ -32,6 +33,9 @@ namespace AudioSkinMod
             if (config.Has("voiceVolume"))
                 settings.VoiceVolume = (float)config.GetDouble("voiceVolume", settings.VoiceVolume);
 
+            if (config.Has("bgmLoop"))
+                settings.BgmLoop = config.GetBool("bgmLoop", settings.BgmLoop);
+
             if (config.Has("logEvents"))
                 settings.LogEvents = config.GetBool("logEvents", settings.LogEvents);
 
@@ -47,6 +51,7 @@ namespace AudioSkinMod
             config.Set("sfxVolume", SfxVolume);
             config.Set("bgmVolume", BgmVolume);
             config.Set("voiceVolume", VoiceVolume);
+            config.Set("bgmLoop", BgmLoop);
             config.Set("logEvents", LogEvents);
             config.SaveIfDirty();
         }
