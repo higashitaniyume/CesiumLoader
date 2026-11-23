@@ -2,6 +2,24 @@
 
 本文件按版本记录 `CesiumLoader` 的功能变更。版本号与 GitHub 发布 tag 一一对应（如 `modloader-3.3.2`，版本号为 `3.3.2`），发布产物由 [release-modloader.yml](.github/workflows/release-modloader.yml) 在打 tag 时自动构建。
 
+## [3.8.11] - 2026-11-23
+
+### 音频
+
+- 修复 `AudioSkinMod` 配置的背景音乐替换不生效：此前只拦截了 FairyGUI 的音效回调，而游戏 BGM 由 `AudioManager.PlayBGM` → `BGMModule` → `AkSoundEngine.PostEvent` 直接播放，不经过该回调，音效方案里的 BGM 规则永远不会命中。
+- SDK 现在跟随游戏自身的 BGM 播放状态识别换曲、恢复与停止，命中替换规则时用自定义音乐循环覆盖并静音原版 Wwise BGM；切到未配置替换的曲目、BGM 停止或规则被清除时自动恢复原版音乐，不再出现自定义音乐与原版音乐重叠。
+- 新增 `AudioEvents.BeforeBgmPlay` 事件，以及 `AudioEvents.IsBgmEvent` / `IsBgmStopEvent` / `CurrentBgmEventConfigId` / `CurrentBgmEventName` 等读数；`AudioReplacementRule.Loop` 控制 BGM 覆盖是否循环。
+- 新增 `AudioService.MuteGameBgm()`（只静音原版 BGM，不播放自定义音乐）与 `AudioService.RefreshBgmMute()`；覆盖期间会周期性复位 BGM 音量，玩家在设置里调整背景音乐音量后不会再听到原版音乐，`ClearBgmOverride()` 按当前设置值恢复。
+- BGM 事件的重定向（`AudioReplacementRule.Redirect`）不受支持：自定义音频不是 Wwise 事件，遇到这类规则保持原版播放并在日志中说明。
+
+### 模组
+
+- `AudioSkinMod 1.1.0`：背景音乐替换按「循环覆盖 + 跟随换曲/停止收尾」处理，新增 `bgmLoop` 配置（默认开启）；对 BGM 停止事件与恢复事件这类不播放音乐的事件会在日志中提示不会生效；`logEvents` 打开时同时打印识别到的 BGM 事件。
+
+### 构建与打包
+
+- SDK 的 `Version` / `FileVersion`、`SdkVersion.Current` / `LoaderVersion`、原生加载器 `loaderVersion` 与分发模板 `doorstop_config.json` 的 `sdkVersion` 同步到 `3.8.11`。
+
 ## [3.8.10] - 2026-11-21
 
 ### 模组
