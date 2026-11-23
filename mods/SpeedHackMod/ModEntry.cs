@@ -89,7 +89,7 @@ namespace SpeedHackMod
         private int _lastIndependentCount;
         private int _lastWorldUiCount;
 
-        public override string Version { get { return "2.5.7"; } }
+        public override string Version { get { return "3.0.0"; } }
 
         // =====================================================================
         // 生命周期

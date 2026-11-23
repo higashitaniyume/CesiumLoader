@@ -2,6 +2,15 @@
 
 本文件按版本记录 `CesiumLoader` 的功能变更。版本号与 GitHub 发布 tag 一一对应（如 `modloader-3.3.2`，版本号为 `3.3.2`），发布产物由 [release-modloader.yml](.github/workflows/release-modloader.yml) 在打 tag 时自动构建。
 
+## [Unreleased]
+
+### 模组
+
+- `SpeedHackMod 3.0.0`：变速固定使用 Unity 时间缩放，不再提供原生系统时钟加速方式；有原生控制通道时先确认原生时钟回到 1 倍，检测到外部改变原生倍率时暂停加速并请求恢复 1 倍。
+- 固定步长优化、FairyGUI 动画同步与独立动画同步固定启用；`accelerationMode`、`optimizeFixedUpdates`、`accelerateUiAnimations`、`accelerateIndependentAnimations` 不再作为配置项，旧配置中的字段与说明会在启动和热重载时清理。
+- 视频同步覆盖 GGraph 与两类战斗 Quad：静音视频最高 3 倍，含音轨的视频与由游戏调度的全屏 Timeline 保持游戏设定的速率。
+- 升级后原本使用原生方式的安装将改用 Unity 方式；变速按配置中的 `speed` 在启动时恢复。回退到 `2.5.6` 时，在旧版配置中把 `accelerationMode` 设为 `unity` 可保持相同行为。
+
 ## [4.0.0] - 2026-11-23
 
 ### 配置

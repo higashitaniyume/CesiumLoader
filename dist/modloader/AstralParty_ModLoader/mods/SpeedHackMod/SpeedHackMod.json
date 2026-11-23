@@ -1,1 +1,1 @@
-{"id":"SpeedHackMod","name":"变速","version":"2.5.4","author":"CesiumLoader","description":"新增 Unity 变速模式：系统时钟保持 1 倍，仅加速游戏时间；保留原生模式和热键，减少全局计时影响。accelerationMode 可选 unity/native。基于 CesiumLoader 的本地修改版。","permissions":4,"sdkVersion":"2.8.6","platforms":["windows","android"],"dependencies":[]}
+{"id":"SpeedHackMod","name":"变速","version":"3.0.0","author":"CesiumLoader","description":"使用 Unity 时间缩放变速，系统时钟保持 1 倍。支持热键、记忆倍率、固定步长优化及动画同步。基于 CesiumLoader 的本地修改版。","permissions":4,"sdkVersion":"2.8.6","platforms":["windows","android"],"dependencies":[]}
