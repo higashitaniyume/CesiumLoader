@@ -357,9 +357,9 @@ std::wstring short_path(const std::wstring& path)
 
 std::wstring file_version(const std::wstring& path)
 {
-    // 走**系统** version.dll, 不链接 version.lib, 也不经过本 DLL 自己的导出:
-    // 本模块就是 version.dll 代理, 链接进来的导入在运行时会被解析回自己的转发函数,
-    // 平白多一层自我回环。这里按完整路径取系统实现(与 exports.cpp 的转发同理)。
+    // 走**系统** version.dll, 不链接 version.lib: 游戏 exe 同目录里那个 version.dll 是
+    // CesiumLoader 的代理, 链接进来的导入在运行时会被解析成代理的转发函数, 平白多一层
+    // 回环(而且把"读版本号"这件小事绑在代理的健康上)。这里按完整路径取系统实现。
     using SizeFn = DWORD(WINAPI*)(LPCWSTR, LPDWORD);
     using InfoFn = BOOL(WINAPI*)(LPCWSTR, DWORD, DWORD, LPVOID);
     using QueryFn = BOOL(WINAPI*)(LPCVOID, LPCWSTR, LPVOID*, PUINT);

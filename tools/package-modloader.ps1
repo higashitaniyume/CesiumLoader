@@ -4,7 +4,8 @@
 
 .DESCRIPTION
     与 CI (.github\workflows\release-modloader.yml) 保持同一套步骤，便于打 tag 前先在本地验证：
-      1. MSBuild 构建原生加载器 version.dll (Release x64; 另编一份 Debug x64 供调试包)
+      1. MSBuild 构建原生加载器两个工程 (version.dll 代理 + CesiumLoader.dll 核心, Release x64;
+         另编一份 Debug x64 供调试包)
       2. dotnet 构建托管层: CesiumLoader.Bootstrap / CesiumLoader.SDK / 各 mod
       3. 刷新 dist\modloader\ 分发布局(tools\stage-modloader-dist.ps1, CI 复用同一份脚本)
       4. 组装 staging\ 部署布局 + README.txt
@@ -103,19 +104,30 @@ Write-Host "  内置 mod: $($BuiltInMods -join ', ')"
 # ---------------------------------------------------------------- 1/2 构建
 if (-not $SkipBuild)
 {
-    Write-Step '1. 构建原生加载器 (version.dll, Release x64)'
+    Write-Step '1. 构建原生加载器 (version.dll 代理 + CesiumLoader.dll 核心, Release x64)'
     $msbuild = Resolve-MSBuild
     Write-Host "  MSBuild: $msbuild"
+    # 两个工程都要编: 代理是薄劫持层, 核心是加载器主体。两者必须成对分发(见 loader\shared\cesium_core_abi.h)。
+    & $msbuild 'loader\CesiumLoader.Proxy\CesiumLoader.Proxy.vcxproj' /p:Configuration=Release /p:Platform=x64 /m /nologo /v:minimal
+    if ($LASTEXITCODE -ne 0) { throw "代理 version.dll 构建失败 (exit $LASTEXITCODE)" }
     & $msbuild 'loader\CesiumLoader\CesiumLoader.vcxproj' /p:Configuration=Release /p:Platform=x64 /m /nologo /v:minimal
-    if ($LASTEXITCODE -ne 0) { throw "原生加载器构建失败 (exit $LASTEXITCODE)" }
-    $nativeDll = 'loader\CesiumLoader\bin\Release\version.dll'
-    if (-not (Test-Path $nativeDll)) { throw "version.dll 未生成: $nativeDll" }
+    if ($LASTEXITCODE -ne 0) { throw "核心 CesiumLoader.dll 构建失败 (exit $LASTEXITCODE)" }
+    $nativeDir = 'bin\Release'
+    foreach ($nativeName in 'version.dll', 'CesiumLoader.dll')
+    {
+        if (-not (Test-Path (Join-Path $nativeDir $nativeName))) { throw "$nativeName 未生成: $nativeDir\$nativeName" }
+    }
 
-    # Debug 版加载器(发布产物里的可选包): 与正式包同一套布局, 只换 version.dll/pdb。
-    Write-Host '  构建 Debug 版加载器 (version.dll, Debug x64)'
+    # Debug 版加载器(发布产物里的可选包): 与正式包同一套布局, 两个 DLL 都换成 Debug 构建。
+    Write-Host '  构建 Debug 版加载器 (Proxy + Core, Debug x64)'
+    & $msbuild 'loader\CesiumLoader.Proxy\CesiumLoader.Proxy.vcxproj' /p:Configuration=Debug /p:Platform=x64 /m /nologo /v:minimal
+    if ($LASTEXITCODE -ne 0) { throw "Debug 版代理构建失败 (exit $LASTEXITCODE)" }
     & $msbuild 'loader\CesiumLoader\CesiumLoader.vcxproj' /p:Configuration=Debug /p:Platform=x64 /m /nologo /v:minimal
-    if ($LASTEXITCODE -ne 0) { throw "Debug 版加载器构建失败 (exit $LASTEXITCODE)" }
-    if (-not (Test-Path 'loader\CesiumLoader\bin\Debug\version.dll')) { throw 'Debug 版 version.dll 未生成' }
+    if ($LASTEXITCODE -ne 0) { throw "Debug 版核心构建失败 (exit $LASTEXITCODE)" }
+    foreach ($nativeName in 'version.dll', 'CesiumLoader.dll')
+    {
+        if (-not (Test-Path (Join-Path 'bin\Debug' $nativeName))) { throw "Debug 版 $nativeName 未生成" }
+    }
 
     # 解包基线可能保留较旧时间戳；必须强制重编，避免增量缓存保留旧游戏枚举常量。
     Write-Step '2. 构建托管层 (Bootstrap / SDK / mods / cesium CLI)'
@@ -131,7 +143,7 @@ if (-not $SkipBuild)
 
     Write-Step '3. 刷新 dist\modloader\ 分发布局'
     # 与 CI 共用同一份脚本: 布局规则(哪些文件、sidecar 从哪来、符号成对复制)只维护一处。
-    & (Join-Path $PSScriptRoot 'stage-modloader-dist.ps1') -NativeDll $nativeDll -Configuration Release
+    & (Join-Path $PSScriptRoot 'stage-modloader-dist.ps1') -NativeDir $nativeDir -Configuration Release
     if ($LASTEXITCODE -ne 0) { throw "刷新 dist 失败 (exit $LASTEXITCODE)" }
 }
 else
@@ -147,8 +159,10 @@ foreach ($sub in @('AstralParty_ModLoader\sdk', 'AstralParty_ModLoader\mods', 'A
     New-Item -ItemType Directory -Path "staging\$sub" -Force | Out-Null
 }
 Copy-Item 'dist\modloader\version.dll' 'staging\version.dll' -Force
+# 加载器核心: 与代理必须成对分发、同目录(代理按自身目录找核心)。
+Copy-Item 'dist\modloader\CesiumLoader.dll' 'staging\CesiumLoader.dll' -Force
 
-# 版权声明与 AGPL-3.0 全文: version.dll 同级(游戏 exe 目录)与 AstralParty_ModLoader 各一份。
+# 版权声明与 AGPL-3.0 全文: 游戏 exe 目录(两个 DLL 同级)与 AstralParty_ModLoader 各一份。
 # 直接从仓库根取, 这样 -SkipBuild 复用旧 dist 时也能补上这两个文件。
 Copy-Item 'CesiumLoader-NOTICE.txt' 'staging\CesiumLoader-NOTICE.txt' -Force
 Copy-Item 'LICENSE' 'staging\CesiumLoader-LICENSE.txt' -Force
@@ -168,6 +182,7 @@ Copy-Item 'CHANGELOG.md' 'staging\CHANGELOG.md' -Force
 # 缺哪个就在下面的清单过滤里统一警告 —— 符号不全不该拦住发布。
 foreach ($pdb in @(
         'dist\modloader\version.pdb',
+        'dist\modloader\CesiumLoader.pdb',
         'dist\modloader\AstralParty_ModLoader\bootstrap\CesiumLoader.Bootstrap.pdb',
         'dist\modloader\AstralParty_ModLoader\sdk\CesiumLoader.SDK.pdb'))
 {
@@ -180,6 +195,8 @@ foreach ($pdb in @(
 $manifestFiles = @(
     'staging/version.dll',
     'staging/version.pdb',
+    'staging/CesiumLoader.dll',
+    'staging/CesiumLoader.pdb',
     'staging/CesiumLoader-NOTICE.txt',
     'staging/CesiumLoader-LICENSE.txt',
     'staging/AstralParty_ModLoader/CesiumLoader-NOTICE.txt',
@@ -234,6 +251,9 @@ $modList = ($BuiltInMods | ForEach-Object { "mods\{$_}\{$_}.dll" }) -join ' / '
 $readme = @(
     "cesium-loader-$version",
     "- version.dll                          → 复制到游戏 exe 目录 (Doorstop 式代理加载器)",
+    "- CesiumLoader.dll                     → 复制到游戏 exe 目录 (加载器核心: 配置/变速/日志/模组编排)",
+    "                                         ⚠ 两个 DLL 必须成对更新且保持同目录, 缺一个或版本不匹配时",
+    "                                           游戏照常启动, 只是模组不加载(原因写在 AstralParty_ModLoader\logs\proxy-*.log)",
     "- CHANGELOG.md                         → 更新日志(Toys 用它做离线兜底)",
     "- AstralParty_ModLoader\doorstop_config.json → 加载器配置 (enabled=false 可完全禁用)",
     "- AstralParty_ModLoader\bootstrap\     → 托管引导程序 (先于 SDK/mods 加载)",
@@ -247,7 +267,7 @@ $readme = @(
     "HomeBottomBarMod 默认启用: 主页底栏隐藏公告，设置左移一位，最右侧增加退出按钮（沿用游戏原生退出确认）。",
     "UnlockFrameRateMod 默认启用: 在游戏「设置→屏幕→帧率」列表追加 144/165/240/360/不限帧 选项，选中后由游戏自己应用。",
     "- AstralParty_ModLoader\mods\{ModId}\{ModId}.json → mod sidecar (id/版本/权限/enabled 开关/依赖)",
-    "- *.pdb (version.pdb / bootstrap / sdk / mods\*) → 符号文件(与同名 dll 配对):",
+    "- *.pdb (version.pdb / CesiumLoader.pdb / bootstrap / sdk / mods\*) → 符号文件(与同名 dll 配对):",
     "  把 dll 的崩溃栈还原成文件行号用, 删掉不影响运行; 调试器会自动在 dll 同目录找它。",
     "- AstralParty_ModLoader\sdk\CesiumLoader.SDK.xml → SDK 的 XML 文档(与 dll 同名):",
     "  写 mod 时在 IDE 里悬停/补全即可看到类型与成员注释; 删掉不影响加载器运行。",
@@ -268,14 +288,15 @@ Set-Content -Path 'staging\README.txt' -Value $readme -Encoding UTF8
 # ---------------------------------------------------------------- 4b Debug 包准备
 # Debug 包要在清单生成之后才能组装(见下面 5b): 它需要一份用 Debug dll/pdb 哈希重写的清单,
 # 否则 Toys 的「导入发布包」会因为缺少/不匹配 cesium-loader.json 直接拒绝。
-$debugDll = @('loader\CesiumLoader\bin\Debug\version.dll', 'bin\Debug\version.dll') |
-    Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-$debugPdb = @('loader\CesiumLoader\bin\Debug\version.pdb', 'bin\Debug\version.pdb') |
-    Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-$debugAvailable = -not [string]::IsNullOrEmpty($debugDll)
+# 两个 DLL 都取 Debug 构建(代理 + 核心), 缺任一个就整体跳过 Debug 包。
+$debugProxyDll = 'bin\Debug\version.dll'
+$debugProxyPdb = 'bin\Debug\version.pdb'
+$debugCoreDll = 'bin\Debug\CesiumLoader.dll'
+$debugCorePdb = 'bin\Debug\CesiumLoader.pdb'
+$debugAvailable = (Test-Path -LiteralPath $debugProxyDll) -and (Test-Path -LiteralPath $debugCoreDll)
 if (-not $debugAvailable)
 {
-    Write-Warning '未找到 Debug 版 version.dll, 跳过 cesium-loader-debug 包(需要 -SkipBuild 前先构建 Debug)'
+    Write-Warning '未找到 Debug 版 version.dll / CesiumLoader.dll, 跳过 cesium-loader-debug 包(需要 -SkipBuild 前先构建 Debug)'
 }
 
 Write-Step '5. 生成 cesium-loader.json 清单'
@@ -297,7 +318,7 @@ $manifest = [ordered]@{
 $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path 'staging\cesium-loader.json' -Encoding UTF8
 
 # ---------------------------------------------------------------- 5b Debug 包布局
-# 与正式包同布局, 只换 version.dll/pdb + 一份说明; 清单也用同一份, 只把这两个文件的哈希
+# 与正式包同布局, 换掉两个 dll + 两个 pdb + 一份说明; 清单也用同一份, 把这四个文件的哈希
 # 换成 Debug 版本, 并标记 channel=debug。这样 Toys 的「导入发布包」能正常校验并安装。
 if ($debugAvailable)
 {
@@ -305,25 +326,36 @@ if ($debugAvailable)
     if (Test-Path 'debug-staging') { Remove-Item 'debug-staging' -Recurse -Force }
     New-Item -ItemType Directory -Path 'debug-staging' -Force | Out-Null
     Copy-Item 'staging\*' 'debug-staging\' -Recurse -Force
-    Copy-Item $debugDll 'debug-staging\version.dll' -Force
-    if ($debugPdb) {
-        Copy-Item $debugPdb 'debug-staging\version.pdb' -Force
-    } else {
-        Write-Warning 'Debug 版 version.pdb 缺失, Debug 包不含加载器符号'
+    Copy-Item $debugProxyDll 'debug-staging\version.dll' -Force
+    Copy-Item $debugCoreDll 'debug-staging\CesiumLoader.dll' -Force
+    foreach ($pair in @(@($debugProxyPdb, 'debug-staging\version.pdb'), @($debugCorePdb, 'debug-staging\CesiumLoader.pdb')))
+    {
+        if (Test-Path -LiteralPath $pair[0]) { Copy-Item $pair[0] $pair[1] -Force }
+        else { Write-Warning "Debug 版符号缺失: $($pair[0])" }
     }
     $debugReadme = (Get-Content (Join-Path $PSScriptRoot 'debug-loader-README.txt') -Raw).Replace('{{VERSION}}', $version)
     Set-Content -Path 'debug-staging\README.txt' -Value $debugReadme -Encoding UTF8
 
     # 用 Debug 文件的实际哈希重写清单: Toys 会逐个校验 required 项, 哈希不一致会拒绝安装。
+    # 代理与核心四个文件(两个 dll + 同名 pdb)都要重写 —— 漏一个就会因为哈希对不上被拒装。
     $debugManifest = Get-Content 'staging\cesium-loader.json' -Raw | ConvertFrom-Json
-    $debugManifest.files.'version.dll' = (Get-FileHash 'debug-staging\version.dll' -Algorithm SHA256).Hash.ToLowerInvariant()
-    if (Test-Path 'debug-staging\version.pdb') {
-        $debugManifest.files.'version.pdb' = (Get-FileHash 'debug-staging\version.pdb' -Algorithm SHA256).Hash.ToLowerInvariant()
+    foreach ($debugName in 'version.dll', 'version.pdb', 'CesiumLoader.dll', 'CesiumLoader.pdb')
+    {
+        $debugFile = "debug-staging\$debugName"
+        if (Test-Path -LiteralPath $debugFile)
+        {
+            $debugManifest.files | Add-Member -NotePropertyName $debugName `
+                -NotePropertyValue (Get-FileHash $debugFile -Algorithm SHA256).Hash.ToLowerInvariant() -Force
+        }
+        else
+        {
+            Write-Warning "Debug 包不含 $debugName"
+        }
     }
     $debugManifest | Add-Member -NotePropertyName 'channel' -NotePropertyValue 'debug' -Force
     $debugManifest | ConvertTo-Json -Depth 4 | Set-Content -Path 'debug-staging\cesium-loader.json' -Encoding UTF8
 
-    Write-Host "  Debug 包已组装: $((Get-Item $debugDll).Length) bytes 的 version.dll + 说明 + 专用清单"
+    Write-Host "  Debug 包已组装: version.dll $((Get-Item $debugProxyDll).Length) bytes + CesiumLoader.dll $((Get-Item $debugCoreDll).Length) bytes + 说明 + 专用清单"
 }
 
 # ---------------------------------------------------------------- 6 SDK 工具包
@@ -390,7 +422,7 @@ Copy-Item $loaderZip $loaderLatest -Force
 Compress-Archive -Path 'sdk-staging\*' -DestinationPath $sdkZip -CompressionLevel Optimal
 Copy-Item $sdkZip $sdkLatest -Force
 
-# Debug 版加载器包(可选产物): 与正式包同布局, 只换 version.dll/pdb。
+# Debug 版加载器包(可选产物): 与正式包同布局, 换掉两个 dll + 两个 pdb。
 if (Test-Path 'debug-staging\version.dll')
 {
     $debugZip = Join-Path $OutputDir "cesium-loader-debug-$version.zip"

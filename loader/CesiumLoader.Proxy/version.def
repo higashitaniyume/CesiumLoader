@@ -1,0 +1,59 @@
+; version.def - Doorstop-style proxy DLL export table
+;
+; ---------------------------------------------------------------------------
+; KEEP THIS FILE ASCII-ONLY - comments included.
+;
+; The MSVC linker's .def parser silently swallows the export name that follows a
+; comment line containing non-ASCII (e.g. Chinese) bytes.  Reproduced with this
+; toolchain (link 14.51): a comment block of 3 Chinese lines immediately before
+; "ap_speed_set" produced 4 exports instead of 5, with NO warning and NO error -
+; ap_speed_set simply was not exported, and callers resolving it by name failed
+; silently.  Same .def with ASCII comments exported all 5.
+;
+; The parser mishandles it with both CRLF and LF line endings, so do not move
+; explanatory Chinese comments back into this file - put them in proxy.cpp,
+; which is compiled with /utf-8 and is unaffected.
+; ---------------------------------------------------------------------------
+;
+; Export set matches the system C:\Windows\System32\version.dll (15 names,
+; confirmed with dumpbin).  VerLanguageNameA/W are NOT exported by the system
+; version.dll on Win10/11 (kernel32 provides them), so they are not forwarded
+; here either - the export set must match exactly.
+;
+; Win32 version functions only ever return TRUE/FALSE, so forwarding the whole
+; set is cheap; it exists so that every module resolving version.dll by name -
+; not just UnityPlayer.dll - gets the real implementation.
+;
+; When switching the hijack target (e.g. to hid.dll / winmm.dll later), replace
+; this whole export set with the target's: generate it from the export table of
+; C:\Windows\System32\<target>.dll with a script.  Do not hand-copy it - a
+; missing name is silent, as the note above shows.
+
+LIBRARY "version"
+
+EXPORTS
+    GetFileVersionInfoA
+    GetFileVersionInfoByHandle
+    GetFileVersionInfoExA
+    GetFileVersionInfoExW
+    GetFileVersionInfoSizeA
+    GetFileVersionInfoSizeExA
+    GetFileVersionInfoSizeExW
+    GetFileVersionInfoSizeW
+    GetFileVersionInfoW
+    VerFindFileA
+    VerFindFileW
+    VerInstallFileA
+    VerInstallFileW
+    VerQueryValueA
+    VerQueryValueW
+
+    ; Legacy native add-ons (ap_ = AstralParty).  The proxy bridges these into the
+    ; core CesiumLoader.dll so callers built against the old single-DLL layout keep
+    ; working (e.g. tools\smoke\speedtest).  SDK and hot-update mods do not use
+    ; them: hot-update assemblies cannot P/Invoke and use the file / UDP channel.
+    ap_speed_set
+    ap_speed_get
+    ap_speed_active
+    ap_console_write
+    ap_console_write_w

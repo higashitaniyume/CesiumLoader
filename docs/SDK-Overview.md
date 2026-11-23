@@ -35,7 +35,8 @@ SDK 类型全部位于 `CesiumLoader.SDK` 根命名空间之下的子命名空�
 
 ```
 游戏进程
-├── version.dll (原生加载器, Doorstop 代理)
+├── version.dll (薄代理, Doorstop 式: 转发系统 version.dll 的导出 + 加载下面的核心)
+├── CesiumLoader.dll (加载器核心, 由代理在后台线程加载)
 │   ├── 等 GameAssembly → il2cpp 运行时 → HybridCLR 热更 (AstralParty.Runtime)
 │   ├── 变速引擎 speedhack: MinHook inline hook 4 个系统时间函数
 │   ├── 窗口置前通道: 监听 mod 请求并调用 SetForegroundWindow

@@ -157,16 +157,17 @@ function Deploy-File
 
 $netstd = "bin\$Configuration\netstandard2.0"
 
-# 原生产物的实际输出目录: 通过解决方案构建时 $(SolutionDir) 指向仓库根 (CesiumLoader.vcxproj 的 OutDir),
-# 直接构建 vcxproj 时才落在 loader\CesiumLoader\bin。两种都兼容; 两处都存在时取较新的那份, 避免复制旧 DLL。
-$nativeCandidates = @(
-    (Join-Path $repo "bin\$Configuration"),
-    (Join-Path $loaderSrc "CesiumLoader\bin\$Configuration")
-) | Where-Object { Test-Path -LiteralPath (Join-Path $_ 'version.dll') } |
-    Sort-Object { (Get-Item -LiteralPath (Join-Path $_ 'version.dll')).LastWriteTime } -Descending
-
-if (-not $nativeCandidates) { throw "找不到 version.dll，请先构建原生加载器。" }
-$nativeOut = $nativeCandidates[0]
+# 原生产物固定落在 bin\<配置>\ —— 两个原生工程(loader\CesiumLoader.Proxy 与 loader\CesiumLoader)
+# 的 OutDir 都用 $(ProjectDir) 相对路径指向同一个目录, 不再随"解决方案构建 / 直接构建 vcxproj"漂移。
+# 两个 DLL 必须同目录: 代理按**自身模块目录**去找核心(见 loader\shared\cesium_core_abi.h)。
+$nativeOut = Join-Path $repo "bin\$Configuration"
+foreach ($nativeName in 'version.dll', 'CesiumLoader.dll')
+{
+    if (-not (Test-Path -LiteralPath (Join-Path $nativeOut $nativeName)))
+    {
+        throw "找不到 $nativeName（先构建 loader\CesiumLoader.Proxy 与 loader\CesiumLoader 两个工程）"
+    }
+}
 
 function Backup-IfDifferent([string]$Target, [string]$Suffix)
 {
@@ -201,7 +202,12 @@ Deploy-File -From (Join-Path $nativeOut 'version.dll') -To (Join-Path $gameDir '
 # 符号: 放在 dll 同目录, 调试器(或看崩溃转储)会自动找到它, 把加载器内部的地址还原成源码行。
 Deploy-File -From (Join-Path $nativeOut 'version.pdb') -To (Join-Path $gameDir 'version.pdb') -Optional
 
-# 版权声明与 AGPL-3.0 全文: 游戏目录(version.dll 同级)与加载器目录各一份。
+# 加载器核心 -> 与代理同目录(游戏 exe 目录)。缺它/版本不匹配时游戏照常启动, 只是模组不加载,
+# 原因写在 AstralParty_ModLoader\logs\proxy-*.log(代理自己写的面包屑)。
+Deploy-File -From (Join-Path $nativeOut 'CesiumLoader.dll') -To (Join-Path $gameDir 'CesiumLoader.dll')
+Deploy-File -From (Join-Path $nativeOut 'CesiumLoader.pdb') -To (Join-Path $gameDir 'CesiumLoader.pdb') -Optional
+
+# 版权声明与 AGPL-3.0 全文: 游戏目录(两个 DLL 同级)与加载器目录各一份。
 Deploy-File -From (Join-Path $repo 'CesiumLoader-NOTICE.txt') -To (Join-Path $gameDir 'CesiumLoader-NOTICE.txt')
 Deploy-File -From (Join-Path $repo 'LICENSE') -To (Join-Path $gameDir 'CesiumLoader-LICENSE.txt')
 Deploy-File -From (Join-Path $repo 'CesiumLoader-NOTICE.txt') -To (Join-Path $loaderDir 'CesiumLoader-NOTICE.txt')

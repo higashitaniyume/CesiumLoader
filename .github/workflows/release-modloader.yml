@@ -72,34 +72,26 @@ jobs:
       - name: Build loader and mod projects
         shell: pwsh
         run: |
-          # 1) 原生加载器
-          & msbuild loader\CesiumLoader\CesiumLoader.vcxproj /p:Configuration=Release /p:Platform=x64 /m /nologo /v:minimal
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $vdbin = "loader/CesiumLoader/bin/Release/version.dll"
-          if (-not (Test-Path $vdbin)) { throw "version.dll 未生成" }
-          New-Item -ItemType Directory -Path "bin/Release" -Force | Out-Null
-          Copy-Item $vdbin "bin/Release/version.dll" -Force
-          $vdpdb = "loader/CesiumLoader/bin/Release/version.pdb"
-          if (Test-Path $vdpdb) {
-            Copy-Item $vdpdb "bin/Release/version.pdb" -Force
-            Write-Host "version.pdb 已复制到 bin/Release/ ($((Get-Item $vdpdb).Length) bytes)"
-          } else {
-            Write-Warning "version.pdb 未生成: 本次发布包不含加载器符号"
-          }
-
-          # Debug 版原生加载器: 发布产物里附一个 cesium-loader-debug.zip, 给需要逐行单步的人。
-          & msbuild loader\CesiumLoader\CesiumLoader.vcxproj /p:Configuration=Debug /p:Platform=x64 /m /nologo /v:minimal
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $dbgbin = "loader/CesiumLoader/bin/Debug/version.dll"
-          if (-not (Test-Path $dbgbin)) { throw "Debug 版 version.dll 未生成" }
-          New-Item -ItemType Directory -Path "bin/Debug" -Force | Out-Null
-          Copy-Item $dbgbin "bin/Debug/version.dll" -Force
-          $dbgpdb = "loader/CesiumLoader/bin/Debug/version.pdb"
-          if (Test-Path $dbgpdb) {
-            Copy-Item $dbgpdb "bin/Debug/version.pdb" -Force
-            Write-Host "Debug 版 version.dll/pdb 已就绪 ($((Get-Item $dbgbin).Length) bytes)"
-          } else {
-            Write-Warning "Debug 版 version.pdb 未生成: 调试包不含加载器符号"
+          # 1) 原生加载器: 两个工程 —— version.dll(薄代理) + CesiumLoader.dll(加载器核心)。
+          #    两个工程的 OutDir 都用 $(ProjectDir) 相对路径指向 bin\<配置>\, 直接 msbuild vcxproj
+          #    就会落到那里, 不需要再拷贝; 而且两个 DLL 天然同目录 —— 代理按自身模块目录去找核心
+          #    (契约见 loader/shared/cesium_core_abi.h)。
+          foreach ($cfg in 'Release', 'Debug') {
+            & msbuild loader\CesiumLoader.Proxy\CesiumLoader.Proxy.vcxproj /p:Configuration=$cfg /p:Platform=x64 /m /nologo /v:minimal
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            & msbuild loader\CesiumLoader\CesiumLoader.vcxproj /p:Configuration=$cfg /p:Platform=x64 /m /nologo /v:minimal
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            foreach ($nativeName in 'version.dll', 'CesiumLoader.dll') {
+              $nativeOut = "bin/$cfg/$nativeName"
+              if (-not (Test-Path $nativeOut)) { throw "$cfg 构建缺少 $nativeName" }
+            }
+            foreach ($nativeSym in 'version.pdb', 'CesiumLoader.pdb') {
+              if (Test-Path "bin/$cfg/$nativeSym") {
+                Write-Host "$cfg $nativeSym 已就绪 ($((Get-Item "bin/$cfg/$nativeSym").Length) bytes)"
+              } else {
+                Write-Warning "$cfg $nativeSym 未生成: 该发布包不含对应符号"
+              }
+            }
           }
 
           # 2) 托管侧: 构建出货用的 csproj (loader/SDK/bootstrap/mods/mcp/CLI)。
@@ -121,7 +113,7 @@ jobs:
       - name: Stage distribution layout
         shell: pwsh
         run: |
-          pwsh -NoProfile -File tools/stage-modloader-dist.ps1 -NativeDll bin/Release/version.dll -Configuration Release
+          pwsh -NoProfile -File tools/stage-modloader-dist.ps1 -NativeDir bin/Release -Configuration Release
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Verify dist prerequisites
@@ -164,6 +156,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Path "staging/AstralParty_ModLoader/sdk", "staging/AstralParty_ModLoader/mods", "staging/AstralParty_ModLoader/logs", "staging/AstralParty_ModLoader/bootstrap" -Force | Out-Null
           Copy-Item "bin/Release/version.dll" "staging/version.dll" -Force
+          Copy-Item "bin/Release/CesiumLoader.dll" "staging/CesiumLoader.dll" -Force
           Copy-Item "CesiumLoader-NOTICE.txt" "staging/CesiumLoader-NOTICE.txt" -Force
           Copy-Item "LICENSE" "staging/CesiumLoader-LICENSE.txt" -Force
           Copy-Item "CesiumLoader-NOTICE.txt" "staging/AstralParty_ModLoader/CesiumLoader-NOTICE.txt" -Force
@@ -176,6 +169,7 @@ jobs:
 
           foreach ($p in @(
               @{ From = "bin/Release/version.pdb";                                                              To = "staging/version.pdb" },
+              @{ From = "bin/Release/CesiumLoader.pdb";                                                         To = "staging/CesiumLoader.pdb" },
               @{ From = "dist/modloader/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.pdb";           To = "staging/AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.pdb" },
               @{ From = "dist/modloader/AstralParty_ModLoader/sdk/CesiumLoader.SDK.pdb";                       To = "staging/AstralParty_ModLoader/sdk/CesiumLoader.SDK.pdb" }
             )) {
@@ -219,13 +213,16 @@ jobs:
           $readme = @(
             "cesium-loader-${{ steps.version.outputs.version }}",
             "- version.dll                          → 复制到游戏 exe 目录 (Doorstop 式代理加载器)",
+            "- CesiumLoader.dll                     → 复制到游戏 exe 目录 (加载器核心: 配置/变速/日志/模组编排)",
+            "                                         ⚠ 两个 DLL 必须成对更新且保持同目录; 缺一个或版本不匹配时",
+            "                                           游戏照常启动, 只是模组不加载(原因见 AstralParty_ModLoader\logs\proxy-*.log)",
             "- CHANGELOG.md                         → 更新日志(Toys 用它做离线兜底)",
             "- AstralParty_ModLoader\doorstop_config.json → 加载器配置 (enabled=false 可完全禁用)",
             "- AstralParty_ModLoader\bootstrap\     → 托管引导程序 (先于 SDK/mods 加载)",
             "- AstralParty_ModLoader\sdk\           → SDK 依赖",
             "- AstralParty_ModLoader\mods\          → 用户 mod (每 mod 一个文件夹: mods\{ModId}\{ModId}.dll)",
             "- AstralParty_ModLoader\mods\{ModId}\{ModId}.json → mod sidecar (id/版本/权限/enabled 开关/依赖)",
-            "- *.pdb (version / bootstrap / sdk / mods\*) → 符号文件(与同名 dll 配对): 把崩溃栈还原成文件行号用, 删掉不影响运行",
+            "- *.pdb (version / CesiumLoader / bootstrap / sdk / mods\*) → 符号文件(与同名 dll 配对): 把崩溃栈还原成文件行号用, 删掉不影响运行",
             "- AstralParty_ModLoader\sdk\CesiumLoader.SDK.xml → SDK 的 XML 文档(与 dll 同名): 写 mod 时 IDE 里可见类型/成员注释, 删掉不影响运行",
             "  随包内置: " + ($modList -join " / "),
             "TurnFocusMod 默认不播放提示音; 在 mods\TurnFocusMod\config.json 的 soundFile 填 WAV 路径后启用(随包示例 sounds\your-turn.wav)。",
@@ -256,6 +253,8 @@ jobs:
           $files = @(
             "staging/version.dll",
             "staging/version.pdb",
+            "staging/CesiumLoader.dll",
+            "staging/CesiumLoader.pdb",
             "staging/CesiumLoader-NOTICE.txt",
             "staging/CesiumLoader-LICENSE.txt",
             "staging/AstralParty_ModLoader/CesiumLoader-NOTICE.txt",
@@ -302,32 +301,40 @@ jobs:
           Write-Host "manifest: $($fileMap.Count) 个文件, 其中符号 $symbols 个"
           Get-Content "staging/cesium-loader.json"
 
-      # Debug 版加载器包: 与正式包同布局, 只把 version.dll/pdb 换成 Debug 构建, 并用同一份清单
-      # 改写出 debug-staging/cesium-loader.json(替换这两个文件的哈希 + channel=debug)。
-      # 有清单 Toys 的「导入发布包」才会接受; 哈希必须与包内 Debug dll 一致。
+      # Debug 版加载器包: 与正式包同布局, 把 version.dll/pdb 与 CesiumLoader.dll/pdb 都换成 Debug 构建,
+      # 并用同一份清单改写出 debug-staging/cesium-loader.json(替换这四个文件的哈希 + channel=debug)。
+      # 有清单 Toys 的「导入发布包」才会接受; 哈希必须与包内 Debug dll/pdb 一致。
       - name: Stage debug loader layout
         shell: pwsh
         run: |
           if (Test-Path "debug-staging") { Remove-Item "debug-staging" -Recurse -Force }
           New-Item -ItemType Directory -Path "debug-staging" -Force | Out-Null
           Copy-Item "staging/*" "debug-staging/" -Recurse -Force
-          Copy-Item "bin/Debug/version.dll" "debug-staging/version.dll" -Force
-          if (Test-Path "bin/Debug/version.pdb") {
-            Copy-Item "bin/Debug/version.pdb" "debug-staging/version.pdb" -Force
-          } else {
-            Write-Warning "Debug 版 version.pdb 缺失: 调试包不含加载器符号"
+          foreach ($debugName in 'version.dll', 'CesiumLoader.dll') {
+            if (-not (Test-Path "bin/Debug/$debugName")) { throw "缺少 Debug 版 $debugName" }
+            Copy-Item "bin/Debug/$debugName" "debug-staging/$debugName" -Force
+          }
+          foreach ($debugSym in 'version.pdb', 'CesiumLoader.pdb') {
+            if (Test-Path "bin/Debug/$debugSym") {
+              Copy-Item "bin/Debug/$debugSym" "debug-staging/$debugSym" -Force
+            } else {
+              Write-Warning "Debug 版 $debugSym 缺失: 调试包不含该符号"
+            }
           }
           $debugReadme = (Get-Content "tools/debug-loader-README.txt" -Raw).Replace('{{VERSION}}', "${{ steps.version.outputs.version }}")
           Set-Content -Path "debug-staging/README.txt" -Value $debugReadme -Encoding UTF8
 
+          # 四个文件(两个 dll + 两个 pdb)的哈希都要重写 —— 漏一个 Toys 就会因为哈希对不上拒绝安装。
           $debugManifest = Get-Content "staging/cesium-loader.json" -Raw | ConvertFrom-Json
-          $debugManifest.files.'version.dll' = (Get-FileHash "debug-staging/version.dll" -Algorithm SHA256).Hash.ToLowerInvariant()
-          if (Test-Path "debug-staging/version.pdb") {
-            $debugManifest.files.'version.pdb' = (Get-FileHash "debug-staging/version.pdb" -Algorithm SHA256).Hash.ToLowerInvariant()
+          foreach ($debugName in 'version.dll', 'version.pdb', 'CesiumLoader.dll', 'CesiumLoader.pdb') {
+            if (Test-Path "debug-staging/$debugName") {
+              $debugManifest.files | Add-Member -NotePropertyName $debugName `
+                -NotePropertyValue (Get-FileHash "debug-staging/$debugName" -Algorithm SHA256).Hash.ToLowerInvariant() -Force
+            }
           }
           $debugManifest | Add-Member -NotePropertyName "channel" -NotePropertyValue "debug" -Force
           $debugManifest | ConvertTo-Json -Depth 4 | Set-Content -Path "debug-staging/cesium-loader.json" -Encoding UTF8
-          Write-Host "debug manifest: version.dll=$($debugManifest.files.'version.dll'.Substring(0,12))… channel=debug"
+          Write-Host "debug manifest: version.dll=$($debugManifest.files.'version.dll'.Substring(0,12))… CesiumLoader.dll=$($debugManifest.files.'CesiumLoader.dll'.Substring(0,12))… channel=debug"
 
       - name: Stage AI agent bridge package (optional add-on)
         shell: pwsh

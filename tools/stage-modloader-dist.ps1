@@ -12,8 +12,9 @@
 
     产物是构建输出，全部被 .gitignore 忽略；随仓库入库的只有配置、mod sidecar 与默认皮肤素材。
 
-.PARAMETER NativeDll
-    已构建好的 version.dll 路径（默认 loader\CesiumLoader\bin\Release\version.dll）。
+.PARAMETER NativeDir
+    已构建好的原生产物目录（默认 bin\Release），里面必须有 version.dll（薄代理）与
+    CesiumLoader.dll（加载器核心）—— 两者是同一层的两个文件，代理按自身目录去找核心。
 
 .PARAMETER Configuration
     托管程序集的构建配置，默认 Release。
@@ -23,7 +24,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string] $NativeDll = 'loader\CesiumLoader\bin\Release\version.dll',
+    [string] $NativeDir = 'bin\Release',
     [string] $Configuration = 'Release'
 )
 
@@ -103,13 +104,29 @@ function Copy-WithSymbols([string] $fromBinary, [string] $toBinary, [switch] $Op
 }
 
 Write-Host '刷新 dist\modloader\ 分发布局'
-Copy-WithSymbols (Resolve-Path -LiteralPath $NativeDll).Path "$dist\version.dll" | Out-Null
+
+# 原生层是两个文件, 必须成对分发:
+#   version.dll      薄代理(Doorstop 式劫持 + 转发系统 version.dll + 加载核心)
+#   CesiumLoader.dll 加载器核心(配置/变速/fsredir/profile/shell/IL2CPP 桥...)
+# 代理按**自身目录**去找核心(见 loader\shared\cesium_core_abi.h), 所以两者始终同目录:
+# 游戏 exe 目录、dist\modloader\、冒烟测试的 bin\<配置>\ 都是这个规则。
+$nativeProxy = Join-Path $NativeDir 'version.dll'
+$nativeCore = Join-Path $NativeDir 'CesiumLoader.dll'
+foreach ($native in @($nativeProxy, $nativeCore))
+{
+    if (-not (Test-Path -LiteralPath $native))
+    {
+        throw "缺少原生产物: $native（先构建 loader\CesiumLoader.Proxy 与 loader\CesiumLoader 两个工程）"
+    }
+}
+Copy-WithSymbols (Resolve-Path -LiteralPath $nativeProxy).Path "$dist\version.dll" | Out-Null
+Copy-WithSymbols (Resolve-Path -LiteralPath $nativeCore).Path "$dist\CesiumLoader.dll" | Out-Null
 Copy-WithSymbols "loader\CesiumLoader.Bootstrap\bin\$Configuration\netstandard2.0\CesiumLoader.Bootstrap.dll" `
     "$layout\bootstrap\CesiumLoader.Bootstrap.dll" | Out-Null
 Copy-WithSymbols "loader\CesiumLoader.SDK\bin\$Configuration\netstandard2.0\CesiumLoader.SDK.dll" `
     "$layout\sdk\CesiumLoader.SDK.dll" -WithDocs | Out-Null
 
-$staged = @("version.dll", 'AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll', 'AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll')
+$staged = @("version.dll", 'CesiumLoader.dll', 'AstralParty_ModLoader/bootstrap/CesiumLoader.Bootstrap.dll', 'AstralParty_ModLoader/sdk/CesiumLoader.SDK.dll')
 foreach ($mod in $builtInMods)
 {
     $modDir = "$layout\mods\$mod"

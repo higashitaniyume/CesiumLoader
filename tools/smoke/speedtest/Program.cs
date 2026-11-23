@@ -48,9 +48,15 @@ internal static class Program
 
     private static int Main(string[] args)
     {
-        string dll = args.Length > 0 ? args[0] : @"..\..\..\..\..\loader\CesiumLoader\bin\Release\version.dll";
-        Console.WriteLine("加载: " + System.IO.Path.GetFullPath(dll));
-        IntPtr h = LoadLibrary(System.IO.Path.GetFullPath(dll));
+        // 默认路径相对 exe 目录算(dotnet run 的工作目录不受控), 与 boottest 一致:
+        // bin\<配置>\net8.0 → ... → modding\msvc\bin\<配置>\version.dll(代理)。
+        // 核心 CesiumLoader.dll 与它同目录 —— 代理按自身模块目录去找核心。
+        string dll = args.Length > 0
+            ? args[0]
+            : System.IO.Path.GetFullPath(System.IO.Path.Combine(AppContext.BaseDirectory,
+                @"..\..\..\..\..\..\bin\Release\version.dll"));
+        Console.WriteLine("加载: " + dll);
+        IntPtr h = LoadLibrary(dll);
         if (h == IntPtr.Zero)
         {
             int err = Marshal.GetLastWin32Error();
@@ -83,12 +89,14 @@ internal static class Program
         Console.WriteLine($"  2.0x: 虚拟流逝 {v2:F0}ms");
         Check(v2 > 500 && v2 < 1200, $"2.0x 虚拟时间≈2x真实 (虚拟 {v2:F0}ms, 期望≈800)");
 
-        // --- 0.5x: 虚拟流逝 ≈ 0.5 * 真实 ---
-        Check(ap_speed_set(0.5), "设置 0.5x 成功");
+        // --- 0.5x: 变速硬下限是 1.0, 减速必须被拒绝, 且拒绝时不能改动引擎状态 ---
+        // (加载器各层都拒绝减速: 见 speedhack.h / AGENTS 的"变速硬下限 1.0"。
+        //  这条以前断言"0.5x 生效", 与下限规则冲突, 属于陈旧断言。)
+        Check(!ap_speed_set(0.5), "设置 0.5x 被拒绝(下限 1.0)");
         Thread.Sleep(50);
         double v05 = MeasureVirtualMs(400);
-        Console.WriteLine($"  0.5x: 虚拟流逝 {v05:F0}ms");
-        Check(v05 > 100 && v05 < 350, $"0.5x 虚拟时间≈0.5x真实 (虚拟 {v05:F0}ms, 期望≈200)");
+        Console.WriteLine($"  拒绝减速后: 虚拟流逝 {v05:F0}ms");
+        Check(v05 > 500 && v05 < 1200, $"拒绝减速后倍率保持在上一次的 2x (虚拟 {v05:F0}ms, 期望≈800)");
 
         // --- 恢复 ---
         Check(ap_speed_set(1.0), "恢复 1x 成功");

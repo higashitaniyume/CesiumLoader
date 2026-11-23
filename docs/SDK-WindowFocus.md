@@ -70,9 +70,9 @@ if (WindowFocus.SupportsSound && WindowFocus.RequestForeground(@"C:\...\sounds\y
 
 ## 部署提示
 
-- 任意一次重新部署 `version.dll` / `CesiumLoader.SDK.dll` 时，**先备份再覆盖** `<游戏目录>\AstralParty_ModLoader\doorstop_config.json`，否则会丢失已写入的 `profile` / `consoleEnabled` 等用户设置。
-- 建议始终通过 `tools/deploy.ps1` 部署：它会先备份 `version.dll` 和 `doorstop_config.json`；如需手动复制，请先自行备份。
-- 已验证的部署顺序：备份 → 复制 `version.dll` / SDK → 启动 → 看日志中的 `[windowctl] UDP channel ready` 及通道端口。
+- 任意一次重新部署 `version.dll` / `CesiumLoader.dll` / `CesiumLoader.SDK.dll` 时，**先备份再覆盖** `<游戏目录>\AstralParty_ModLoader\doorstop_config.json`，否则会丢失已写入的 `profile` / `consoleEnabled` 等用户设置。
+- 建议始终通过 `tools/deploy.ps1` 部署：它会先备份 `version.dll` 和 `doorstop_config.json`；如需手动复制，请先自行备份。注意 `version.dll`（代理）与 `CesiumLoader.dll`（核心）必须成对、同目录更新。
+- 已验证的部署顺序：备份 → 复制 `version.dll` / `CesiumLoader.dll` / SDK → 启动 → 看日志中的 `[windowctl] UDP channel ready` 及通道端口。
 
 ## 相关模组
 

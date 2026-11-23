@@ -1,5 +1,9 @@
 // loader.cpp - 引导线程 (Doorstop 式薄引导)
 //
+// 本文件属于加载器核心(CesiumLoader.dll)。引导线程由代理层 version.dll 经
+// CesiumLoaderStart() 启动(见 platform\exports.cpp 与 loader\shared\cesium_core_abi.h),
+// 不在 DllMain 里创建 —— DllMain 可能在 loader lock 下被调用。
+//
 // 原生层只负责:
 //   1. 读取 doorstop_config.json(enabled 开关 / 超时 / 控制台)
 //   2. 等待 GameAssembly.dll 加载(超时)
@@ -213,7 +217,7 @@ static DWORD WINAPI boot_thread(LPVOID)
     {
         console_init(cfg.consoleTopmost);
     }
-    log_line("[loader] version.dll Doorstop boot thread started (enabled=" + std::string(cfg.enabled ? "true" : "false") + ")");
+    log_line("[loader] CesiumLoader.dll Doorstop boot thread started (enabled=" + std::string(cfg.enabled ? "true" : "false") + ")");
 
     // 3. 总开关: disabled 时静默退出, 游戏原样运行
     if (!cfg.enabled)

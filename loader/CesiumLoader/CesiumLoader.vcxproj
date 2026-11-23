@@ -25,8 +25,10 @@
          spdlog         header-only(不定义 SPDLOG_COMPILED_LIB); 它的 tweakme.h 里写死了
                         SPDLOG_FMT_EXTERNAL, 即 spdlog 用的就是我们这份 fmt —— 只有一份 fmt, 不存在混用
          nlohmann/json  单头文件
-       本 DLL 是注入游戏进程的代理 version.dll, 这些库必须全是静态/内联的,
-       绝不能要求额外的 spdlog.dll / fmt.dll 一起分发。
+       本 DLL 是加载器核心(CesiumLoader.dll), 由薄代理 version.dll 在游戏进程里加载,
+       这些库必须全是静态/内联的, 绝不能要求额外的 spdlog.dll / fmt.dll 一起分发。
+       注意本工程**不是**代理: 代理是 loader\CesiumLoader.Proxy(产出 version.dll),
+       两侧只共用 loader\shared\cesium_core_abi.h 这一份契约头, 互不引用源码。
        路径一律用相对路径: 直接 msbuild 这个 vcxproj 时 $(SolutionDir) 不可靠。 -->
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
@@ -58,17 +60,20 @@
     <MakeDir Directories="$(IntDir)" />
     <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)..\..\tools\generate-build-info.ps1&quot; -Output &quot;$(IntDir)build_info.generated.h&quot; -Repo &quot;$(ProjectDir)..\..&quot;" />
   </Target>
+  <!-- OutDir / IntDir 故意用 $(ProjectDir) 相对路径, 不依赖 $(SolutionDir)(直接 msbuild 单个
+       vcxproj 时 $(SolutionDir) 不可靠), 而且必须与代理工程 CesiumLoader.Proxy 落在同一个
+       目录 —— "核心与 version.dll 同目录" 是契约的一部分, 见 loader\shared\cesium_core_abi.h。 -->
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <OutDir>$(SolutionDir)bin\$(Configuration)\</OutDir>
-    <IntDir>$(SolutionDir)obj\$(ProjectName)\$(Configuration)\</IntDir>
-    <TargetName>version</TargetName>
+    <OutDir>$(ProjectDir)..\..\bin\$(Configuration)\</OutDir>
+    <IntDir>$(ProjectDir)..\..\obj\$(ProjectName)\$(Configuration)\</IntDir>
+    <TargetName>CesiumLoader</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <OutDir>$(SolutionDir)bin\$(Configuration)\</OutDir>
-    <IntDir>$(SolutionDir)obj\$(ProjectName)\$(Configuration)\</IntDir>
-    <TargetName>version</TargetName>
+    <OutDir>$(ProjectDir)..\..\bin\$(Configuration)\</OutDir>
+    <IntDir>$(ProjectDir)..\..\obj\$(ProjectName)\$(Configuration)\</IntDir>
+    <TargetName>CesiumLoader</TargetName>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -79,13 +84,12 @@
       <LanguageStandard>stdcpp17</LanguageStandard>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalIncludeDirectories>$(IntDir);$(ProjectDir);..\..\third_party\fmt\include;..\..\third_party\nlohmann_json\include;..\..\third_party\spdlog\include;..\..\third_party\minhook\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(IntDir);$(ProjectDir);$(ProjectDir)..\shared;..\..\third_party\fmt\include;..\..\third_party\nlohmann_json\include;..\..\third_party\spdlog\include;..\..\third_party\minhook\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ControlFlowGuard>Guard</ControlFlowGuard>
-      <ModuleDefinitionFile>platform\version.def</ModuleDefinitionFile>
       <AdditionalDependencies>winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
@@ -102,7 +106,7 @@
       <Optimization>MaxSpeed</Optimization>
       <SpectreMitigation>Spectre</SpectreMitigation>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalIncludeDirectories>$(IntDir);$(ProjectDir);..\..\third_party\fmt\include;..\..\third_party\nlohmann_json\include;..\..\third_party\spdlog\include;..\..\third_party\minhook\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(IntDir);$(ProjectDir);$(ProjectDir)..\shared;..\..\third_party\fmt\include;..\..\third_party\nlohmann_json\include;..\..\third_party\spdlog\include;..\..\third_party\minhook\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -110,7 +114,6 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ControlFlowGuard>Guard</ControlFlowGuard>
-      <ModuleDefinitionFile>platform\version.def</ModuleDefinitionFile>
       <AdditionalDependencies>winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
@@ -160,6 +163,7 @@
     <ClInclude Include="fsredir\fsredir.h" />
     <ClInclude Include="platform\loader.h" />
     <ClInclude Include="platform\build_info.h" />
+    <ClInclude Include="..\shared\cesium_core_abi.h" />
     <ClInclude Include="logging\logging.h" />
     <ClInclude Include="mods\modmeta.h" />
     <ClInclude Include="runtime\loader_internal.h" />
@@ -184,7 +188,6 @@
     <ClInclude Include="update\update.h" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="platform\version.def" />
     <None Include="steam\steamhack_core_part.cpp" />
     <None Include="steam\steamhack_matchmaking_part.cpp" />
     <None Include="steam\steamhack_pod_part.cpp" />

@@ -1,41 +1,29 @@
-// exports.cpp - version.dll 导出转发(Doorstop 式) + DllMain
+// exports.cpp - 加载器核心 (CesiumLoader.dll) 的对外导出 + DllMain
 //
-// UnityPlayer.dll 从 version.dll 导入 3 个函数(GetFileVersionInfoSizeA /
-// GetFileVersionInfoA / VerQueryValueA, 经 dumpbin 确认), 这里转发全部 15 个
-// version.dll 导出到系统 C:\Windows\System32\version.dll,
-// 保证 UnityPlayer 读取 exe 版本信息等行为正常。
+// 核心由薄代理 version.dll 在游戏进程里加载:
+//   代理 DllMain → 后台线程 → LoadLibraryW(<代理目录>\CesiumLoader.dll)
+//     → 读 CesiumLoaderAbiVersion() 比对 ABI → 调用 CesiumLoaderStart() → 引导线程
+// 契约(核心文件名 / ABI 号 / 两个入口)在 loader\shared\cesium_core_abi.h, 两侧共用一份。
 //
-// 惰性引导: 不在 DllMain(loader lock) 里创建线程, 改为首次转发调用时启动,
-// 此时 loader lock 已释放, 避免拖慢进程启动阶段的所有 DLL 加载。
+// 本文件只剩三类导出:
+//   * CesiumLoaderAbiVersion / CesiumLoaderStart —— 代理层契约(见上);
+//   * ap_speed_set / ap_speed_get / ap_speed_active —— 变速的旧原生接口。代理会把它们
+//     桥接过去保兼容(SDK 与热更模组不走这里: 热更程序集无法 P/Invoke, 用的是 speed\ 下
+//     的文件 / 本地 UDP 通道);
+//   * ap_console_write / ap_console_write_w —— 定义在 platform\console.cpp。
 //
-// 签名对照 Windows SDK versionapi.h / winver.h。
+// 代理层那部分(转发系统 version.dll 的 15 个导出、加载核心、写"核心没起来"的面包屑日志)
+// 在 loader\CesiumLoader.Proxy\proxy.cpp, 与本文件互不依赖, 只共享上面那份契约头。
 
 #include "platform/loader.h"
+#include "cesium_core_abi.h"
+
 #include "config/config.h"
 #include "speed/speedhack.h"
 #include "speed/speedctl.h"
 #include "steam/steamhack.h"
 
 #include <windows.h>
-
-// ---------- 转发基础设施 ----------
-
-static HMODULE g_real_version = nullptr;
-
-void* real_version_handle()
-{
-    if (!g_real_version)
-    {
-        g_real_version = LoadLibraryA("C:\\Windows\\System32\\version.dll");
-        log_line("[loader] system version.dll resolved (forward target)");
-    }
-    return g_real_version;
-}
-
-void* real_version_fn(const char* name)
-{
-    return reinterpret_cast<void*>(GetProcAddress(reinterpret_cast<HMODULE>(real_version_handle()), name));
-}
 
 // ---------- 引导线程启动 ----------
 
@@ -49,129 +37,36 @@ void maybe_start_boot()
     }
 }
 
-// ---------- version.dll 15 个导出转发 ----------
+// ---------- 代理层契约 ----------
 
-extern "C" BOOL WINAPI GetFileVersionInfoA(LPCSTR lptstrFilename, DWORD dwHandle, DWORD dwLen, LPVOID lpData)
+// 代理加载本 DLL 后先读这个值, 与自己编译时的 CESIUM_CORE_ABI_VERSION 比对:
+// 不一致说明代理与核心不是同一次发布的产物(手动覆盖 / 回滚 / 半装), 代理会拒绝启动并
+// 在自己目录的 logs\proxy-*.log 里写清楚 —— 比"模组莫名其妙不加载"好查。
+extern "C" __declspec(dllexport) unsigned int WINAPI CesiumLoaderAbiVersion()
 {
-    maybe_start_boot();
-    static auto fn = reinterpret_cast<BOOL(WINAPI*)(LPCSTR, DWORD, DWORD, LPVOID)>(real_version_fn("GetFileVersionInfoA"));
-    return fn(lptstrFilename, dwHandle, dwLen, lpData);
+    return CESIUM_CORE_ABI_VERSION;
 }
 
-extern "C" BOOL WINAPI GetFileVersionInfoByHandle(HANDLE hFile, DWORD dwLen, LPVOID lpData)
+// 引导入口(幂等)。代理在 ABI 比对通过后调用; 重复调用只会启动一次引导线程。
+extern "C" __declspec(dllexport) BOOL WINAPI CesiumLoaderStart()
 {
     maybe_start_boot();
-    static auto fn = reinterpret_cast<BOOL(WINAPI*)(HANDLE, DWORD, LPVOID)>(real_version_fn("GetFileVersionInfoByHandle"));
-    return fn(hFile, dwLen, lpData);
+    return TRUE;
 }
 
-extern "C" BOOL WINAPI GetFileVersionInfoExA(DWORD dwFlags, LPCSTR lptstrFilename, DWORD dwHandle, DWORD dwLen, LPVOID lpData)
-{
-    maybe_start_boot();
-    static auto fn = reinterpret_cast<BOOL(WINAPI*)(DWORD, LPCSTR, DWORD, DWORD, LPVOID)>(real_version_fn("GetFileVersionInfoExA"));
-    return fn(dwFlags, lptstrFilename, dwHandle, dwLen, lpData);
-}
+// ---------- 自定义导出: 变速引擎 (原生调用方经代理 version.dll 的 ap_* 桥接进来) ----------
 
-extern "C" BOOL WINAPI GetFileVersionInfoExW(DWORD dwFlags, LPCWSTR lptstrFilename, DWORD dwHandle, DWORD dwLen, LPVOID lpData)
-{
-    maybe_start_boot();
-    static auto fn = reinterpret_cast<BOOL(WINAPI*)(DWORD, LPCWSTR, DWORD, DWORD, LPVOID)>(real_version_fn("GetFileVersionInfoExW"));
-    return fn(dwFlags, lptstrFilename, dwHandle, dwLen, lpData);
-}
-
-extern "C" DWORD WINAPI GetFileVersionInfoSizeA(LPCSTR lptstrFilename, LPDWORD lpdwHandle)
-{
-    maybe_start_boot();
-    static auto fn = reinterpret_cast<DWORD(WINAPI*)(LPCSTR, LPDWORD)>(real_version_fn("GetFileVersionInfoSizeA"));
-    return fn(lptstrFilename, lpdwHandle);
-}
-
-extern "C" DWORD WINAPI GetFileVersionInfoSizeExA(DWORD dwFlags, LPCSTR lptstrFilename, LPDWORD lpdwHandle)
-{
-    maybe_start_boot();
-    static auto fn = reinterpret_cast<DWORD(WINAPI*)(DWORD, LPCSTR, LPDWORD)>(real_version_fn("GetFileVersionInfoSizeExA"));
-    return fn(dwFlags, lptstrFilename, lpdwHandle);
-}
-
-extern "C" DWORD WINAPI GetFileVersionInfoSizeExW(DWORD dwFlags, LPCWSTR lptstrFilename, LPDWORD lpdwHandle)
-{
-    maybe_start_boot();
-    static auto fn = reinterpret_cast<DWORD(WINAPI*)(DWORD, LPCWSTR, LPDWORD)>(real_version_fn("GetFileVersionInfoSizeExW"));
-    return fn(dwFlags, lptstrFilename, lpdwHandle);
-}
-
-extern "C" DWORD WINAPI GetFileVersionInfoSizeW(LPCWSTR lptstrFilename, LPDWORD lpdwHandle)
-{
-    maybe_start_boot();
-    static auto fn = reinterpret_cast<DWORD(WINAPI*)(LPCWSTR, LPDWORD)>(real_version_fn("GetFileVersionInfoSizeW"));
-    return fn(lptstrFilename, lpdwHandle);
-}
-
-extern "C" BOOL WINAPI GetFileVersionInfoW(LPCWSTR lptstrFilename, DWORD dwHandle, DWORD dwLen, LPVOID lpData)
-{
-    maybe_start_boot();
-    static auto fn = reinterpret_cast<BOOL(WINAPI*)(LPCWSTR, DWORD, DWORD, LPVOID)>(real_version_fn("GetFileVersionInfoW"));
-    return fn(lptstrFilename, dwHandle, dwLen, lpData);
-}
-
-extern "C" DWORD WINAPI VerFindFileA(DWORD uFlags, LPCSTR szFileName, LPCSTR szWinDir, LPCSTR szAppDir, LPSTR szCurDir, PUINT lpuCurDirLen, LPSTR szDestDir, PUINT lpuDestDirLen)
-{
-    maybe_start_boot();
-    static auto fn = reinterpret_cast<DWORD(WINAPI*)(DWORD, LPCSTR, LPCSTR, LPCSTR, LPSTR, PUINT, LPSTR, PUINT)>(real_version_fn("VerFindFileA"));
-    return fn(uFlags, szFileName, szWinDir, szAppDir, szCurDir, lpuCurDirLen, szDestDir, lpuDestDirLen);
-}
-
-extern "C" DWORD WINAPI VerFindFileW(DWORD uFlags, LPCWSTR szFileName, LPCWSTR szWinDir, LPCWSTR szAppDir, LPWSTR szCurDir, PUINT lpuCurDirLen, LPWSTR szDestDir, PUINT lpuDestDirLen)
-{
-    maybe_start_boot();
-    static auto fn = reinterpret_cast<DWORD(WINAPI*)(DWORD, LPCWSTR, LPCWSTR, LPCWSTR, LPWSTR, PUINT, LPWSTR, PUINT)>(real_version_fn("VerFindFileW"));
-    return fn(uFlags, szFileName, szWinDir, szAppDir, szCurDir, lpuCurDirLen, szDestDir, lpuDestDirLen);
-}
-
-extern "C" DWORD WINAPI VerInstallFileA(DWORD uFlags, LPCSTR szSrcFileName, LPCSTR szDestFileName, LPCSTR szSrcDir, LPCSTR szDestDir, LPCSTR szCurDir, LPSTR szTmpFile, PUINT lpuTmpFileLen)
-{
-    maybe_start_boot();
-    static auto fn = reinterpret_cast<DWORD(WINAPI*)(DWORD, LPCSTR, LPCSTR, LPCSTR, LPCSTR, LPCSTR, LPSTR, PUINT)>(real_version_fn("VerInstallFileA"));
-    return fn(uFlags, szSrcFileName, szDestFileName, szSrcDir, szDestDir, szCurDir, szTmpFile, lpuTmpFileLen);
-}
-
-extern "C" DWORD WINAPI VerInstallFileW(DWORD uFlags, LPCWSTR szSrcFileName, LPCWSTR szDestFileName, LPCWSTR szSrcDir, LPCWSTR szDestDir, LPCWSTR szCurDir, LPWSTR szTmpFile, PUINT lpuTmpFileLen)
-{
-    maybe_start_boot();
-    static auto fn = reinterpret_cast<DWORD(WINAPI*)(DWORD, LPCWSTR, LPCWSTR, LPCWSTR, LPCWSTR, LPCWSTR, LPWSTR, PUINT)>(real_version_fn("VerInstallFileW"));
-    return fn(uFlags, szSrcFileName, szDestFileName, szSrcDir, szDestDir, szCurDir, szTmpFile, lpuTmpFileLen);
-}
-
-// 注意: 系统 version.dll 不导出 VerLanguageNameA/W(Win10/11 由 kernel32 导出),
-// 因此这里也不转发, 与系统导出集保持一致(共 15 个)。
-
-extern "C" BOOL WINAPI VerQueryValueA(LPCVOID pBlock, LPCSTR lpSubBlock, LPVOID* lplpBuffer, PUINT puLen)
-{
-    maybe_start_boot();
-    static auto fn = reinterpret_cast<BOOL(WINAPI*)(LPCVOID, LPCSTR, LPVOID*, PUINT)>(real_version_fn("VerQueryValueA"));
-    return fn(pBlock, lpSubBlock, lplpBuffer, puLen);
-}
-
-extern "C" BOOL WINAPI VerQueryValueW(LPCVOID pBlock, LPCWSTR lpSubBlock, LPVOID* lplpBuffer, PUINT puLen)
-{
-    maybe_start_boot();
-    static auto fn = reinterpret_cast<BOOL(WINAPI*)(LPCVOID, LPCWSTR, LPVOID*, PUINT)>(real_version_fn("VerQueryValueW"));
-    return fn(pBlock, lpSubBlock, lplpBuffer, puLen);
-}
-
-// ---------- 自定义导出: 变速引擎 (SDK 通过 P/Invoke 调用, 经 version.def 导出) ----------
-
-extern "C" BOOL WINAPI ap_speed_set(double speed)
+extern "C" __declspec(dllexport) BOOL WINAPI ap_speed_set(double speed)
 {
     return speedctl_set_speed(speed) ? TRUE : FALSE;
 }
 
-extern "C" double WINAPI ap_speed_get()
+extern "C" __declspec(dllexport) double WINAPI ap_speed_get()
 {
     return speedhack_get_speed();
 }
 
-extern "C" BOOL WINAPI ap_speed_active()
+extern "C" __declspec(dllexport) BOOL WINAPI ap_speed_active()
 {
     return speedhack_active() ? TRUE : FALSE;
 }
@@ -191,7 +86,7 @@ static void log_version_banner()
 
     console_set_color(LOG_CYAN);
     log_line("[loader] ──────────────────────────────────────────────");
-    log_line("[loader] CesiumLoader v" + loader_version + " (version.dll, native) · SDK v" + sdk_version);
+    log_line("[loader] CesiumLoader v" + loader_version + " (version.dll -> CesiumLoader.dll, native) · SDK v" + sdk_version);
     log_line("[loader] CesiumLoader: https://github.com/higashitaniyume/CesiumLoader");
     log_line("[loader] CesiumLoader Releases: https://github.com/higashitaniyume/CesiumLoader/releases");
     log_line("[loader] AstralParty.Toys: https://github.com/higashitaniyume/AstralParty.Toys");
@@ -206,17 +101,10 @@ BOOL WINAPI DllMain(HINSTANCE, DWORD reason, LPVOID)
 {
     if (reason == DLL_PROCESS_ATTACH)
     {
+        // 只写版本横幅。这里可能在 loader lock 下被调用(由代理的加载线程 LoadLibrary 而来),
+        // 所以不做任何重活: 控制台 / hook / 目录扫描全部留给引导线程(见 runtime\loader.cpp)。
         log_version_banner();
-        log_line("[loader] version.dll loaded (DLL_PROCESS_ATTACH)");
-        // 注意: 不在 DllMain 里安装变速 hook —— loader lock 下改写 kernel32 代码
-        // 有竞态风险(ERROR_DLL_INIT_FAILED 实测), 改由引导线程在 loader lock
-        // 释放后安装(见 loader.cpp boot_thread 开头)。
-        // 直接启动引导线程(而非等首次转发调用):
-        // 某些游戏(如 Astral Party)加载了 version.dll 但从不调用其导出,
-        // 惰性触发会永远不启动。boot_thread 开头会 Sleep 避开 loader lock,
-        // 且引导过程中不 LoadLibrary 任何 DLL, 因此在 DllMain 创建线程是安全的。
-        // maybe_start_boot 的 InterlockedCompareExchange 保证只启动一次(双保险)。
-        maybe_start_boot();
+        log_line("[loader] core CesiumLoader.dll loaded (DLL_PROCESS_ATTACH)");
     }
     else if (reason == DLL_PROCESS_DETACH)
     {

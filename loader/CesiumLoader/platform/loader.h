@@ -1,22 +1,24 @@
-// loader.h - Astral Party Mod Loader (version.dll 劫持, Doorstop 式) 公共头
+// loader.h - CesiumLoader 加载器核心 (CesiumLoader.dll) 公共头
 //
-// 原理:UnityPlayer.dll 在进程启动时依赖 version.dll(导入 GetFileVersionInfoSizeA /
-// GetFileVersionInfoA / VerQueryValueA, 经 dumpbin 确认), 而 version.dll 不在
-// KnownDLLs 列表——把本 DLL 命名为 version.dll 放在游戏 exe 同目录,
-// Windows 加载器会优先加载它(BepInEx/Doorstop 生态的事实标准代理名)。
+// 分工(详见 loader\shared\cesium_core_abi.h 的契约):
+//   * 薄代理 version.dll (loader\CesiumLoader.Proxy): 转发系统 version.dll 的 15 个导出,
+//     并在后台线程里加载本 DLL、比对 ABI、调用 CesiumLoaderStart()。原理: UnityPlayer.dll
+//     在进程启动时依赖 version.dll(导入 GetFileVersionInfoSizeA / GetFileVersionInfoA /
+//     VerQueryValueA, 经 dumpbin 确认), 而 version.dll 不在 KnownDLLs 列表 —— 把代理命名为
+//     version.dll 放在游戏 exe 同目录, Windows 加载器会优先加载它(BepInEx/Doorstop 生态的
+//     事实标准代理名)。
+//   * 本 DLL(加载器核心): 配置 / 变速 / fsredir / profile / steam 与 taptap 绕过 / shell /
+//     更新检查 / 崩溃转储 / 控制台 / 音频与窗口通道 / IL2CPP 桥 / 托管模组编排。
 //
-// 引导:DllMain(DLL_PROCESS_ATTACH) 直接启动后台引导线程(开头 Sleep 避开
-// loader lock), 流程:
+// 引导(DLL_PROCESS_ATTACH 之后由代理调用 CesiumLoaderStart(), 幂等):
 //   1. 读取 doorstop_config.json(enabled 开关/超时/控制台)
 //   2. 等待 GameAssembly.dll + IL2CPP + HybridCLR 热更就绪
 //   3. 原生加载 sdk\*.dll → mods\{ModId}\{ModId}.dll → 调用 {文件名}.ModEntry.Main()
 //      (useManagedBootstrap=true 时改走托管 Bootstrap 编排, 实验特性)
 //   4. 启动 activity-mod-<会话>.log → 控制台 转发线程
 //
-// 所有 version.dll 导出函数转发到系统 C:\Windows\System32\version.dll,
-// 保证 UnityPlayer 读取 exe 版本信息等行为正常。
-// 附加能力: 变速引擎(speedhack) inline hook 系统时间函数, SDK 可经
-// ap_speed_* 导出控制倍率。
+// 附加能力: 变速引擎(speedhack) inline hook 系统时间函数, 原生调用方可经
+// ap_speed_* 导出控制倍率(代理会把这三个导出桥接过来)。
 
 #pragma once
 
@@ -112,20 +114,23 @@ std::wstring sdk_dir();
 std::wstring logs_dir();
 std::wstring config_path();
 
-// ---------- 转发基础设施(供 exports.cpp 使用) ----------
-void maybe_start_boot();                    // 首次调用时启动引导线程
-void* real_version_handle();                // 系统 version.dll 模块句柄
-void* real_version_fn(const char* name);    // 解析系统 version 导出函数地址
+// ---------- 引导(由代理层经 CesiumLoaderStart 触发) ----------
+void maybe_start_boot();                    // 幂等: 只启动一次引导线程
 
 // ---------- 导出(保留, 兼容; 经 __declspec(dllexport)) ----------
+// 这三个是旧版本(单 DLL 时代)的原生附加接口; 现在由代理层桥接过来, 名字与签名保持不变。
 extern "C" __declspec(dllexport) void WINAPI ap_console_write(const char* msg);
 extern "C" __declspec(dllexport) void WINAPI ap_console_write_w(const wchar_t* msg, size_t len);
 
-// ---------- 导出(变速引擎; 经 version.def) ----------
-// SDK 通过 P/Invoke 调用这些导出设置/查询游戏变速倍率。
-extern "C" BOOL WINAPI ap_speed_set(double speed);
-extern "C" double WINAPI ap_speed_get();
-extern "C" BOOL WINAPI ap_speed_active();
+// ---------- 导出(代理层契约; 见 loader/shared/cesium_core_abi.h) ----------
+extern "C" __declspec(dllexport) unsigned int WINAPI CesiumLoaderAbiVersion();
+extern "C" __declspec(dllexport) BOOL WINAPI CesiumLoaderStart();
+
+// ---------- 导出(变速引擎; 由代理层的 ap_* 桥接调用) ----------
+// SDK 与热更模组不走这里(热更程序集无法 P/Invoke), 它们用 speed\ 下的文件 / UDP 通道。
+extern "C" __declspec(dllexport) BOOL WINAPI ap_speed_set(double speed);
+extern "C" __declspec(dllexport) double WINAPI ap_speed_get();
+extern "C" __declspec(dllexport) BOOL WINAPI ap_speed_active();
 
 // ---------- IL2CPP 桥(boot 线程使用) ----------
 struct Il2Cpp;

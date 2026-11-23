@@ -1,9 +1,10 @@
 CesiumLoader
 Copyright (C) 2026 Yume Higashitani
 
-CesiumLoader is a mod loader for Astral Party. It consists of the native
-version.dll proxy, the managed bootstrap, the CesiumLoader SDK, the bundled
-mods, and the CesiumLoader Debug Shell.
+CesiumLoader is a mod loader for Astral Party. It consists of the thin
+version.dll proxy, the CesiumLoader.dll native core it loads, the managed
+bootstrap, the CesiumLoader SDK, the bundled mods, and the CesiumLoader Debug
+Shell.
 
 LICENSE
 -------

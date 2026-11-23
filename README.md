@@ -28,7 +28,7 @@
 
 ---
 
-为 Astral Party 的 **Unity IL2CPP + HybridCLR** 运行环境提供模组加载、依赖解析、日志与变速能力。原生 `version.dll` 代理在游戏启动时引导，进入主界面或可玩场景且就绪后自动完成 SDK 与托管模组初始化（支持启动门快速就绪与兜底等待）。
+为 Astral Party 的 **Unity IL2CPP + HybridCLR** 运行环境提供模组加载、依赖解析、日志与变速能力。游戏启动时由薄代理 `version.dll` 引导：它只负责转发系统 `version.dll` 的导出，并在后台线程里加载同目录的**加载器核心 `CesiumLoader.dll`**（配置、变速、文件重定向、日志、模组编排都在核心里）。两个 DLL 必须成对安装且保持同目录。进入主界面或可玩场景且就绪后自动完成 SDK 与托管模组初始化（支持启动门快速就绪与兜底等待）。
 
 目标环境：Windows x64，Astral Party（Steam App ID `2622000`，Unity 2022 / 3.3.0+）。版本变更见 [CHANGELOG](CHANGELOG.md) 与 [Release 记录](https://github.com/higashitaniyume/CesiumLoader/releases)。
 
@@ -44,7 +44,8 @@ winget install Hiynet.AstralParty.Toys
 
 ```text
 游戏目录/
-├── version.dll
+├── version.dll                  薄代理：Doorstop 式劫持 + 转发系统 version.dll + 加载核心
+├── CesiumLoader.dll             加载器核心：配置 / 变速 / 文件重定向 / 日志 / 模组编排
 └── AstralParty_ModLoader/
     ├── doorstop_config.json     加载器配置
     ├── sdk/                    SDK 程序集
@@ -53,6 +54,8 @@ winget install Hiynet.AstralParty.Toys
     ├── logs/                   每次启动独立的引导、行为与错误日志
     └── speed/                  变速控制文件通道
 ```
+
+两个 DLL 必须同目录、成对更新：代理按**自身所在目录**加载核心。缺核心、核心过旧或 ABI 不匹配时游戏照常启动，只是模组不加载 —— 原因写在 `AstralParty_ModLoader/logs/proxy-*.log`。
 
 新增模组解压至 `mods/`，保持 `{ModId}/{ModId}.dll` 布局；新增模组或修改加载器配置后重启游戏。模组自身的 `config.json` 在支持热重载的模组中保存后自动生效，具体见各模组文档。旧版 `winmm.dll` 加载器需先移除，避免重复引导。兼容旧版直接放在 `mods/` 根目录的 DLL。
 
@@ -208,7 +211,7 @@ pwsh -NoProfile -File tools/package-modloader.ps1
 
 发布由 `modloader-<版本>` 标签触发。CI 从源码构建原生加载器、Bootstrap、SDK、全部内置模组与 CLI，运行测试，再用 `tools/stage-modloader-dist.ps1` 组装 `dist/modloader/` 分发布局并打包；内置清单统一读取 `tools/builtin-mods.json`。`tools/package-modloader.ps1` 复刻同一套步骤，打 tag 前可先在本地验证。
 
-Release 提供加载器包、SDK 工具包及独立默认皮肤包，加载器与工具包均有版本化名称和固定下载名称。加载器另外提供一个 **Debug 版包**（`cesium-loader-debug.zip` / `cesium-loader-debug-<版本>.zip`）：布局与正式包相同，`version.dll` / `version.pdb` 换成 Debug 构建，并带一份用 Debug 哈希生成的 `cesium-loader.json`（`channel: debug`），因此可以直接用 AstralParty.Toys 的「导入发布包」安装，也可以手动解压覆盖。它依赖 Visual C++ 调试运行时（装 Visual Studio 的机器才有），普通玩家请用正式包。**先发布 CesiumLoader，再发布 Toys**，确保 Toys 内嵌最新加载器。
+Release 提供加载器包、SDK 工具包及独立默认皮肤包，加载器与工具包均有版本化名称和固定下载名称。加载器另外提供一个 **Debug 版包**（`cesium-loader-debug.zip` / `cesium-loader-debug-<版本>.zip`）：布局与正式包相同，`version.dll` / `version.pdb` / `CesiumLoader.dll` / `CesiumLoader.pdb` 换成 Debug 构建，并带一份用 Debug 哈希生成的 `cesium-loader.json`（`channel: debug`），因此可以直接用 AstralParty.Toys 的「导入发布包」安装，也可以手动解压覆盖。它依赖 Visual C++ 调试运行时（装 Visual Studio 的机器才有），普通玩家请用正式包。**先发布 CesiumLoader，再发布 Toys**，确保 Toys 内嵌最新加载器。
 
 ## 许可
 

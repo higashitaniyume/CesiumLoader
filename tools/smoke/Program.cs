@@ -46,7 +46,12 @@ internal static class Program
 
     private static int Main(string[] args)
     {
-        string ourDll = Path.GetFullPath(args.Length > 0 ? args[0] : @"..\..\..\..\bin\Release\version.dll");
+        // 默认路径相对 exe 目录算(dotnet run 的工作目录不受控):
+        // bin\<配置>\net8.0 → ... → modding\msvc\bin\<配置>\version.dll(代理)。
+        // 核心 CesiumLoader.dll 与它同目录 —— 代理按自身模块目录去找核心。
+        string ourDll = Path.GetFullPath(args.Length > 0
+            ? args[0]
+            : Path.Combine(AppContext.BaseDirectory, @"..\..\..\..\..\bin\Release\version.dll"));
         string targetFile = Path.GetFullPath(args.Length > 1 ? args[1] : Environment.GetFolderPath(Environment.SpecialFolder.Windows) + @"\notepad.exe");
 
         Console.WriteLine("测试对象: " + ourDll);
@@ -78,6 +83,28 @@ internal static class Program
         Check(pSize != IntPtr.Zero, "导出 GetFileVersionInfoSizeA");
         Check(pInfo != IntPtr.Zero, "导出 GetFileVersionInfoA");
         Check(pQuery != IntPtr.Zero, "导出 VerQueryValueA");
+
+        // 3b. 代理必须导出完整集合。漏一个导出是**静默**失败: 调用方 GetProcAddress 拿到 null,
+        //     或者按导入表解析的模块直接加载失败。而 .def 恰恰有个坑 —— 注释行里出现非 ASCII
+        //     字节(比如中文)会把紧随其后的那条导出名吃掉(link 14.51 实测: ap_speed_set 消失,
+        //     无警告无报错)。所以这里把 20 个名字逐个点一遍, 让"漏导出"在冒烟阶段就红掉,
+        //     而不是等游戏里某个调用方悄悄失效。version.def 现在也强制纯 ASCII。
+        string[] expected =
+        {
+            "GetFileVersionInfoA", "GetFileVersionInfoByHandle", "GetFileVersionInfoExA", "GetFileVersionInfoExW",
+            "GetFileVersionInfoSizeA", "GetFileVersionInfoSizeExA", "GetFileVersionInfoSizeExW",
+            "GetFileVersionInfoSizeW", "GetFileVersionInfoW",
+            "VerFindFileA", "VerFindFileW", "VerInstallFileA", "VerInstallFileW", "VerQueryValueA", "VerQueryValueW",
+            "ap_speed_set", "ap_speed_get", "ap_speed_active", "ap_console_write", "ap_console_write_w",
+        };
+        var missing = new System.Collections.Generic.List<string>();
+        foreach (string name in expected)
+        {
+            if (Native.GetProcAddress(h, name) == IntPtr.Zero) missing.Add(name);
+        }
+        Check(missing.Count == 0,
+            "代理导出完整 (" + expected.Length + " 个)" +
+            (missing.Count > 0 ? "，缺少: " + string.Join(", ", missing) : ""));
 
         // 4. 通过代理调用(与系统对比)
         uint sysSize = Native.GetFileVersionInfoSizeA(targetFile, out uint sysHandle);

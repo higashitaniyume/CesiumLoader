@@ -8,6 +8,7 @@
     <Project Path="loader/CesiumLoader.Bootstrap/CesiumLoader.Bootstrap.csproj" />
     <Project Path="loader/CesiumLoader.SDK/CesiumLoader.SDK.csproj" />
     <Project Path="loader/CesiumLoader/CesiumLoader.vcxproj" Id="a7b3e5d1-9c2f-4e8b-8d4a-1f3c9b7e5a22" />
+    <Project Path="loader/CesiumLoader.Proxy/CesiumLoader.Proxy.vcxproj" Id="b4c6f2a8-3d51-4a97-9e62-7c0d1b8f4e11" />
   </Folder>
   <Folder Name="/mcp/">
     <Project Path="mcp/AstralParty.AgentMod/AstralParty.AgentMod.csproj" />

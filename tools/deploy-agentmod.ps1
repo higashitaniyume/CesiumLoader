@@ -58,8 +58,11 @@ if (-not (Test-Path $json)) { throw "找不到 sidecar: $json" }
 $mcpExe = Join-Path $repo 'mcp\AstralParty.Mcp\bin\Release\net8.0\win-x64\publish\AstralParty.Mcp.exe'
 if (-not (Test-Path $mcpExe)) { throw "找不到 MCP server: $mcpExe" }
 
-if (-not (Test-Path (Join-Path $GameDir 'version.dll'))) {
-    Write-Warning "游戏目录下没有 version.dll —— 似乎未安装 CesiumLoader 加载器。"
+# 加载器是两个原生 DLL(代理 version.dll + 核心 CesiumLoader.dll), 必须成对存在:
+# 只有代理时游戏照常启动但不加载任何 mod —— 装完 mod 会完全看不到效果。
+$missingLoader = @('version.dll', 'CesiumLoader.dll') | Where-Object { -not (Test-Path (Join-Path $GameDir $_)) }
+if ($missingLoader) {
+    Write-Warning "游戏目录缺少加载器文件: $($missingLoader -join ', ') (代理与核心必须成对)。"
     Write-Warning "请先用 AstralParty.Toys 的『模组』页安装加载器, 或部署 dist\modloader。"
 }
 $loaderDir = Join-Path $GameDir 'AstralParty_ModLoader'
