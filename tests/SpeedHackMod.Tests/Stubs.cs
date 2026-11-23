@@ -16,16 +16,18 @@ namespace UnityEngine
         public override int GetHashCode() => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(this);
         public static Object[] FindObjectsByType(Type type, FindObjectsInactive inactive, FindObjectsSortMode sort) => Array.Empty<Object>();
     }
+    public class Behaviour : Object { public bool isActiveAndEnabled { get; set; } = true; }
     public enum KeyCode { None, Delete, Equals, Minus, LeftAlt, RightAlt, KeypadPlus, KeypadMinus }
     public static class Time
     {
         public static float Step = 0.02f;
         public static int Writes;
         public static bool FailAccess;
+        public static bool FailStepAccess;
         public static float fixedDeltaTime
         {
-            get { if (FailAccess) throw new MissingMethodException("fixture ECall"); return Step; }
-            set { if (FailAccess) throw new MissingMethodException("fixture ECall"); Step = value; Writes++; }
+            get { if (FailStepAccess) throw new MissingMethodException("fixture fixed-step ECall"); return Step; }
+            set { if (FailStepAccess) throw new MissingMethodException("fixture fixed-step ECall"); Step = value; Writes++; }
         }
         public static float maximumDeltaTime = 1f / 3f;
         public static float Scale = 1f;
@@ -50,15 +52,18 @@ namespace CesiumLoader.SDK.Configuration
 {
     public class ModConfig
     {
+        public const string CommentsKey = "_comments";
         public readonly Dictionary<string, object> Values = new();
         public string Path => "test-config.json";
         public bool Has(string key) => Values.ContainsKey(key);
+        public T Get<T>(string key, T defaultValue = default) => Has(key) && Values[key] is T v ? v : defaultValue;
         public double GetDouble(string key, double fallback) => Has(key) ? Convert.ToDouble(Values[key]) : fallback;
         public float GetFloat(string key, float fallback) => Has(key) ? Convert.ToSingle(Values[key]) : fallback;
         public bool GetBool(string key, bool fallback) => Has(key) ? Convert.ToBoolean(Values[key]) : fallback;
         public string GetString(string key, string fallback) => Has(key) ? (string)Values[key] : fallback;
         public void Set(string key, object value) => Values[key] = value;
         public bool SetDefault(string key, object value) { if (Has(key)) return false; Set(key, value); return true; }
+        public bool Remove(string key) => Values.Remove(key);
         public bool Describe(string key, ConfigDoc doc) => false;
         public void SaveIfDirty() { }
     }
@@ -86,7 +91,8 @@ namespace CesiumLoader.SDK.Logging
     public class TestLog
     {
         public readonly List<string> Warnings = new();
-        public void Info(string message) { }
+        public readonly List<string> Infos = new();
+        public void Info(string message) => Infos.Add(message);
         public void Warn(string message) => Warnings.Add(message);
         public void ReportCrash(string name, Exception error) => throw new InvalidOperationException(name, error);
     }

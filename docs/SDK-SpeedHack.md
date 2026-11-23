@@ -1,13 +1,13 @@
 # SDK-SpeedHack（变速）
 
-`CesiumLoader.SDK.Speed.SpeedHack` 控制原生时钟倍率。内置 SpeedHackMod 另提供 `native` 与 `unity` 两种加速方式，见[模组说明](../mods/SpeedHackMod/README.zh-CN.md)。
+`CesiumLoader.SDK.Speed.SpeedHack` 控制原生时钟倍率。内置 SpeedHackMod 使用 Unity 时间缩放，原生控制通道可用时会先确认原生时钟为 1x，见[模组说明](../mods/SpeedHackMod/README.zh-CN.md)。
 
 ## 范围与时间语义
 
 - 原生倍率范围为 **1–100**；低于 1、NaN 和无穷大请求被拒绝，不改变引擎状态。
 - `1x` 表示恢复正常速度，不卸载时间 hook。切换时仍使用连续虚拟时间公式，避免时钟倒退。
 - 原生变速影响动画、演出、回合计时与网络超时，建议不超过 `3x`。客户端倒计时可配合 TurnClockMod，但不能延长服务器操作期限。
-- 原生层 hook `GetTickCount`、`GetTickCount64`、`timeGetTime` 和 `QueryPerformanceCounter`。Unity 模式由模组把原生恢复到 1x，再调整游戏时间。
+- 原生层 hook `GetTickCount`、`GetTickCount64`、`timeGetTime` 和 `QueryPerformanceCounter`。SpeedHackMod 仅通过原生控制通道请求恢复 1x。
 
 ## 本地 UDP 通道
 
