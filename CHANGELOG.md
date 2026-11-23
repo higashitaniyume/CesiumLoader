@@ -2,7 +2,7 @@
 
 本文件按版本记录 `CesiumLoader` 的功能变更。版本号与 GitHub 发布 tag 一一对应（如 `modloader-3.3.2`，版本号为 `3.3.2`），发布产物由 [release-modloader.yml](.github/workflows/release-modloader.yml) 在打 tag 时自动构建。
 
-## [Unreleased]
+## [4.0.1] - 2026-11-23
 
 ### 模组
 
