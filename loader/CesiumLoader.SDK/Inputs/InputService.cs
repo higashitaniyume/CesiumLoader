@@ -58,11 +58,24 @@ namespace CesiumLoader.SDK.Inputs
         /// 安卓上没有 Win32（`user32.dll` 根本不存在，构造 `Win32InputBackend` 会
         /// `DllNotFoundException`），所以只保留 Unity 反射后端；桌面维持 Unity + Win32 组合，
         /// Win32 那层负责热键边沿与光标锁定。
+        ///
+        /// iOS 上 `Application.platform` 可能被裁剪掉，<see cref="MobilePlatform.IsMobile"/>
+        /// 会漏判成 false，所以这里再兜一层：真的构造不出 Win32 后端就退回 Unity 后端，
+        /// 并把结果记进 <see cref="MobilePlatform.MarkNativeUnavailable"/>。
+        /// 不这么兜，静态构造会失败并缓存，模组每帧抛异常会把游戏卡死。
         /// </summary>
         private static IInputBackend CreateDefaultBackend()
         {
-            if (AndroidPlatform.IsAndroid) return new UnityInputReflectionBackend();
-            return new CompositeInputBackend(new UnityInputReflectionBackend(), new Win32InputBackend());
+            if (MobilePlatform.IsMobile) return new UnityInputReflectionBackend();
+            try
+            {
+                return new CompositeInputBackend(new UnityInputReflectionBackend(), new Win32InputBackend());
+            }
+            catch (Exception)
+            {
+                MobilePlatform.MarkNativeUnavailable();
+                return new UnityInputReflectionBackend();
+            }
         }
 
         /// <summary>输入是否可用(两个后端都不可用时为 false)。</summary>

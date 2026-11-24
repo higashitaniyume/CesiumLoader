@@ -29,13 +29,13 @@ namespace CesiumLoader.SDK.Mobile
         private static object _camera;
         private static bool _warned;
 
-        /// <summary>是否支持触摸（仅 Android 且有 Input 模块）。</summary>
+        /// <summary>是否支持触摸（仅移动端且有 Input 模块）。</summary>
         public static bool IsSupported
         {
             get
             {
                 Resolve();
-                return CesiumLoader.SDK.AndroidPlatform.IsAndroid && _touchCountGetter != null;
+                return MobilePlatform.IsMobile && _touchCountGetter != null;
             }
         }
 

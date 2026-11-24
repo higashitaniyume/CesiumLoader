@@ -41,15 +41,24 @@ namespace CesiumLoader.SDK.Audio
                     {
                         _backend = unityBackend;
                     }
-                    else if (AndroidPlatform.IsAndroid)
+                    else if (MobilePlatform.IsMobile)
                     {
-                        // 安卓没有原生音频引擎(user32/winmm 那套)，直接用 Unity 后端。
+                        // 移动端（安卓 / iOS）没有原生音频引擎(user32/winmm 那套)，直接用 Unity 后端。
                         _backend = unityBackend;
                     }
                     else
                     {
-                        var nativeBackend = new NativeAudioBackend();
-                        _backend = nativeBackend.IsAvailable ? (IAudioBackend)nativeBackend : unityBackend;
+                        // 原生音频后端要 winmm；iOS 上平台判定可能漏判，构造失败就退回 Unity 后端
+                        try
+                        {
+                            var nativeBackend = new NativeAudioBackend();
+                            _backend = nativeBackend.IsAvailable ? (IAudioBackend)nativeBackend : unityBackend;
+                        }
+                        catch (Exception)
+                        {
+                            MobilePlatform.MarkNativeUnavailable();
+                            _backend = unityBackend;
+                        }
                     }
                 }
                 return _backend;
