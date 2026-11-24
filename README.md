@@ -89,6 +89,7 @@ winget install Hiynet.AstralParty.Toys
 | [AngelModeUnlockMod](mods/AngelModeUnlockMod/README.md) | 解除审核渠道对「天使模式」开关的封锁，恢复设置页开关并可固定开关状态 |
 | [UpdateNoticeMod](mods/UpdateNoticeMod/README.md) | 加载器发现新版本时在游戏内弹面板：显示当前/最新版本、打开发布页、忽略此版本或稍后再看（模组自身不联网） |
 | [FontMod](mods/FontMod/README.md) | 把游戏界面字体替换成系统已安装的字体，在 Toys「自定义 → 字体」里挑选，游戏内即时生效 |
+| [ToysBadgeMod](mods/ToysBadgeMod/README.md) | 联机对局中通过房间服务识别同样使用 AstralParty.Toys 的玩家，在头像左侧固定显示圆形工具箱图标并支持悬停提示，默认复用 InMatchChatMod 的 ClientId |
 
 内置模组的 `config.json` 带简中、繁中、英文、日文配置说明，Toys 会按界面语言显示；第三方模组可按 [配置与元数据](docs/SDK-ConfigAndMetadata.md) 用 `ConfigDoc` 提供说明。
 
