@@ -35,6 +35,7 @@
     <Project Path="mods/PveWaveForecastMod/PveWaveForecastMod.csproj" />
     <Project Path="mods/QuickChatPlusMod/QuickChatPlusMod.csproj" />
     <Project Path="mods/SpeedHackMod/SpeedHackMod.csproj" />
+    <Project Path="mods/ToysBadgeMod/ToysBadgeMod.csproj" />
     <Project Path="mods/TurnClockMod/TurnClockMod.csproj" />
     <Project Path="mods/TurnFocusMod/TurnFocusMod.csproj" />
   </Folder>
@@ -55,6 +56,7 @@
     <Project Path="tests/ShopRelicPeekMod.Tests/ShopRelicPeekMod.Tests.csproj" />
     <Project Path="tests/SpeedHackMod.Tests/SpeedHackMod.Tests.csproj" />
     <Project Path="tests/StarCoinShopMod.Tests/StarCoinShopMod.Tests.csproj" />
+    <Project Path="tests/ToysBadgeMod.Tests/ToysBadgeMod.Tests.csproj" />
     <Project Path="tests/TurnClockMod.Tests/TurnClockMod.Tests.csproj" />
     <Project Path="tests/TurnFocusMod.Tests/TurnFocusMod.Tests.csproj" />
   </Folder>
