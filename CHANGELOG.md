@@ -2,6 +2,13 @@
 
 本文件按版本记录 `CesiumLoader` 的功能变更。版本号与 GitHub 发布 tag 一一对应（如 `modloader-3.3.2`，版本号为 `3.3.2`），发布产物由 [release-modloader.yml](.github/workflows/release-modloader.yml) 在打 tag 时自动构建。
 
+## [4.1.2] - 2026-11-25
+
+### 模组
+
+- 新增内置模组 `ToysBadgeMod 1.0.0`（工具箱玩家标识）：联机对局中通过房间服务识别同一局内同样使用 Astral Party Toys（吉星派对工具箱）的玩家，在左侧玩家列表对应头像旁固定显示圆形工具箱图标，悬停显示提示。同时启用 `InMatchChatMod` 时默认复用其 `ClientId`，不会重复占用成员名额。
+- `ToysBadgeMod` 的服务地址、刷新间隔、图标大小与位置、是否显示自己、是否复用聊天 `ClientId` 等都可在 `mods\ToysBadgeMod\config.json` 调整（Toys 模组配置页可直接编辑，保存后热重载）；服务地址留空则完全不发起网络请求。
+
 ## [4.1.1] - 2026-11-24
 
 ### 修复
