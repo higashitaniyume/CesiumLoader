@@ -2,6 +2,13 @@
 
 本文件按版本记录 `CesiumLoader` 的功能变更。版本号与 GitHub 发布 tag 一一对应（如 `modloader-3.3.2`，版本号为 `3.3.2`），发布产物由 [release-modloader.yml](.github/workflows/release-modloader.yml) 在打 tag 时自动构建。
 
+## [4.1.1] - 2026-11-24
+
+### 修复
+
+- **没有 Win32 原生后端的平台不再卡死**：`InputService` 构造 Win32 输入后端失败时退回 Unity 反射后端，并记下「本机没有原生后端」；音频与触摸随后也走 Unity 后端。此前在这种环境（例如 iOS，或者移动端判定拿不到的情况）里静态构造会失败并被缓存，每个用到热键的模组每帧抛一次异常，游戏卡在大厅。
+- 音频的原生后端构造失败时同样退回 Unity 后端，`AudioService` 不再因此抛异常。
+
 ## [4.1.0] - 2026-11-23
 
 ### 加载器
