@@ -82,6 +82,9 @@
       <PreprocessorDefinitions>_DEBUG;_WINDOWS;_USRDLL;CESIUMLOADER_EXPORTS;SPDLOG_FMT_EXTERNAL;FMT_HEADER_ONLY;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
+      <!-- 静态链接 CRT: Debug 用 /MTd (libcmtd 提供 _CrtDbgReport 等调试函数), Release 用 /MT。
+           两者都不依赖 VC++ Redistributable; 与代理之间只传基本类型, 不跨 CRT 堆。 -->
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <AdditionalIncludeDirectories>$(IntDir);$(ProjectDir);$(ProjectDir)..\shared;..\..\third_party\fmt\include;..\..\third_party\nlohmann_json\include;..\..\third_party\spdlog\include;..\..\third_party\minhook\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
@@ -102,6 +105,9 @@
       <PreprocessorDefinitions>NDEBUG;_WINDOWS;_USRDLL;CESIUMLOADER_EXPORTS;SPDLOG_FMT_EXTERNAL;FMT_HEADER_ONLY;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
+      <!-- 静态链接 CRT (libcmt/libcpmt/libucrt): 运行时不依赖 VC++ Redistributable。
+           老系统只需 Win10/11 自带组件即可加载; 与代理之间只传基本类型, 不跨 CRT 堆。 -->
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <Optimization>MaxSpeed</Optimization>
       <SpectreMitigation>Spectre</SpectreMitigation>

@@ -2,6 +2,12 @@
 
 本文件按版本记录 `CesiumLoader` 的功能变更。版本号与 GitHub 发布 tag 一一对应（如 `modloader-3.3.2`，版本号为 `3.3.2`），发布产物由 [release-modloader.yml](.github/workflows/release-modloader.yml) 在打 tag 时自动构建。
 
+## [4.1.4] - 2026-11-25
+
+### 加载器
+
+- 原生层（`version.dll` 与 `CesiumLoader.dll`）改为静态链接 C/C++ 运行库，不再依赖 VC++ Redistributable。没有安装或无法更新该运行库的 Windows 10/11 机器也能正常加载模组，无需手动安装运行库。
+
 ## [4.1.3] - 2026-11-25
 
 ### 加载器

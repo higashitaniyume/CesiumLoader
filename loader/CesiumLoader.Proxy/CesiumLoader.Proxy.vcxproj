@@ -65,6 +65,11 @@
   <ItemDefinitionGroup>
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
+      <!-- 静态链接 CRT: 代理转发与诊断日志不依赖 VC++ Redistributable。
+           Debug 用 /MTd (libcmtd 提供 _CrtDbgReport), Release 用 /MT;
+           与核心之间只经 ABI 传基本类型, 不跨 CRT 堆。 -->
+      <RuntimeLibrary Condition="'$(Configuration)'=='Debug'">MultiThreadedDebug</RuntimeLibrary>
+      <RuntimeLibrary Condition="'$(Configuration)'!='Debug'">MultiThreaded</RuntimeLibrary>
       <SDLCheck>true</SDLCheck>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
