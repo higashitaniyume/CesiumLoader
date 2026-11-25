@@ -34,13 +34,183 @@
 #include <string>
 
 // ============================================================================
-// 一、核心没起来时的"面包屑"
+// 一、系统 version.dll 基础设施
 // ============================================================================
 //
-// 本 DLL 刻意不依赖核心的任何代码(日志 / 配置 / 路径都在核心里), 所以这里用最原始的 Win32
-// 写一行。没有它的话, "核心加载失败" 的表现就是"模组莫名其妙不加载", 用户侧没有任何证据。
+// 转发 15 个导出要用它; 诊断失败时读核心文件的版本资源也复用它(按完整路径取系统实现,
+// 不链接 version.lib, 免得导入被同目录的代理接走)。
+
+static HMODULE g_real_version = nullptr;
+static HINSTANCE g_self = nullptr;            // DllMain 里记下的本模块句柄(诊断日志与 proxy_dir 共用)
+
+static void* real_version_handle()
+{
+    if (g_real_version == nullptr)
+    {
+        g_real_version = LoadLibraryA("C:\\Windows\\System32\\version.dll");
+    }
+    return g_real_version;
+}
+
+static void* real_version_fn(const char* name)
+{
+    return reinterpret_cast<void*>(GetProcAddress(reinterpret_cast<HMODULE>(real_version_handle()), name));
+}
+
+// ============================================================================
+// 二、核心没起来时的"面包屑诊断"
+// ============================================================================
+//
+// 本 DLL 刻意不依赖核心的任何代码(日志 / 配置 / 路径都在核心里), 所以这里只用最原始的 Win32。
+// 以前只写三行, "加载失败" 与 "文件不存在" 看起来一样; 现在把错误码描述、核心文件的
+// 大小/属性/时间/PE 架构/版本、代理与 exe 的路径都写进去 —— 尤其是 ERROR_DLL_INIT_FAILED
+// (1114): 文件明明在, 但 Windows 在初始化阶段就把它拒了, 光看 "文件存在" 没法定位。
 // 位置与核心的日志同目录: <游戏 exe 目录>\AstralParty_ModLoader\logs\proxy-<会话>.log
-static void log_proxy_problem(const wchar_t* what, unsigned long code, const std::wstring& path)
+
+static std::wstring error_code_text(DWORD code)
+{
+    if (code == 0) return L"(无错误码)";
+    wchar_t sys[512] = {};
+    // 固定用英文资源: 描述稳定、可 grep, 不依赖系统 UI 语言, 也不指定模块句柄(避免额外加载)。
+    const DWORD n = FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                                   nullptr, code, MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US),
+                                   sys, 512, nullptr);
+    if (n == 0) return L"(系统无描述)";
+    std::wstring out(sys, n);
+    while (!out.empty() && (out.back() == L'\r' || out.back() == L'\n' || out.back() == L'.')) out.pop_back();
+    return out;
+}
+
+static const wchar_t* common_error_hint(DWORD code)
+{
+    switch (code)
+    {
+    case ERROR_FILE_NOT_FOUND:     return L"找不到文件 —— 只装了代理, 或核心被移动/删除/改名。";
+    case ERROR_PATH_NOT_FOUND:     return L"找不到路径 —— 加载器目录被改名或游戏 exe 目录不对。";
+    case ERROR_ACCESS_DENIED:      return L"拒绝访问 —— 杀软拦截/隔离, 或文件被其它进程独占。";
+    case ERROR_BAD_EXE_FORMAT:     return L"不是有效映像 —— 32/64 位不匹配, 或文件被杀软截断、下载不完整。";
+    case ERROR_MOD_NOT_FOUND:      return L"缺依赖 DLL —— 常见是 VC++ 运行库(msvcp140/vcruntime140/api-ms-win-crt-*)缺失或版本不对。";
+    case ERROR_DLL_INIT_FAILED:    return L"DLL 初始化失败(1114) —— 文件已找到, 但核心 DllMain / 静态初始化返回 FALSE, 或某个静态依赖初始化失败; 也可能是核心被杀软改写后结构损坏。此时游戏照常启动, 只是模组不加载。";
+    case ERROR_PROC_NOT_FOUND:     return L"缺导出函数 —— 核心文件与代理不是同一版。";
+    case ERROR_INVALID_IMAGE_HASH: return L"映像哈希校验失败 —— 被安全软件拦截或文件已损坏。";
+    default:                       return nullptr;
+    }
+}
+
+static std::wstring filetime_string(const FILETIME& ft)
+{
+    FILETIME local = {};
+    SYSTEMTIME st = {};
+    if (!FileTimeToLocalFileTime(&ft, &local) || !FileTimeToSystemTime(&local, &st)) return L"(无法解析)";
+    wchar_t buf[64] = {};
+    swprintf(buf, 64, L"%04u-%02u-%02u %02u:%02u:%02u",
+             st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+    return buf;
+}
+
+// 读 PE 头拿机器类型。核心被截断/替换成非 PE 文件时, 这里的失败本身就是关键证据。
+static std::wstring pe_machine_text(const std::wstring& path)
+{
+    if (path.empty()) return L"(未提供路径)";
+    HANDLE f = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                           nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (f == INVALID_HANDLE_VALUE) return L"无法打开(读取失败)";
+    IMAGE_DOS_HEADER dos = {};
+    DWORD got = 0;
+    BOOL ok = ReadFile(f, &dos, sizeof(dos), &got, nullptr);
+    if (!ok || got != sizeof(dos) || dos.e_magic != IMAGE_DOS_SIGNATURE)
+    {
+        CloseHandle(f);
+        return L"不是 PE(MZ 头缺失/文件可能被截断)";
+    }
+    // e_lfanew 可能远大于 512(链接器可用它塞 DOS stub), 按偏移 seek 过去, 只取签名 + 文件头。
+    if (dos.e_lfanew < 0 || SetFilePointer(f, dos.e_lfanew, nullptr, FILE_BEGIN) == INVALID_SET_FILE_POINTER)
+    {
+        CloseHandle(f);
+        return L"PE 头偏移无效/文件可能被截断";
+    }
+    struct
+    {
+        DWORD Signature;
+        IMAGE_FILE_HEADER FileHeader;
+    } nt = {};
+    ok = ReadFile(f, &nt, sizeof(nt), &got, nullptr);
+    CloseHandle(f);
+    if (!ok || got != sizeof(nt) || nt.Signature != IMAGE_NT_SIGNATURE) return L"PE 签名无效/文件可能被截断";
+    switch (nt.FileHeader.Machine)
+    {
+    case IMAGE_FILE_MACHINE_I386:  return L"x86 (0x014c)";
+    case IMAGE_FILE_MACHINE_AMD64: return L"x64 (0x8664)";
+    case IMAGE_FILE_MACHINE_ARM64: return L"ARM64 (0xaa64)";
+    default:
+        {
+            wchar_t buf[64] = {};
+            swprintf(buf, 64, L"未知机器类型 (0x%04x)", nt.FileHeader.Machine);
+            return buf;
+        }
+    }
+}
+
+static std::wstring file_version_text(const std::wstring& path)
+{
+    using SizeFn = DWORD(WINAPI*)(LPCWSTR, LPDWORD);
+    using InfoFn = BOOL(WINAPI*)(LPCWSTR, DWORD, DWORD, LPVOID);
+    using QueryFn = BOOL(WINAPI*)(LPCVOID, LPCWSTR, LPVOID*, PUINT);
+    static SizeFn size_fn = reinterpret_cast<SizeFn>(real_version_fn("GetFileVersionInfoSizeW"));
+    static InfoFn info_fn = reinterpret_cast<InfoFn>(real_version_fn("GetFileVersionInfoW"));
+    static QueryFn query_fn = reinterpret_cast<QueryFn>(real_version_fn("VerQueryValueW"));
+    if (size_fn == nullptr || info_fn == nullptr || query_fn == nullptr) return L"(系统 version.dll 不可用)";
+
+    DWORD handle = 0;
+    const DWORD size = size_fn(path.c_str(), &handle);
+    if (size == 0 || size > 1024 * 1024) return L"(无版本资源)";
+    std::string data(size, '\0');
+    if (!info_fn(path.c_str(), 0, size, data.data())) return L"(读版本资源失败)";
+
+    static const wchar_t* kKeys[] = { L"ProductVersion", L"FileVersion" };
+    static const wchar_t* kBlocks[] = { L"040904B0", L"000004B0" };
+    for (const wchar_t* block : kBlocks)
+    {
+        for (const wchar_t* key : kKeys)
+        {
+            const std::wstring sub = std::wstring(L"\\StringFileInfo\\") + block + L"\\" + key;
+            LPVOID buf = nullptr;
+            UINT len = 0;
+            if (!query_fn(data.data(), sub.c_str(), &buf, &len) || buf == nullptr || len == 0) continue;
+            std::wstring v(static_cast<const wchar_t*>(buf), len);
+            while (!v.empty() && v.back() == L'\0') v.pop_back();
+            if (!v.empty()) return v;
+        }
+    }
+    return L"(无可读版本字段)";
+}
+
+static std::wstring describe_core_file(const std::wstring& path)
+{
+    if (path.empty()) return L"(未提供路径)";
+    WIN32_FILE_ATTRIBUTE_DATA d = {};
+    if (!GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &d))
+        return L"不存在/无法访问 (GetLastError=" + std::to_wstring(GetLastError()) + L")";
+
+    ULARGE_INTEGER size = {};
+    size.LowPart = d.nFileSizeLow;
+    size.HighPart = d.nFileSizeHigh;
+
+    std::wstring attrs;
+    if (d.dwFileAttributes & FILE_ATTRIBUTE_READONLY)  attrs += L"只读 ";
+    if (d.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN)    attrs += L"隐藏 ";
+    if (d.dwFileAttributes & FILE_ATTRIBUTE_SYSTEM)    attrs += L"系统 ";
+    if (d.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) attrs += L"是目录(!) ";
+    if (attrs.empty()) attrs = L"正常";
+
+    return L"大小=" + std::to_wstring(size.QuadPart) + L" 字节; 属性=" + attrs
+         + L"; 修改时间=" + filetime_string(d.ftLastWriteTime)
+         + L"; PE=" + pe_machine_text(path)
+         + L"; 版本=" + file_version_text(path);
+}
+
+static void log_proxy_problem(const wchar_t* what, unsigned long code,
+                              const std::wstring& path, const wchar_t* hint)
 {
     wchar_t exe[MAX_PATH] = {};
     if (GetModuleFileNameW(nullptr, exe, MAX_PATH) == 0) return;
@@ -61,51 +231,72 @@ static void log_proxy_problem(const wchar_t* what, unsigned long code, const std
     swprintf(name, 64, L"proxy-%04u%02u%02u-%02u%02u%02u.log",
              st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
 
+    std::wstring self_path;
+    {
+        wchar_t self[MAX_PATH] = {};
+        if (g_self != nullptr && GetModuleFileNameW(g_self, self, MAX_PATH) != 0) self_path = self;
+    }
+
+    wchar_t line[1024] = {};
+    std::wstring text;
+    text.reserve(2048);
+    swprintf(line, 1024, L"\r\n[proxy] === 核心加载失败诊断 %04u-%02u-%02u %02u:%02u:%02u.%03u ===\r\n",
+             st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+    text += line;
+    swprintf(line, 1024, L"[proxy] 失败点: %s\r\n", what != nullptr ? what : L"(未知)");
+    text += line;
+    if (code != 0)
+    {
+        const std::wstring desc = error_code_text(code);
+        swprintf(line, 1024, L"[proxy] 错误码: %lu (0x%08lX) — %s\r\n", code, code, desc.c_str());
+        text += line;
+        const wchar_t* auto_hint = common_error_hint(code);
+        if (auto_hint != nullptr)
+        {
+            swprintf(line, 1024, L"[proxy] 错误码含义: %s\r\n", auto_hint);
+            text += line;
+        }
+    }
+    if (hint != nullptr && *hint != L'\0')
+    {
+        swprintf(line, 1024, L"[proxy] 可能原因: %s\r\n", hint);
+        text += line;
+    }
+    swprintf(line, 1024, L"[proxy] 核心路径: %s\r\n", path.empty() ? L"(未知)" : path.c_str());
+    text += line;
+    text += L"[proxy] 核心文件: " + describe_core_file(path) + L"\r\n";
+    const std::wstring proxy_pe = pe_machine_text(self_path);
+    swprintf(line, 1024, L"[proxy] 代理: 路径=%s; ABI=%u (期望核心 ABI=%u); PE=%s\r\n",
+             self_path.empty() ? L"(未知)" : self_path.c_str(),
+             CESIUM_CORE_ABI_VERSION, CESIUM_CORE_ABI_VERSION, proxy_pe.c_str());
+    text += line;
+    swprintf(line, 1024, L"[proxy] 主程序: %s\r\n", exe);
+    text += line;
+    text += L"[proxy] 说明: 代理是 version.dll, 核心应与之同目录; 缺核心或版本不匹配时游戏照常运行, 只是模组不加载。\r\n";
+
     const std::wstring full = logs_dir + L"\\" + name;
     HANDLE file = CreateFileW(full.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
                               nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (file == INVALID_HANDLE_VALUE) return;
 
-    wchar_t line[2048] = {};
-    swprintf(line, 2048,
-             L"[proxy] %s (code=%lu, 0x%08lX)\r\n"
-             L"[proxy] 核心路径: %s\r\n"
-             L"[proxy] 代理是 version.dll, 核心应与之同目录; 缺核心或版本不匹配时游戏照常运行, 只是模组不加载。\r\n",
-             what, code, code, path.empty() ? L"(未知)" : path.c_str());
-
     // 与核心日志一样按 UTF-8 落盘(便于 grep; 路径含中文时不会变成 '?')
-    char utf8[4096] = {};
-    const int n = WideCharToMultiByte(CP_UTF8, 0, line, -1, utf8, sizeof(utf8), nullptr, nullptr);
-    DWORD written = 0;
-    if (n > 1) WriteFile(file, utf8, (DWORD)(n - 1), &written, nullptr);
-    CloseHandle(file);
-}
-
-// ============================================================================
-// 二、系统 version.dll 转发基础设施
-// ============================================================================
-
-static HMODULE g_real_version = nullptr;
-
-static void* real_version_handle()
-{
-    if (g_real_version == nullptr)
+    const int n = WideCharToMultiByte(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()),
+                                      nullptr, 0, nullptr, nullptr);
+    if (n > 0)
     {
-        g_real_version = LoadLibraryA("C:\\Windows\\System32\\version.dll");
+        std::string utf8(static_cast<size_t>(n), '\0');
+        WideCharToMultiByte(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()),
+                            &utf8[0], n, nullptr, nullptr);
+        DWORD written = 0;
+        WriteFile(file, utf8.data(), static_cast<DWORD>(n - 1), &written, nullptr);   // 不写结尾 NUL, 否则 grep 会把日志当二进制
     }
-    return g_real_version;
-}
-
-static void* real_version_fn(const char* name)
-{
-    return reinterpret_cast<void*>(GetProcAddress(reinterpret_cast<HMODULE>(real_version_handle()), name));
+    CloseHandle(file);
 }
 
 // ============================================================================
 // 三、加载器核心的加载
 // ============================================================================
 
-static HINSTANCE g_self = nullptr;            // DllMain 里记下的本模块句柄
 static HMODULE g_core = nullptr;              // 加载成功的核心模块
 static volatile LONG g_core_failed = 0;       // 1 = 已失败, 不再重试(避免反复开文件 / 被 AV 反复拦)
 static volatile LONG g_core_thread = 0;       // 1 = 后台加载线程已创建
@@ -154,7 +345,8 @@ static bool load_core_once()
     std::wstring dir;
     if (!proxy_dir(dir))
     {
-        log_proxy_problem(L"取不到代理 DLL 所在目录", 0, L"");
+        log_proxy_problem(L"取不到代理 DLL 所在目录", 0, L"",
+                          L"GetModuleFileNameW 失败; 代理自身加载异常。");
         InterlockedExchange(&g_core_failed, 1);
         return false;
     }
@@ -162,7 +354,8 @@ static bool load_core_once()
     const std::wstring path = dir + L"\\" + CESIUM_CORE_DLL_NAME;
     if (GetFileAttributesW(path.c_str()) == INVALID_FILE_ATTRIBUTES)
     {
-        log_proxy_problem(L"加载器核心不存在(只装了代理, 没有核心 DLL)", GetLastError(), path);
+        log_proxy_problem(L"加载器核心不存在(只装了代理, 没有核心 DLL)", GetLastError(), path,
+                          L"代理与核心必须成对放在游戏 exe 同目录; 请整包重装加载器, 不要只复制 version.dll。");
         InterlockedExchange(&g_core_failed, 1);
         return false;
     }
@@ -172,9 +365,17 @@ static bool load_core_once()
     HMODULE mod = load_library_guarded(path.c_str(), &code, &threw);
     if (mod == nullptr)
     {
-        log_proxy_problem(threw ? L"加载器核心在加载时抛异常(核心自身的 DllMain / 静态初始化出问题)"
-                                : L"加载器核心加载失败",
-                          code, path);
+        if (threw)
+        {
+            log_proxy_problem(L"加载器核心在加载时抛异常(核心自身的 DllMain / 静态初始化出问题)",
+                              code, path,
+                              L"LoadLibraryW 被 SEH 异常中断; 看「核心文件」一栏的 PE 与大小是否为完整文件, 必要时整包重装。");
+        }
+        else
+        {
+            log_proxy_problem(L"加载器核心加载失败", code, path,
+                              L"文件已找到但 LoadLibraryW 返回失败; 重点看「错误码含义」与「核心文件」两栏。");
+        }
         InterlockedExchange(&g_core_failed, 1);
         return false;
     }
@@ -183,7 +384,8 @@ static bool load_core_once()
     auto start = reinterpret_cast<CesiumCoreStartFn>(GetProcAddress(mod, "CesiumLoaderStart"));
     if (abi == nullptr || start == nullptr)
     {
-        log_proxy_problem(L"加载器核心缺少契约导出(核心文件过旧或已损坏)", 0, path);
+        log_proxy_problem(L"加载器核心缺少契约导出(核心文件过旧或已损坏)", 0, path,
+                          L"核心能加载但找不到 CesiumLoaderAbiVersion / CesiumLoaderStart; 版本不对或文件被替换, 请整包重装。");
         InterlockedExchange(&g_core_failed, 1);
         return false;
     }
@@ -191,7 +393,11 @@ static bool load_core_once()
     const unsigned int core_abi = abi();
     if (core_abi != CESIUM_CORE_ABI_VERSION)
     {
-        log_proxy_problem(L"加载器核心 ABI 版本不匹配(代理与核心不同步, 请整包重装)", core_abi, path);
+        wchar_t abi_hint[256] = {};
+        swprintf(abi_hint, 256,
+                 L"核心报告 ABI=%u, 代理期望 %u —— 不是同一次发布的产物; 请整包重装, 不要只覆盖其中一档。",
+                 core_abi, CESIUM_CORE_ABI_VERSION);
+        log_proxy_problem(L"加载器核心 ABI 版本不匹配(代理与核心不同步, 请整包重装)", 0, path, abi_hint);
         InterlockedExchange(&g_core_failed, 1);
         return false;
     }
@@ -222,7 +428,8 @@ static void ensure_core_load_async()
         CloseHandle(thread);   // 句柄关掉, 线程继续跑
         return;
     }
-    log_proxy_problem(L"创建核心加载线程失败", GetLastError(), L"");
+    log_proxy_problem(L"创建核心加载线程失败", GetLastError(), L"",
+                      L"CreateThread 失败; 进程句柄/资源耗尽或安全软件拦截。");
 }
 
 // ap_* 桥接用: 调用发生在进程跑起来之后, 这里同步确保核心已加载(而不是干等后台线程),
