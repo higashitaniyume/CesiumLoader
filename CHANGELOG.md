@@ -2,6 +2,13 @@
 
 欢迎您使用 **CesiumLoader** 模组加载器，衷心感谢您的信任与支持！如果您在游戏或模组加载过程中遇到任何异常、兼容问题或有改进建议，非常欢迎前往 [GitHub Issues](https://github.com/higashitaniyume/CesiumLoader/issues) 反馈，也可以加入企鹅群 **1078464597**（[点击加群](https://qm.qq.com/cgi-bin/qm/qr?k=tYrqev4U2Xr2PPAA4EkILA0NKmP3zgeU&jump_from=webapi&authKey=jHiIqsg0jEV53dBtQ9V3qXohKKHwLDGmfWprcrg7gueM9pU9iz+ST/QHR6d1j3wa)）或 [Discord 频道](https://discord.gg/SZaYSwGX94) 与我们联系交流，我们会认真倾听并尽力协助处理。
 
+## [4.1.5] - 2026-11-26
+
+### 模组
+
+- 新增内置模组 `HubBridgeMod 1.0.0`（组队大厅桥接）：与 AstralParty.Toys「组队大厅」通过本机回环连接通信，实时同步当前登录区服、UID、所在场景与游戏房间信息。
+- 支持接收来自工具箱的自动建房（默认 PVE 模式并支持切换 PVP，自动匹配当前可用难度配置）与一键加入指定房号/密码指令，并在对局结束时实时回传结算摘要，支持多开按 UID 与区服分别路由。
+
 ## [4.1.4] - 2026-11-25
 
 ### 加载器
