@@ -1,4 +1,4 @@
-# 工具箱玩家标识 (ToysBadgeMod) v1.0.0
+# 工具箱玩家标识 (ToysBadgeMod) v1.0.1
 
 在联机对局中，通过房间服务接口 `POST /api/v1/rooms/{watchCode}/join` 与 `/leave` 识别同一对局内同样使用了 **Astral Party Toys（吉星派对工具箱）** 的玩家，并在左侧玩家列表对应头像左边固定位置显示圆形工具箱图标，鼠标悬停时显示提示「该玩家正在使用AstralParty.Toys」。
 
@@ -6,9 +6,9 @@
 
 1. 进入联机对局（`RoomStateType.RUNNING`，排除单机模式与回放）后，模组读取当前区服与对局观战码。
 2. 通过 `UnityWebRequest` 向 `https://connect.hiynet.com/api/v1/rooms/{watchCode}/join` 发送加入与保活请求（自适应频率：`6s` → `10s` → 稳态 `25s`），获取同局在线成员列表。
-3. 将在线成员昵称与左侧战斗 HUD（`UIBattleInfoPanel`）中 4 个玩家槽位比对，在匹配玩家头像（`com_Head`）左侧固定位置渲染圆形 Astral Party Toys 图标（不随回合动画左右摇摆）；鼠标悬停到图标上时弹出提示「该玩家正在使用AstralParty.Toys」。
+3. 自动剥离游戏昵称中的 FairyGUI UBB / 富文本标签（支持彩色/渐变昵称），与左侧战斗 HUD（`UIBattleInfoPanel`）中 4 个玩家槽位比对，在匹配玩家头像（`com_Head`）左侧固定位置渲染圆形 Astral Party Toys 图标（不随回合动画左右摇摆）；鼠标悬停到图标上时弹出提示「该玩家正在使用AstralParty.Toys」。
 4. 对局结束或离开房间时自动发送 `/leave` 并隐藏图标；模组**不会将观战码或会话 Token 写入任何日志**。
-5. 若本机同时启用了 `InMatchChatMod`，默认自动复用其 `ClientId`，避免同一局内占用两个成员名额或互相挤掉线。
+5. 默认单开且同机启用 `InMatchChatMod` 时自动复用其 `ClientId`，避免占用两个名额；检测到加载器多 `profile`（`CESIUM_PROFILE` / `doorstop_config.json`）或非共享模式时自动按账号 ID 派生独立 `ClientId`，支持同目录双开互相识别。
 
 ## 配置
 

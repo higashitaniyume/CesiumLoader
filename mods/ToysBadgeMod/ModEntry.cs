@@ -21,7 +21,7 @@ namespace ToysBadgeMod
         private volatile bool _configReloaded;
 
         public override string Name { get { return "工具箱玩家标识"; } }
-        public override string Version { get { return "1.0.0"; } }
+        public override string Version { get { return "1.0.1"; } }
         public override string Author { get { return "Aperfish"; } }
         public override string Description
         {

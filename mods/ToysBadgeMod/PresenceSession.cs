@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text.RegularExpressions;
 using CesiumLoader.SDK.Configuration;
 using CesiumLoader.SDK.Logging;
 using GameLogic;
@@ -15,6 +16,7 @@ namespace ToysBadgeMod
         public string WatchCode;
         public string Nick;
         public int HeroId;
+        public long PlayerId;
 
         public MatchSnapshot()
         {
@@ -22,14 +24,19 @@ namespace ToysBadgeMod
             WatchCode = "";
             Nick = "";
             HeroId = 0;
+            PlayerId = 0;
         }
     }
 
     internal sealed class PresenceSession : IDisposable
     {
-        private const string ModVersion = "1.0.0";
-        private const string UserAgent = "AstralParty.Toys Mod/1.0.0 (ToysBadgeMod)";
+        private const string ModVersion = "1.0.1";
+        private const string UserAgent = "AstralParty.Toys Mod/1.0.1 (ToysBadgeMod)";
         private const float ProbeIntervalSeconds = 0.5f;
+
+        private static readonly Regex ProfileJsonRegex = new Regex(
+            "\"profile\"\\s*:\\s*\"([^\"]*)\"",
+            RegexOptions.IgnoreCase);
 
         private float _nextProbeAt;
         private float _nextSyncAt;
@@ -39,6 +46,7 @@ namespace ToysBadgeMod
         private string _activeWatchCode = "";
         private string _activeNick = "";
         private int _activeHeroId;
+        private long _activePlayerId;
         private string _activeClientId = "";
         private bool _sharedWithActiveChatMod;
 
@@ -46,6 +54,8 @@ namespace ToysBadgeMod
         private long _epoch = -1;
         private int _joinCount;
         private int _consecutiveFailures;
+        private int _lastLoggedOnline = -1;
+        private int _lastLoggedMembers = -1;
         private bool _haltRetriesForMatch;
         private bool _warnedHttpSupportMissing;
         private bool _warnedMatchError;
@@ -70,7 +80,7 @@ namespace ToysBadgeMod
             if (!string.IsNullOrEmpty(_activeWatchCode))
             {
                 bool shared;
-                string newCid = ResolveEffectiveClientId(cfg, out shared);
+                string newCid = ResolveEffectiveClientId(cfg, _activePlayerId, out shared);
                 if (!string.Equals(newCid, _activeClientId, StringComparison.Ordinal))
                 {
                     LeaveCurrentRoom(cfg, false);
@@ -124,6 +134,7 @@ namespace ToysBadgeMod
                 {
                     _activeNick = snap.Nick;
                     _activeHeroId = snap.HeroId;
+                    if (snap.PlayerId > 0) _activePlayerId = snap.PlayerId;
                 }
             }
 
@@ -220,12 +231,13 @@ namespace ToysBadgeMod
         private void EnterMatch(float now, MatchSnapshot snap, ToysBadgeConfig cfg)
         {
             bool shared;
-            string cid = ResolveEffectiveClientId(cfg, out shared);
+            string cid = ResolveEffectiveClientId(cfg, snap.PlayerId, out shared);
 
             _activeRegion = snap.Region;
             _activeWatchCode = snap.WatchCode;
             _activeNick = snap.Nick;
             _activeHeroId = snap.HeroId;
+            _activePlayerId = snap.PlayerId;
             _activeClientId = cid;
             _sharedWithActiveChatMod = shared;
 
@@ -233,6 +245,8 @@ namespace ToysBadgeMod
             _epoch = -1;
             _joinCount = 0;
             _consecutiveFailures = 0;
+            _lastLoggedOnline = -1;
+            _lastLoggedMembers = -1;
             _haltRetriesForMatch = false;
             _warnedMatchError = false;
             _members.Clear();
@@ -269,12 +283,15 @@ namespace ToysBadgeMod
             _activeWatchCode = "";
             _activeNick = "";
             _activeHeroId = 0;
+            _activePlayerId = 0;
             _activeClientId = "";
             _sharedWithActiveChatMod = false;
             _token = "";
             _epoch = -1;
             _joinCount = 0;
             _consecutiveFailures = 0;
+            _lastLoggedOnline = -1;
+            _lastLoggedMembers = -1;
             _haltRetriesForMatch = false;
             _warnedMatchError = false;
             _forceImmediateSync = false;
@@ -297,7 +314,7 @@ namespace ToysBadgeMod
             if (cfg == null || string.IsNullOrEmpty(cfg.ServiceUrl)) return;
 
             bool shared;
-            string effectiveCid = ResolveEffectiveClientId(cfg, out shared);
+            string effectiveCid = ResolveEffectiveClientId(cfg, _activePlayerId, out shared);
             _activeClientId = effectiveCid;
             _sharedWithActiveChatMod = shared;
 
@@ -368,6 +385,14 @@ namespace ToysBadgeMod
 
                     _consecutiveFailures = 0;
                     _joinCount++;
+                    if (parsed.OnlineCount != _lastLoggedOnline || parsed.Members.Count != _lastLoggedMembers)
+                    {
+                        _lastLoggedOnline = parsed.OnlineCount;
+                        _lastLoggedMembers = parsed.Members.Count;
+                        SdkLog.Info("ToysBadgeMod", "房间成员同步: region=" + _activeRegion
+                            + ", online=" + parsed.OnlineCount
+                            + ", members=" + parsed.Members.Count);
+                    }
                     ScheduleNextSuccessSync(now, cfg, parsed);
                     return;
                 }
@@ -453,12 +478,13 @@ namespace ToysBadgeMod
             }
         }
 
-        private static string ResolveEffectiveClientId(ToysBadgeConfig cfg, out bool sharedWithActiveChatMod)
+        private static string ResolveEffectiveClientId(ToysBadgeConfig cfg, long playerId, out bool sharedWithActiveChatMod)
         {
             sharedWithActiveChatMod = false;
             if (cfg == null) return "";
 
-            if (cfg.ShareChatClientId)
+            string activeProfile = ReadActiveProfile();
+            if (cfg.ShareChatClientId && string.IsNullOrEmpty(activeProfile))
             {
                 try
                 {
@@ -495,7 +521,48 @@ namespace ToysBadgeMod
                 catch { }
             }
 
-            return cfg.ClientId ?? "";
+            return PresenceProtocol.DeriveScopedClientId(cfg.ClientId ?? "", activeProfile, playerId);
+        }
+
+        private static string ReadActiveProfile()
+        {
+            try
+            {
+                string envProfile = Environment.GetEnvironmentVariable("CESIUM_PROFILE");
+                if (!string.IsNullOrWhiteSpace(envProfile))
+                {
+                    return envProfile.Trim();
+                }
+            }
+            catch { }
+
+            try
+            {
+                string loaderRoot = CesiumLoader.SDK.IO.Path.LoaderRootDirectory;
+                if (!string.IsNullOrEmpty(loaderRoot))
+                {
+                    string doorstopPath = Path.Combine(loaderRoot, "doorstop_config.json");
+                    if (File.Exists(doorstopPath))
+                    {
+                        string[] lines = File.ReadAllLines(doorstopPath);
+                        for (int i = 0; i < lines.Length; i++)
+                        {
+                            string line = lines[i];
+                            if (string.IsNullOrEmpty(line)) continue;
+                            string trimmed = line.TrimStart();
+                            if (trimmed.StartsWith("//")) continue;
+                            Match m = ProfileJsonRegex.Match(line);
+                            if (m.Success && !string.IsNullOrWhiteSpace(m.Groups[1].Value))
+                            {
+                                return m.Groups[1].Value.Trim();
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            return "";
         }
 
         private static bool ReadBoolField(IDictionary<string, object> map, string key, bool fallback)
@@ -581,22 +648,45 @@ namespace ToysBadgeMod
                     return false;
                 }
 
+                long playerId = 0;
+                if (gm.account != null)
+                {
+                    try { playerId = gm.account.GetPlayerID(); }
+                    catch { playerId = 0; }
+                }
+
                 int heroId = 0;
                 try
                 {
                     RoomPlayer selfInfo = info.GetSelfInfo();
-                    if (selfInfo != null && selfInfo.characterConfig != null)
+                    if (selfInfo != null)
                     {
-                        heroId = selfInfo.characterConfig.Id;
+                        if (playerId <= 0 && selfInfo.Id > 0) playerId = selfInfo.Id;
+                        if (selfInfo.characterConfig != null) heroId = selfInfo.characterConfig.Id;
                     }
                 }
                 catch { heroId = 0; }
+
+                if (playerId <= 0 && gm.battle != null && gm.battle.PlayerDatas != null && gm.account != null)
+                {
+                    for (int i = 0; i < gm.battle.PlayerDatas.Count; i++)
+                    {
+                        BattlePlayerData pd = gm.battle.PlayerDatas[i];
+                        if (pd == null || pd.player == null) continue;
+                        if (gm.account.IsSelf(pd.player.Id))
+                        {
+                            playerId = pd.player.Id;
+                            break;
+                        }
+                    }
+                }
 
                 snap = new MatchSnapshot();
                 snap.Region = region;
                 snap.WatchCode = watchCode;
                 snap.Nick = nick;
                 snap.HeroId = heroId;
+                snap.PlayerId = playerId;
                 return true;
             }
             catch

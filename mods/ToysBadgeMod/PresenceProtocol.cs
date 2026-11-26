@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 using CesiumLoader.SDK.Configuration;
 
 namespace ToysBadgeMod
@@ -59,6 +60,14 @@ namespace ToysBadgeMod
         public const int MaxClientIdLength = 64;
         public const int MaxNickLength = 24;
 
+        private static readonly Regex UbbTagRegex = new Regex(
+            @"\[/?(?:color|size|b|i|u|s|sup|sub|url|img|align|font|outline|shadow)(?:=[^\]]*)?\]",
+            RegexOptions.IgnoreCase);
+
+        private static readonly Regex TmpTagRegex = new Regex(
+            @"</?(?:color|size|b|i|u|s|sup|sub|align|font|sprite|gradient|mark|alpha|cspace|mspace|indent|line-height|line-indent|margin|noparse|page|pos|space|voffset|width|style|link)(?:=[^>]*)?>",
+            RegexOptions.IgnoreCase);
+
         public static string MapRegion(string rawZone)
         {
             if (string.IsNullOrEmpty(rawZone)) return "cn";
@@ -100,22 +109,85 @@ namespace ToysBadgeMod
             return true;
         }
 
+        public static string StripRichTextTags(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return "";
+            string current = text;
+            for (int pass = 0; pass < 4; pass++)
+            {
+                string next = UbbTagRegex.Replace(current, "");
+                next = TmpTagRegex.Replace(next, "");
+                if (string.Equals(next, current, StringComparison.Ordinal)) break;
+                current = next;
+            }
+            return current;
+        }
+
         public static string SanitizeNick(string nick)
         {
             if (string.IsNullOrEmpty(nick)) return "";
-            StringBuilder sb = new StringBuilder(nick.Length);
-            for (int i = 0; i < nick.Length; i++)
+            string stripped = StripControlChars(StripRichTextTags(nick)).Trim();
+            if (string.IsNullOrEmpty(stripped))
             {
-                char ch = nick[i];
+                stripped = StripControlChars(nick).Trim();
+            }
+            if (stripped.Length > MaxNickLength)
+            {
+                stripped = stripped.Substring(0, MaxNickLength).TrimEnd();
+            }
+            return stripped;
+        }
+
+        public static string DeriveScopedClientId(string baseClientId, string profile, long playerId)
+        {
+            string b = (baseClientId ?? "").Trim();
+            string suffix = "";
+            if (playerId > 0)
+            {
+                suffix = "_p" + playerId.ToString(CultureInfo.InvariantCulture);
+            }
+            else if (!string.IsNullOrEmpty(profile))
+            {
+                StringBuilder safe = new StringBuilder(16);
+                for (int i = 0; i < profile.Length && safe.Length < 16; i++)
+                {
+                    char ch = profile[i];
+                    bool ok = (ch >= 'A' && ch <= 'Z')
+                        || (ch >= 'a' && ch <= 'z')
+                        || (ch >= '0' && ch <= '9')
+                        || ch == '_'
+                        || ch == '-';
+                    if (ok) safe.Append(ch);
+                }
+                if (safe.Length > 0)
+                {
+                    suffix = "_pr_" + safe.ToString();
+                }
+            }
+
+            if (string.IsNullOrEmpty(suffix))
+            {
+                return b;
+            }
+
+            int maxPrefix = MaxClientIdLength - suffix.Length;
+            if (maxPrefix < 0) maxPrefix = 0;
+            string prefix = b.Length > maxPrefix ? b.Substring(0, maxPrefix) : b;
+            string combined = prefix + suffix;
+            return IsValidClientId(combined) ? combined : b;
+        }
+
+        private static string StripControlChars(string input)
+        {
+            if (string.IsNullOrEmpty(input)) return "";
+            StringBuilder sb = new StringBuilder(input.Length);
+            for (int i = 0; i < input.Length; i++)
+            {
+                char ch = input[i];
                 if (ch < 0x20 || ch == 0x7F) continue;
                 sb.Append(ch);
             }
-            string cleaned = sb.ToString().Trim();
-            if (cleaned.Length > MaxNickLength)
-            {
-                cleaned = cleaned.Substring(0, MaxNickLength).TrimEnd();
-            }
-            return cleaned;
+            return sb.ToString();
         }
 
         public static string BuildJoinUrl(string baseUrl, string watchCode)
