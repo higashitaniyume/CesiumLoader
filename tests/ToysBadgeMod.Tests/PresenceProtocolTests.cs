@@ -56,6 +56,43 @@ namespace ToysBadgeMod.Tests
         }
 
         [Fact]
+        public void SanitizeNick_StripsUbbAndTmpRichTextTagsWhilePreservingPlainBrackets()
+        {
+            Assert.Equal(
+                "这就是上树",
+                PresenceProtocol.SanitizeNick("[u][size=28][color=#FFD9B5]这[/color][/size][size=28][color=#FFB2A2]就[/color][/size][size=28][color=#FF8A90]是[/color][/size][color=#FF627E]上[/color][color=#FF3B6B]树[/color][/u]"));
+            Assert.Equal(
+                "多芒小丸子",
+                PresenceProtocol.SanitizeNick("[b][i][color=#9B5CFF,#9B5CFF,#FFD54A,#FFD54A]多芒小丸子[/color][/i][/b]"));
+            Assert.Equal(
+                "哔哩@知芝酱",
+                PresenceProtocol.SanitizeNick("[size=24][i][u][color=#FFF8E7]哔[/color][color=#FFEAE1]哩[/color][color=#FFDCDA]@[/color][color=#FFCFD4]知[/color][color=#FFC1CD]芝[/color][color=#FFB3C7]酱[/color][/u][/i][/size]"));
+            Assert.Equal("小红", PresenceProtocol.SanitizeNick("<color=#FF0000><b>小红</b></color>"));
+            Assert.Equal("[机巧偶1]", PresenceProtocol.SanitizeNick("[机巧偶1]"));
+            Assert.Equal("[战队]小明", PresenceProtocol.SanitizeNick("[战队]小明"));
+        }
+
+        [Fact]
+        public void DeriveScopedClientId_ProducesDeterministicAccountAndProfileScopedIds()
+        {
+            string baseCid = "63ead46aed424c4d977589fb7d934ace";
+            string cid1 = PresenceProtocol.DeriveScopedClientId(baseCid, "alt1", 10001);
+            string cid1Again = PresenceProtocol.DeriveScopedClientId(baseCid, "alt1", 10001);
+            string cid2 = PresenceProtocol.DeriveScopedClientId(baseCid, "alt2", 20002);
+            string cidProfile = PresenceProtocol.DeriveScopedClientId(baseCid, "sub acc#2", 0);
+            string cidLong = PresenceProtocol.DeriveScopedClientId(new string('x', 60), "p1", 9876543210);
+
+            Assert.Equal(cid1, cid1Again);
+            Assert.NotEqual(cid1, cid2);
+            Assert.True(PresenceProtocol.IsValidClientId(cid1));
+            Assert.True(PresenceProtocol.IsValidClientId(cid2));
+            Assert.Equal(baseCid + "_pr_subacc2", cidProfile);
+            Assert.True(PresenceProtocol.IsValidClientId(cidProfile));
+            Assert.True(cidLong.Length <= PresenceProtocol.MaxClientIdLength);
+            Assert.True(PresenceProtocol.IsValidClientId(cidLong));
+        }
+
+        [Fact]
         public void BuildUrls_TrimTrailingSlashAndEscapeWatchCode()
         {
             Assert.Equal(
