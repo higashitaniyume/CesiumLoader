@@ -2,6 +2,15 @@
 
 欢迎您使用 **CesiumLoader** 模组加载器，衷心感谢您的信任与支持！如果您在游戏或模组加载过程中遇到任何异常、兼容问题或有改进建议，非常欢迎前往 [GitHub Issues](https://github.com/higashitaniyume/CesiumLoader/issues) 反馈，也可以加入企鹅群 **1078464597**（[点击加群](https://qm.qq.com/cgi-bin/qm/qr?k=tYrqev4U2Xr2PPAA4EkILA0NKmP3zgeU&jump_from=webapi&authKey=jHiIqsg0jEV53dBtQ9V3qXohKKHwLDGmfWprcrg7gueM9pU9iz+ST/QHR6d1j3wa)）或 [Discord 频道](https://discord.gg/SZaYSwGX94) 与我们联系交流，我们会认真倾听并尽力协助处理。
 
+## [4.1.6] - 2026-11-26
+
+### 模组
+
+- `ToysBadgeMod` 升级到 `1.0.2`：
+  - 自动剥离游戏昵称中的 FairyGUI UBB 与富文本标签（如彩色/渐变昵称），同时保留普通方括号昵称，修复彩色昵称玩家头像旁无法显示图标的问题。
+  - 检测到多 `profile`（`CESIUM_PROFILE` / `doorstop_config.json`）或未与 `InMatchChatMod` 共享 `ClientId` 时，按当前账号 ID 确定性派生独立 `ClientId`，支持同目录多开互相识别。
+  - 兼容其他加载器以 `APE-` 前缀上报的房间成员标识：为对应玩家显示圆形黑底徽章图标，鼠标悬停时提示「该玩家正在使用吉星ModLab」。
+
 ## [4.1.5] - 2026-11-26
 
 ### 模组
