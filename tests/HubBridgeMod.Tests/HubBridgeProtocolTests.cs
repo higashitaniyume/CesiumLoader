@@ -48,17 +48,59 @@ namespace HubBridgeMod.Tests
         }
 
         [Fact]
-        public void ParseCommandsResponse_ExtractsJoinRoomCommands()
+        public void ParseCommandsResponse_ExtractsJoinAndCreateRoomCommands()
         {
-            string json = "{\"commands\":[{\"commandId\":\"c1\",\"action\":\"join_room\",\"gameRoomId\":987654,\"gamePwd\":\"1234\",\"roomServerId\":2},{\"commandId\":\"\",\"action\":\"join_room\"}]}";
+            string json = "{\"commands\":[{\"commandId\":\"c1\",\"action\":\"join_room\",\"gameRoomId\":987654,\"gamePwd\":\"1234\",\"roomServerId\":2},{\"commandId\":\"c2\",\"action\":\"create_room\",\"roomName\":\"TestRoom\",\"gamePwd\":\"5678\",\"mapType\":1,\"mapId\":5},{\"commandId\":\"\",\"action\":\"join_room\"}]}";
             var commands = HubBridgeProtocol.ParseCommandsResponse(json);
 
-            Assert.Single(commands);
+            Assert.Equal(2, commands.Count);
             Assert.Equal("c1", commands[0].CommandId);
             Assert.Equal("join_room", commands[0].Action);
             Assert.Equal(987654L, commands[0].GameRoomId);
             Assert.Equal("1234", commands[0].GamePwd);
             Assert.Equal(2, commands[0].RoomServerId);
+
+            Assert.Equal("c2", commands[1].CommandId);
+            Assert.Equal("create_room", commands[1].Action);
+            Assert.Equal("TestRoom", commands[1].RoomName);
+            Assert.Equal("5678", commands[1].GamePwd);
+            Assert.Equal(1, commands[1].MapType);
+            Assert.Equal(5, commands[1].MapId);
+        }
+
+        [Fact]
+        public void UtcNowMs_MatchesUnixEpochRange()
+        {
+            long now = HubBridgeProtocol.UtcNowMs();
+            Assert.InRange(now, 1700000000000L, 4102444800000L);
+        }
+
+        [Fact]
+        public void EvaluateCreateEligibility_DefersUntilHomeAndGuardsStates()
+        {
+            Assert.False(HubBridgeProtocol.EvaluateCreateEligibility(false, 0, "Login", false, false, 0, false, out string code1, out _, out bool defer1));
+            Assert.True(defer1);
+            Assert.Equal("waiting_for_home", code1);
+
+            Assert.False(HubBridgeProtocol.EvaluateCreateEligibility(true, 10, "Loading", false, false, 0, false, out string code2, out _, out bool defer2));
+            Assert.True(defer2);
+            Assert.Equal("waiting_for_home", code2);
+
+            Assert.False(HubBridgeProtocol.EvaluateCreateEligibility(true, 10, "Home", false, false, 0, true, out string code3, out _, out bool defer3));
+            Assert.False(defer3);
+            Assert.Equal("in_match_team", code3);
+
+            Assert.False(HubBridgeProtocol.EvaluateCreateEligibility(true, 10, "Home", true, false, 99, false, out string code4, out _, out bool defer4));
+            Assert.False(defer4);
+            Assert.Equal("already_in_other_room", code4);
+
+            Assert.True(HubBridgeProtocol.EvaluateCreateEligibility(true, 10, "Home", true, true, 99, false, out string code5, out _, out bool defer5));
+            Assert.False(defer5);
+            Assert.Equal("already_master_in_room", code5);
+
+            Assert.True(HubBridgeProtocol.EvaluateCreateEligibility(true, 10, "Home", false, false, 0, false, out string code6, out _, out bool defer6));
+            Assert.False(defer6);
+            Assert.Equal("", code6);
         }
 
         [Fact]

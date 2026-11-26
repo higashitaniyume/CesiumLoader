@@ -77,12 +77,16 @@ namespace HubBridgeMod
         public long GameRoomId;
         public string GamePwd;
         public int RoomServerId;
+        public string RoomName;
+        public int MapType;
+        public int MapId;
 
         public BridgeCommand()
         {
             CommandId = "";
             Action = "";
             GamePwd = "";
+            RoomName = "";
         }
     }
 
@@ -154,6 +158,12 @@ namespace HubBridgeMod
     internal static class HubBridgeProtocol
     {
         public const int ProtocolVersion = 1;
+        private const long UnixEpochTicks = 621355968000000000L;
+
+        public static long UtcNowMs()
+        {
+            return (DateTime.UtcNow.Ticks - UnixEpochTicks) / TimeSpan.TicksPerMillisecond;
+        }
 
         public static string ResolveEndpointPath(string configuredPath, string modsDir)
         {
@@ -257,6 +267,54 @@ namespace HubBridgeMod
             return true;
         }
 
+        public static bool EvaluateCreateEligibility(
+            bool isLoggedIn,
+            long uid,
+            string sceneName,
+            bool isInRoom,
+            bool isMaster,
+            long currentRoomId,
+            bool inMatchTeam,
+            out string errorCode,
+            out string reason,
+            out bool shouldDefer)
+        {
+            errorCode = "";
+            reason = "";
+            shouldDefer = false;
+
+            if (!isLoggedIn || uid <= 0 || !string.Equals(sceneName, "Home", StringComparison.OrdinalIgnoreCase))
+            {
+                shouldDefer = true;
+                errorCode = "waiting_for_home";
+                reason = "等待游戏登录并进入主界面后自动建房。";
+                return false;
+            }
+
+            if (inMatchTeam)
+            {
+                errorCode = "in_match_team";
+                reason = "当前处于组队匹配状态，请先退出匹配队列。";
+                return false;
+            }
+
+            if (isInRoom)
+            {
+                if (isMaster && currentRoomId > 0)
+                {
+                    errorCode = "already_master_in_room";
+                    reason = "当前已作为房主在游戏房间内。";
+                    return true;
+                }
+
+                errorCode = "already_in_other_room";
+                reason = "当前已在其它游戏房间中，请先退出原房间。";
+                return false;
+            }
+
+            return true;
+        }
+
         public static List<BridgeCommand> ParseCommandsResponse(string json)
         {
             List<BridgeCommand> list = new List<BridgeCommand>();
@@ -287,6 +345,9 @@ namespace HubBridgeMod
                 cmd.GameRoomId = ReadLong(item, "gameRoomId", 0);
                 cmd.GamePwd = ReadString(item, "gamePwd", "");
                 cmd.RoomServerId = ReadInt(item, "roomServerId", 0);
+                cmd.RoomName = ReadString(item, "roomName", "");
+                cmd.MapType = ReadInt(item, "mapType", 0);
+                cmd.MapId = ReadInt(item, "mapId", 0);
                 list.Add(cmd);
             }
 

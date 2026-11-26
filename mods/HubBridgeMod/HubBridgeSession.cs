@@ -9,8 +9,10 @@ using Core.Net;
 using Core.Scene;
 using Cysharp.Threading.Tasks;
 using GameLogic;
+using party.model;
 using party.protocol;
 using Tools;
+using UI;
 using UnityEngine;
 
 namespace HubBridgeMod
@@ -23,6 +25,7 @@ namespace HubBridgeMod
     {
         private const int MaxEventQueueSize = 32;
         private const int MaxEventRetries = 8;
+        private const float PendingCreateTimeoutSeconds = 90f;
 
         private readonly string _sessionId = Guid.NewGuid().ToString("N");
         private readonly string _modsDir;
@@ -47,6 +50,9 @@ namespace HubBridgeMod
         private string _lastRoomSignature = "";
         private long _lastRoomId;
         private bool _joinInFlight;
+        private bool _createInFlight;
+        private BridgeCommand _pendingCreateCommand;
+        private float _pendingCreateDeadline;
         private bool _stopped;
         private bool _warnedHttpMissing;
 
@@ -86,6 +92,10 @@ namespace HubBridgeMod
             {
                 _nextProbeAt = now + (cfg.PollIntervalMs / 1000f);
                 ProbeRuntimeState(log);
+                if (_pendingCreateCommand != null)
+                {
+                    TryExecutePendingCreateCommand(now, log);
+                }
             }
 
             PollInflight(now, cfg, log);
@@ -585,7 +595,7 @@ namespace HubBridgeMod
             return ranks;
         }
 
-        private void ExecuteCommands(List<BridgeCommand> commands, ModLogger log)
+        private void ExecuteCommands(List<BridgeCommand> commands, float now, ModLogger log)
         {
             if (commands == null || commands.Count == 0) return;
 
@@ -599,7 +609,275 @@ namespace HubBridgeMod
                 {
                     HandleJoinRoomCommand(cmd, log);
                 }
+                else if (string.Equals(cmd.Action, "create_room", StringComparison.Ordinal))
+                {
+                    HandleCreateRoomCommand(cmd, now, log);
+                }
             }
+        }
+
+        private void HandleCreateRoomCommand(BridgeCommand cmd, float now, ModLogger log)
+        {
+            if (_createInFlight)
+            {
+                EnqueueEvent("create_failed", new Dictionary<string, object>
+                {
+                    { "commandId", cmd.CommandId },
+                    { "errorCode", "create_in_flight" },
+                    { "message", "已有建房请求正在处理中，请稍候。" },
+                });
+                return;
+            }
+
+            _pendingCreateCommand = cmd;
+            _pendingCreateDeadline = now + PendingCreateTimeoutSeconds;
+            TryExecutePendingCreateCommand(now, log);
+        }
+
+        private void TryExecutePendingCreateCommand(float now, ModLogger log)
+        {
+            BridgeCommand cmd = _pendingCreateCommand;
+            if (cmd == null || _createInFlight) return;
+
+            if (now > _pendingCreateDeadline)
+            {
+                _pendingCreateCommand = null;
+                EnqueueEvent("create_failed", new Dictionary<string, object>
+                {
+                    { "commandId", cmd.CommandId },
+                    { "errorCode", "timeout" },
+                    { "message", "等待进入游戏主界面超时，请在游戏内手动建房或重试。" },
+                });
+                return;
+            }
+
+            bool isLoggedIn;
+            long uid;
+            string region;
+            string sceneName;
+            bool isInRoom;
+            bool inMatchTeam;
+            BridgeRoomSnapshot room;
+            ReadRuntimeSnapshot(out isLoggedIn, out uid, out region, out sceneName, out isInRoom, out inMatchTeam, out room);
+
+            long currentRoomId = room != null ? room.RoomId : 0;
+            bool isMaster = room != null && room.IsMaster;
+            string errorCode;
+            string reason;
+            bool shouldDefer;
+            bool eligible = HubBridgeProtocol.EvaluateCreateEligibility(
+                isLoggedIn, uid, sceneName, isInRoom, isMaster, currentRoomId, inMatchTeam,
+                out errorCode, out reason, out shouldDefer);
+
+            if (!eligible)
+            {
+                if (shouldDefer) return;
+                _pendingCreateCommand = null;
+                EnqueueEvent("create_failed", new Dictionary<string, object>
+                {
+                    { "commandId", cmd.CommandId },
+                    { "errorCode", errorCode },
+                    { "message", reason },
+                });
+                return;
+            }
+
+            if (errorCode == "already_master_in_room" && room != null && room.RoomId > 0)
+            {
+                _pendingCreateCommand = null;
+                EnqueueEvent("room_created", room.ToDictionary());
+                log?.Info("房主已在游戏房间内，直接同步房间号: roomId=" + room.RoomId);
+                return;
+            }
+
+            if (!SimpleSingletonProvider<GameLogicManager>.hasInstance)
+            {
+                return;
+            }
+
+            GameLogicManager gm = SimpleSingletonProvider<GameLogicManager>.inst;
+            if (gm?.room == null || gm.account == null || !gm.account.StartGameLicense())
+            {
+                return;
+            }
+
+            _pendingCreateCommand = null;
+            _createInFlight = true;
+
+            int mapModeType;
+            int mapId;
+            int upgradePlan;
+            int timePlan;
+            int speedType;
+            int difficulty;
+            ResolveCreateRoomDefaults(cmd.MapType, cmd.MapId, out mapModeType, out mapId, out upgradePlan, out timePlan, out speedType, out difficulty);
+
+            string roomName = !string.IsNullOrWhiteSpace(cmd.RoomName) ? cmd.RoomName.Trim() : (gm.account.GetName() ?? "AstralParty");
+            string pwd = (cmd.GamePwd ?? "").Trim();
+            if (pwd.Length > 12) pwd = pwd.Substring(0, 12);
+
+            log?.Info("正在执行自动建房: mode=" + mapModeType + ", mapId=" + mapId + ", hasPwd=" + (pwd.Length > 0));
+
+            try
+            {
+                gm.room.RequestCreateC2S(
+                    roomName,
+                    pwd,
+                    mapId,
+                    0,
+                    upgradePlan,
+                    timePlan,
+                    0uL,
+                    speedType,
+                    mapModeType,
+                    difficulty,
+                    false,
+                    0).OnFinished.AddOnce(result =>
+                {
+                    if (_stopped) return;
+                    _createInFlight = false;
+                    if (result != null && result.errId == 0)
+                    {
+                        _nextProbeAt = 0f;
+                        _nextHeartbeatAt = 0f;
+                        log?.Info("自动建房 RPC 成功，等待房间状态同步。");
+                    }
+                    else
+                    {
+                        int errId = result != null ? result.errId : -1;
+                        EnqueueEvent("create_failed", new Dictionary<string, object>
+                        {
+                            { "commandId", cmd.CommandId },
+                            { "errorCode", "rpc_error_" + errId },
+                            { "errId", errId },
+                            { "message", "游戏返回创建房间失败（错误码 " + errId + "）。" },
+                        });
+                        log?.Warn("自动建房失败: errId=" + errId);
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _createInFlight = false;
+                EnqueueEvent("create_failed", new Dictionary<string, object>
+                {
+                    { "commandId", cmd.CommandId },
+                    { "errorCode", "exception" },
+                    { "message", ex.Message ?? "create_exception" },
+                });
+            }
+        }
+
+        private static void ResolveCreateRoomDefaults(
+            int requestedMapType,
+            int requestedMapId,
+            out int mapModeType,
+            out int mapId,
+            out int upgradePlan,
+            out int timePlan,
+            out int speedType,
+            out int difficulty)
+        {
+            mapModeType = requestedMapType > 0 ? requestedMapType : 1;
+            mapId = requestedMapId > 0 ? requestedMapId : 1;
+            upgradePlan = 1;
+            timePlan = 1;
+            speedType = 2;
+            difficulty = 0;
+
+            try
+            {
+                GameModeInfoConfigure modeCfg = mapModeType.GetGameModeInfoConfigure();
+                if (modeCfg != null)
+                {
+                    if (modeCfg.MapID != null && modeCfg.MapID.Count > 0)
+                    {
+                        bool foundRequested = false;
+                        if (requestedMapId > 0)
+                        {
+                            for (int i = 0; i < modeCfg.MapID.Count; i++)
+                            {
+                                if (modeCfg.MapID[i] == requestedMapId)
+                                {
+                                    foundRequested = true;
+                                    break;
+                                }
+                            }
+                        }
+                        mapId = foundRequested ? requestedMapId : modeCfg.MapID[0];
+                    }
+
+                    if (mapModeType == 4 || mapModeType == 12)
+                    {
+                        if (StaticConfigure.GameMode != null
+                            && StaticConfigure.GameMode.DifficultyDataDict != null
+                            && StaticConfigure.GameMode.DifficultyDataDict.TryGetValue(4, out var diffData)
+                            && diffData?.GameModeDifficultyDataConfigureItems != null
+                            && diffData.GameModeDifficultyDataConfigureItems.Count > 0)
+                        {
+                            upgradePlan = diffData.GameModeDifficultyDataConfigureItems[0].UpgradeId;
+                        }
+                    }
+                    else if (modeCfg.Upgrade != null && modeCfg.Upgrade.Count > 0 && StaticConfigure.Upgrade?.DataDict != null)
+                    {
+                        int firstValid = 0;
+                        int defaultId = 0;
+                        for (int i = 0; i < modeCfg.Upgrade.Count; i++)
+                        {
+                            if (StaticConfigure.Upgrade.DataDict.TryGetValue(modeCfg.Upgrade[i], out var upg) && upg != null)
+                            {
+                                if (firstValid == 0) firstValid = upg.Id;
+                                if (upg.IsDefault)
+                                {
+                                    defaultId = upg.Id;
+                                    break;
+                                }
+                            }
+                        }
+                        if (defaultId > 0) upgradePlan = defaultId;
+                        else if (firstValid > 0) upgradePlan = firstValid;
+                    }
+                }
+            }
+            catch { }
+
+            try
+            {
+                var infos = StaticConfigure.ChoosingTimeLimit?.Infos;
+                if (infos != null && infos.Count > 0)
+                {
+                    int picked = (int)infos[0].ChoosingTimeType;
+                    for (int i = 0; i < infos.Count; i++)
+                    {
+                        if (infos[i].IsDefault)
+                        {
+                            picked = (int)infos[i].ChoosingTimeType;
+                            break;
+                        }
+                    }
+                    timePlan = picked;
+                }
+            }
+            catch { }
+
+            try
+            {
+                var speeds = StaticConfigure.ChoosingTimeLimit?.Gamespeeds;
+                if (speeds != null && speeds.Count > 0)
+                {
+                    int picked = (int)speeds[0].GameSpeedType;
+                    for (int i = 0; i < speeds.Count; i++)
+                    {
+                        if (speeds[i].IsDefault)
+                        {
+                            picked = (int)speeds[i].GameSpeedType;
+                            break;
+                        }
+                    }
+                    speedType = picked;
+                }
+            }
+            catch { }
         }
 
         private void HandleJoinRoomCommand(BridgeCommand cmd, ModLogger log)
@@ -744,7 +1022,7 @@ namespace HubBridgeMod
             {
                 { "protocol", HubBridgeProtocol.ProtocolVersion },
                 { "sessionId", _sessionId },
-                { "atMs", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() },
+                { "atMs", HubBridgeProtocol.UtcNowMs() },
                 { "isLoggedIn", isLoggedIn },
                 { "uid", uid },
                 { "region", region },
@@ -752,6 +1030,7 @@ namespace HubBridgeMod
                 { "isInRoom", isInRoom },
                 { "inMatchTeam", inMatchTeam },
                 { "joinInFlight", _joinInFlight },
+                { "createInFlight", _createInFlight || _pendingCreateCommand != null },
                 { "room", room != null ? room.ToDictionary() : null },
             };
 
@@ -815,7 +1094,7 @@ namespace HubBridgeMod
                     if (ok)
                     {
                         List<BridgeCommand> cmds = HubBridgeProtocol.ParseCommandsResponse(finished.ResponseText);
-                        ExecuteCommands(cmds, log);
+                        ExecuteCommands(cmds, now, log);
                     }
                     else if (finished.StatusCode == 401 || finished.IsNetworkError)
                     {
@@ -864,7 +1143,7 @@ namespace HubBridgeMod
                 _eventQueue.Dequeue();
             }
             string id = Guid.NewGuid().ToString("N");
-            long atMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            long atMs = HubBridgeProtocol.UtcNowMs();
             _eventQueue.Enqueue(new BridgeEvent(id, type, atMs, data));
         }
 

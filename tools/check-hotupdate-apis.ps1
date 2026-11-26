@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     扫描热更侧代码里"可能被 AOT 裁剪"的 BCL 调用。
 
@@ -35,7 +35,9 @@ $forbidden = @(
     @{ Pattern = 'AppContext\.BaseDirectory';              Why = 'AppContext.BaseDirectory 在热更环境不可靠' },
     @{ Pattern = '\.GetExportedTypes\(';                  Why = 'Assembly.GetExportedTypes 会被裁剪' },
     @{ Pattern = '\.DefinedTypes\b';                      Why = 'Type.DefinedTypes 在热更环境不可用' },
-    @{ Pattern = '\.ReflectionOnly';                       Why = '反射专用 API 在热更环境不存在' }
+    @{ Pattern = '\.ReflectionOnly';                       Why = '反射专用 API 在热更环境不存在' },
+    @{ Pattern = '\.ToUnixTimeMilliseconds\b';             Why = 'DateTimeOffset.ToUnixTimeMilliseconds 在热更环境被裁剪(请改用 DateTime.UtcNow.Ticks 换算)' },
+    @{ Pattern = '\.ToUnixTimeSeconds\b';                  Why = 'DateTimeOffset.ToUnixTimeSeconds 在热更环境被裁剪(请改用 DateTime.UtcNow.Ticks 换算)' }
 )
 
 # 扫描范围: SDK + Bootstrap + 全部内置模组(与打包时的模组清单一致)。
