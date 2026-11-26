@@ -8,11 +8,19 @@ using CesiumLoader.SDK.Configuration;
 
 namespace ToysBadgeMod
 {
+    internal enum BadgeClientKind
+    {
+        None = 0,
+        Toys = 1,
+        ModLab = 2
+    }
+
     internal sealed class RoomMember
     {
         public string MemberId;
         public string Nick;
         public string NormalizedNick;
+        public string ModVersion;
         public bool Online;
         public bool Self;
         public long JoinedAt;
@@ -22,6 +30,7 @@ namespace ToysBadgeMod
             MemberId = "";
             Nick = "";
             NormalizedNick = "";
+            ModVersion = "";
         }
     }
 
@@ -59,6 +68,28 @@ namespace ToysBadgeMod
         public const int MinClientIdLength = 8;
         public const int MaxClientIdLength = 64;
         public const int MaxNickLength = 24;
+        public const string ModLabVersionPrefix = "APE-";
+        public const string ToysTooltipText = "该玩家正在使用AstralParty.Toys";
+        public const string ModLabTooltipText = "该玩家正在使用吉星ModLab";
+
+        public static BadgeClientKind ResolveClientKind(string modVersion)
+        {
+            string v = (modVersion ?? "").Trim();
+            if (v.StartsWith(ModLabVersionPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                return BadgeClientKind.ModLab;
+            }
+            return BadgeClientKind.Toys;
+        }
+
+        public static string GetTooltipText(BadgeClientKind kind)
+        {
+            if (kind == BadgeClientKind.ModLab)
+            {
+                return ModLabTooltipText;
+            }
+            return ToysTooltipText;
+        }
 
         private static readonly Regex UbbTagRegex = new Regex(
             @"\[/?(?:color|size|b|i|u|s|sup|sub|url|img|align|font|outline|shadow)(?:=[^\]]*)?\]",
@@ -279,6 +310,7 @@ namespace ToysBadgeMod
                             m.MemberId = ReadString(item, "memberId", "");
                             m.Nick = rawNick;
                             m.NormalizedNick = SanitizeNick(rawNick);
+                            m.ModVersion = ReadStringFirst(item, new string[] { "modVersion", "modversion", "mod_version" }, "");
                             m.Online = ReadBool(item, "online", false);
                             m.Self = ReadBool(item, "self", false);
                             m.JoinedAt = ReadLong(item, "joinedAt", 0);
@@ -318,6 +350,17 @@ namespace ToysBadgeMod
             string s = val as string;
             if (s != null) return s;
             return Convert.ToString(val, CultureInfo.InvariantCulture) ?? fallback;
+        }
+
+        private static string ReadStringFirst(IDictionary<string, object> map, string[] keys, string fallback)
+        {
+            if (map == null || keys == null) return fallback;
+            for (int i = 0; i < keys.Length; i++)
+            {
+                string val = ReadString(map, keys[i], "");
+                if (!string.IsNullOrEmpty(val)) return val;
+            }
+            return fallback;
         }
 
         private static bool ReadBool(IDictionary<string, object> map, string key, bool fallback)
