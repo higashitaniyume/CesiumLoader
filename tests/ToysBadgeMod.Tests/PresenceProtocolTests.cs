@@ -154,17 +154,17 @@ namespace ToysBadgeMod.Tests
         }
 
         [Theory]
-        [InlineData("APE-1.0.6", BadgeClientKind.ModLab)]
-        [InlineData("ape-1.0.5", BadgeClientKind.ModLab)]
-        [InlineData("  APE-1.0.0  ", BadgeClientKind.ModLab)]
-        [InlineData("1.0.0", BadgeClientKind.Toys)]
-        [InlineData("1.0.2", BadgeClientKind.Toys)]
-        [InlineData("", BadgeClientKind.Toys)]
-        [InlineData(null, BadgeClientKind.Toys)]
-        [InlineData("APEX-1.0.0", BadgeClientKind.Toys)]
-        public void ResolveClientKind_DetectsModLabPrefixAndDefaultsToToys(string modVersion, BadgeClientKind expected)
+        [InlineData("APE-1.0.6", nameof(BadgeClientKind.ModLab))]
+        [InlineData("ape-1.0.5", nameof(BadgeClientKind.ModLab))]
+        [InlineData("  APE-1.0.0  ", nameof(BadgeClientKind.ModLab))]
+        [InlineData("1.0.0", nameof(BadgeClientKind.Toys))]
+        [InlineData("1.0.2", nameof(BadgeClientKind.Toys))]
+        [InlineData("", nameof(BadgeClientKind.Toys))]
+        [InlineData(null, nameof(BadgeClientKind.Toys))]
+        [InlineData("APEX-1.0.0", nameof(BadgeClientKind.Toys))]
+        public void ResolveClientKind_DetectsModLabPrefixAndDefaultsToToys(string modVersion, string expectedKind)
         {
-            Assert.Equal(expected, PresenceProtocol.ResolveClientKind(modVersion));
+            Assert.Equal(Enum.Parse<BadgeClientKind>(expectedKind), PresenceProtocol.ResolveClientKind(modVersion));
         }
 
         [Fact]
