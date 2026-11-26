@@ -1,0 +1,1 @@
+{"id":"HubBridgeMod","name":"组队大厅联动","version":"1.0.0","author":"CesiumLoader","description":"连接 AstralParty.Toys 组队大厅：房主开房自动捕获房间码与密码、队员一键进房、对局结束自动回传即时战报与回放 ID","permissions":779,"sdkVersion":"3.8.0","platforms":["windows","android"],"dependencies":[]}

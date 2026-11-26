@@ -28,6 +28,7 @@
     <Project Path="mods/ForkDirectionMod/ForkDirectionMod.csproj" />
     <Project Path="mods/FreeCameraMod/FreeCameraMod.csproj" />
     <Project Path="mods/HideHudMod/HideHudMod.csproj" />
+    <Project Path="mods/HubBridgeMod/HubBridgeMod.csproj" />
     <Project Path="mods/LanguageUnlockMod/LanguageUnlockMod.csproj" />
     <Project Path="mods/MapPeekMod/MapPeekMod.csproj" />
     <Project Path="mods/PinnedRelicsMod/PinnedRelicsMod.csproj" />
@@ -48,6 +49,7 @@
     <Project Path="tests/ForkDirectionMod.Tests/ForkDirectionMod.Tests.csproj" />
     <Project Path="tests/FontMod.Tests/FontMod.Tests.csproj" />
     <Project Path="tests/HideHudMod.Tests/HideHudMod.Tests.csproj" />
+    <Project Path="tests/HubBridgeMod.Tests/HubBridgeMod.Tests.csproj" />
     <Project Path="tests/LanguageUnlockMod.Tests/LanguageUnlockMod.Tests.csproj" />
     <Project Path="tests/PinnedRelicsMod.Tests/PinnedRelicsMod.Tests.csproj" />
     <Project Path="tests/PvePanelMod.Tests/PvePanelMod.Tests.csproj" />
