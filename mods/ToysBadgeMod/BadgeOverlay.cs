@@ -17,7 +17,10 @@ namespace ToysBadgeMod
         private const float PanelSearchIntervalSeconds = 0.5f;
         private const int MaxWalkDepth = 12;
 
-        private const string HoverTooltipText = "该玩家正在使用AstralParty.Toys";
+        private const string ModLabIconAssetKey = "UT_Item_PlayerPhoto_70120";
+        private static readonly Color ModLabRimColor = new Color(248f / 255f, 250f / 255f, 1f, 0.88f);
+        private static readonly Color ModLabBgColor = Color.black;
+
         private const int TipSortingOrder = 30000;
         private const int TipFontSize = 18;
         private const float TipPadX = 10f;
@@ -33,7 +36,15 @@ namespace ToysBadgeMod
             public UICom_PlayerInfo Info;
             public GComponent Box;
             public GImage Icon;
+            public GComponent ModLabGroup;
+            public GGraph ModLabRim;
+            public GGraph ModLabBg;
+            public GComponent ModLabClip;
+            public GGraph ModLabMask;
+            public UI.TextureLoader ModLabLoader;
+            public int ModLabLayoutSize;
             public long PlayerId;
+            public BadgeClientKind ClientKind;
             public int IconSize;
             public float LastX;
             public float LastY;
@@ -287,14 +298,15 @@ namespace ToysBadgeMod
             try { rawNick = pd.player.GetNick(); }
             catch { rawNick = ""; }
 
-            if (!session.IsPlayerMatched(playerId, rawNick, isSelf, cfg.ShowSelfBadge, cfg.ShowOfflineMembers))
+            BadgeClientKind clientKind = session.GetPlayerBadgeKind(playerId, rawNick, isSelf, cfg.ShowSelfBadge, cfg.ShowOfflineMembers);
+            if (clientKind == BadgeClientKind.None)
             {
                 HideSlot(index);
                 return;
             }
 
-            NTexture tex = EnsureTexture(cfg.IconPath);
-            if (tex == null)
+            NTexture tex = clientKind == BadgeClientKind.ModLab ? null : EnsureTexture(cfg.IconPath);
+            if (clientKind != BadgeClientKind.ModLab && tex == null)
             {
                 HideSlot(index);
                 return;
@@ -315,11 +327,12 @@ namespace ToysBadgeMod
             else
             {
                 badge.Info = info;
-                if (badge.Icon != null && badge.Icon.texture != tex)
+                if (tex != null && badge.Icon != null && badge.Icon.texture != tex)
                 {
                     badge.Icon.texture = tex;
                 }
             }
+            badge.ClientKind = clientKind;
 
             int size = cfg.IconSize;
             if (badge.IconSize != size)
@@ -331,6 +344,22 @@ namespace ToysBadgeMod
                     badge.Icon.SetSize(size, size);
                     badge.Icon.SetXY(0f, 0f);
                 }
+            }
+
+            if (clientKind == BadgeClientKind.ModLab)
+            {
+                EnsureModLabVisual(badge);
+                if (badge.ModLabLayoutSize != size)
+                {
+                    LayoutModLabVisual(badge, size);
+                }
+                if (badge.Icon != null) badge.Icon.visible = false;
+                if (badge.ModLabGroup != null) badge.ModLabGroup.visible = true;
+            }
+            else
+            {
+                if (badge.Icon != null) badge.Icon.visible = true;
+                if (badge.ModLabGroup != null) badge.ModLabGroup.visible = false;
             }
 
             float restX;
@@ -407,7 +436,7 @@ namespace ToysBadgeMod
 
             GImage icon = new GImage();
             icon.name = "ToysBadgeMod.Icon";
-            icon.texture = tex;
+            if (tex != null) icon.texture = tex;
             icon.touchable = false;
             box.AddChild(icon);
 
@@ -424,6 +453,101 @@ namespace ToysBadgeMod
             badge.LastY = float.NaN;
             _slots[index] = badge;
             return badge;
+        }
+
+        private static void EnsureModLabVisual(SlotBadge badge)
+        {
+            if (badge == null || badge.Box == null || badge.Box.isDisposed) return;
+            if (badge.ModLabGroup != null && !badge.ModLabGroup.isDisposed) return;
+
+            GComponent group = new GComponent();
+            group.name = "ToysBadgeMod.ModLabGroup";
+            group.touchable = false;
+            group.opaque = false;
+
+            GGraph rim = new GGraph();
+            rim.name = "ToysBadgeMod.ModLabRim";
+            rim.touchable = false;
+
+            GGraph bg = new GGraph();
+            bg.name = "ToysBadgeMod.ModLabBg";
+            bg.touchable = false;
+
+            GComponent clip = new GComponent();
+            clip.name = "ToysBadgeMod.ModLabClip";
+            clip.touchable = false;
+            clip.opaque = false;
+
+            UI.TextureLoader loader = new UI.TextureLoader();
+            loader.name = "ToysBadgeMod.ModLabIcon";
+            loader.touchable = false;
+            loader.autoSize = false;
+            loader.fill = FillType.Scale;
+            loader.align = AlignType.Center;
+            loader.verticalAlign = VertAlignType.Middle;
+            loader.showErrorSign = false;
+
+            GGraph mask = new GGraph();
+            mask.name = "ToysBadgeMod.ModLabMask";
+            mask.touchable = false;
+
+            clip.AddChild(loader);
+            clip.AddChild(mask);
+            clip.mask = mask.displayObject;
+
+            group.AddChild(rim);
+            group.AddChild(bg);
+            group.AddChild(clip);
+            badge.Box.AddChild(group);
+
+            badge.ModLabGroup = group;
+            badge.ModLabRim = rim;
+            badge.ModLabBg = bg;
+            badge.ModLabClip = clip;
+            badge.ModLabMask = mask;
+            badge.ModLabLoader = loader;
+            badge.ModLabLayoutSize = 0;
+
+            loader.url = ModLabIconAssetKey;
+        }
+
+        private static void LayoutModLabVisual(SlotBadge badge, int size)
+        {
+            if (badge == null || badge.ModLabGroup == null || badge.ModLabGroup.isDisposed) return;
+
+            float s = size;
+            float outerMargin = s * (1.5f / 96f);
+            float outerDiam = s - outerMargin * 2f;
+            if (outerDiam < 2f) outerDiam = 2f;
+            float ring = s * (1.5f / 96f);
+            if (ring < 0.8f) ring = 0.8f;
+            float innerDiam = outerDiam - ring * 2f;
+            if (innerDiam < 1f) innerDiam = 1f;
+            float innerOffset = (s - innerDiam) * 0.5f;
+
+            badge.ModLabGroup.SetSize(s, s);
+            badge.ModLabGroup.SetXY(0f, 0f);
+
+            badge.ModLabRim.SetXY(outerMargin, outerMargin);
+            badge.ModLabRim.SetSize(outerDiam, outerDiam);
+            badge.ModLabRim.DrawEllipse(outerDiam, outerDiam, ModLabRimColor);
+
+            badge.ModLabBg.SetXY(innerOffset, innerOffset);
+            badge.ModLabBg.SetSize(innerDiam, innerDiam);
+            badge.ModLabBg.DrawEllipse(innerDiam, innerDiam, ModLabBgColor);
+
+            badge.ModLabClip.SetXY(innerOffset, innerOffset);
+            badge.ModLabClip.SetSize(innerDiam, innerDiam);
+
+            badge.ModLabLoader.SetXY(0f, 0f);
+            badge.ModLabLoader.SetSize(innerDiam, innerDiam);
+
+            badge.ModLabMask.SetXY(0f, 0f);
+            badge.ModLabMask.SetSize(innerDiam, innerDiam);
+            badge.ModLabMask.DrawEllipse(innerDiam, innerDiam, Color.white);
+            badge.ModLabClip.mask = badge.ModLabMask.displayObject;
+
+            badge.ModLabLayoutSize = size;
         }
 
         private void UpdateHoverTooltip()
@@ -457,7 +581,7 @@ namespace ToysBadgeMod
 
                 if (hit != null)
                 {
-                    ShowTip(hit.Box, hit.Info);
+                    ShowTip(hit.Box, hit.Info, hit.ClientKind);
                 }
                 else
                 {
@@ -533,7 +657,7 @@ namespace ToysBadgeMod
             return false;
         }
 
-        private void ShowTip(GComponent owner, UICom_PlayerInfo sampleInfo)
+        private void ShowTip(GComponent owner, UICom_PlayerInfo sampleInfo, BadgeClientKind clientKind)
         {
             if (owner == null || owner.isDisposed) return;
             GRoot root = GRoot.inst;
@@ -542,7 +666,7 @@ namespace ToysBadgeMod
             EnsureTipBox(root, sampleInfo);
             if (_tipBox == null || _tipBox.isDisposed || _tipText == null || _tipBorder == null || _tipBg == null) return;
 
-            _tipText.text = HoverTooltipText;
+            _tipText.text = PresenceProtocol.GetTooltipText(clientKind);
 
             float w = _tipText.textWidth + TipPadX * 2f;
             float h = _tipText.textHeight + TipPadY * 2f;
@@ -802,6 +926,10 @@ namespace ToysBadgeMod
             if (badge == null || badge.Box == null) return;
             try
             {
+                if (badge.ModLabClip != null && !badge.ModLabClip.isDisposed)
+                {
+                    badge.ModLabClip.mask = null;
+                }
                 if (badge.Box.parent != null)
                 {
                     badge.Box.parent.RemoveChild(badge.Box, true);

@@ -1,1 +1,1 @@
-{"id":"ToysBadgeMod","name":"工具箱玩家标识","version":"1.0.1","author":"Aperfish","description":"对局内自动在同样使用 Astral Party Toys（吉星派对工具箱）的玩家头像左侧显示圆形工具箱图标。","permissions":641,"sdkVersion":"3.8.0","platforms":["windows","android"],"dependencies":[]}
+{"id":"ToysBadgeMod","name":"工具箱玩家标识","version":"1.0.2","author":"Aperfish","description":"对局内自动在同样使用 Astral Party Toys（吉星派对工具箱）的玩家头像左侧显示圆形工具箱图标。","permissions":641,"sdkVersion":"3.8.0","platforms":["windows","android"],"dependencies":[]}

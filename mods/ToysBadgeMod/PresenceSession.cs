@@ -30,8 +30,8 @@ namespace ToysBadgeMod
 
     internal sealed class PresenceSession : IDisposable
     {
-        private const string ModVersion = "1.0.1";
-        private const string UserAgent = "AstralParty.Toys Mod/1.0.1 (ToysBadgeMod)";
+        private const string ModVersion = "1.0.2";
+        private const string UserAgent = "AstralParty.Toys Mod/1.0.2 (ToysBadgeMod)";
         private const float ProbeIntervalSeconds = 0.5f;
 
         private static readonly Regex ProfileJsonRegex = new Regex(
@@ -152,24 +152,31 @@ namespace ToysBadgeMod
 
         public bool IsPlayerMatched(long playerId, string rawNick, bool isSelf, bool showSelfBadge, bool showOfflineMembers)
         {
-            if (string.IsNullOrEmpty(_activeWatchCode)) return false;
+            return GetPlayerBadgeKind(playerId, rawNick, isSelf, showSelfBadge, showOfflineMembers) != BadgeClientKind.None;
+        }
+
+        public BadgeClientKind GetPlayerBadgeKind(long playerId, string rawNick, bool isSelf, bool showSelfBadge, bool showOfflineMembers)
+        {
+            if (string.IsNullOrEmpty(_activeWatchCode)) return BadgeClientKind.None;
 
             if (isSelf)
             {
-                if (!showSelfBadge) return false;
+                if (!showSelfBadge) return BadgeClientKind.None;
                 for (int i = 0; i < _members.Count; i++)
                 {
                     RoomMember m = _members[i];
                     if (m.Self)
                     {
-                        return m.Online || showOfflineMembers;
+                        return (m.Online || showOfflineMembers)
+                            ? PresenceProtocol.ResolveClientKind(m.ModVersion)
+                            : BadgeClientKind.None;
                     }
                 }
-                return !string.IsNullOrEmpty(_token);
+                return !string.IsNullOrEmpty(_token) ? BadgeClientKind.Toys : BadgeClientKind.None;
             }
 
             string cleanNick = PresenceProtocol.SanitizeNick(rawNick);
-            if (string.IsNullOrEmpty(cleanNick)) return false;
+            if (string.IsNullOrEmpty(cleanNick)) return BadgeClientKind.None;
 
             for (int i = 0; i < _members.Count; i++)
             {
@@ -178,7 +185,7 @@ namespace ToysBadgeMod
                 if (!m.Online && !showOfflineMembers) continue;
                 if (string.Equals(m.NormalizedNick, cleanNick, StringComparison.Ordinal))
                 {
-                    return true;
+                    return PresenceProtocol.ResolveClientKind(m.ModVersion);
                 }
             }
 
@@ -189,11 +196,11 @@ namespace ToysBadgeMod
                 if (!m.Online && !showOfflineMembers) continue;
                 if (string.Equals(m.NormalizedNick, cleanNick, StringComparison.OrdinalIgnoreCase))
                 {
-                    return true;
+                    return PresenceProtocol.ResolveClientKind(m.ModVersion);
                 }
             }
 
-            return false;
+            return BadgeClientKind.None;
         }
 
         public void Dispose()

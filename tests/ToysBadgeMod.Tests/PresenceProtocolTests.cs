@@ -152,5 +152,55 @@ namespace ToysBadgeMod.Tests
             Assert.Equal("room_full", res.ErrorCode);
             Assert.Equal("room is full", res.ErrorMessage);
         }
+
+        [Theory]
+        [InlineData("APE-1.0.6", BadgeClientKind.ModLab)]
+        [InlineData("ape-1.0.5", BadgeClientKind.ModLab)]
+        [InlineData("  APE-1.0.0  ", BadgeClientKind.ModLab)]
+        [InlineData("1.0.0", BadgeClientKind.Toys)]
+        [InlineData("1.0.2", BadgeClientKind.Toys)]
+        [InlineData("", BadgeClientKind.Toys)]
+        [InlineData(null, BadgeClientKind.Toys)]
+        [InlineData("APEX-1.0.0", BadgeClientKind.Toys)]
+        public void ResolveClientKind_DetectsModLabPrefixAndDefaultsToToys(string modVersion, BadgeClientKind expected)
+        {
+            Assert.Equal(expected, PresenceProtocol.ResolveClientKind(modVersion));
+        }
+
+        [Fact]
+        public void GetTooltipText_ReturnsExpectedTooltipPerClientKind()
+        {
+            Assert.Equal("该玩家正在使用吉星ModLab", PresenceProtocol.GetTooltipText(BadgeClientKind.ModLab));
+            Assert.Equal("该玩家正在使用AstralParty.Toys", PresenceProtocol.GetTooltipText(BadgeClientKind.Toys));
+        }
+
+        [Fact]
+        public void ParseJoinResponse_ParsesMemberModVersionVariants()
+        {
+            string json = "{"
+                + "\"protocol\":1,"
+                + "\"room\":{"
+                + "\"roomId\":\"R1\",\"onlineCount\":5,\"capacity\":6,\"createdAt\":1732100000000,"
+                + "\"members\":["
+                + "{\"memberId\":\"M1\",\"nick\":\"P1\",\"modVersion\":\"APE-1.0.6\",\"online\":true,\"self\":false,\"joinedAt\":1},"
+                + "{\"memberId\":\"M2\",\"nick\":\"P2\",\"modversion\":\"ape-1.0.5\",\"online\":true,\"self\":false,\"joinedAt\":2},"
+                + "{\"memberId\":\"M3\",\"nick\":\"P3\",\"mod_version\":\"APE-2.0\",\"online\":true,\"self\":false,\"joinedAt\":3},"
+                + "{\"memberId\":\"M4\",\"nick\":\"P4\",\"modVersion\":\"1.0.2\",\"online\":true,\"self\":true,\"joinedAt\":4},"
+                + "{\"memberId\":\"M5\",\"nick\":\"P5\",\"online\":true,\"self\":false,\"joinedAt\":5}"
+                + "]}}";
+
+            JoinResponse res = PresenceProtocol.ParseJoinResponse(json);
+            Assert.Equal(5, res.Members.Count);
+            Assert.Equal("APE-1.0.6", res.Members[0].ModVersion);
+            Assert.Equal(BadgeClientKind.ModLab, PresenceProtocol.ResolveClientKind(res.Members[0].ModVersion));
+            Assert.Equal("ape-1.0.5", res.Members[1].ModVersion);
+            Assert.Equal(BadgeClientKind.ModLab, PresenceProtocol.ResolveClientKind(res.Members[1].ModVersion));
+            Assert.Equal("APE-2.0", res.Members[2].ModVersion);
+            Assert.Equal(BadgeClientKind.ModLab, PresenceProtocol.ResolveClientKind(res.Members[2].ModVersion));
+            Assert.Equal("1.0.2", res.Members[3].ModVersion);
+            Assert.Equal(BadgeClientKind.Toys, PresenceProtocol.ResolveClientKind(res.Members[3].ModVersion));
+            Assert.Equal("", res.Members[4].ModVersion);
+            Assert.Equal(BadgeClientKind.Toys, PresenceProtocol.ResolveClientKind(res.Members[4].ModVersion));
+        }
     }
 }
