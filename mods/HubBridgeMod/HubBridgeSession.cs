@@ -778,7 +778,7 @@ namespace HubBridgeMod
             out int speedType,
             out int difficulty)
         {
-            mapModeType = requestedMapType > 0 ? requestedMapType : 1;
+            mapModeType = requestedMapType > 0 ? requestedMapType : 4;
             mapId = requestedMapId > 0 ? requestedMapId : 1;
             upgradePlan = 1;
             timePlan = 1;
@@ -809,13 +809,45 @@ namespace HubBridgeMod
 
                     if (mapModeType == 4 || mapModeType == 12)
                     {
+                        try
+                        {
+                            if (StaticConfigure.Map?.InfoDict != null
+                                && StaticConfigure.Map.InfoDict.TryGetValue(mapId, out var mapInfo)
+                                && mapInfo?.DifficultyIds != null
+                                && mapInfo.DifficultyIds.Count > 0)
+                            {
+                                var diffItems = mapInfo.DifficultyIds[0].GetMapGameDifficultyItems();
+                                var levelItems = mapInfo.Id.GetMapLevelConfigureItems();
+                                if (diffItems != null && diffItems.Count > 0)
+                                {
+                                    int pickedDiff = diffItems[0].Index;
+                                    for (int i = 0; i < diffItems.Count; i++)
+                                    {
+                                        if (levelItems == null || levelItems.Count <= i
+                                            || TimeHelper.ValidityTime(levelItems[i].BeginTime, levelItems[i].EndTime))
+                                        {
+                                            pickedDiff = diffItems[i].Index;
+                                            break;
+                                        }
+                                    }
+                                    difficulty = pickedDiff;
+                                }
+                            }
+                        }
+                        catch { }
+
                         if (StaticConfigure.GameMode != null
                             && StaticConfigure.GameMode.DifficultyDataDict != null
                             && StaticConfigure.GameMode.DifficultyDataDict.TryGetValue(4, out var diffData)
                             && diffData?.GameModeDifficultyDataConfigureItems != null
                             && diffData.GameModeDifficultyDataConfigureItems.Count > 0)
                         {
-                            upgradePlan = diffData.GameModeDifficultyDataConfigureItems[0].UpgradeId;
+                            var diffCfg = diffData.GameModeDifficultyDataConfigureItems.GetSafeByIndex(difficulty)
+                                ?? diffData.GameModeDifficultyDataConfigureItems[0];
+                            if (diffCfg != null)
+                            {
+                                upgradePlan = diffCfg.UpgradeId;
+                            }
                         }
                     }
                     else if (modeCfg.Upgrade != null && modeCfg.Upgrade.Count > 0 && StaticConfigure.Upgrade?.DataDict != null)
