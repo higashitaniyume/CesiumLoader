@@ -10,7 +10,7 @@ namespace Apcsm
     internal static class Program
     {
         // 当前 SDK 版本(与 dist 分发一致; 打包时写入 sidecar)
-        private const string SdkVersion = "4.1.7";
+        private const string SdkVersion = "4.1.8";
 
         private static int Main(string[] args)
         {

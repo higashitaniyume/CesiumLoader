@@ -2,6 +2,12 @@
 
 欢迎您使用 **CesiumLoader** 模组加载器，衷心感谢您的信任与支持！如果您在游戏或模组加载过程中遇到任何异常、兼容问题或有改进建议，非常欢迎前往 [GitHub Issues](https://github.com/higashitaniyume/CesiumLoader/issues) 反馈，也可以加入企鹅群 **1078464597**（[点击加群](https://qm.qq.com/cgi-bin/qm/qr?k=tYrqev4U2Xr2PPAA4EkILA0NKmP3zgeU&jump_from=webapi&authKey=jHiIqsg0jEV53dBtQ9V3qXohKKHwLDGmfWprcrg7gueM9pU9iz+ST/QHR6d1j3wa)）或 [Discord 频道](https://discord.gg/SZaYSwGX94) 与我们联系交流，我们会认真倾听并尽力协助处理。
 
+## [4.1.8] - 2026-11-28
+
+### 修复
+
+- 修复国际服（`AstralParty_INT`）在启用 `steamBypassEnabled`（例如多开或未通过 Steam 启动）时进入大厅后闪退的问题：在 `SteamClient.IsValid` 为 `false` 时，为 `Steamworks.SteamApps.get_GameLanguage()` 与 `Steamworks.SteamClient.get_SteamId()` 提供安全兜底返回值（`"english"` 与 `0`），避免未初始化的 Steamworks 调用抛出空引用异常并破坏 `FlowSDK.dll` 调用栈；当 Steam 正常初始化时仍透传原始实现。
+
 ## [4.1.7] - 2026-11-28
 
 ### SDK
