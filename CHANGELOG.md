@@ -2,6 +2,14 @@
 
 欢迎您使用 **CesiumLoader** 模组加载器，衷心感谢您的信任与支持！如果您在游戏或模组加载过程中遇到任何异常、兼容问题或有改进建议，非常欢迎前往 [GitHub Issues](https://github.com/higashitaniyume/CesiumLoader/issues) 反馈，也可以加入企鹅群 **1078464597**（[点击加群](https://qm.qq.com/cgi-bin/qm/qr?k=tYrqev4U2Xr2PPAA4EkILA0NKmP3zgeU&jump_from=webapi&authKey=jHiIqsg0jEV53dBtQ9V3qXohKKHwLDGmfWprcrg7gueM9pU9iz+ST/QHR6d1j3wa)）或 [Discord 频道](https://discord.gg/SZaYSwGX94) 与我们联系交流，我们会认真倾听并尽力协助处理。
 
+## [4.1.7] - 2026-11-28
+
+### SDK
+
+- 新增实验性上行 RPC 拦截能力 `CesiumLoader.SDK.Networking.RpcGate`：通过替换 `RPCMsgManager` 中对应生成式 C2S RPC 字段，支持按请求内容决定在本地拦截或原样放行，并在拦截时返回延迟完成的 `RPCAsyncResult` 以避免调用方等待链挂起。
+- `RpcGate` 自动处理字段查找、`NetManager` 重建容器后的自动重挂、失败与异常回退放行以及 `Dispose` 还原；使用说明与边界见 `docs/SDK-RpcGate.md`。
+- 新增权限声明 `ModPermission.InterceptOutgoingRpc`（仅用于能力标识与工具展示，不作运行期门控）。
+
 ## [4.1.6] - 2026-11-26
 
 ### 模组

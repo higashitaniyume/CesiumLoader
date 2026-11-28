@@ -13,8 +13,8 @@ namespace CesiumLoader.SDK.Tests
             // SDK 与原生加载器使用同一发布版本。
             // 改版本时这两处要与 CesiumLoader.SDK.csproj 的 <Version> / <FileVersion>
             // 以及分发布局里的 doorstop_config.json(sdkVersion) 对齐。
-            Assert.Equal("4.1.6", SdkVersion.Current);
-            Assert.Equal("4.1.6", SdkVersion.LoaderVersion);
+            Assert.Equal("4.1.7", SdkVersion.Current);
+            Assert.Equal("4.1.7", SdkVersion.LoaderVersion);
         }
 
         [Theory]
