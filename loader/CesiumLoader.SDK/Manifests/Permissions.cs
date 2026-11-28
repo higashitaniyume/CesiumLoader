@@ -52,6 +52,7 @@ namespace CesiumLoader.SDK.Manifests
             ModPermission.FileSystem,
             ModPermission.Network,
             ModPermission.Debug,
+            ModPermission.InterceptOutgoingRpc,
         };
 
         /// <summary>遍历所有已定义权限位。</summary>
@@ -89,7 +90,8 @@ namespace CesiumLoader.SDK.Manifests
             return (perm & (ModPermission.GameActions |
                             ModPermission.SpeedHack |
                             ModPermission.ModifyGameState |
-                            ModPermission.Network)) != 0;
+                            ModPermission.Network |
+                            ModPermission.InterceptOutgoingRpc)) != 0;
         }
     }
 }

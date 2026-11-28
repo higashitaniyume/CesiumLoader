@@ -74,6 +74,7 @@ namespace CesiumLoader.SDK.Tests
                 ModPermission.FileSystem,
                 ModPermission.Network,
                 ModPermission.Debug,
+                ModPermission.InterceptOutgoingRpc,
             };
 
             foreach (var perm in added)
@@ -104,6 +105,7 @@ namespace CesiumLoader.SDK.Tests
             Assert.True(Permissions.IsSensitive(ModPermission.SpeedHack));
             Assert.True(Permissions.IsSensitive(ModPermission.ModifyGameState));
             Assert.True(Permissions.IsSensitive(ModPermission.Network));
+            Assert.True(Permissions.IsSensitive(ModPermission.InterceptOutgoingRpc));
 
             Assert.False(Permissions.IsSensitive(ModPermission.ReadGameState));
             Assert.False(Permissions.IsSensitive(ModPermission.Camera));

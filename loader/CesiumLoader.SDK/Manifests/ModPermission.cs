@@ -45,5 +45,10 @@ namespace CesiumLoader.SDK.Manifests
 
         /// <summary>调试能力(调试叠加层/诊断转储/暂停与步进)。</summary>
         Debug = 1 << 10,
+
+        /// <summary>拦截上行 RPC(把某个 C2S 请求拦在本地不发往服务器, 并在本地伪造其完成;
+        /// 对应 RpcGate)。敏感: 会造成本地状态与服务端不一致, 联机时可能被服务器判为异常。
+        /// 只用于向工具/用户展示"此 mod 会拦请求" —— 权限机制已取消, 这里不做门控。</summary>
+        InterceptOutgoingRpc = 1 << 11,
     }
 }

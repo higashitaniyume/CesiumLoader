@@ -13,7 +13,8 @@ SDK 类型全部位于 `CesiumLoader.SDK` 根命名空间之下的子命名空�
 | `CesiumLoader.SDK.Manifests` | `ModManifestAttribute`、`ModPermission`、`SdkManifest`、`SdkVersion` |
 | `CesiumLoader.SDK.Configuration` | `ModConfig`、`SdkConfig`、`CesiumJson` |
 | `CesiumLoader.SDK.Logging` | `SdkLog`、`ModLogger` |
-| `CesiumLoader.SDK.Gameplay` | `GameEvents`、`ShopSettlement`、`ShopOffer`、`RelicOffer`、`GameCommands`、`BattlePhase`、`GameActions`、`Players`、`Names`、`ConfigReads` |
+| `CesiumLoader.SDK.Gameplay` | `GameEvents`、`ShopSettlement`、`ShopOffer`、`RelicOffer`、`GameCommands`、`BattlePhase`、`GameActions`、`Players`、`Names`、`ConfigReads`、`PredictActionPreDispatch` |
+| `CesiumLoader.SDK.Networking` | `RpcGate`（上行 C2S 拦截，见 [SDK-RpcGate](SDK-RpcGate.md)） |
 | `CesiumLoader.SDK.Speed` | `SpeedHack` |
 | `CesiumLoader.SDK.Windowing` | `WindowFocus` |
 | `CesiumLoader.SDK.Cameras` | `CameraService`、`CameraState`、`FreeCameraMath` |
