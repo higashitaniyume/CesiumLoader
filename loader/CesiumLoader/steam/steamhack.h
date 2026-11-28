@@ -89,6 +89,12 @@
 //     实现要点见 steamhack.cpp 的 "阶段5" 一节 —— 复用方案C 的**原生 ABI 直调 ctor**机制, 但实参是
 //     "长度 0 的 Lobby[] 对象指针"(引用类型泛型参数, 不涉及 Nullable 装箱)。
 //
+//   阶段6 —— Steam 客户端属性兜底(受 steamBypassEnabled / bypass_awake 控制):
+//     针对国际服(AstralParty_INT)无 Steam/多开时 FlowSDK 回调触发的两次未初始化 Steamworks 调用:
+//     - Steamworks.SteamApps::get_GameLanguage() -> SteamClient.IsValid==false 时返回预建 "english"
+//     - Steamworks.SteamClient::get_SteamId()    -> SteamClient.IsValid==false 时返回 SteamId(0)
+//     避免未捕获的 NullReferenceException 穿过 FlowSDK.dll 栈帧导致 Kotlin/Native GC 崩溃。
+//
 // 生命周期: steamhack_install() 由 loader.cpp 的 boot_thread 在
 //   g_il2cpp.thread_attach(domain) 之后、wait_hybridclr() 之前调用 ——
 //   此时 IL2CPP 已就绪、AOT 镜像已加载(且热更程序集还没进来, 枚举到的就是 AOT 镜像),
@@ -162,13 +168,14 @@ bool steamhack_install(const cesium_safe::il2cpp_tbl& t,
                        bool bypass_lobby_methods = false,
                        bool bypass_lobby_query = true);
 
-// 成功启用的 hook 数量(0~9)。
+// 成功启用的 hook 数量(0~11)。
 //   阶段1: SteamManager.Awake(no-op) + SteamAPI_RestartAppIfNecessary(=0)          -> 2
 //   阶段2: SteamMatchmaking.CreateLobbyAsync / JoinLobbyAsync(返回已完成的空 Task)   -> 2
 //   阶段3: System.Nullable`1<Steamworks.Data.Lobby>::get_HasValue(恒 false)         -> 1(实测不被命中)
 //   阶段5: Steamworks.Data.LobbyQuery::RequestAsync(返回长度 0 的 Lobby[] 的 Task)  -> 1
+//   阶段6: SteamApps.get_GameLanguage / SteamClient.get_SteamId(IsValid==false 兜底) -> 2
 //   方案B: Lobby.SetPublic / Lobby.SetJoinable(no-op) + Lobby.get_Id(属性才 +1)      -> 2 或 3
-// **定版配置(方案B 默认关)全部生效时 = 6**(阶段1 2 + 阶段2 2 + 阶段3 1 + 阶段5 1)。
+// **定版配置(方案B 默认关)全部生效时 = 8**(阶段1 2 + 阶段2 2 + 阶段3 1 + 阶段5 1 + 阶段6 2)。
 // 0 表示绕过未生效 —— 非 Steam 启动时游戏仍会退出。
 int steamhack_hook_count();
 

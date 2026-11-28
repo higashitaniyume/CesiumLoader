@@ -101,6 +101,10 @@ struct il2cpp_tbl
     uint32_t (*array_length)(void*) = nullptr;                 // il2cpp_array_length(array) -> 元素个数
     uint32_t (*gchandle_new)(void*, bool) = nullptr;           // il2cpp_gchandle_new(obj, pinned) -> 句柄
 
+    // ---- 阶段6: SteamApps.get_GameLanguage 兜底字符串构造 ----
+    // 同样**可选**: 缺失只记日志, 放弃挂钩该属性。
+    void* (*string_new)(const char*) = nullptr;                // il2cpp_string_new(utf8) -> Il2CppString*
+
     // 关键导出是否齐全(与 get_il2cpp 的校验一致)
     bool complete() const
     {

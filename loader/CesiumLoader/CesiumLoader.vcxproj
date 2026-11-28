@@ -204,6 +204,7 @@
     <None Include="steam\steamhack_lobby_noop_part.cpp" />
     <None Include="steam\steamhack_lobby_query_part.cpp" />
     <None Include="steam\steamhack_lobby_query_install_part.cpp" />
+    <None Include="steam\steamhack_client_getters_part.cpp" />
     <None Include="steam\steamhack_lobby_task_part.cpp" />
     <None Include="steam\steamhack_entry_part.cpp" />
   </ItemGroup>

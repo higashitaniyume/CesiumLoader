@@ -153,6 +153,8 @@ bool resolve_il2cpp(HMODULE game_assembly)
     // 阶段5: LobbyQuery.RequestAsync 兜底(读空数组长度 + 显式 GC root), 可选。
     g_il2cpp.array_length = reinterpret_cast<uint32_t (*)(Il2CppObject*)>(load_symbol(game_assembly, "il2cpp_array_length"));
     g_il2cpp.gchandle_new = reinterpret_cast<uint32_t (*)(Il2CppObject*, bool)>(load_symbol(game_assembly, "il2cpp_gchandle_new"));
+    // 阶段6: SteamApps.get_GameLanguage 兜底字符串构造, 可选。
+    g_il2cpp.string_new = reinterpret_cast<Il2CppString* (*)(const char*)>(load_symbol(game_assembly, "il2cpp_string_new"));
     {
         // 缺失只记日志(照现有风格): 记下"哪些大厅绕过所需的导出缺失", 便于下一轮定位。
         struct { const char* n; const void* p; } extra[] = {
@@ -177,6 +179,7 @@ bool resolve_il2cpp(HMODULE game_assembly)
             { "il2cpp_class_value_size",       (const void*)g_il2cpp.class_value_size },
             { "il2cpp_array_length",           (const void*)g_il2cpp.array_length },
             { "il2cpp_gchandle_new",           (const void*)g_il2cpp.gchandle_new },
+            { "il2cpp_string_new",             (const void*)g_il2cpp.string_new },
         };
         std::string missing;
         for (auto& e : extra) if (!e.p) { if (!missing.empty()) missing += ", "; missing += e.n; }
@@ -237,6 +240,7 @@ bool resolve_il2cpp(HMODULE game_assembly)
         g_safe_il2cpp.class_value_size = reinterpret_cast<uint32_t (*)(void*, uint32_t*)>(g_il2cpp.class_value_size);
         g_safe_il2cpp.array_length = reinterpret_cast<uint32_t (*)(void*)>(g_il2cpp.array_length);
         g_safe_il2cpp.gchandle_new = reinterpret_cast<uint32_t (*)(void*, bool)>(g_il2cpp.gchandle_new);
+        g_safe_il2cpp.string_new = reinterpret_cast<void* (*)(const char*)>(g_il2cpp.string_new);
     }
     return ok;
 }

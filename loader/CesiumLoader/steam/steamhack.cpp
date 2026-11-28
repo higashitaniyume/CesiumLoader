@@ -1,6 +1,6 @@
 // steamhack.cpp - Steam 绕过实现 (原理与生命周期见 steamhack.h)
 //
-// 九个 hook(最多), 分五个阶段, 共用一套 MinHook 生命周期 / uninstall:
+// 十一个 hook(最多), 分六个阶段, 共用一套 MinHook 生命周期 / uninstall:
 //
 //  阶段1 —— Steam 自杀门:
 //   1) SteamManager.Awake() -> no-op
@@ -53,6 +53,10 @@
 //      修法见文件下半部分 "阶段5" 一节 —— 复用方案C 的**原生 ABI 直调 ctor**机制, 但泛型参数是
 //      **引用类型 Lobby[]**(不涉及 Nullable 装箱), 实参是"一个长度 0 的数组对象指针"。
 //
+//  阶段6 —— Steam 客户端属性兜底(修国际服无 Steam/多开时 FlowSDK 回调引发 NRE 与 GC 崩溃):
+//  10) Steamworks.SteamApps::get_GameLanguage() -> SteamClient.IsValid==false 时返回预建 "english"
+//  11) Steamworks.SteamClient::get_SteamId()     -> SteamClient.IsValid==false 时返回 SteamId(0)
+//
 // 失败一律只记日志: 绕过没装上时游戏行为与打补丁前**完全一致**(非 Steam 启动仍会退出,
 // 创建房间仍无反应), 绝不因本模块使游戏无法启动。所有安装期的解析与间接调用都走 POD + __try/__except。
 //
@@ -97,5 +101,6 @@ namespace fs = std::filesystem;
 #include "steam/steamhack_lobby_noop_part.cpp"
 #include "steam/steamhack_lobby_query_part.cpp"
 #include "steam/steamhack_lobby_query_install_part.cpp"
+#include "steam/steamhack_client_getters_part.cpp"
 #include "steam/steamhack_lobby_task_part.cpp"
 #include "steam/steamhack_entry_part.cpp"

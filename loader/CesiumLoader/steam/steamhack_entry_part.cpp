@@ -33,7 +33,8 @@ bool steamhack_install(const cesium_safe::il2cpp_tbl& t,
              " + stage 3 Nullable<Lobby>.get_HasValue->false (dead in practice, kept but ineffective)"
              " + plan C Task<T>..ctor(T) native ABI direct call"
              " + plan B Lobby.SetPublic/SetJoinable/Id neutralized"
-             " + stage 5 LobbyQuery.RequestAsync -> completed Task with an empty Lobby[] result");
+             " + stage 5 LobbyQuery.RequestAsync -> completed Task with an empty Lobby[] result"
+             " + stage 6 client getters (SteamApps.get_GameLanguage/SteamClient.get_SteamId fallback when IsValid=false)");
 
     int hooks = 0;
     int stage1 = 0;
@@ -44,6 +45,8 @@ bool steamhack_install(const cesium_safe::il2cpp_tbl& t,
     int lobby_expected = 0;
     int stage5 = 0;
     int stage5_expected = 0;
+    int stage6 = 0;
+    int stage6_expected = 0;
 
     // ---- 阶段1: Steam 自杀门(受 steamBypassEnabled / steamBypassRestartCheck 控制) ----
     if (bypass_awake)
@@ -168,8 +171,20 @@ bool steamhack_install(const cesium_safe::il2cpp_tbl& t,
                  "on leave/disband/kick, UpdateRoomByExit/ClearRoomInfo after await would still be skipped by an NRE)");
     }
 
+    // ---- 阶段6: Steam 客户端属性兜底 (SteamApps.get_GameLanguage / SteamClient.get_SteamId) ----
+    if (bypass_awake)
+    {
+        log_line("[steamhack] stage 6: installing Steam client getter safety hooks (SteamApps.get_GameLanguage / SteamClient.get_SteamId) ...");
+        stage6 = install_steam_client_getters(t, &stage6_expected);
+        hooks += stage6;
+    }
+    else
+    {
+        log_line("[steamhack] steamBypassEnabled=false, skipping stage 6 Steam client getter safety hooks");
+    }
+
     g_hook_count = hooks;
-    const int expected = stage1_expected + stage2_expected + lobby_expected + stage5_expected;
+    const int expected = stage1_expected + stage2_expected + lobby_expected + stage5_expected + stage6_expected;
     if (hooks == 0)
         log_line("[steamhack] no hook installed - game behaves as vanilla");
     else
@@ -178,9 +193,10 @@ bool steamhack_install(const cesium_safe::il2cpp_tbl& t,
                  ", stage 2+3 lobby matchmaking " + std::to_string(stage2) + "/" + std::to_string(stage2_expected) +
                  ", stage 5 LobbyQuery.RequestAsync " + std::to_string(stage5) + "/" +
                  std::to_string(stage5_expected) +
+                 ", stage 6 client getters " + std::to_string(stage6) + "/" + std::to_string(stage6_expected) +
                  ", plan B Lobby methods " + std::to_string(lobby_installed) + "/" + std::to_string(lobby_expected) +
-                 "). **Release config (plan B off by default) expects 6/6**: stage 1 x2 + stage 2 x2 + stage 3 x1 + stage 5 x1; "
-                 "with plan B on the total becomes 8 or 9 (one more only if Lobby.get_Id is a property)");
+                 "). **Release config (plan B off by default) expects 8/8**: stage 1 x2 + stage 2 x2 + stage 3 x1 + stage 5 x1 + stage 6 x2; "
+                 "with plan B on the total becomes 10 or 11 (one more only if Lobby.get_Id is a property)");
     return hooks > 0;
 }
 
@@ -272,6 +288,29 @@ void steamhack_uninstall()
         // 本模块没有 il2cpp_gchandle_free, 而且此时进程正在退出; 留着比"摘掉 hook 后仍有
         // 一个悬空句柄"更安全。这里只是把引用留作日志/诊断用。
     }
+
+    // 阶段6 的 Steam 客户端属性兜底 hook
+    if (g_sa_lang_hooked && g_sa_lang_target)
+    {
+        MH_DisableHook(g_sa_lang_target);
+        MH_RemoveHook(g_sa_lang_target);
+        g_sa_lang_hooked = false;
+        g_sa_lang_target = nullptr;
+        g_sa_lang_method = nullptr;
+        g_real_sa_game_lang = nullptr;
+        // 预建好的 g_sa_lang_str 与 g_sa_lang_gchandle 同样在进程退出期保留(与阶段5 一致)。
+    }
+    if (g_sc_id_hooked && g_sc_id_target)
+    {
+        MH_DisableHook(g_sc_id_target);
+        MH_RemoveHook(g_sc_id_target);
+        g_sc_id_hooked = false;
+        g_sc_id_target = nullptr;
+        g_sc_id_method = nullptr;
+        g_real_sc_steam_id = nullptr;
+    }
+    g_sc_isvalid_fn = nullptr;
+    g_sc_isvalid_method = nullptr;
 
     // 注意: 绝不调用 MH_Uninitialize() —— MinHook 由 speedhack.cpp 拥有(见 steamhack.h),
     // 卸载它会把 speedhack 的 hook 一起废掉。这里只摘掉自己创建的那几个。

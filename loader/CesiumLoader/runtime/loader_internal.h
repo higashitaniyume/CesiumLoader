@@ -82,6 +82,8 @@ struct Il2Cpp
     // 同样全部可选, 缺失只记日志。
     uint32_t (*array_length)(Il2CppObject*) = nullptr;
     uint32_t (*gchandle_new)(Il2CppObject*, bool) = nullptr;
+    // 阶段6(steamhack.cpp): 构造兜底托管字符串(SteamApps.get_GameLanguage), 可选。
+    Il2CppString* (*string_new)(const char*) = nullptr;
 };
 
 namespace cesium::runtime::boot
